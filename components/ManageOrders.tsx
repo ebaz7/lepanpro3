@@ -6,6 +6,7 @@ import { getRolePermissions } from '../services/authService';
 import { formatCurrency, formatDate, getStatusLabel, jalaliToGregorian, formatNumberString, deformatNumberString, parseSafeDate } from '../constants';
 import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle } from 'lucide-react';
 import PrintVoucher from './PrintVoucher';
+import { OrderArchiveModal } from './OrderArchiveModal';
 import EditOrderModal from './EditOrderModal';
 import { apiCall } from '../services/apiService';
 import MobileOrderCard from './mobile/MobileOrderCard';
@@ -48,6 +49,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   const [companyFilter, setCompanyFilter] = useState('');
   
   const [currentStatusFilter, setCurrentStatusFilter] = useState<any>(statusFilter || null);
+  const [archivingOrder, setArchivingOrder] = useState<PaymentOrder | null>(null);
 
   useEffect(() => {
       if (viewOrder || editingOrder) {
@@ -585,6 +587,13 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                                  >
                                     <Eye size={16}/> مشاهده
                                  </button>
+                                 <button 
+                                    onClick={(e) => { e.stopPropagation(); setArchivingOrder(order); }}
+                                    className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg transition-all shadow-sm border border-purple-100"
+                                    title="اتچ فایل و بایگانی مدارک"
+                                 >
+                                    <Paperclip size={16}/>
+                                 </button>
                                  {canDelete(order) && <button onClick={() => handleDelete(order.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors" title="حذف"><Trash2 size={16}/></button>}
                             </div></td>
                           </tr>
@@ -621,6 +630,17 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       )}
       
       {editingOrder && <EditOrderModal order={editingOrder} onClose={() => setEditingOrder(null)} onSave={refreshData} />}
+
+      {archivingOrder && (
+        <OrderArchiveModal
+          order={archivingOrder}
+          currentUser={currentUser}
+          onClose={() => setArchivingOrder(null)}
+          onOrderUpdated={() => {
+            refreshData();
+          }}
+        />
+      )}
     </>
   );
 };

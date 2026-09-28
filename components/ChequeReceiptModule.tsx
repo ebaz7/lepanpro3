@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import * as jalaali from 'jalaali-js';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, PlusCircle, List, Trash2, Calendar, FileUp, Sparkles, Loader2, 
   Printer, ArrowRight, CheckCircle2, User, Landmark, HelpCircle, Download,
   Coins, Hash, Check, AlertCircle, FileSpreadsheet, WifiOff, Globe, Copy, Zap,
   Search, TrendingUp, Archive, CheckCircle, ShieldAlert, FileClock, RefreshCw, QrCode,
-  MessageSquare, CalendarDays, ChevronRight, ChevronLeft, Eye, Clock, Layers
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Tesseract from 'tesseract.js';
@@ -18,6 +17,7 @@ import {
 } from '../services/storageService';
 import { apiCall } from '../services/apiService';
 import { PersianHandwritingPad } from './PersianHandwritingPad';
+import { ChequeCalendarView } from './ChequeCalendarView';
 import { PenTool } from 'lucide-react';
 import { shareElementToChat, openSendToChat } from '../services/chatShareService';
 
@@ -350,24 +350,9 @@ interface ChequeReceiptModuleProps {
 }
 
 export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ currentUser }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'list' | 'calendar' | 'create' | 'treasury'>('list');
+  const [activeSubTab, setActiveSubTab] = useState<'list' | 'create' | 'treasury' | 'calendar'>('list');
   const [receipts, setReceipts] = useState<ChequeReceipt[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // Calendar View States
-  const [calYear, setCalYear] = useState<number>(() => {
-    try {
-      const today = getTodayJalali();
-      return parseInt(today.split('/')[0], 10) || 1404;
-    } catch { return 1404; }
-  });
-  const [calMonth, setCalMonth] = useState<number>(() => {
-    try {
-      const today = getTodayJalali();
-      return parseInt(today.split('/')[1], 10) || 7;
-    } catch { return 7; }
-  });
-  const [selectedDayModal, setSelectedDayModal] = useState<{ day: number; dateStr: string; items: any[] } | null>(null);
   
   // Create state
   const [customerName, setCustomerName] = useState('');
@@ -432,81 +417,6 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
       setIsSharingReceipt(false);
     }
   };
-
-  const calendarMonthData = useMemo(() => {
-    const PERSIAN_MONTH_NAMES = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
-    
-    let daysCount = 30;
-    if (calMonth >= 1 && calMonth <= 6) daysCount = 31;
-    else if (calMonth >= 7 && calMonth <= 11) daysCount = 30;
-    else daysCount = jalaali.isLeapJalaaliYear(calYear) ? 30 : 29;
-
-    let firstDayIndex = 0;
-    try {
-      const g = jalaali.toGregorian(calYear, calMonth, 1);
-      const gDate = new Date(g.gy, g.gm - 1, g.gd);
-      firstDayIndex = (gDate.getDay() + 1) % 7;
-    } catch(e) {}
-
-    const dayChequesMap: Record<number, any[]> = {};
-    for (let i = 1; i <= daysCount; i++) dayChequesMap[i] = [];
-
-    let totalMonthAmount = 0;
-    let totalMonthChequesCount = 0;
-    let overdueChequesCount = 0;
-    let todayChequesCount = 0;
-
-    const todayStr = getTodayJalali();
-
-    receipts.forEach(r => {
-      (r.cheques || []).forEach(c => {
-        const dueDate = c.dueDate || r.registrationDate;
-        if (!dueDate) return;
-        const cleanDate = dueDate.trim().replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
-        const parts = cleanDate.split(/[\/\.\-]/).map(p => parseInt(p, 10)).filter(n => !isNaN(n));
-        if (parts.length === 3) {
-          let jy = parts[0] >= 1300 ? parts[0] : parts[2];
-          let jm = parts[1];
-          let jd = parts[0] >= 1300 ? parts[2] : parts[0];
-          if (jy < 100) jy += 1400;
-
-          if (jy === calYear && jm === calMonth && jd >= 1 && jd <= daysCount) {
-            const item = {
-              ...c,
-              receiptId: r.id,
-              receiptSerialNumber: r.serialNumber,
-              customerName: r.customerName,
-              receiptStatus: r.status,
-              dueDateStr: `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')}`
-            };
-            dayChequesMap[jd].push(item);
-            
-            const amt = Number(c.amount || 0);
-            totalMonthAmount += amt;
-            totalMonthChequesCount++;
-
-            if (item.dueDateStr < todayStr && r.status !== 'approved' && r.status !== 'treasury_done') {
-              overdueChequesCount++;
-            }
-            if (item.dueDateStr === todayStr) {
-              todayChequesCount++;
-            }
-          }
-        }
-      });
-    });
-
-    return {
-      monthName: PERSIAN_MONTH_NAMES[calMonth - 1] || '',
-      daysCount,
-      firstDayIndex,
-      dayChequesMap,
-      totalMonthAmount,
-      totalMonthChequesCount,
-      overdueChequesCount,
-      todayChequesCount
-    };
-  }, [receipts, calYear, calMonth]);
 
   // Treasury Search and Filters State
   const [treasurySearch, setTreasurySearch] = useState('');
@@ -1707,14 +1617,6 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
             <List size={16} />
             رسیدهای چک ({receipts.length})
           </button>
-
-          <button 
-            onClick={() => { setActiveSubTab('calendar'); setSelectedReceipt(null); }}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all ${activeSubTab === 'calendar' ? 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white shadow-md' : 'text-gray-600 hover:text-amber-500 dark:text-gray-300'}`}
-          >
-            <CalendarDays size={16} />
-            تقویم سررسید چک‌ها
-          </button>
           
           <button 
             onClick={() => { setActiveSubTab('treasury'); setSelectedReceipt(null); }}
@@ -1722,6 +1624,14 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
           >
             <Archive size={16} />
             صندوق و خزانه‌داری چک ({getAllCheques().length})
+          </button>
+
+          <button 
+            onClick={() => { setActiveSubTab('calendar'); setSelectedReceipt(null); }}
+            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'calendar' ? 'bg-white dark:bg-gray-900 text-purple-600 shadow-md' : 'text-gray-600 hover:text-purple-500'}`}
+          >
+            <Calendar size={16} />
+            تقویم سررسید چک‌ها
           </button>
 
           <button 
@@ -2091,209 +2001,6 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
               </div>
             )}
           </motion.div>
-        ) : activeSubTab === 'calendar' ? (
-          /* --- PERSAN CALENDAR DUE CHEQUES VIEW --- */
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-6"
-          >
-            <div className="bg-white/90 dark:bg-gray-900/90 p-5 rounded-3xl border border-gray-200/80 dark:border-gray-800 shadow-xl space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 text-white flex items-center justify-center shadow-md">
-                    <CalendarDays size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-gray-800 dark:text-gray-100">
-                      تقویم سررسید چک‌ها - {calendarMonthData.monthName} {calYear}
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-bold">
-                      مشاهده بصری موقعیت زمان‌بندی سررسید چک‌های دریافتی بر روی تقویم شمسی
-                    </p>
-                  </div>
-                </div>
-
-                {/* Month / Year Selectors */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={() => {
-                      if (calMonth === 1) { setCalMonth(12); setCalYear(y => y - 1); }
-                      else setCalMonth(m => m - 1);
-                    }}
-                    className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
-                    title="ماه قبل"
-                  >
-                    <ChevronRight size={18} />
-                  </button>
-
-                  <select
-                    value={calMonth}
-                    onChange={e => setCalMonth(Number(e.target.value))}
-                    className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-bold text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-amber-500"
-                  >
-                    {['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'].map((mName, idx) => (
-                      <option key={idx} value={idx + 1}>{mName}</option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={calYear}
-                    onChange={e => setCalYear(Number(e.target.value))}
-                    className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-xs font-bold text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-amber-500"
-                  >
-                    {[1401, 1402, 1403, 1404, 1405, 1406, 1407].map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => {
-                      if (calMonth === 12) { setCalMonth(1); setCalYear(y => y + 1); }
-                      else setCalMonth(m => m + 1);
-                    }}
-                    className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
-                    title="ماه بعد"
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const todayParts = getTodayJalali().split('/');
-                      setCalYear(parseInt(todayParts[0]) || 1404);
-                      setCalMonth(parseInt(todayParts[1]) || 7);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 hover:bg-amber-200 text-xs font-black transition-all"
-                  >
-                    امروز
-                  </button>
-                </div>
-              </div>
-
-              {/* KPI Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="p-3.5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40">
-                  <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">تعداد چک‌های سررسید ماه</p>
-                  <p className="text-lg font-black text-blue-900 dark:text-blue-200 mt-1">
-                    {calendarMonthData.totalMonthChequesCount} <span className="text-xs font-normal">فقره</span>
-                  </p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/40">
-                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">مجموع مبلغ سررسید ماه</p>
-                  <p className="text-lg font-black text-emerald-900 dark:text-emerald-200 mt-1">
-                    {calendarMonthData.totalMonthAmount.toLocaleString('fa-IR')} <span className="text-xs font-normal">ریال</span>
-                  </p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-900/40">
-                  <p className="text-[10px] text-rose-600 dark:text-rose-400 font-bold">چک‌های سررسید گذشته (معوق)</p>
-                  <p className="text-lg font-black text-rose-900 dark:text-rose-200 mt-1">
-                    {calendarMonthData.overdueChequesCount} <span className="text-xs font-normal">فقره</span>
-                  </p>
-                </div>
-                <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-900/40">
-                  <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">سررسید‌های امروز</p>
-                  <p className="text-lg font-black text-amber-900 dark:text-amber-200 mt-1">
-                    {calendarMonthData.todayChequesCount} <span className="text-xs font-normal">فقره</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Weekday Grid */}
-              <div className="grid grid-cols-7 gap-1.5 md:gap-2 text-center text-xs font-black text-gray-500 dark:text-gray-400 bg-gray-100/70 dark:bg-gray-800/50 p-2 rounded-2xl">
-                <span>شنبه</span>
-                <span>یکشنبه</span>
-                <span>دوشنبه</span>
-                <span>سه‌شنبه</span>
-                <span>چهارشنبه</span>
-                <span>پنج‌شنبه</span>
-                <span className="text-rose-500">جمعه</span>
-              </div>
-
-              {/* Days Grid */}
-              <div className="grid grid-cols-7 gap-1.5 md:gap-2">
-                {Array.from({ length: calendarMonthData.firstDayIndex }).map((_, idx) => (
-                  <div key={`empty-${idx}`} className="h-24 md:h-32 rounded-2xl bg-gray-50/40 dark:bg-gray-800/10 border border-gray-100/50 dark:border-gray-800/20 opacity-30" />
-                ))}
-
-                {Array.from({ length: calendarMonthData.daysCount }).map((_, idx) => {
-                  const dayNum = idx + 1;
-                  const dayStr = `${calYear}/${String(calMonth).padStart(2, '0')}/${String(dayNum).padStart(2, '0')}`;
-                  const dayCheques = calendarMonthData.dayChequesMap[dayNum] || [];
-                  const isToday = dayStr === getTodayJalali();
-                  const dayTotalAmount = dayCheques.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-
-                  return (
-                    <div
-                      key={`day-${dayNum}`}
-                      onClick={() => {
-                        if (dayCheques.length > 0) {
-                          setSelectedDayModal({ day: dayNum, dateStr: dayStr, items: dayCheques });
-                        }
-                      }}
-                      className={`min-h-[100px] md:min-h-[120px] p-1.5 md:p-2 rounded-2xl border transition-all flex flex-col justify-between ${
-                        isToday
-                          ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 shadow-md ring-2 ring-amber-400/50'
-                          : dayCheques.length > 0
-                          ? 'bg-white dark:bg-gray-800/90 border-blue-200 dark:border-blue-900/60 shadow-xs hover:border-blue-400 cursor-pointer'
-                          : 'bg-gray-50/50 dark:bg-gray-800/30 border-gray-100 dark:border-gray-800/40'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`w-6 h-6 rounded-lg text-xs font-black flex items-center justify-center ${
-                          isToday 
-                            ? 'bg-amber-500 text-white shadow-xs' 
-                            : 'text-gray-700 dark:text-gray-300'
-                        }`}>
-                          {dayNum}
-                        </span>
-                        {isToday && <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/60 px-1 rounded">امروز</span>}
-                        {dayCheques.length > 0 && !isToday && (
-                          <span className="text-[9px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-1 rounded">
-                            {dayCheques.length} چک
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Day Cheque Chips */}
-                      {dayCheques.length > 0 ? (
-                        <div className="space-y-1 my-1 overflow-hidden">
-                          <div className="text-[9px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-1 py-0.5 rounded border border-emerald-200/50 truncate">
-                            {dayTotalAmount.toLocaleString('fa-IR')} ریال
-                          </div>
-                          {dayCheques.slice(0, 2).map((item, cIdx) => (
-                            <div 
-                              key={cIdx} 
-                              className="p-1 rounded-lg bg-gray-100 dark:bg-gray-700/80 border border-gray-200/60 dark:border-gray-600 text-[9px] truncate space-y-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/60 transition-colors"
-                              title={`چک ${item.chequeNumber || '-'} | ${item.bankName || '-'} | ${item.customerName || '-'}`}
-                            >
-                              <div className="font-bold text-gray-800 dark:text-gray-200 truncate flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                                {item.bankName || 'بانک'} - {item.chequeNumber || 'چک'}
-                              </div>
-                              <div className="text-gray-500 dark:text-gray-400 truncate">
-                                {item.customerName || 'مشتری'}
-                              </div>
-                            </div>
-                          ))}
-                          {dayCheques.length > 2 && (
-                            <p className="text-[9px] font-bold text-blue-600 dark:text-blue-400 text-center">
-                              + {dayCheques.length - 2} چک دیگر
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex items-center justify-center">
-                          <span className="text-[10px] text-gray-300 dark:text-gray-600">-</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </motion.div>
         ) : activeSubTab === 'treasury' ? (
           // --- TREASURY CABINET SUB TAB ---
           <motion.div
@@ -2529,6 +2236,20 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
                 </table>
               </div>
             </div>
+          </motion.div>
+        ) : activeSubTab === 'calendar' ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <ChequeCalendarView
+              allCheques={getAllCheques()}
+              onSelectReceipt={(receipt) => {
+                setSelectedReceipt(receipt);
+                setActiveSubTab('list');
+              }}
+            />
           </motion.div>
         ) : (
           <motion.div 
@@ -3140,79 +2861,6 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
         onSelectText={handleHandwritingSelectText}
         initialTargetField={handwritingTargetField}
       />
-
-      {/* Modal showing due cheques for selected day */}
-      {selectedDayModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in" dir="rtl">
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gradient-to-r from-amber-500 to-indigo-600 text-white">
-              <div className="flex items-center gap-2">
-                <CalendarDays size={20} />
-                <h3 className="font-black text-sm md:text-base">
-                  چک‌های سررسید شده در تاریخ {selectedDayModal.dateStr}
-                </h3>
-              </div>
-              <button 
-                onClick={() => setSelectedDayModal(null)}
-                className="p-1.5 rounded-xl hover:bg-white/20 text-white transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-5 overflow-y-auto space-y-3 flex-1">
-              {selectedDayModal.items.map((item, idx) => (
-                <div key={idx} className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="px-2 py-0.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-black text-xs">
-                        {item.bankName || 'بانک'}
-                      </span>
-                      <span className="font-mono font-black text-sm text-gray-800 dark:text-gray-100">
-                        شماره: {item.chequeNumber || '---'}
-                      </span>
-                    </div>
-                    <p className="text-xs font-bold text-gray-600 dark:text-gray-300">
-                      مشتری / تحویل‌دهنده: {item.customerName || 'نامشخص'}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      رسید مربوطه: #{item.receiptSerialNumber || item.receiptId}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-3 justify-between md:justify-end border-t md:border-t-0 pt-2 md:pt-0 border-gray-200 dark:border-gray-700">
-                    <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                      {Number(item.amount || 0).toLocaleString('fa-IR')} ریال
-                    </span>
-                    <button
-                      onClick={() => {
-                        const targetReceipt = receipts.find(r => r.id === item.receiptId);
-                        if (targetReceipt) {
-                          setSelectedReceipt(targetReceipt);
-                          setSelectedDayModal(null);
-                          setActiveSubTab('list');
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm"
-                    >
-                      <Eye size={14} /> مشاهده رسید
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end bg-gray-50 dark:bg-gray-800/40">
-              <button
-                onClick={() => setSelectedDayModal(null)}
-                className="px-5 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-bold text-xs"
-              >
-                بستن
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

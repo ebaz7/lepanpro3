@@ -64,7 +64,6 @@ export interface User {
   canViewSayanRemittances?: boolean;
   canViewSayanWarehouseOverview?: boolean;
   canViewSayanWarehouseWidget?: boolean;
-  canBotAutoPdfPaymentOrders?: boolean;
   googleLinkedEmail?: string;
   googleLinkedAt?: number;
 }
@@ -186,7 +185,6 @@ export interface RolePermissions {
   canManageWarehouse?: boolean;
   canAccessCcti?: boolean;
   canManageCctiArchive?: boolean;
-  canBotAutoPdfPaymentOrders?: boolean; // تبدیل اتوماتیک عکس‌های دستور پرداخت به پی‌دی‌اف در ربات‌ها
   canViewWarehouseReports?: boolean;
   canApproveBijak?: boolean;
   canViewSecurity?: boolean;
@@ -370,9 +368,8 @@ export interface SystemSettings {
   telegramAdminId?: string;
   purchaseTelegramGroup?: string;
   baleBotToken?: string;
-  botAutoPdfForPayments?: boolean; // فعال‌سازی تبدیل خودکار عکس دستور پرداخت به PDF در ربات‌ها
-  botAutoPdfAllowedUsers?: string[]; // شناسه کاربران یا نقش‌های دارای دسترسی تبدیل خودکار عکس به PDF
-
+  autoPdfForPaymentBot?: boolean;
+  paymentBotPdfAllowedUsers?: string[];
   purchaseBaleGroup?: string;
   purchaseWhatsappGroup?: string;
   smsApiKey?: string;

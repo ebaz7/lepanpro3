@@ -454,64 +454,49 @@ const BotManager: React.FC<BotManagerProps> = ({ settings, setSettings }) => {
                 </div>
             </div>
 
-            {/* Payment Order Auto PDF Conversion Settings */}
-            <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b pb-3 border-gray-100 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                        <div className="bg-gradient-to-tr from-amber-500 to-indigo-600 p-2 rounded-xl text-white">
-                            <Key size={18} />
+            {/* PAYMENT ORDERS BOT AUTO-PDF SETTINGS */}
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200/80 dark:border-gray-800 p-6 space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
+                            <Send size={20} />
                         </div>
                         <div>
-                            <h3 className="text-sm font-black text-gray-800 dark:text-gray-100">
-                                تبدیل اتوماتیک عکس دستور پرداخت به PDF در ربات‌ها
+                            <h3 className="font-extrabold text-sm text-gray-900 dark:text-white">
+                                تنظیمات تبدیل اتوماتیک عکس دستور پرداخت به PDF در ربات‌ها
                             </h3>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                هنگام ارسال عکس برای دستور پرداخت جدید یا اتچمنت از طریق تلگرام، بله یا واتساپ، تصویر به طور خودکار به فایل PDF تبدیل و پیوست خواهد شد.
+                                هنگام ثبت یا ارسال تصاویر پیوست دستور پرداخت از طریق ربات‌های بله، تلگرام و واتساپ
                             </p>
                         </div>
                     </div>
+
                     <label className="relative inline-flex items-center cursor-pointer">
                         <input 
                             type="checkbox" 
-                            checked={Boolean(settings.botAutoPdfForPayments)} 
+                            checked={settings.autoPdfForPaymentBot !== false} 
                             onChange={async (e) => {
-                                const checked = e.target.checked;
-                                const updated = { ...settings, botAutoPdfForPayments: checked };
+                                const newval = e.target.checked;
+                                const updated = { ...settings, autoPdfForPaymentBot: newval };
                                 setSettings(updated);
                                 try {
                                     await apiCall('/settings', 'POST', updated);
-                                } catch(err) {
-                                    console.error("Error saving botAutoPdfForPayments:", err);
+                                } catch (err) {
+                                    console.error('Error saving settings:', err);
                                 }
                             }}
-                            className="sr-only peer" 
+                            className="sr-only peer"
                         />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                        <span className="mr-3 text-xs font-bold text-gray-700 dark:text-gray-300">
+                            {settings.autoPdfForPaymentBot !== false ? 'فعال (تبدیل خودکار عکس به PDF)' : 'غیرفعال'}
+                        </span>
                     </label>
                 </div>
 
-                {settings.botAutoPdfForPayments && (
-                    <div className="space-y-3 pt-1 animate-fade-in">
-                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block">
-                            شناسه‌ها و شماره تماس‌های مجاز جهت تبدیل خودکار عکس به PDF (با کاما یا اینتر جدا کنید - در صورت خالی بودن برای همه اعمال می‌شود):
-                        </label>
-                        <textarea 
-                            rows={2}
-                            placeholder="مثال: 989123456789, @user_id, 12345678"
-                            value={(settings.botAutoPdfAllowedUsers || []).join('\n')}
-                            onChange={e => {
-                                const valList = e.target.value.split(/[\n,،]+/).map(s => s.trim()).filter(Boolean);
-                                setSettings({ ...settings, botAutoPdfAllowedUsers: valList });
-                            }}
-                            onBlur={async () => {
-                                try {
-                                    await apiCall('/settings', 'POST', settings);
-                                } catch(e){}
-                            }}
-                            className="w-full text-xs font-mono p-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500"
-                        />
-                    </div>
-                )}
+                <div className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed bg-purple-50/50 dark:bg-purple-950/20 p-3.5 rounded-xl border border-purple-100 dark:border-purple-900/30">
+                    💡 با فعال بودن این گزینه، تمام عکس‌ها و رسیدهای ارسالی بابت دستور پرداخت از طریق ربات، پیش از بایگانی و اتچ به دستور پرداخت به‌صورت خودکار و شفاف به فایل استاندارد PDF تبدیل می‌شوند.
+                </div>
             </div>
 
             {/* Centralized Universal Report Delivery Engine Configurator */}

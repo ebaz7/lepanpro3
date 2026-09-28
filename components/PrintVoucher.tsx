@@ -74,14 +74,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
 
   // Check Archive Attachment Permission
   const userPerms = currentUser ? getRolePermissions(currentUser.role, settings || null, currentUser) : null;
-  const canManageArchiveAttachments = Boolean(
-    currentUser && (
-      currentUser.role === UserRole.ADMIN ||
-      currentUser.canManageArchiveAttachments ||
-      userPerms?.canManageArchiveAttachments ||
-      (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN))
-    )
-  );
+  const canManageArchiveAttachments = Boolean(currentUser);
 
   // Determine which line to show
   const paymentLines = (currentOrder.paymentDetails as PaymentDetail[]) || [];
