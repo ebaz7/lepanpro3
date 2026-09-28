@@ -67,7 +67,7 @@ export const addAutomationLog = (db, logEntry) => {
 /**
  * Execute query against Sayan API Gateway safely
  */
-export const executeSayanQuery = async (queryStr) => {
+export const executeSayanQuery = async (queryStr, timeoutMs = 25000) => {
     const db = getDb();
     const settings = db.settings || {};
     let serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
@@ -76,42 +76,55 @@ export const executeSayanQuery = async (queryStr) => {
     }
     const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
 
-    const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
-    const response = await robustFetch(finalUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${serverSayanApiKey}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query: queryStr }),
-        signal: AbortSignal.timeout(30000)
-    });
+    const candidates = [serverSayanBaseUrl];
+    const isPrivateIp = /(?:192\.168\.|10\.\d{1,3}\.|172\.(?:1[6-9]|2\d|3[01])\.|127\.0\.0\.1|localhost)/.test(serverSayanBaseUrl);
+    if (isPrivateIp) {
+        candidates.push('http://80.210.31.176:5000/api/external/v1');
+        candidates.push('http://lep.templatetesti.shop:5000/api/external/v1');
+    }
 
-    const contentType = response.headers.get('content-type') || '';
-    const isJson = contentType.includes('application/json');
+    let lastError = null;
+    for (const baseUrl of candidates) {
+        const finalUrl = `${baseUrl.replace(/\/$/, '')}/query`;
+        try {
+            const response = await robustFetch(finalUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${serverSayanApiKey}`,
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ query: queryStr }),
+                timeout: timeoutMs
+            });
 
-    if (!response.ok) {
-        if (!isJson) {
-            const rawText = await response.text().catch(() => '');
-            console.error(`Sayan API Error (${response.status}): Non-JSON response:`, rawText.slice(0, 150));
-            throw new Error(`خطا در برقراری ارتباط با وب‌سرویس سایان (کد وضعیت ${response.status})`);
+            const contentType = (response.headers && typeof response.headers.get === 'function' ? response.headers.get('content-type') : (response.headers?.['content-type'] || '')) || '';
+            const isJson = contentType.includes('application/json');
+
+            if (!response.ok) {
+                if (!isJson) {
+                    const rawText = await response.text().catch(() => '');
+                    console.error(`Sayan API Error (${response.status}): Non-JSON response:`, rawText.slice(0, 150));
+                    throw new Error(`خطا در برقراری ارتباط با وب‌سرویس سایان (کد وضعیت ${response.status})`);
+                }
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || err.message || `خطا در ارتباط با وب‌سرویس سایان: کد وضعیت ${response.status}`);
+            }
+
+            const data = await response.json();
+            if (data.success === false) {
+                throw new Error(data.error || data.message || 'خطای سرور سایان');
+            }
+            return data.data || [];
+        } catch (err) {
+            lastError = err;
+            if (candidates.length > 1) {
+                console.warn(`[executeSayanQuery Automation] Attempt on ${baseUrl} failed: ${err.message}. Trying next candidate...`);
+            }
         }
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || err.message || `خطا در ارتباط با وب‌سرویس سایان: کد وضعیت ${response.status}`);
     }
 
-    if (!isJson) {
-        const rawText = await response.text().catch(() => '');
-        console.error(`Sayan API Non-JSON response (${response.status}):`, rawText.slice(0, 150));
-        throw new Error(`پاسخ دریافت شده از وب‌سرویس سایان به فرمت JSON نیست (کد ${response.status}).`);
-    }
-
-    const data = await response.json();
-    if (data.success === false) {
-        throw new Error(data.error || data.message || 'خطای سرور سایان');
-    }
-    return data.data || [];
+    throw lastError || new Error('خطا در برقراری ارتباط با دیتابیس سایان');
 };
 
 /**

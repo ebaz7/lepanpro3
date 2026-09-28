@@ -70,11 +70,19 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
 
   // Archive Attachment Upload State
   const [uploadingArchive, setUploadingArchive] = useState(false);
+  const [autoConvertToPdf, setAutoConvertToPdf] = useState(true);
   const archiveFileInputRef = useRef<HTMLInputElement>(null);
 
   // Check Archive Attachment Permission
   const userPerms = currentUser ? getRolePermissions(currentUser.role, settings || null, currentUser) : null;
-  const canManageArchiveAttachments = Boolean(currentUser);
+  const canManageArchiveAttachments = Boolean(
+    currentUser && (
+      currentUser.role === UserRole.ADMIN ||
+      currentUser.canManageArchiveAttachments ||
+      userPerms?.canManageArchiveAttachments ||
+      (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN))
+    )
+  );
 
   // Determine which line to show
   const paymentLines = (currentOrder.paymentDetails as PaymentDetail[]) || [];
@@ -395,38 +403,103 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   };
 
   const handleArchiveFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      if (file.size > 150 * 1024 * 1024) {
-          alert("حجم فایل انتخابی بیش از حد مجاز (۱۵۰ مگابایت) است.");
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+
+      const oversized = files.find(f => f.size > 150 * 1024 * 1024);
+      if (oversized) {
+          alert(`حجم فایل «${oversized.name}» بیش از حد مجاز (۱۵۰ مگابایت) است.`);
           return;
       }
 
       setUploadingArchive(true);
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-          try {
-              const base64 = ev.target?.result as string;
-              const res = await addOrderArchiveAttachment(currentOrder.id, {
-                  fileName: file.name,
-                  fileData: base64,
-                  size: file.size,
-                  type: file.type,
-                  uploadedBy: currentUser?.fullName || 'کاربر'
-              });
-              if (res && res.order) {
-                  setCurrentOrder(res.order);
-                  if (onOrderUpdated) onOrderUpdated(res.order);
-              }
-          } catch (err: any) {
-              console.error("Error adding archive attachment:", err);
-              alert('خطا در بارگذاری پیوست بایگانی: ' + (err?.message || 'نامشخص'));
-          } finally {
-              setUploadingArchive(false);
-              if (archiveFileInputRef.current) archiveFileInputRef.current.value = '';
-          }
+
+      const readFileAsBase64 = (file: File): Promise<{ file: File; base64: string }> => {
+          return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = (ev) => resolve({ file, base64: ev.target?.result as string });
+              reader.onerror = (err) => reject(err);
+              reader.readAsDataURL(file);
+          });
       };
-      reader.readAsDataURL(file);
+
+      try {
+          const fileResults = await Promise.all(files.map(f => readFileAsBase64(f)));
+          const hasImage = fileResults.some(item => item.file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|bmp)$/i.test(item.file.name));
+
+          if (hasImage && autoConvertToPdf) {
+              // Convert/Merge all images (or image + PDF) into a single unified PDF
+              const payloadFiles = fileResults.map(item => ({
+                  name: item.file.name,
+                  fileName: item.file.name,
+                  data: item.base64,
+                  type: item.file.type.startsWith('image/') ? 'image' : 'pdf'
+              }));
+
+              const res = await fetch('/api/tools/merge-to-pdf', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ files: payloadFiles })
+              });
+
+              if (res.ok) {
+                  const pdfRes = await res.json();
+                  const defaultName = files.length > 1
+                      ? `[PDF]_پیوست_تجمیعی_سند_${currentOrder.trackingNumber || currentOrder.id}_${Date.now()}.pdf`
+                      : `[PDF]_${files[0].name.replace(/\.[^/.]+$/, "")}.pdf`;
+
+                  const attachRes = await addOrderArchiveAttachment(currentOrder.id, {
+                      fileName: pdfRes.fileName || defaultName,
+                      url: pdfRes.url,
+                      fileData: pdfRes.url || pdfRes.fileData,
+                      size: pdfRes.size,
+                      type: 'application/pdf',
+                      uploadedBy: currentUser?.fullName || 'کاربر'
+                  });
+
+                  if (attachRes && attachRes.order) {
+                      setCurrentOrder(attachRes.order);
+                      if (onOrderUpdated) onOrderUpdated(attachRes.order);
+                  }
+              } else {
+                  // Fallback: upload each file individually if PDF merge endpoint had an issue
+                  for (const item of fileResults) {
+                      const attachRes = await addOrderArchiveAttachment(currentOrder.id, {
+                          fileName: item.file.name,
+                          fileData: item.base64,
+                          size: item.file.size,
+                          type: item.file.type,
+                          uploadedBy: currentUser?.fullName || 'کاربر'
+                      });
+                      if (attachRes && attachRes.order) {
+                          setCurrentOrder(attachRes.order);
+                          if (onOrderUpdated) onOrderUpdated(attachRes.order);
+                      }
+                  }
+              }
+          } else {
+              // Normal upload for each selected file (PDFs or standard images without auto-conversion)
+              for (const item of fileResults) {
+                  const attachRes = await addOrderArchiveAttachment(currentOrder.id, {
+                      fileName: item.file.name,
+                      fileData: item.base64,
+                      size: item.file.size,
+                      type: item.file.type,
+                      uploadedBy: currentUser?.fullName || 'کاربر'
+                  });
+                  if (attachRes && attachRes.order) {
+                      setCurrentOrder(attachRes.order);
+                      if (onOrderUpdated) onOrderUpdated(attachRes.order);
+                  }
+              }
+          }
+      } catch (err: any) {
+          console.error("Error adding archive attachment:", err);
+          alert('خطا در بارگذاری و تبدیل پیوست بایگانی: ' + (err?.message || 'نامشخص'));
+      } finally {
+          setUploadingArchive(false);
+          if (archiveFileInputRef.current) archiveFileInputRef.current.value = '';
+      }
   };
 
   const handleDeleteArchiveAtt = async (attachmentId?: string) => {
@@ -652,28 +725,45 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
 
              {/* ATTACHMENTS & ARCHIVE SECTION */}
              <div className="mt-2 border-t pt-2">
-                 <div className="flex items-center justify-between mb-1.5">
+                 <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                      <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
                          <Paperclip size={14} className="text-blue-600" />
                          <span>پیوست‌ها و اسناد بایگانی ({allAttachments.length})</span>
                      </div>
                      {canManageArchiveAttachments && (
-                         <div>
+                         <div className="flex items-center gap-2">
+                             <label 
+                                 className="flex items-center gap-1.5 cursor-pointer select-none text-[11px] text-gray-700 bg-blue-50/80 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-lg transition-all"
+                                 title="تبدیل اتوماتیک عکس‌ها به فایل تک‌صفحه‌ای یا چندصفحه‌ای PDF هنگام بارگذاری"
+                             >
+                                 <input 
+                                     type="checkbox" 
+                                     checked={autoConvertToPdf} 
+                                     onChange={(e) => setAutoConvertToPdf(e.target.checked)} 
+                                     className="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                                 />
+                                 <span className="flex items-center gap-1 font-medium">
+                                     <FileText size={12} className="text-red-500" />
+                                     <span>تبدیل به PDF</span>
+                                 </span>
+                             </label>
+
                              <input 
                                  type="file" 
                                  ref={archiveFileInputRef} 
                                  onChange={handleArchiveFileChange} 
                                  className="hidden" 
                                  accept="image/*,application/pdf"
+                                 multiple
                              />
                              <button 
                                  type="button"
                                  onClick={() => archiveFileInputRef.current?.click()}
                                  disabled={uploadingArchive}
-                                 className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95"
+                                 className="px-2.5 py-1 bg-blue-600 text-white hover:bg-blue-700 shadow-sm border border-blue-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
                              >
                                  {uploadingArchive ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                 <span>افزودن به بایگانی</span>
+                                 <span>{uploadingArchive ? 'در حال تبدیل و آپلود...' : 'افزودن به بایگانی'}</span>
                              </button>
                          </div>
                      )}

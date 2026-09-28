@@ -16,40 +16,60 @@ const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
  * VPN, or environment variables set by other bots.
  */
 export const robustFetch = async (url, options = {}) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const parsed = new URL(url);
-            const lib = parsed.protocol === 'https:' ? https : http;
-            const req = lib.request(parsed, {
-                method: options.method || 'GET',
-                headers: options.headers || {},
-                timeout: options.timeout || 25000,
-                signal: options.signal
-            }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    resolve({
-                        ok: res.statusCode >= 200 && res.statusCode < 300,
-                        status: res.statusCode,
-                        json: async () => JSON.parse(data),
-                        text: async () => data
+    try {
+        const opt = { ...options };
+        delete opt.dispatcher;
+        const res = await fetch(url, opt);
+        return res;
+    } catch (err) {
+        return new Promise((resolve, reject) => {
+            try {
+                const parsed = new URL(url);
+                const lib = parsed.protocol === 'https:' ? https : http;
+                const req = lib.request(parsed, {
+                    method: options.method || 'GET',
+                    headers: options.headers || {},
+                    timeout: options.timeout || 25000,
+                    signal: options.signal
+                }, (res) => {
+                    let data = '';
+                    res.on('data', chunk => data += chunk);
+                    res.on('end', () => {
+                        resolve({
+                            ok: res.statusCode >= 200 && res.statusCode < 300,
+                            status: res.statusCode,
+                            headers: {
+                                get: (headerName) => {
+                                    const val = res.headers[String(headerName).toLowerCase()];
+                                    return Array.isArray(val) ? val.join(', ') : (val || '');
+                                },
+                                ...res.headers
+                            },
+                            json: async () => {
+                                try {
+                                    return JSON.parse(data);
+                                } catch (parseErr) {
+                                    return {};
+                                }
+                            },
+                            text: async () => data
+                        });
                     });
                 });
-            });
-            req.on('timeout', () => {
-                req.destroy();
-                reject(new Error('مهلت زمان برقراری ارتباط (Timeout) به پایان رسید.'));
-            });
-            req.on('error', (e) => reject(e));
-            if (options.body) {
-                req.write(options.body);
+                req.on('timeout', () => {
+                    req.destroy();
+                    reject(new Error('مهلت زمان برقراری ارتباط (Timeout) به پایان رسید.'));
+                });
+                req.on('error', (e) => reject(e));
+                if (options.body) {
+                    req.write(options.body);
+                }
+                req.end();
+            } catch (innerErr) {
+                reject(innerErr);
             }
-            req.end();
-        } catch (innerErr) {
-            reject(innerErr);
-        }
-    });
+        });
+    }
 };
 
 /**
