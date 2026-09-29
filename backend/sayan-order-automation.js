@@ -399,12 +399,14 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     }
                 }
 
-                // 3. Check exact Note matching (e.g. customs clearance batches)
+                // 3. Check exact Note matching
                 if (!preInvoice && cleanNote && preDocsByNote.has(cleanNote)) {
                     preInvoice = preDocsByNote.get(cleanNote);
                 }
 
-                const hasPreInvoice = Boolean(preInvoice && preInvoice.PreInvoiceDocNo);
+                // Internal customs batch requests or empty notes are completed internal records in Sayan
+                const isInternalBatch = cleanNote.includes('گمرک') || cleanNote.includes('اسکله') || !cleanNote;
+                const hasPreInvoice = Boolean((preInvoice && preInvoice.PreInvoiceDocNo) || isInternalBatch);
 
                 return {
                     doc53Id: r.Doc53Id,

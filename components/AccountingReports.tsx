@@ -8594,10 +8594,10 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
             {/* Individual Customer Detailed Statement Modal */}
             {isStatementModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] max-h-[85vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200">
                         {/* Modal Header */}
-                        <div className="p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+                        <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 rounded-xl bg-white/20">
                                     <FileText className="w-5 h-5 text-white" />
@@ -8637,7 +8637,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         </div>
 
                         {/* Modal Body */}
-                        <div className="p-4 sm:p-6 pb-28 overflow-y-auto flex-1 space-y-4">
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                             {/* Statement Summary KPIs */}
                             <div className="grid grid-cols-3 gap-3">
                                 <div className="bg-rose-50 dark:bg-rose-950/30 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
@@ -8707,7 +8707,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="p-3 sm:p-4 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center">
+                        <div className="flex-none p-3 sm:p-4 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center">
                             <span className="text-xs text-slate-500">
                                 تعداد آرتیکل‌ها: {filteredStatementData.length.toLocaleString('fa-IR')} مورد
                             </span>
