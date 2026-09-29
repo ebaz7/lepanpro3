@@ -16,60 +16,58 @@ const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
  * VPN, or environment variables set by other bots.
  */
 export const robustFetch = async (url, options = {}) => {
-    try {
-        const opt = { ...options };
-        delete opt.dispatcher;
-        const res = await fetch(url, opt);
-        return res;
-    } catch (err) {
-        return new Promise((resolve, reject) => {
-            try {
-                const parsed = new URL(url);
-                const lib = parsed.protocol === 'https:' ? https : http;
-                const req = lib.request(parsed, {
-                    method: options.method || 'GET',
-                    headers: options.headers || {},
-                    timeout: options.timeout || 25000,
-                    signal: options.signal
-                }, (res) => {
-                    let data = '';
-                    res.on('data', chunk => data += chunk);
-                    res.on('end', () => {
-                        resolve({
-                            ok: res.statusCode >= 200 && res.statusCode < 300,
-                            status: res.statusCode,
-                            headers: {
-                                get: (headerName) => {
-                                    const val = res.headers[String(headerName).toLowerCase()];
-                                    return Array.isArray(val) ? val.join(', ') : (val || '');
-                                },
-                                ...res.headers
+    return new Promise((resolve, reject) => {
+        try {
+            const parsed = new URL(url);
+            const lib = parsed.protocol === 'https:' ? https : http;
+            const timeoutMs = options.timeout || 60000;
+            const headers = { ...options.headers };
+            if (options.body) {
+                headers['Content-Length'] = Buffer.byteLength(options.body, 'utf8');
+            }
+            const req = lib.request(parsed, {
+                method: options.method || 'GET',
+                headers,
+                timeout: timeoutMs,
+                agent: new lib.Agent({ keepAlive: false })
+            }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    resolve({
+                        ok: res.statusCode >= 200 && res.statusCode < 300,
+                        status: res.statusCode,
+                        headers: {
+                            get: (headerName) => {
+                                const val = res.headers[String(headerName).toLowerCase()];
+                                return Array.isArray(val) ? val.join(', ') : (val || '');
                             },
-                            json: async () => {
-                                try {
-                                    return JSON.parse(data);
-                                } catch (parseErr) {
-                                    return {};
-                                }
-                            },
-                            text: async () => data
-                        });
+                            ...res.headers
+                        },
+                        json: async () => {
+                            try {
+                                return JSON.parse(data);
+                            } catch (parseErr) {
+                                return {};
+                            }
+                        },
+                        text: async () => data
                     });
                 });
-                req.on('timeout', () => {
-                    req.destroy();
-                    reject(new Error('مهلت زمان برقراری ارتباط (Timeout) به پایان رسید.'));
-                });
-                req.on('error', (e) => reject(e));
-                if (options.body) {
-                    req.write(options.body);
-                }
-                req.end();
-            } catch (innerErr) {
-                reject(innerErr);
+            });
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error(`مهلت زمان برقراری ارتباط با وب‌سرویس (${timeoutMs / 1000} ثانیه) به پایان رسید.`));
+            });
+            req.on('error', (e) => reject(e));
+            if (options.body) {
+                req.write(options.body);
             }
-        });
-    }
+            req.end();
+        } catch (innerErr) {
+            reject(innerErr);
+        }
+    });
 };
 
 /**
@@ -379,7 +377,7 @@ export const getDb = () => {
     try {
         const defaultDb = { 
             settings: {
-                sayanApiUrl: process.env.SAYAN_API_URL || "http://80.210.31.176:5000/api/external/v1",
+                sayanApiUrl: process.env.SAYAN_API_URL || "",
                 sayanApiKey: process.env.SAYAN_API_KEY || "s_gate_live_vzje5nkn7q4u"
             }, 
             users: [
@@ -415,10 +413,12 @@ export const getDb = () => {
                 
                 // Populate default Sayan credentials if missing
                 if (!MEMORY_DB_CACHE.settings) MEMORY_DB_CACHE.settings = {};
-                if (!MEMORY_DB_CACHE.settings.sayanApiUrl) {
-                    MEMORY_DB_CACHE.settings.sayanApiUrl = process.env.SAYAN_API_URL || "http://80.210.31.176:5000/api/external/v1";
+                if (!MEMORY_DB_CACHE.settings.sayanApiUrl && process.env.SAYAN_API_URL) {
+                    MEMORY_DB_CACHE.settings.sayanApiUrl = process.env.SAYAN_API_URL;
                 }
-                MEMORY_DB_CACHE.settings.sayanApiUrl = sanitizeSayanUrl(MEMORY_DB_CACHE.settings.sayanApiUrl);
+                if (MEMORY_DB_CACHE.settings.sayanApiUrl) {
+                    MEMORY_DB_CACHE.settings.sayanApiUrl = sanitizeSayanUrl(MEMORY_DB_CACHE.settings.sayanApiUrl);
+                }
                 if (!MEMORY_DB_CACHE.settings.sayanApiKey) {
                     MEMORY_DB_CACHE.settings.sayanApiKey = process.env.SAYAN_API_KEY || "s_gate_live_vzje5nkn7q4u";
                 }

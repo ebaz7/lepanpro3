@@ -1777,8 +1777,8 @@ app.post('/api/sayan-proxy', async (req, res) => {
     try {
         const db = getDb();
         const settings = db.settings || {};
-        let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-        const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
+        let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL);
+        const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY;
 
         if (!serverSayanBaseUrl || !serverSayanApiKey) {
             return res.status(400).json({ error: 'تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است.' });
@@ -1825,11 +1825,11 @@ app.post('/api/sayan/test-connection', async (req, res) => {
     try {
         const db = getDb();
         const settings = db.settings || {};
-        const rawUrl = (req.body && req.body.url) || settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
-        const apiKey = (req.body && req.body.apiKey) !== undefined ? req.body.apiKey : (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u');
+        const rawUrl = (req.body && req.body.url) || settings.sayanApiUrl || process.env.SAYAN_API_URL;
+        const apiKey = (req.body && req.body.apiKey) !== undefined ? req.body.apiKey : (settings.sayanApiKey || process.env.SAYAN_API_KEY);
 
         if (!rawUrl) {
-            return res.status(400).json({ success: false, error: 'آدرس سرور یا IP وب‌سرویس سایان وارد نشده است.' });
+            return res.status(400).json({ success: false, error: 'آدرس سرور یا IP وب‌سرویس سایان در تنظیمات وارد نشده است.' });
         }
 
         const cleanUrl = sanitizeSayanUrl(rawUrl);
