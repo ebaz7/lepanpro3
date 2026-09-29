@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, FileText, Download, CheckCircle, AlertTriangle, Settings2, Users, Search, Trash2, Edit2, Check, X, Archive, Eye, Printer, Calendar, ArrowUp, ArrowDown, FileCheck, Loader2, Share2, FileType, Image as ImageIcon, Plus, Layers, ArrowLeftRight } from 'lucide-react';
+import { Upload, FileText, Download, CheckCircle, AlertTriangle, Settings2, Users, Search, Trash2, Edit2, Check, X, Archive, Eye, Printer, Calendar, ArrowUp, ArrowDown, FileCheck, Loader2, Share2, FileType, Image as ImageIcon, Plus, Layers, ArrowLeftRight, Sparkles } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import { User } from '../types';

@@ -4,7 +4,7 @@ import { PaymentMethod, PaymentOrder, PaymentDetail, SystemSettings, OrderStatus
 import { editOrder, uploadFile, getSettings, saveSettings } from '../services/storageService';
 import { enhanceDescription } from '../services/geminiService';
 import { jalaliToGregorian, getShamsiDateFromIso, formatCurrency, generateUUID, normalizeInputNumber, formatNumberString, deformatNumberString, getCurrentShamsiDate } from '../constants';
-import { Wand2, Save, Loader2, X, Calendar, Plus, Trash2, Paperclip, Hash, AlertTriangle, Landmark, ArrowRightLeft, MapPin, Edit } from 'lucide-react';
+import { Wand2, Save, Loader2, X, Calendar, Plus, Trash2, Paperclip, Hash, AlertTriangle, Landmark, ArrowRightLeft, MapPin, Edit, Sparkles } from 'lucide-react';
 import { getDisplayFileName } from '../utils/fileNameUtils';
 import PrintVoucher from './PrintVoucher';
 import { getUsers } from '../services/authService';

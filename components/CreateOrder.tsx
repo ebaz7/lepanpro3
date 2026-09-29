@@ -5,7 +5,7 @@ import { saveOrder, getNextTrackingNumber, uploadFile, getSettings, saveSettings
 import { enhanceDescription } from '../services/geminiService';
 import { apiCall } from '../services/apiService';
 import { jalaliToGregorian, getCurrentShamsiDate, formatCurrency, generateUUID, normalizeInputNumber, formatNumberString, deformatNumberString, formatDate } from '../constants';
-import { Wand2, Save, Loader2, Plus, Trash2, Paperclip, X, Hash, UploadCloud, Building2, BrainCircuit, AlertTriangle, Calendar, Landmark, CreditCard, Edit, ArrowRightLeft, MapPin, RefreshCcw } from 'lucide-react';
+import { Wand2, Save, Loader2, Plus, Trash2, Paperclip, X, Hash, UploadCloud, Building2, BrainCircuit, AlertTriangle, Calendar, Landmark, CreditCard, Edit, ArrowRightLeft, MapPin, RefreshCcw, Sparkles } from 'lucide-react';
 import { getDisplayFileName } from '../utils/fileNameUtils';
 import { getUsers } from '../services/authService';
 
