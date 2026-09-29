@@ -67,7 +67,7 @@ export const addAutomationLog = (db, logEntry) => {
 /**
  * Execute query against Sayan API Gateway safely
  */
-export const executeSayanQuery = async (queryStr, timeoutMs = 25000) => {
+export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     const db = getDb();
     const settings = db.settings || {};
     let serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
@@ -451,20 +451,9 @@ export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
             t11.Field_031 as ItemDesc,
             t11.Field_036 as UnitId,
             t11.Field_037 as WarehouseCode,
-            COALESCE(
-                NULLIF(g03.Field_008, ''),
-                NULLIF(s04.Field_003, ''),
-                NULLIF(t22.Field_004, ''),
-                NULLIF(t02.Field_003, ''),
-                t11.Field_005
-            ) as ItemName,
-            COALESCE(u.Field_003, N'عدد') as UnitName
-        FROM STR_TBL_011 t11
-        LEFT JOIN GNR_TBL_003 g03 ON g03.Field_003 = t11.Field_005
-        LEFT JOIN STR_TBL_004 s04 ON s04.Field_004 = t11.Field_005
-        LEFT JOIN IND_TBL_022 t22 ON t22.Field_005 = t11.Field_005
-        LEFT JOIN IND_TBL_002 t02 ON t02.Field_008 = t11.Field_005
-        LEFT JOIN GNR_TBL_002 u ON u.Field_006 = t11.Field_036
+            t11.Field_005 as ItemName,
+            N'عدد' as UnitName
+        FROM STR_TBL_011 t11 WITH (NOLOCK)
         WHERE t11.Field_003 = '${fiscalYear}' 
           AND t11.Field_004 = '${docNo}' 
           AND t11.Field_012 = 3
@@ -568,13 +557,13 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         const itemCode = (item.ItemCode || '').replace(/'/g, "''");
         const qty = Number(item.Qty) || 1;
         const secQty = Number(item.SecondaryQty) || qty;
-        const itemRowId = (item.ItemRowId || '').toString().replace(/'/g, "''");
+        const itemRowId = Number(item.ItemRowId) || 0;
         const composite = `${fiscalYear}-3-${doc53.DocNo}-${itemRowId}`.replace(/'/g, "''");
         const unitId = (item.UnitId || '11').replace(/'/g, "''");
         const whCode = (item.WarehouseCode || '30310').replace(/'/g, "''");
 
         currentChunk.push(
-            `(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''${itemCode}'', ${qty}, ${secQty}, N''${itemRowId}'', 0, N''${composite}'', N'''', 3, N''${targetVendorCode}'', N''${itemRowId}'', 0, 1, 0, N''تعداد کارتن: 0 | تخفیف: 0 | ارزش افزوده: 0'', N''${rowIndex}'', 0, N''${unitId}'', N''${whCode}'')`
+            `(@FiscalYear, @NextDocNo, N'${itemCode}', ${qty}, ${secQty}, ${itemRowId}, 0, N'${composite}', N'', 3, N'${targetVendorCode}', ${itemRowId}, 0, 1, 0, N'تعداد کارتن: 0 | تخفیف: 0 | ارزش افزوده: 0', ${rowIndex}, 0, N'${unitId}', N'${whCode}')`
         );
         rowIndex++;
 
@@ -590,54 +579,58 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     let itemsInsertSql = '';
     for (const chunk of itemChunks) {
         itemsInsertSql += `
-        N'IN' + N'SERT INTO STR_TBL_011 (' +
-        N'Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, ' +
-        N'Field_010, Field_011, Field_012, Field_013, Field_018, Field_020, Field_024, ' +
-        N'Field_025, Field_031, Field_034, Field_035, Field_036, Field_037) VALUES ' +
-        N'${chunk.join(', ')}; ' + `;
+        INSERT INTO STR_TBL_011 (
+        Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, 
+        Field_010, Field_011, Field_012, Field_013, Field_018, Field_020, Field_024, 
+        Field_025, Field_031, Field_034, Field_035, Field_036, Field_037) VALUES 
+        ${chunk.join(', ')}; \n`;
     }
 
     // Dynamic Sayan ERP header parameters (STR_TBL_013)
     let paramsInsertSql = `
-        N'IN' + N'SERT INTO STR_TBL_013 (Field_003, Field_004, Field_005, Field_006, Field_007) VALUES ' +
-        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''190'', N''${targetVendorCode}'', 3), ' +
-        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''191'', N''${requesterCode}'', 3), ' +
-        ${subCode ? `N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''192'', N''${subCode}'', 3), ' +` : ''}
-        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''193'', N''${note}'', 3), ' +
-        N'(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''366'', N''غیر رسمی'', 3); ' + `;
+        INSERT INTO STR_TBL_013 (Field_003, Field_004, Field_005, Field_006, Field_007) VALUES 
+        (@FiscalYear, @NextDocNo, N'190', N'${targetVendorCode}', 3), 
+        (@FiscalYear, @NextDocNo, N'191', N'${requesterCode}', 3), 
+        ${subCode ? `(@FiscalYear, @NextDocNo, N'192', N'${subCode}', 3), ` : ''}
+        (@FiscalYear, @NextDocNo, N'193', N'${note}', 3), 
+        (@FiscalYear, @NextDocNo, N'366', N'غیر رسمی', 3); \n`;
 
     const endAction = isDryRun 
-        ? `N'SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo; ' + N'ROLL' + N'BACK TRAN;'`
-        : `N'SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo; ' + N'COM' + N'MIT TRAN;'`;
+        ? `SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo; ROLLBACK TRAN;`
+        : `SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo; COMMIT TRAN;`;
 
     const fullSql = `
-    EXEC(
-        N'SET XACT_ABORT ON; ' +
-        N'BE' + N'GIN TRAN; ' +
-        N'DECLARE @FiscalYear NVARCHAR(10) = ''${fiscalYear}''; ' +
-        N'DECLARE @NextDocNo BIGINT; ' +
-        N'DECLARE @NextSubNo BIGINT; ' +
-        N'SELECT @NextDocNo = ISNULL(MAX(CAST(Field_005 AS BIGINT)), 0) + 1 FROM STR_TBL_010 WHERE Field_004 = @FiscalYear AND Field_018 = 3; ' +
-        N'SELECT @NextSubNo = ISNULL(MAX(CAST(Field_006 AS BIGINT)), 0) + 1 FROM STR_TBL_010 WHERE Field_004 = @FiscalYear AND Field_009 = ''57''; ' +
-        N'DECLARE @New57Id BIGINT; ' +
-        
-        N'IN' + N'SERT INTO STR_TBL_010 (' +
-        N'Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, ' +
-        N'Field_015, Field_016, Field_017, Field_018, Field_019, Field_020, Field_021, ' +
-        N'Field_024, Field_025, Field_026, Field_029, Field_036, Field_037) ' +
-        N'VALUES (' +
-        N'@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), CAST(@NextSubNo AS NVARCHAR(20)), N''${subCode}'', GETDATE(), N''57'', N''${targetVendorCode}'', ' +
-        N'0, 0, N''${note}'', 3, 0, N''0cd6777f-b6d7-4e42-9bec-e6400b85d409'', 0, ' +
-        N'0, 0, ${totalAmount}, N''${desc}'', GETDATE(), ${totalAmount}); ' +
-        N'SET @New57Id = SCOPE_IDENTITY(); ' +
-        
-        ${itemsInsertSql}
-        ${paramsInsertSql}
-        
-        N'BEGIN TRY IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) VALUES (${doc53Id}, @FiscalYear, ${doc53.DocNo}, 3, N''53'', GETDATE(), @New57Id, GETDATE(), ${items.length}, 0, 0); END TRY BEGIN CATCH END CATCH; ' +
-        
-        ${endAction}
+    SET XACT_ABORT ON;
+    BEGIN TRAN;
+    DECLARE @FiscalYear BIGINT = ${Number(fiscalYear)};
+    DECLARE @NextDocNo BIGINT;
+    DECLARE @NextSubNo BIGINT;
+    SELECT @NextDocNo = ISNULL(MAX(Field_005), 0) + 1 FROM STR_TBL_010 WITH (NOLOCK) WHERE Field_004 = @FiscalYear AND Field_018 = 3;
+    SELECT @NextSubNo = ISNULL(MAX(Field_006), 0) + 1 FROM STR_TBL_010 WITH (NOLOCK) WHERE Field_004 = @FiscalYear AND Field_009 = '57';
+    DECLARE @New57Id BIGINT;
+    
+    INSERT INTO STR_TBL_010 (
+        Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, 
+        Field_015, Field_016, Field_017, Field_018, Field_019, Field_020, Field_021, 
+        Field_024, Field_025, Field_026, Field_029, Field_036, Field_037
+    ) VALUES (
+        @FiscalYear, @NextDocNo, @NextSubNo, N'${subCode}', GETDATE(), N'57', N'${targetVendorCode}', 
+        0, 0, N'${note}', 3, 0, N'0cd6777f-b6d7-4e42-9bec-e6400b85d409', 0, 
+        0, 0, ${totalAmount}, N'${desc}', GETDATE(), ${totalAmount}
     );
+    SET @New57Id = SCOPE_IDENTITY();
+    
+    ${itemsInsertSql}
+    ${paramsInsertSql}
+    
+    BEGIN TRY 
+        INSERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) 
+        VALUES (${Number(doc53Id)}, @FiscalYear, ${Number(doc53.DocNo)}, 3, N'53', GETDATE(), @New57Id, GETDATE(), ${items.length}, 0, 0); 
+    END TRY 
+    BEGIN CATCH 
+    END CATCH;
+    
+    ${endAction}
     `;
 
     const resultRows = await executeSayanQuery(fullSql);
