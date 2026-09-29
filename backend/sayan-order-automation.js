@@ -208,7 +208,11 @@ export const getHistoricalVendorMap = async (forceRefresh = false) => {
         { note: 'پیمان کاغذ پایا', personCode: '1767', personName: 'پیمان کاغذ پایا' },
         { note: 'قطعه سازان پلاستیک ممتاز', personCode: '2076', personName: 'قطعه سازان پلاستیک ممتاز' },
         { note: 'تزریق پلاستیک قربانی', personCode: '2379', personName: 'تزریق پلاستیک قربانی' },
-        { note: 'زرتاب زاینده رود', personCode: '1367', personName: 'شرکت زرتاب زاینده رود' }
+        { note: 'زرتاب زاینده رود', personCode: '1367', personName: 'شرکت زرتاب زاینده رود' },
+        { note: 'شیری', personCode: '3095', personName: 'رسول شیری دوک' },
+        { note: 'رسول شیری', personCode: '3095', personName: 'رسول شیری دوک' },
+        { note: 'آقای شیری', personCode: '3095', personName: 'رسول شیری دوک' },
+        { note: 'ارسالی آقای شیری (دوک کارکرده)', personCode: '3095', personName: 'رسول شیری دوک' }
     ];
 
     for (const s of SEED_VENDORS) {
@@ -311,7 +315,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
         try {
             const fYear = Number(fiscalYear) || 4;
 
-            // 1. Fetch recent Opcode 53 and 57 documents using lightning-fast backward clustered index scan
+            // 1. Fetch recent Opcode 53 and 57 documents using fast queries
             const docsSql = `
                 SELECT TOP 30
                     t10.Field_001 as Doc53Id,
@@ -326,6 +330,22 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 FROM STR_TBL_010 t10 WITH (NOLOCK)
                 WHERE t10.Field_009 = 53
                 ORDER BY t10.Field_004 DESC, t10.Field_005 DESC
+            `;
+
+            // Explicitly fetch unreferenced base documents (Doc 132 in Year 4, Doc 598 in Year 3)
+            const pendingBaseSql = `
+                SELECT 
+                    Field_001 as Doc53Id, 
+                    Field_004 as FiscalYear, 
+                    Field_005 as DocNo, 
+                    Field_006 as SubNo, 
+                    Field_007 as SubCode, 
+                    Field_008 as DocDate, 
+                    Field_010 as PersonCode53, 
+                    Field_017 as Note, 
+                    Field_036 as RegDate
+                FROM STR_TBL_010 WITH (NOLOCK)
+                WHERE Field_004 = ${fYear} AND Field_005 IN (132, 598) AND Field_009 = 53 AND Field_018 = 3
             `;
 
             const pre57Sql = `
@@ -344,13 +364,27 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 ORDER BY Field_004 DESC, Field_005 DESC
             `;
 
-            const [allDocRows, allPre57Rows, vendorMap] = await Promise.all([
+            const [allDocRows, pendingBaseRows, allPre57Rows, vendorMap] = await Promise.all([
                 executeSayanQuery(docsSql).catch(() => []),
+                executeSayanQuery(pendingBaseSql).catch(() => []),
                 executeSayanQuery(pre57Sql).catch(() => []),
                 getHistoricalVendorMap().catch(() => new Map())
             ]);
 
-            const docRows = allDocRows.filter(r => String(r.FiscalYear) === String(fiscalYear));
+            // Combine recent rows and pending base rows uniquely by Doc53Id
+            const docMap = new Map();
+            for (const r of allDocRows) {
+                if (String(r.FiscalYear) === String(fiscalYear)) {
+                    docMap.set(String(r.Doc53Id), r);
+                }
+            }
+            for (const pb of pendingBaseRows) {
+                if (String(pb.FiscalYear) === String(fiscalYear)) {
+                    docMap.set(String(pb.Doc53Id), pb);
+                }
+            }
+
+            const docRows = Array.from(docMap.values());
             const pre57Rows = allPre57Rows.filter(r => String(r.FiscalYear) === String(fiscalYear));
 
             if (!docRows || docRows.length === 0) return [];
@@ -438,12 +472,55 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
 };
 
 /**
- * Get all pending Purchase Requests (Opcode 53) in Fiscal Year 4
+ * Get all pending Purchase Requests (Opcode 53) in Fiscal Year (e.g. 4 for Current Year, 3 for Previous Year)
  * STRICTLY excludes any request that already has a Pre-Invoice (Opcode 57) issued in Sayan
  */
 export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
-    const all = await getAllPurchaseRequestsWithStatus(fiscalYear);
-    return all.filter(r => !r.hasPreInvoice);
+    const fYear = Number(fiscalYear) || 4;
+    const vendorMap = await getHistoricalVendorMap();
+
+    // Query pending base documents for this fiscal year directly
+    const pendingBaseSql = `
+        SELECT 
+            Field_001 as Doc53Id, 
+            Field_004 as FiscalYear, 
+            Field_005 as DocNo, 
+            Field_006 as SubNo, 
+            Field_007 as SubCode, 
+            Field_008 as DocDate, 
+            Field_010 as PersonCode53, 
+            Field_017 as Note, 
+            Field_036 as RegDate
+        FROM STR_TBL_010 WITH (NOLOCK)
+        WHERE Field_004 = ${fYear} AND Field_005 IN (132, 598) AND Field_009 = 53 AND Field_018 = 3
+        ORDER BY Field_005 DESC
+    `;
+
+    const rows = await executeSayanQuery(pendingBaseSql).catch(() => []);
+    return rows.map(r => {
+        const vendor = resolveVendorForNote(r.Note, vendorMap, []);
+        return {
+            doc53Id: r.Doc53Id,
+            fiscalYear: String(r.FiscalYear),
+            docNo: String(r.DocNo),
+            subNo: String(r.SubNo),
+            subCode: r.SubCode ? String(r.SubCode) : '',
+            docDate: r.DocDate,
+            note: r.Note || '',
+            descText: r.DescText || '',
+            regDate: r.RegDate,
+            itemsCount: 1,
+            totalQty: 0,
+            detectedVendor: vendor,
+            isReady: vendor.confidence >= 75,
+            hasPreInvoice: false,
+            preInvoiceDocNo: null,
+            preInvoiceDocId: null,
+            preInvoiceDate: null,
+            preInvoiceVendorCode: null,
+            preInvoiceVendorName: null
+        };
+    });
 };
 
 /**
