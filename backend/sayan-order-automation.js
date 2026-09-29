@@ -70,11 +70,11 @@ export const addAutomationLog = (db, logEntry) => {
 export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     const db = getDb();
     const settings = db.settings || {};
-    let serverSayanBaseUrl = (settings.sayanApiUrl || process.env.SAYAN_API_URL || '').trim();
+    let serverSayanBaseUrl = (settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://lep.templatetesti.shop:5000/api/external/v1').trim();
     if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
         serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
     }
-    const serverSayanApiKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || '').trim();
+    const serverSayanApiKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u').trim();
 
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
         throw new Error('تنظیمات آدرس وب‌سرویس و کلید امنیتی سایان در بخش تنظیمات وارد نشده است. لطفاً ابتدا در بخش تنظیمات، آدرس API و توکن سایان را وارد نمایید.');
@@ -372,11 +372,9 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     t10.Field_008 as DocDate,
                     t10.Field_010 as PersonCode53,
                     t10.Field_017 as Note,
-                    t10.Field_029 as DescText,
                     t10.Field_036 as RegDate
                 FROM STR_TBL_010 t10 WITH (NOLOCK)
-                WHERE t10.Field_004 = ${fYear} AND t10.Field_009 = '53'
-                ORDER BY t10.Field_005 DESC
+                WHERE t10.Field_004 = ${fYear} AND t10.Field_018 = 3 AND t10.Field_009 = '53'
             `;
             const docRows = await executeSayanQuery(docsSql);
             if (!docRows || docRows.length === 0) return [];
@@ -401,7 +399,21 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 }
             }
 
-            // 3. Fetch Converted 57 Links from STR_TBL_029 (fast indexed link)
+            // 3. Fetch ALL Pre-Invoices (Opcode 57) for this Fiscal Year directly from STR_TBL_010
+            const pre57Sql = `
+                SELECT 
+                    Field_001 as PreInvoiceDocId,
+                    Field_005 as PreInvoiceDocNo,
+                    Field_006 as PreInvoiceSubNo,
+                    Field_007 as SubCode,
+                    Field_008 as PreInvoiceDate,
+                    Field_010 as PreInvoiceVendorCode
+                FROM STR_TBL_010 WITH (NOLOCK)
+                WHERE Field_004 = ${fYear} AND Field_018 = 3 AND Field_009 = '57'
+            `;
+            const pre57Rows = await executeSayanQuery(pre57Sql).catch(() => []);
+
+            // Also fetch any explicit link records from STR_TBL_029
             const linksSql = `
                 SELECT 
                     Field_003 as Doc53Id, 
@@ -411,52 +423,67 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 WHERE Field_004 = ${fYear} AND Field_007 = '53' AND Field_009 > 0
             `;
             const linkRows = await executeSayanQuery(linksSql).catch(() => []);
-            const preDocIds = linkRows.map(l => l.PreInvoiceDocId).filter(Boolean);
-            const preDocsMap = new Map();
-            if (preDocIds.length > 0) {
-                const preSql = `
-                    SELECT 
-                        Field_001 as PreInvoiceDocId,
-                        Field_005 as PreInvoiceDocNo,
-                        Field_006 as PreInvoiceSubNo,
-                        Field_007 as SubCode,
-                        Field_008 as PreInvoiceDate,
-                        Field_010 as PreInvoiceVendorCode
-                    FROM STR_TBL_010 WITH (NOLOCK)
-                    WHERE Field_001 IN (${preDocIds.join(',')})
+            const doc53IdToPreId029 = new Map();
+            const doc53NoToPreId029 = new Map();
+            for (const l of linkRows) {
+                if (l.Doc53Id) doc53IdToPreId029.set(String(l.Doc53Id), String(l.PreInvoiceDocId));
+                if (l.Doc53No) doc53NoToPreId029.set(String(l.Doc53No), String(l.PreInvoiceDocId));
+            }
+
+            // Resolve vendor names for all 57 pre-invoices
+            const vendorCodes = [...new Set(pre57Rows.map(p => p.PreInvoiceVendorCode).filter(Boolean))];
+            const vendorNamesMap = new Map();
+            if (vendorCodes.length > 0) {
+                const vSql = `
+                    SELECT RTRIM(LTRIM(Field_005)) as PersonCode, RTRIM(LTRIM(Field_006)) as PersonName 
+                    FROM ACT_TBL_007 WITH (NOLOCK) 
+                    WHERE Field_003 IN (${vendorCodes.map(c => `'11${c}'`).join(',')})
                 `;
-                const preRows = await executeSayanQuery(preSql).catch(() => []);
-                const vendorCodes = [...new Set(preRows.map(p => p.PreInvoiceVendorCode).filter(Boolean))];
-                const vendorNamesMap = new Map();
-                if (vendorCodes.length > 0) {
-                    const vSql = `
-                        SELECT RTRIM(LTRIM(Field_005)) as PersonCode, RTRIM(LTRIM(Field_006)) as PersonName 
-                        FROM ACT_TBL_007 WITH (NOLOCK) 
-                        WHERE Field_003 IN (${vendorCodes.map(c => `'11${c}'`).join(',')})
-                    `;
-                    const vRows = await executeSayanQuery(vSql).catch(() => []);
-                    for (const v of vRows) {
-                        vendorNamesMap.set(v.PersonCode, v.PersonName);
-                    }
-                }
-                for (const pr of preRows) {
-                    pr.PreInvoiceVendorName = vendorNamesMap.get(pr.PreInvoiceVendorCode) || null;
-                    preDocsMap.set(String(pr.PreInvoiceDocId), pr);
+                const vRows = await executeSayanQuery(vSql).catch(() => []);
+                for (const v of vRows) {
+                    vendorNamesMap.set(v.PersonCode, v.PersonName);
                 }
             }
 
-            const doc53ToPreInvoice = new Map();
-            for (const l of linkRows) {
-                const pr = preDocsMap.get(String(l.PreInvoiceDocId));
-                if (pr) {
-                    doc53ToPreInvoice.set(String(l.Doc53No), pr);
+            // Index 57 pre-invoices by DocId, SubCode, and DocNo
+            const preDocsById = new Map();
+            const preDocsBySubCode = new Map();
+            for (const pr of pre57Rows) {
+                pr.PreInvoiceVendorName = vendorNamesMap.get(pr.PreInvoiceVendorCode) || null;
+                preDocsById.set(String(pr.PreInvoiceDocId), pr);
+                if (pr.SubCode && String(pr.SubCode).trim()) {
+                    preDocsBySubCode.set(String(pr.SubCode).trim(), pr);
                 }
             }
 
             const result = docRows.map(r => {
                 const vendor = resolveVendorForNote(r.Note, vendorMap, []);
                 const itemStats = itemsMap.get(String(r.DocNo)) || { count: 0, totalQty: 0 };
-                const preInvoice = doc53ToPreInvoice.get(String(r.DocNo));
+                
+                // Comprehensive 53 -> 57 linking:
+                // 1. Check SubCode matching (Sayan ERP standard: 53 and 57 share identical SubCode)
+                let preInvoice = null;
+                const cleanSubCode = r.SubCode ? String(r.SubCode).trim() : '';
+                if (cleanSubCode && preDocsBySubCode.has(cleanSubCode)) {
+                    preInvoice = preDocsBySubCode.get(cleanSubCode);
+                }
+
+                // 2. Check STR_TBL_029 explicit link
+                if (!preInvoice) {
+                    const preId029 = doc53IdToPreId029.get(String(r.Doc53Id)) || doc53NoToPreId029.get(String(r.DocNo));
+                    if (preId029 && preDocsById.has(preId029)) {
+                        preInvoice = preDocsById.get(preId029);
+                    }
+                }
+
+                // 3. Check if 57 SubCode points to 53 DocNo
+                if (!preInvoice && r.DocNo) {
+                    const cleanDocNo = String(r.DocNo).trim();
+                    if (preDocsBySubCode.has(cleanDocNo)) {
+                        preInvoice = preDocsBySubCode.get(cleanDocNo);
+                    }
+                }
+
                 const hasPreInvoice = Boolean(preInvoice && preInvoice.PreInvoiceDocNo);
 
                 return {

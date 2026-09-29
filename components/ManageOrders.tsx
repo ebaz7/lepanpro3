@@ -4,10 +4,11 @@ import { PaymentOrder, OrderStatus, User, UserRole, SystemSettings, PaymentMetho
 import { updateOrderStatus, deleteOrder } from '../services/storageService';
 import { getRolePermissions } from '../services/authService';
 import { formatCurrency, formatDate, getStatusLabel, jalaliToGregorian, formatNumberString, deformatNumberString, parseSafeDate } from '../constants';
-import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle } from 'lucide-react';
+import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle, Sparkles, Scan } from 'lucide-react';
 import PrintVoucher from './PrintVoucher';
 import { OrderArchiveModal } from './OrderArchiveModal';
 import EditOrderModal from './EditOrderModal';
+import { AiDocumentScannerModal } from './AiDocumentScannerModal';
 import { apiCall } from '../services/apiService';
 import MobileOrderCard from './mobile/MobileOrderCard';
 
@@ -50,6 +51,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
   
   const [currentStatusFilter, setCurrentStatusFilter] = useState<any>(statusFilter || null);
   const [archivingOrder, setArchivingOrder] = useState<PaymentOrder | null>(null);
+  const [showAiScanner, setShowAiScanner] = useState(false);
 
   useEffect(() => {
       if (viewOrder || editingOrder) {
@@ -430,8 +432,17 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                     {currentStatusFilter && <div className="bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-xs flex items-center justify-between w-full md:w-auto gap-2"><span>فیلتر: {getFilterLabel(currentStatusFilter)}</span><button onClick={() => setCurrentStatusFilter(null)}><X size={14}/></button></div>}
                     <div className="relative w-full md:w-64"><Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="جستجو..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-4 pr-10 py-2.5 border rounded-xl text-sm outline-none"/></div>
                     <div className="flex gap-2 w-full md:w-auto">
-                        <button onClick={() => setShowFilters(!showFilters)} className={`flex-1 md:flex-none p-2.5 rounded-xl border flex items-center justify-center ${showFilters ? 'bg-blue-50 text-blue-600' : 'glass-panel'}`}><Filter size={20}/></button>
-                        {canExport && <button onClick={handleExportCSV} className="flex-1 md:flex-none bg-green-600 text-white p-2.5 rounded-xl flex items-center justify-center"><FileSpreadsheet size={20}/></button>}
+                        <button
+                            type="button"
+                            onClick={() => setShowAiScanner(true)}
+                            className="flex-1 md:flex-none px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-xs flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95"
+                            title="اسکن، خواندن متون و تبدیل هوشمند به کم‌اسکنر"
+                        >
+                            <Sparkles size={16} className="text-amber-300 animate-pulse" />
+                            <span>کم‌اسکنر هوشمند</span>
+                        </button>
+                        <button onClick={() => setShowFilters(!showFilters)} className={`flex-1 md:flex-none p-2.5 rounded-xl border flex items-center justify-center ${showFilters ? 'bg-blue-50 text-blue-600' : 'glass-panel'}`} title="فیلترها"><Filter size={20}/></button>
+                        {canExport && <button onClick={handleExportCSV} className="flex-1 md:flex-none bg-green-600 text-white p-2.5 rounded-xl flex items-center justify-center" title="خروجی اکسل"><FileSpreadsheet size={20}/></button>}
                     </div>
                 </div>
             </div>
@@ -496,6 +507,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
                             onDelete={handleDelete}
                             onApprove={handleApprove}
                             onReject={handleReject}
+                            onArchive={setArchivingOrder}
                             canDelete={canDelete(order)}
                             canApprove={canApprove(order)}
                             isProcessing={processingId === order.id}
@@ -639,6 +651,13 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
           onOrderUpdated={() => {
             refreshData();
           }}
+        />
+      )}
+
+      {showAiScanner && (
+        <AiDocumentScannerModal
+          isOpen={showAiScanner}
+          onClose={() => setShowAiScanner(false)}
         />
       )}
     </>

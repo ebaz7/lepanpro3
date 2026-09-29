@@ -2,7 +2,7 @@
 import React from 'react';
 import { PaymentOrder, OrderStatus } from '../../types';
 import { formatCurrency, formatDate, getStatusLabel } from '../../constants';
-import { Eye, Trash2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Eye, Trash2, CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react';
 
 interface Props {
   order: PaymentOrder;
@@ -10,6 +10,7 @@ interface Props {
   onDelete?: (id: string) => void;
   onApprove?: (id: string, currentStatus: OrderStatus) => void;
   onReject?: (id: string, currentStatus: OrderStatus) => void;
+  onArchive?: (order: PaymentOrder) => void;
   canDelete: boolean;
   canApprove: boolean;
   isProcessing?: boolean;
@@ -88,6 +89,15 @@ const MobileOrderCard: React.FC<Props> = ({ order, onView, onDelete, onApprove, 
               className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100"
             >
               <Trash2 size={18} />
+            </button>
+          )}
+          {onArchive && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); onArchive(order); }} 
+              className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 active:bg-purple-600 active:text-white transition-all shadow-xs"
+              title="کم‌اسکنر و بایگانی پیوست‌ها"
+            >
+              <Sparkles size={18} />
             </button>
           )}
           <button 

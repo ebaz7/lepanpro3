@@ -4,7 +4,8 @@ import { apiCall } from '../services/apiService';
 import { formatCurrency, formatDate } from '../constants';
 import { 
   Paperclip, Upload, FileText, Trash2, Eye, Download, X, 
-  Loader2, CheckCircle2, AlertTriangle, FileType, Image as ImageIcon 
+  Loader2, CheckCircle2, AlertTriangle, FileType, Image as ImageIcon,
+  Sparkles, Wand2
 } from 'lucide-react';
 
 interface Props {
@@ -23,6 +24,8 @@ export const OrderArchiveModal: React.FC<Props> = ({
   const [currentOrder, setCurrentOrder] = useState<PaymentOrder>(order);
   const [uploading, setUploading] = useState(false);
   const [autoConvertToPdf, setAutoConvertToPdf] = useState(true);
+  const [scannerFilter, setScannerFilter] = useState<'magic_color' | 'crisp_bw' | 'enhance' | 'original'>('magic_color');
+  const [convertingExistingId, setConvertingExistingId] = useState<string | null>(null);
   const [attachmentTitle, setAttachmentTitle] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -58,24 +61,27 @@ export const OrderArchiveModal: React.FC<Props> = ({
 
           const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(file.name);
 
-          // Auto convert image to PDF if toggle is checked
+          // Auto convert image to PDF with CamScanner enhancements if toggle is checked
           if (isImage && autoConvertToPdf) {
             try {
               const mergeRes = await apiCall('/tools/merge-to-pdf', 'POST', {
                 files: [
                   {
                     name: file.name,
+                    fileName: file.name,
                     data: rawBase64,
-                    type: file.type
+                    type: 'image'
                   }
-                ]
+                ],
+                filter: scannerFilter
               });
 
-              if (mergeRes && mergeRes.pdfData) {
-                finalData = mergeRes.pdfData;
+              const convertedData = mergeRes?.fileData || mergeRes?.pdfData || mergeRes?.url;
+              if (mergeRes && convertedData) {
+                finalData = convertedData;
                 finalType = 'application/pdf';
                 const baseName = finalFileName.substring(0, finalFileName.lastIndexOf('.')) || finalFileName;
-                finalFileName = `${baseName}.pdf`;
+                finalFileName = `${baseName}_کم_اسکنر.pdf`;
               }
             } catch (convErr) {
               console.warn('Auto PDF conversion failed, using original image:', convErr);
@@ -94,7 +100,10 @@ export const OrderArchiveModal: React.FC<Props> = ({
           if (res && res.order) {
             setCurrentOrder(res.order);
             onOrderUpdated(res.order);
-            setSuccessMsg('فایل با موفقیت به بایگانی سند اتچ شد.');
+            setSuccessMsg(autoConvertToPdf && isImage 
+              ? 'فایل با افکت کم‌اسکنر به PDF ارتقاء یافته و به بایگانی پیوست شد.'
+              : 'فایل با موفقیت به بایگانی سند اتچ شد.'
+            );
             setAttachmentTitle('');
           } else {
             throw new Error(res?.error || 'خطا در ثبت ضمیمه در سرور');
@@ -111,6 +120,62 @@ export const OrderArchiveModal: React.FC<Props> = ({
     } catch (err: any) {
       setErrorMsg('خطا در خواندن فایل: ' + (err?.message || 'نامشخص'));
       setUploading(false);
+    }
+  };
+
+  // Convert an existing image attachment to CamScanner PDF right inside the modal
+  const handleConvertExistingToPdf = async (att: any) => {
+    const rawUrl = att.url || att.data;
+    if (!rawUrl) return;
+
+    setConvertingExistingId(att.id || att.fileName);
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      const payload: any = {
+        name: att.fileName || 'document',
+        fileName: att.fileName || 'document',
+        type: 'image'
+      };
+      if (rawUrl.startsWith('data:')) {
+        payload.data = rawUrl;
+      } else {
+        payload.url = rawUrl;
+      }
+
+      const mergeRes = await apiCall('/tools/merge-to-pdf', 'POST', {
+        files: [payload],
+        filter: scannerFilter
+      });
+
+      const convertedData = mergeRes?.fileData || mergeRes?.pdfData || mergeRes?.url;
+      if (!convertedData) {
+        throw new Error('خطا در دریافت خروجی PDF اسکنر از سرور');
+      }
+
+      const baseName = (att.fileName || 'تصویر').replace(/\.[^/.]+$/, "");
+      const finalPdfName = `[کم‌اسکنر]_${baseName}.pdf`;
+
+      const res = await apiCall(`/orders/${currentOrder.id}/archive-attachments`, 'POST', {
+        fileName: finalPdfName,
+        fileData: convertedData,
+        type: 'application/pdf',
+        size: mergeRes?.size || att.size || 1024,
+        uploadedBy: currentUser?.fullName || 'کاربر'
+      });
+
+      if (res && res.order) {
+        setCurrentOrder(res.order);
+        onOrderUpdated(res.order);
+        setSuccessMsg(`نسخه PDF با کیفیت کم‌اسکنر برای فایل ${att.fileName} ساخته و بایگانی شد.`);
+      } else {
+        throw new Error(res?.error || 'خطا در ثبت نسخه PDF');
+      }
+    } catch (err: any) {
+      setErrorMsg('خطا در تبدیل عکس موجود به PDF کم‌اسکنر: ' + (err?.message || 'نامشخص'));
+    } finally {
+      setConvertingExistingId(null);
     }
   };
 
@@ -204,10 +269,52 @@ export const OrderArchiveModal: React.FC<Props> = ({
                     onChange={(e) => setAutoConvertToPdf(e.target.checked)}
                     className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                   />
-                  <span>تبدیل عکس‌ها به PDF قبل از اتچ</span>
+                  <span className="flex items-center gap-1">
+                    <Sparkles size={14} className="text-amber-500" />
+                    <span>تبدیل خودکار به PDF با کم‌اسکنر</span>
+                  </span>
                 </label>
               </div>
             </div>
+
+            {autoConvertToPdf && (
+              <div className="bg-purple-50/60 dark:bg-purple-950/20 p-2.5 rounded-xl border border-purple-100 dark:border-purple-900/40">
+                <div className="text-[11px] font-bold text-purple-900 dark:text-purple-300 mb-1.5 flex items-center gap-1">
+                  <Wand2 size={13} className="text-purple-600" />
+                  <span>انتخاب افکت و بهینه‌سازی کیفیت کم‌اسکنر:</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setScannerFilter('magic_color')}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${scannerFilter === 'magic_color' ? 'bg-purple-600 text-white border-purple-600 shadow-xs' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50'}`}
+                  >
+                    ✨ اسکن جادویی
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScannerFilter('crisp_bw')}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${scannerFilter === 'crisp_bw' ? 'bg-purple-600 text-white border-purple-600 shadow-xs' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50'}`}
+                  >
+                    📄 سیاه‌سفید اسکنر
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScannerFilter('enhance')}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${scannerFilter === 'enhance' ? 'bg-purple-600 text-white border-purple-600 shadow-xs' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50'}`}
+                  >
+                    🔍 وضوح متن
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScannerFilter('original')}
+                    className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${scannerFilter === 'original' ? 'bg-purple-600 text-white border-purple-600 shadow-xs' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-50'}`}
+                  >
+                    🖼️ کیفیت اصلی
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="pt-2">
               <input

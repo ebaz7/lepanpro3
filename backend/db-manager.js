@@ -22,6 +22,9 @@ export const robustFetch = async (url, options = {}) => {
             const lib = parsed.protocol === 'https:' ? https : http;
             const timeoutMs = options.timeout || 60000;
             const headers = { ...options.headers };
+            for (const k of Object.keys(headers)) {
+                if (k.toLowerCase() === 'content-length') delete headers[k];
+            }
             if (options.body) {
                 headers['Content-Length'] = Buffer.byteLength(options.body, 'utf8');
             }

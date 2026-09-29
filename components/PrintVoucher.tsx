@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { PaymentOrder, OrderStatus, PaymentMethod, SystemSettings, User, UserRole, PaymentOrderAttachment, PaymentDetail } from '../types';
 import { formatCurrency, formatDate, getStatusLabel, numberToPersianWords, formatNumberString, getShamsiDateFromIso } from '../constants';
-import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers, MessageSquare, Paperclip, Upload, Trash2, Image, FileCheck } from 'lucide-react';
+import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers, MessageSquare, Paperclip, Upload, Trash2, Image, FileCheck, Sparkles } from 'lucide-react';
 import { apiCall, resolveImageUrl } from '../services/apiService';
 import { generatePdf } from '../utils/pdfGenerator'; 
 import { executeCrossPlatformPrint } from '../utils/mobilePrintService';
@@ -71,6 +71,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   // Archive Attachment Upload State
   const [uploadingArchive, setUploadingArchive] = useState(false);
   const [autoConvertToPdf, setAutoConvertToPdf] = useState(true);
+  const [scannerFilter, setScannerFilter] = useState<'magic' | 'bw' | 'sharp' | 'original'>('magic');
   const archiveFileInputRef = useRef<HTMLInputElement>(null);
 
   // Check Archive Attachment Permission
@@ -439,7 +440,10 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
               const res = await fetch('/api/tools/merge-to-pdf', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ files: payloadFiles })
+                  body: JSON.stringify({ 
+                      files: payloadFiles,
+                      filter: scannerFilter 
+                  })
               });
 
               if (res.ok) {
@@ -738,33 +742,47 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                              >
                                  <input 
                                      type="checkbox" 
-                                     checked={autoConvertToPdf} 
-                                     onChange={(e) => setAutoConvertToPdf(e.target.checked)} 
-                                     className="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                                 />
-                                 <span className="flex items-center gap-1 font-medium">
-                                     <FileText size={12} className="text-red-500" />
-                                     <span>تبدیل به PDF</span>
-                                 </span>
-                             </label>
+                                    checked={autoConvertToPdf}
+                                    onChange={(e) => setAutoConvertToPdf(e.target.checked)}
+                                    className="rounded text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                                />
+                                <span className="flex items-center gap-1 font-medium">
+                                    <Sparkles size={12} className="text-amber-500" />
+                                    <span>کم‌اسکنر به PDF</span>
+                                </span>
+                            </label>
 
-                             <input 
-                                 type="file" 
-                                 ref={archiveFileInputRef} 
-                                 onChange={handleArchiveFileChange} 
-                                 className="hidden" 
-                                 accept="image/*,application/pdf"
-                                 multiple
-                             />
-                             <button 
-                                 type="button"
-                                 onClick={() => archiveFileInputRef.current?.click()}
-                                 disabled={uploadingArchive}
-                                 className="px-2.5 py-1 bg-blue-600 text-white hover:bg-blue-700 shadow-sm border border-blue-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
-                             >
-                                 {uploadingArchive ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                                 <span>{uploadingArchive ? 'در حال تبدیل و آپلود...' : 'افزودن به بایگانی'}</span>
-                             </button>
+                            {autoConvertToPdf && (
+                                <select
+                                    value={scannerFilter}
+                                    onChange={(e: any) => setScannerFilter(e.target.value)}
+                                    className="text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 rounded-lg px-2 py-1 outline-none cursor-pointer"
+                                    title="فیلتر پردازش و بهینه‌سازی کم‌اسکنر"
+                                >
+                                    <option value="magic">✨ اسکن جادویی (Magic)</option>
+                                    <option value="bw">📄 سیاه‌سفید کم‌اسکنر (B&W)</option>
+                                    <option value="sharp">🔍 وضوح متن (Sharp)</option>
+                                    <option value="original">🖼️ کیفیت اصلی</option>
+                                </select>
+                            )}
+
+                            <input
+                                type="file"
+                                ref={archiveFileInputRef}
+                                onChange={handleArchiveFileChange}
+                                className="hidden"
+                                accept="image/*,application/pdf"
+                                multiple
+                            />
+                            <button
+                                type="button"
+                                onClick={() => archiveFileInputRef.current?.click()}
+                                disabled={uploadingArchive}
+                                className="px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                {uploadingArchive ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                                <span>{uploadingArchive ? "در حال اسکن و آپلود..." : "اسکن و افزودن به بایگانی"}</span>
+                            </button>
                          </div>
                      )}
                  </div>
