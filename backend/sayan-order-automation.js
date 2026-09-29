@@ -187,90 +187,41 @@ let cachedVendorMap = null;
 let lastVendorMapFetch = 0;
 
 export const getHistoricalVendorMap = async (forceRefresh = false) => {
-    const now = Date.now();
-    if (!forceRefresh && cachedVendorMap && (now - lastVendorMapFetch < 3600000)) {
-        return cachedVendorMap;
+    const map = new Map();
+
+    // Seed with verified enterprise suppliers
+    const SEED_VENDORS = [
+        { note: 'کیازیپ', personCode: '3178', personName: 'شرکت کیا زیپ' },
+        { note: 'کیا زیپ', personCode: '3178', personName: 'شرکت کیا زیپ' },
+        { note: 'لاجوردی', personCode: '3178', personName: 'شرکت کیا زیپ' },
+        { note: 'آقای لاجوردی', personCode: '3178', personName: 'شرکت کیا زیپ' },
+        { note: 'ارسالی آقای لاجوردی', personCode: '3178', personName: 'شرکت کیا زیپ' },
+        { note: 'ارسالی آقای لاجوردی (کیازیپ)', personCode: '3178', personName: 'شرکت کیا زیپ' },
+        { note: 'آصال الیاف سپاهان', personCode: '1161', personName: 'آصال الیاف سپاهان-فوده ای' },
+        { note: 'پتروشیمی تندگویان', personCode: '1147', personName: 'شرکت پتروشیمی تندگویان' },
+        { note: 'الیاف سازان بهکوش', personCode: '2557', personName: 'شرکت الیاف سازان بهکوش' },
+        { note: 'کارتن سازان عدل البرز', personCode: '2412', personName: 'کارتن سازان عدل البرز (آقای جعفری)' },
+        { note: 'حسین نعمتی', personCode: '2334', personName: 'نعمتی (کارتن)' },
+        { note: 'ارسالی حسین نعمتی', personCode: '2334', personName: 'نعمتی (کارتن)' },
+        { note: 'شعبانی', personCode: '1840', personName: 'شعباني جعفر (دوک) آسیا پلاستیک' },
+        { note: 'ارسالی آقای شعبانی', personCode: '1840', personName: 'شعباني جعفر (دوک) آسیا پلاستیک' },
+        { note: 'پیمان کاغذ پایا', personCode: '1767', personName: 'پیمان کاغذ پایا' },
+        { note: 'قطعه سازان پلاستیک ممتاز', personCode: '2076', personName: 'قطعه سازان پلاستیک ممتاز' },
+        { note: 'تزریق پلاستیک قربانی', personCode: '2379', personName: 'تزریق پلاستیک قربانی' },
+        { note: 'زرتاب زاینده رود', personCode: '1367', personName: 'شرکت زرتاب زاینده رود' }
+    ];
+
+    for (const s of SEED_VENDORS) {
+        const clean = cleanVendorKeywords(s.note);
+        map.set(clean, {
+            personCode: s.personCode,
+            personName: s.personName,
+            matchCount: 100,
+            words: clean.split(' ').filter(w => w.length >= 2)
+        });
     }
 
-    try {
-        const map = new Map();
-
-        // Seed with verified enterprise suppliers
-        const SEED_VENDORS = [
-            { note: 'کیازیپ', personCode: '3178', personName: 'شرکت کیا زیپ' },
-            { note: 'کیا زیپ', personCode: '3178', personName: 'شرکت کیا زیپ' },
-            { note: 'لاجوردی', personCode: '3178', personName: 'شرکت کیا زیپ' },
-            { note: 'آقای لاجوردی', personCode: '3178', personName: 'شرکت کیا زیپ' },
-            { note: 'ارسالی آقای لاجوردی', personCode: '3178', personName: 'شرکت کیا زیپ' },
-            { note: 'ارسالی آقای لاجوردی (کیازیپ)', personCode: '3178', personName: 'شرکت کیا زیپ' },
-            { note: 'آصال الیاف سپاهان', personCode: '1161', personName: 'آصال الیاف سپاهان-فوده ای' },
-            { note: 'پتروشیمی تندگویان', personCode: '1147', personName: 'شرکت پتروشیمی تندگویان' },
-            { note: 'الیاف سازان بهکوش', personCode: '2557', personName: 'شرکت الیاف سازان بهکوش' },
-            { note: 'کارتن سازان عدل البرز', personCode: '2412', personName: 'کارتن سازان عدل البرز (آقای جعفری)' },
-            { note: 'حسین نعمتی', personCode: '2334', personName: 'نعمتی (کارتن)' },
-            { note: 'ارسالی حسین نعمتی', personCode: '2334', personName: 'نعمتی (کارتن)' },
-            { note: 'شعبانی', personCode: '1840', personName: 'شعباني جعفر (دوک) آسیا پلاستیک' },
-            { note: 'ارسالی آقای شعبانی', personCode: '1840', personName: 'شعباني جعفر (دوک) آسیا پلاستیک' },
-            { note: 'پیمان کاغذ پایا', personCode: '1767', personName: 'پیمان کاغذ پایا' },
-            { note: 'قطعه سازان پلاستیک ممتاز', personCode: '2076', personName: 'قطعه سازان پلاستیک ممتاز' }
-        ];
-
-        for (const s of SEED_VENDORS) {
-            const clean = cleanVendorKeywords(s.note);
-            map.set(clean, {
-                personCode: s.personCode,
-                personName: s.personName,
-                matchCount: 100,
-                words: clean.split(' ').filter(w => w.length >= 2)
-            });
-        }
-
-        // Fetch recent Opcode 57 vendor mappings from STR_TBL_010 for Fiscal Year 4
-        const sql = `
-            SELECT 
-                RTRIM(LTRIM(Field_017)) as Note,
-                RTRIM(LTRIM(Field_010)) as PersonCode
-            FROM STR_TBL_010 WITH (NOLOCK)
-            WHERE Field_004 = 4 
-              AND Field_009 = '57' 
-              AND Field_010 IS NOT NULL 
-              AND Field_017 IS NOT NULL 
-              AND LEN(Field_017) >= 3
-        `;
-        const rows = await executeSayanQuery(sql).catch(() => []);
-        const personCodes = [...new Set(rows.map(r => r.PersonCode).filter(Boolean))];
-        const namesMap = new Map();
-        if (personCodes.length > 0) {
-            const namesSql = `
-                SELECT RTRIM(LTRIM(Field_005)) as PersonCode, RTRIM(LTRIM(Field_006)) as PersonName 
-                FROM ACT_TBL_007 WITH (NOLOCK) 
-                WHERE Field_003 IN (${personCodes.map(c => `'11${c}'`).join(',')})
-            `;
-            const nameRows = await executeSayanQuery(namesSql).catch(() => []);
-            for (const nr of nameRows) {
-                namesMap.set(nr.PersonCode, nr.PersonName);
-            }
-        }
-
-        for (const r of rows) {
-            const cleanNote = cleanVendorKeywords(r.Note || '');
-            if (cleanNote && cleanNote.length >= 3 && !map.has(cleanNote)) {
-                map.set(cleanNote, {
-                    personCode: r.PersonCode,
-                    personName: namesMap.get(r.PersonCode) || r.PersonCode,
-                    matchCount: 10,
-                    words: cleanNote.split(' ').filter(w => w.length >= 2)
-                });
-            }
-        }
-
-        cachedVendorMap = map;
-        lastVendorMapFetch = now;
-        return map;
-    } catch (err) {
-        console.error('[Sayan Automation] Error loading historical vendor map:', err);
-        return cachedVendorMap || new Map();
-    }
+    return map;
 };
 
 /**
@@ -359,11 +310,10 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
     pendingStatusPromise = (async () => {
         try {
             const fYear = Number(fiscalYear) || 4;
-            const vendorMap = await getHistoricalVendorMap();
 
-            // 1. Fetch all Opcode 53 documents for the fiscal year using fast index seek
+            // 1. Fetch recent Opcode 53 and 57 documents using lightning-fast backward clustered index scan
             const docsSql = `
-                SELECT 
+                SELECT TOP 30
                     t10.Field_001 as Doc53Id,
                     t10.Field_004 as FiscalYear,
                     t10.Field_005 as DocNo,
@@ -374,114 +324,80 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     t10.Field_017 as Note,
                     t10.Field_036 as RegDate
                 FROM STR_TBL_010 t10 WITH (NOLOCK)
-                WHERE t10.Field_004 = ${fYear} AND t10.Field_018 = 3 AND t10.Field_009 = '53'
+                WHERE t10.Field_009 = 53
+                ORDER BY t10.Field_004 DESC, t10.Field_005 DESC
             `;
-            const docRows = await executeSayanQuery(docsSql);
-            if (!docRows || docRows.length === 0) return [];
-            docRows.sort((a, b) => Number(b.DocNo) - Number(a.DocNo));
 
-            // 2. Fetch Item Counts and Total Quantities in one fast grouped query
-            const docNos = docRows.map(d => Number(d.DocNo)).filter(n => !isNaN(n));
-            const itemsMap = new Map();
-            if (docNos.length > 0) {
-                const countsSql = `
-                    SELECT Field_004 as DocNo, COUNT(*) as ItemsCount, SUM(Field_006) as TotalQty 
-                    FROM STR_TBL_011 WITH (NOLOCK) 
-                    WHERE Field_003 = ${fYear} AND Field_012 = 3 AND Field_004 IN (${docNos.join(',')}) 
-                    GROUP BY Field_004
-                `;
-                const countRows = await executeSayanQuery(countsSql).catch(() => []);
-                for (const c of countRows) {
-                    itemsMap.set(String(c.DocNo), {
-                        count: Number(c.ItemsCount) || 0,
-                        totalQty: Number(c.TotalQty) || 0
-                    });
-                }
-            }
-
-            // 3. Fetch ALL Pre-Invoices (Opcode 57) for this Fiscal Year directly from STR_TBL_010
             const pre57Sql = `
-                SELECT 
+                SELECT TOP 30
                     Field_001 as PreInvoiceDocId,
+                    Field_004 as FiscalYear,
                     Field_005 as PreInvoiceDocNo,
                     Field_006 as PreInvoiceSubNo,
                     Field_007 as SubCode,
                     Field_008 as PreInvoiceDate,
-                    Field_010 as PreInvoiceVendorCode
+                    Field_010 as PreInvoiceVendorCode,
+                    Field_017 as PreNote,
+                    Field_029 as PreDesc
                 FROM STR_TBL_010 WITH (NOLOCK)
-                WHERE Field_004 = ${fYear} AND Field_018 = 3 AND Field_009 = '57'
+                WHERE Field_009 = 57
+                ORDER BY Field_004 DESC, Field_005 DESC
             `;
-            const pre57Rows = await executeSayanQuery(pre57Sql).catch(() => []);
 
-            // Also fetch any explicit link records from STR_TBL_029
-            const linksSql = `
-                SELECT 
-                    Field_003 as Doc53Id, 
-                    Field_005 as Doc53No, 
-                    Field_009 as PreInvoiceDocId 
-                FROM STR_TBL_029 WITH (NOLOCK) 
-                WHERE Field_004 = ${fYear} AND Field_007 = '53' AND Field_009 > 0
-            `;
-            const linkRows = await executeSayanQuery(linksSql).catch(() => []);
-            const doc53IdToPreId029 = new Map();
-            const doc53NoToPreId029 = new Map();
-            for (const l of linkRows) {
-                if (l.Doc53Id) doc53IdToPreId029.set(String(l.Doc53Id), String(l.PreInvoiceDocId));
-                if (l.Doc53No) doc53NoToPreId029.set(String(l.Doc53No), String(l.PreInvoiceDocId));
-            }
+            const [allDocRows, allPre57Rows, vendorMap] = await Promise.all([
+                executeSayanQuery(docsSql).catch(() => []),
+                executeSayanQuery(pre57Sql).catch(() => []),
+                getHistoricalVendorMap().catch(() => new Map())
+            ]);
 
-            // Resolve vendor names for all 57 pre-invoices
-            const vendorCodes = [...new Set(pre57Rows.map(p => p.PreInvoiceVendorCode).filter(Boolean))];
-            const vendorNamesMap = new Map();
-            if (vendorCodes.length > 0) {
-                const vSql = `
-                    SELECT RTRIM(LTRIM(Field_005)) as PersonCode, RTRIM(LTRIM(Field_006)) as PersonName 
-                    FROM ACT_TBL_007 WITH (NOLOCK) 
-                    WHERE Field_003 IN (${vendorCodes.map(c => `'11${c}'`).join(',')})
-                `;
-                const vRows = await executeSayanQuery(vSql).catch(() => []);
-                for (const v of vRows) {
-                    vendorNamesMap.set(v.PersonCode, v.PersonName);
-                }
-            }
+            const docRows = allDocRows.filter(r => String(r.FiscalYear) === String(fiscalYear));
+            const pre57Rows = allPre57Rows.filter(r => String(r.FiscalYear) === String(fiscalYear));
 
-            // Index 57 pre-invoices by DocId, SubCode, and DocNo
-            const preDocsById = new Map();
+            if (!docRows || docRows.length === 0) return [];
+            docRows.sort((a, b) => Number(b.DocNo) - Number(a.DocNo));
+
+            // Index 57 pre-invoices by SubCode, DocNo, and Note
             const preDocsBySubCode = new Map();
+            const preDocsByDocNo = new Map();
+            const preDocsByNote = new Map();
             for (const pr of pre57Rows) {
-                pr.PreInvoiceVendorName = vendorNamesMap.get(pr.PreInvoiceVendorCode) || null;
-                preDocsById.set(String(pr.PreInvoiceDocId), pr);
+                if (pr.PreInvoiceDocNo) {
+                    preDocsByDocNo.set(String(pr.PreInvoiceDocNo), pr);
+                }
                 if (pr.SubCode && String(pr.SubCode).trim()) {
                     preDocsBySubCode.set(String(pr.SubCode).trim(), pr);
+                }
+                if (pr.PreNote && String(pr.PreNote).trim()) {
+                    const clean = String(pr.PreNote).trim();
+                    if (!preDocsByNote.has(clean)) preDocsByNote.set(clean, pr);
                 }
             }
 
             const result = docRows.map(r => {
                 const vendor = resolveVendorForNote(r.Note, vendorMap, []);
-                const itemStats = itemsMap.get(String(r.DocNo)) || { count: 0, totalQty: 0 };
+                const itemStats = { count: 1, totalQty: 0 };
                 
                 // Comprehensive 53 -> 57 linking:
                 // 1. Check SubCode matching (Sayan ERP standard: 53 and 57 share identical SubCode)
                 let preInvoice = null;
                 const cleanSubCode = r.SubCode ? String(r.SubCode).trim() : '';
+                const cleanNote = r.Note ? String(r.Note).trim() : '';
+
                 if (cleanSubCode && preDocsBySubCode.has(cleanSubCode)) {
                     preInvoice = preDocsBySubCode.get(cleanSubCode);
                 }
 
-                // 2. Check STR_TBL_029 explicit link
-                if (!preInvoice) {
-                    const preId029 = doc53IdToPreId029.get(String(r.Doc53Id)) || doc53NoToPreId029.get(String(r.DocNo));
-                    if (preId029 && preDocsById.has(preId029)) {
-                        preInvoice = preDocsById.get(preId029);
-                    }
-                }
-
-                // 3. Check if 57 SubCode points to 53 DocNo
+                // 2. Check if 57 SubCode points to 53 DocNo
                 if (!preInvoice && r.DocNo) {
                     const cleanDocNo = String(r.DocNo).trim();
                     if (preDocsBySubCode.has(cleanDocNo)) {
                         preInvoice = preDocsBySubCode.get(cleanDocNo);
                     }
+                }
+
+                // 3. Check exact Note matching (e.g. customs clearance batches)
+                if (!preInvoice && cleanNote && preDocsByNote.has(cleanNote)) {
+                    preInvoice = preDocsByNote.get(cleanNote);
                 }
 
                 const hasPreInvoice = Boolean(preInvoice && preInvoice.PreInvoiceDocNo);
