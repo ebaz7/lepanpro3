@@ -70,61 +70,50 @@ export const addAutomationLog = (db, logEntry) => {
 export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     const db = getDb();
     const settings = db.settings || {};
-    let serverSayanBaseUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
+    let serverSayanBaseUrl = (settings.sayanApiUrl || process.env.SAYAN_API_URL || '').trim();
     if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
         serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
     }
-    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
+    const serverSayanApiKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || '').trim();
 
-    const candidates = [serverSayanBaseUrl];
-    const isPrivateIp = /(?:192\.168\.|10\.\d{1,3}\.|172\.(?:1[6-9]|2\d|3[01])\.|127\.0\.0\.1|localhost)/.test(serverSayanBaseUrl);
-    if (isPrivateIp) {
-        candidates.push('http://80.210.31.176:5000/api/external/v1');
-        candidates.push('http://lep.templatetesti.shop:5000/api/external/v1');
+    if (!serverSayanBaseUrl || !serverSayanApiKey) {
+        throw new Error('تنظیمات آدرس وب‌سرویس و کلید امنیتی سایان در بخش تنظیمات وارد نشده است. لطفاً ابتدا در بخش تنظیمات، آدرس API و توکن سایان را وارد نمایید.');
     }
 
-    let lastError = null;
-    for (const baseUrl of candidates) {
-        const finalUrl = `${baseUrl.replace(/\/$/, '')}/query`;
-        try {
-            const response = await robustFetch(finalUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${serverSayanApiKey}`,
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query: queryStr }),
-                timeout: timeoutMs
-            });
+    const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
+    try {
+        const response = await robustFetch(finalUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${serverSayanApiKey}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: queryStr }),
+            timeout: timeoutMs
+        });
 
-            const contentType = (response.headers && typeof response.headers.get === 'function' ? response.headers.get('content-type') : (response.headers?.['content-type'] || '')) || '';
-            const isJson = contentType.includes('application/json');
+        const contentType = (response.headers && typeof response.headers.get === 'function' ? response.headers.get('content-type') : (response.headers?.['content-type'] || '')) || '';
+        const isJson = contentType.includes('application/json');
 
-            if (!response.ok) {
-                if (!isJson) {
-                    const rawText = await response.text().catch(() => '');
-                    console.error(`Sayan API Error (${response.status}): Non-JSON response:`, rawText.slice(0, 150));
-                    throw new Error(`خطا در برقراری ارتباط با وب‌سرویس سایان (کد وضعیت ${response.status})`);
-                }
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || err.message || `خطا در ارتباط با وب‌سرویس سایان: کد وضعیت ${response.status}`);
+        if (!response.ok) {
+            if (!isJson) {
+                const rawText = await response.text().catch(() => '');
+                console.error(`Sayan API Error (${response.status}): Non-JSON response:`, rawText.slice(0, 150));
+                throw new Error(`خطا در برقراری ارتباط با وب‌سرویس سایان (${serverSayanBaseUrl}): کد وضعیت ${response.status}`);
             }
-
-            const data = await response.json();
-            if (data.success === false) {
-                throw new Error(data.error || data.message || 'خطای سرور سایان');
-            }
-            return data.data || [];
-        } catch (err) {
-            lastError = err;
-            if (candidates.length > 1) {
-                console.warn(`[executeSayanQuery Automation] Attempt on ${baseUrl} failed: ${err.message}. Trying next candidate...`);
-            }
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || err.message || `خطا در ارتباط با وب‌سرویس سایان: کد وضعیت ${response.status}`);
         }
-    }
 
-    throw lastError || new Error('خطا در برقراری ارتباط با دیتابیس سایان');
+        const data = await response.json();
+        if (data.success === false) {
+            throw new Error(data.error || data.message || 'خطای سرور سایان');
+        }
+        return data.data || [];
+    } catch (err) {
+        throw new Error(`خطا در برقراری ارتباط با آدرس سایان (${serverSayanBaseUrl}): ${err.message}`);
+    }
 };
 
 /**

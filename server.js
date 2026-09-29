@@ -1735,58 +1735,42 @@ const parseJalaliStrToGregorian = (jalaliStr) => {
     }
 };
 
-const executeSayanQuery = async (db, queryStr, timeoutMs = 20000) => {
+const executeSayanQuery = async (db, queryStr, timeoutMs = 25000) => {
     const settings = db.settings || {};
-    let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
+    let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL);
+    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY;
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
-        throw new Error('تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است.');
+        throw new Error('تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است. لطفاً ابتدا از بخش تنظیمات، آدرس و کلید وب‌سرویس سایان را وارد نمایید.');
     }
 
-    // List of candidate endpoints to try: configured URL first, followed by known public endpoints if configured is a private IP or fails
-    const candidates = [serverSayanBaseUrl];
-    const isPrivateIp = /(?:192\.168\.|10\.\d{1,3}\.|172\.(?:1[6-9]|2\d|3[01])\.|127\.0\.0\.1|localhost)/.test(serverSayanBaseUrl);
-    if (isPrivateIp) {
-        candidates.push('http://80.210.31.176:5000/api/external/v1');
-        candidates.push('http://lep.templatetesti.shop:5000/api/external/v1');
-    }
-
-    let lastError = null;
-    for (const baseUrl of candidates) {
-        const finalUrl = `${baseUrl}/query`;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-            const response = await robustFetch(finalUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${serverSayanApiKey}`,
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query: queryStr }),
-                signal: controller.signal
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || err.message || `خطا در برقراری ارتباط با دیتابیس سایان ERP (کد ${response.status})`);
-            }
-            const data = await response.json();
-            return data.data || [];
-        } catch (err) {
-            lastError = err;
-            if (candidates.length > 1) {
-                console.warn(`[executeSayanQuery] Attempt on ${baseUrl} failed: ${err.message}. Trying next candidate...`);
-            }
-        } finally {
-            clearTimeout(timeoutId);
+    const finalUrl = `${serverSayanBaseUrl}/query`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await robustFetch(finalUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${serverSayanApiKey}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: queryStr }),
+            signal: controller.signal
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || err.message || `خطا در برقراری ارتباط با دیتابیس سایان ERP (کد ${response.status})`);
         }
+        const data = await response.json();
+        return data.data || [];
+    } catch (err) {
+        if (err?.name === 'AbortError') {
+            throw new Error(`مهلت زمان اجرای کوئری در سرور سایان (${timeoutMs / 1000} ثانیه) به پایان رسید.`);
+        }
+        throw err;
+    } finally {
+        clearTimeout(timeoutId);
     }
-
-    if (lastError?.name === 'AbortError') {
-        throw new Error(`مهلت زمان اجرای کوئری در سرور سایان (${timeoutMs / 1000} ثانیه) به پایان رسید.`);
-    }
-    throw lastError || new Error('خطا در برقراری ارتباط با دیتابیس سایان');
 };
 
 app.post('/api/sayan-proxy', async (req, res) => {
