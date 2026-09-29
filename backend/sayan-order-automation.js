@@ -315,9 +315,9 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
         try {
             const fYear = Number(fiscalYear) || 4;
 
-            // 1. Fetch recent Opcode 53 and 57 documents using fast queries
+            // 1. Fetch recent Opcode 53 and 57 documents using fast queries with TOP 150 to include older base docs like 132 and 598
             const docsSql = `
-                SELECT TOP 30
+                SELECT TOP 150
                     t10.Field_001 as Doc53Id,
                     t10.Field_004 as FiscalYear,
                     t10.Field_005 as DocNo,
@@ -332,24 +332,8 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 ORDER BY t10.Field_004 DESC, t10.Field_005 DESC
             `;
 
-            // Explicitly fetch unreferenced base documents (Doc 132 in Year 4, Doc 598 in Year 3)
-            const pendingBaseSql = `
-                SELECT 
-                    Field_001 as Doc53Id, 
-                    Field_004 as FiscalYear, 
-                    Field_005 as DocNo, 
-                    Field_006 as SubNo, 
-                    Field_007 as SubCode, 
-                    Field_008 as DocDate, 
-                    Field_010 as PersonCode53, 
-                    Field_017 as Note, 
-                    Field_036 as RegDate
-                FROM STR_TBL_010 WITH (NOLOCK)
-                WHERE Field_004 = ${fYear} AND Field_005 IN (132, 598) AND Field_009 = 53 AND Field_018 = 3
-            `;
-
             const pre57Sql = `
-                SELECT TOP 30
+                SELECT TOP 150
                     Field_001 as PreInvoiceDocId,
                     Field_004 as FiscalYear,
                     Field_005 as PreInvoiceDocNo,
@@ -364,27 +348,13 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 ORDER BY Field_004 DESC, Field_005 DESC
             `;
 
-            const [allDocRows, pendingBaseRows, allPre57Rows, vendorMap] = await Promise.all([
+            const [allDocRows, allPre57Rows, vendorMap] = await Promise.all([
                 executeSayanQuery(docsSql).catch(() => []),
-                executeSayanQuery(pendingBaseSql).catch(() => []),
                 executeSayanQuery(pre57Sql).catch(() => []),
                 getHistoricalVendorMap().catch(() => new Map())
             ]);
 
-            // Combine recent rows and pending base rows uniquely by Doc53Id
-            const docMap = new Map();
-            for (const r of allDocRows) {
-                if (String(r.FiscalYear) === String(fiscalYear)) {
-                    docMap.set(String(r.Doc53Id), r);
-                }
-            }
-            for (const pb of pendingBaseRows) {
-                if (String(pb.FiscalYear) === String(fiscalYear)) {
-                    docMap.set(String(pb.Doc53Id), pb);
-                }
-            }
-
-            const docRows = Array.from(docMap.values());
+            const docRows = allDocRows.filter(r => String(r.FiscalYear) === String(fiscalYear));
             const pre57Rows = allPre57Rows.filter(r => String(r.FiscalYear) === String(fiscalYear));
 
             if (!docRows || docRows.length === 0) return [];
@@ -476,51 +446,8 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
  * STRICTLY excludes any request that already has a Pre-Invoice (Opcode 57) issued in Sayan
  */
 export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
-    const fYear = Number(fiscalYear) || 4;
-    const vendorMap = await getHistoricalVendorMap();
-
-    // Query pending base documents for this fiscal year directly
-    const pendingBaseSql = `
-        SELECT 
-            Field_001 as Doc53Id, 
-            Field_004 as FiscalYear, 
-            Field_005 as DocNo, 
-            Field_006 as SubNo, 
-            Field_007 as SubCode, 
-            Field_008 as DocDate, 
-            Field_010 as PersonCode53, 
-            Field_017 as Note, 
-            Field_036 as RegDate
-        FROM STR_TBL_010 WITH (NOLOCK)
-        WHERE Field_004 = ${fYear} AND Field_005 IN (132, 598) AND Field_009 = 53 AND Field_018 = 3
-        ORDER BY Field_005 DESC
-    `;
-
-    const rows = await executeSayanQuery(pendingBaseSql).catch(() => []);
-    return rows.map(r => {
-        const vendor = resolveVendorForNote(r.Note, vendorMap, []);
-        return {
-            doc53Id: r.Doc53Id,
-            fiscalYear: String(r.FiscalYear),
-            docNo: String(r.DocNo),
-            subNo: String(r.SubNo),
-            subCode: r.SubCode ? String(r.SubCode) : '',
-            docDate: r.DocDate,
-            note: r.Note || '',
-            descText: r.DescText || '',
-            regDate: r.RegDate,
-            itemsCount: 1,
-            totalQty: 0,
-            detectedVendor: vendor,
-            isReady: vendor.confidence >= 75,
-            hasPreInvoice: false,
-            preInvoiceDocNo: null,
-            preInvoiceDocId: null,
-            preInvoiceDate: null,
-            preInvoiceVendorCode: null,
-            preInvoiceVendorName: null
-        };
-    });
+    const all = await getAllPurchaseRequestsWithStatus(fiscalYear);
+    return all.filter(r => !r.hasPreInvoice);
 };
 
 /**

@@ -206,6 +206,12 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const [modalTafsiliCode, setModalTafsiliCode] = useState('');
     const [modalTafsiliName, setModalTafsiliName] = useState('');
 
+    useEffect(() => {
+        if (isStatementModalOpen) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }, [isStatementModalOpen]);
+
     // --- TAB 3: SALES STATE ---
     const [salesData, setSalesData] = useState<any[]>([]);
     const [salesViewMode, setSalesViewMode] = useState<'today' | 'range'>('today');
@@ -8631,7 +8637,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         </div>
 
                         {/* Modal Body */}
-                        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+                        <div className="p-4 sm:p-6 pb-28 overflow-y-auto flex-1 space-y-4">
                             {/* Statement Summary KPIs */}
                             <div className="grid grid-cols-3 gap-3">
                                 <div className="bg-rose-50 dark:bg-rose-950/30 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
