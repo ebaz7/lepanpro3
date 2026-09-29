@@ -205,9 +205,6 @@ class MeetingQueueService {
                         }));
                     }
 
-                    // Step 3: Trigger background notifications without blocking status
-                    this.dispatchBackgroundSideEffects(task);
-
                     success = true;
                 } catch (err: any) {
                     console.error(`[MeetingQueue] Background error for Meeting #${task.meetingNumber}:`, err);
@@ -231,16 +228,8 @@ class MeetingQueueService {
         );
     }
 
-    private async dispatchBackgroundSideEffects(task: MeetingQueueTask) {
-        try {
-            const m = task.meetingSnapshot;
-            if (task.actionType === 'APPROVE_FACTORY' || task.actionType === 'APPROVE_CEO') {
-                // Background send minutes PDF to production group
-                sendMeetingMinutes(m.id).catch(e => console.warn('Background sendMeetingMinutes warning:', e));
-            }
-        } catch (e) {
-            console.warn('[MeetingQueue] Side effects warning:', e);
-        }
+    private async dispatchBackgroundSideEffects(_task: MeetingQueueTask) {
+        // Deprecated side effects to prevent duplicate notifications during background sync
     }
 }
 

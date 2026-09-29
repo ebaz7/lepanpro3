@@ -93,19 +93,20 @@ const getAttachmentBuffer = (att) => {
 // Session memory
 export const sessions = {}; 
 const lastSentIds = new Map(); // Use Map to store { key: timestamp }
-const NOTIFY_DEDUPE_WINDOW = 30000; // 30 seconds
+const NOTIFY_DEDUPE_WINDOW = 30000; // 30 seconds default
 
-const isDuplicateNotification = (key) => {
+const isDuplicateNotification = (key, customWindowMs = NOTIFY_DEDUPE_WINDOW) => {
     const now = Date.now();
     const lastTime = lastSentIds.get(key);
-    if (lastTime && (now - lastTime) < NOTIFY_DEDUPE_WINDOW) {
+    if (lastTime && (now - lastTime) < customWindowMs) {
+        console.log(`[Dedupe] Suppressed duplicate notification for key: ${key} (within ${customWindowMs/1000}s)`);
         return true;
     }
     lastSentIds.set(key, now);
     // Cleanup old keys occasionally
     if (lastSentIds.size > 1000) {
         for (const [k, v] of lastSentIds.entries()) {
-            if (now - v > NOTIFY_DEDUPE_WINDOW * 2) lastSentIds.delete(k);
+            if (now - v > 3600000) lastSentIds.delete(k);
         }
     }
     return false;
@@ -6219,7 +6220,7 @@ const extractUniqueGroupIds = (primaryId, secondaryId, fallbackId) => {
 
 export const notifyMeetingAnnouncement = async (meeting, db) => {
     const dedupeKey = `MEETING_ANN_${meeting.id}`;
-    if (isDuplicateNotification(dedupeKey)) return;
+    if (isDuplicateNotification(dedupeKey, 900000)) return; // 15-minute deduplication window
     
     console.log(`>>> Meeting Announcement triggered for ${meeting.meetingNumber}`);
     const s = db.settings;
@@ -6290,7 +6291,7 @@ export const notifyMeetingAnnouncement = async (meeting, db) => {
 
 export const notifyMeetingMinutes = async (meeting, db) => {
     const dedupeKey = `MEETING_MIN_${meeting.id}`;
-    if (isDuplicateNotification(dedupeKey)) return;
+    if (isDuplicateNotification(dedupeKey, 900000)) return; // 15-minute deduplication window
     
     const s = db.settings;
     if (!s) return;

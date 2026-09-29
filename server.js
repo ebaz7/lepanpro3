@@ -7142,13 +7142,20 @@ app.post('/api/meetings/:id/announce', async (req, res) => {
         const db = getDb();
         const meeting = (db.meetings || []).find(m => m.id === req.params.id);
         if (meeting) {
+            const now = Date.now();
+            if (!req.query.force && meeting.announcedAt && (now - Number(meeting.announcedAt) < 600000)) {
+                return res.json({ success: true, alreadyAnnounced: true, message: 'اعلان جلسه اخیراً ارسال شده است.' });
+            }
+            meeting.announcedAt = now;
+            saveDb(db);
+
             await notifyMeetingAnnouncement(meeting, db);
             broadcastNotification(
                 `✨ اعلان برگزاری جلسه تولید #${meeting.meetingNumber || ''}`,
                 `جلسه تولید شماره ${meeting.meetingNumber || ''} روز ${meeting.date || ''} ساعت ${meeting.time || '۱۲:۰۰'} برگزار می‌شود.`,
                 '/production-meetings',
-                null, // targetRoles = null -> broadcast to ALL
-                null  // targetUsernames = null -> broadcast to ALL
+                null,
+                null
             );
             res.json({ success: true });
         } else {
@@ -7164,13 +7171,20 @@ app.post('/api/meetings/:id/send-minutes', async (req, res) => {
         const db = getDb();
         const meeting = (db.meetings || []).find(m => m.id === req.params.id);
         if (meeting) {
+            const now = Date.now();
+            if (!req.query.force && meeting.minutesSentAt && (now - Number(meeting.minutesSentAt) < 600000)) {
+                return res.json({ success: true, alreadySent: true, message: 'صورتجلسه اخیراً به گروه‌ها ارسال شده است.' });
+            }
+            meeting.minutesSentAt = now;
+            saveDb(db);
+
             await notifyMeetingMinutes(meeting, db);
             broadcastNotification(
                 `📝 ارسال صورتجلسه تولید #${meeting.meetingNumber || ''}`,
                 `صورتجلسه شماره ${meeting.meetingNumber || ''} ثبت و ابلاغ گردید.`,
                 '/production-meetings',
-                null, // targetRoles = null -> broadcast to ALL
-                null  // targetUsernames = null -> broadcast to ALL
+                null,
+                null
             );
             res.json({ success: true });
         } else {

@@ -473,25 +473,18 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
     const sendPvNotificationsOnApproval = async (m: MeetingMinutes) => {
         const notifiedUsernames = new Map<string, string[]>(); // username -> list of mentioned items
         
+        // Only target users with explicit assigned responsibilities
         users.forEach(user => {
             const mentions: string[] = [];
             (m.items || []).forEach((item, idx) => {
-                const isMentioned = 
+                const isResponsible = 
                     (item.responsiblePerson || '') === user.fullName || 
-                    (item.responsiblePerson || '') === user.username ||
-                    (item.description || '').includes(user.fullName) ||
-                    (item.description || '').includes(user.username);
+                    (item.responsiblePerson || '') === user.username;
                 
-                if (isMentioned) {
-                    mentions.push(`بند ${idx + 1}: ${item.description.substring(0, 50)}...`);
+                if (isResponsible) {
+                    mentions.push(`بند ${idx + 1}: ${item.description.substring(0, 60)}...`);
                 }
             });
-            
-            // Also check if user is an attendee
-            const isAttendee = (m.attendees || []).some(a => a.username === user.username || a.fullName === user.fullName);
-            if (isAttendee) {
-                mentions.push(`حضور در جلسه شماره ${m.meetingNumber}`);
-            }
 
             if (mentions.length > 0 && user.username) {
                 notifiedUsernames.set(user.username, mentions);
@@ -502,22 +495,11 @@ const MeetingModule: React.FC<Props> = ({ currentUser, initialYear }) => {
             try {
                 const mentionText = mentions.join('\n');
                 
-                // 1. Chat Message
-                await sendMessage({ 
-                    id: generateUUID(), 
-                    sender: 'سیستم', 
-                    senderUsername: 'system', 
-                    role: 'system', 
-                    message: `📌 ثبت / تگ در صورتجلسه شماره ${m.meetingNumber}\n\nباسلام، شما در صورتجلسه شماره ${m.meetingNumber} تگ/ارجاع شده‌اید:\n\n${mentionText}\n\nجهت مشاهده جزئیات کامل به سامانه مراجعه کنید.`, 
-                    recipient: username, 
-                    timestamp: Date.now() 
-                });
-
-                // 2. System Notification
+                // Send single targeted notification to assigned person
                 await apiCall('/notifications/add', 'POST', {
                     username: username,
-                    title: `تگ در صورتجلسه ${m.meetingNumber}`,
-                    body: `شما در صورتجلسه شماره ${m.meetingNumber} تگ شده‌اید. مسئولیت یا موردی به شما ارجاع شده است.`,
+                    title: `📌 ارجاع مصوبه در صورتجلسه ${m.meetingNumber}`,
+                    body: `مصوباتی در صورتجلسه شماره ${m.meetingNumber} به شما ارجاع گردید:\n${mentionText}`,
                     url: 'meetings'
                 });
             } catch (e) { console.error("PV notification failed", e); }
