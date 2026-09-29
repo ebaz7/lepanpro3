@@ -823,8 +823,8 @@ export const initAutomationScheduler = () => {
             const now = Date.now();
             const lastRunTime = config.lastRunAt ? new Date(config.lastRunAt).getTime() : 0;
             
-            // Check if elapsed time matches interval
-            if (now - lastRunTime >= intervalMs) {
+            // Check if elapsed time matches interval or if never run before
+            if (!config.lastRunAt || (now - lastRunTime >= intervalMs)) {
                 isCycleRunning = true;
                 console.log(`[Sayan Order Automation] ⏰ Triggering scheduled cycle (Interval: ${config.intervalMinutes}m)...`);
                 
