@@ -315,9 +315,9 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
         try {
             const fYear = Number(fiscalYear) || 4;
 
-            // 1. Fetch recent Opcode 53 and 57 documents using fast queries with TOP 150 to include older base docs like 132 and 598
+            // 1. Fetch recent Opcode 53 and 57 documents using fast backward index scan
             const docsSql = `
-                SELECT TOP 150
+                SELECT TOP 120
                     t10.Field_001 as Doc53Id,
                     t10.Field_004 as FiscalYear,
                     t10.Field_005 as DocNo,
@@ -333,7 +333,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
             `;
 
             const pre57Sql = `
-                SELECT TOP 150
+                SELECT TOP 120
                     Field_001 as PreInvoiceDocId,
                     Field_004 as FiscalYear,
                     Field_005 as PreInvoiceDocNo,

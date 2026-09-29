@@ -8671,31 +8671,31 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     هیچ رکوردی برای این شخص در بازه زمانی انتخابی یافت نشد.
                                 </div>
                             ) : (
-                                <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden overflow-x-auto">
-                                    <table className="w-full text-right text-xs">
+                                <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden w-full">
+                                    <table className="w-full text-right text-xs table-fixed">
                                         <thead className="bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-zinc-700">
                                             <tr>
-                                                <th className="p-2.5 w-10 text-center">#</th>
-                                                <th className="p-2.5">تاریخ</th>
-                                                <th className="p-2.5">سند</th>
-                                                <th className="p-2.5">سرفصل معین</th>
-                                                <th className="p-2.5">شرح تراکنش</th>
-                                                <th className="p-2.5 text-left">بدهکار (ریال)</th>
-                                                <th className="p-2.5 text-left">بستانکار (ریال)</th>
-                                                <th className="p-2.5 text-left">مانده (ریال)</th>
+                                                <th className="p-2 w-[5%] text-center">#</th>
+                                                <th className="p-2 w-[12%]">تاریخ</th>
+                                                <th className="p-2 w-[8%]">سند</th>
+                                                <th className="p-2 w-[15%]">سرفصل معین</th>
+                                                <th className="p-2 w-[23%]">شرح تراکنش</th>
+                                                <th className="p-2 w-[12%] text-left">بدهکار</th>
+                                                <th className="p-2 w-[12%] text-left">بستانکار</th>
+                                                <th className="p-2 w-[13%] text-left">مانده</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
                                             {filteredStatementData.map((row, idx) => (
                                                 <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/50">
-                                                    <td className="p-2.5 text-center text-slate-400 font-sans">{idx + 1}</td>
-                                                    <td className="p-2.5 whitespace-nowrap text-slate-600 dark:text-slate-300 font-sans">{formatDateToJalali(row.Date)}</td>
-                                                    <td className="p-2.5 text-slate-600 dark:text-slate-300">{row.SanadNo}</td>
-                                                    <td className="p-2.5 text-slate-600 dark:text-slate-300 font-sans">{row.MoeinName || 'سایر'}</td>
-                                                    <td className="p-2.5 text-slate-800 dark:text-slate-100 font-sans max-w-xs truncate">{row.Description || '-'}</td>
-                                                    <td className="p-2.5 text-left text-rose-600">{row.bed > 0 ? formatMoney(row.bed) : '-'}</td>
-                                                    <td className="p-2.5 text-left text-emerald-600">{row.bes > 0 ? formatMoney(row.bes) : '-'}</td>
-                                                    <td className={`p-2.5 text-left font-bold ${row.balance > 0 ? 'text-rose-700' : (row.balance < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
+                                                    <td className="p-2 text-center text-slate-400 font-sans truncate">{idx + 1}</td>
+                                                    <td className="p-2 text-slate-600 dark:text-slate-300 font-sans truncate">{formatDateToJalali(row.Date)}</td>
+                                                    <td className="p-2 text-slate-600 dark:text-slate-300 truncate">{row.SanadNo}</td>
+                                                    <td className="p-2 text-slate-600 dark:text-slate-300 font-sans truncate">{row.MoeinName || 'سایر'}</td>
+                                                    <td className="p-2 text-slate-800 dark:text-slate-100 font-sans truncate" title={row.Description || '-'}>{row.Description || '-'}</td>
+                                                    <td className="p-2 text-left text-rose-600 truncate">{row.bed > 0 ? formatMoney(row.bed) : '-'}</td>
+                                                    <td className="p-2 text-left text-emerald-600 truncate">{row.bes > 0 ? formatMoney(row.bes) : '-'}</td>
+                                                    <td className={`p-2 text-left font-bold truncate ${row.balance > 0 ? 'text-rose-700' : (row.balance < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
                                                         {formatMoney(row.balance)}
                                                     </td>
                                                 </tr>
