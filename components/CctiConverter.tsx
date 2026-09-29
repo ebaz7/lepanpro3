@@ -52,6 +52,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
 
     // PDF & Image Converter / Merger State
     const [pdfMergeFiles, setPdfMergeFiles] = useState<{ id: string; name: string; size: number; type: string; base64: string; previewUrl: string }[]>([]);
+    const [scannerFilter, setScannerFilter] = useState<'magic_color' | 'crisp_bw' | 'enhance' | 'original'>('magic_color');
     const [isMerging, setIsMerging] = useState(false);
     const [mergedPdfResult, setMergedPdfResult] = useState<{ url: string; fileName: string; fileData: string } | null>(null);
 
@@ -113,7 +114,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
             const response = await fetch('/api/tools/merge-to-pdf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ files: payload })
+                body: JSON.stringify({ files: payload, filter: scannerFilter })
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
@@ -685,6 +686,72 @@ ${xmlTxLines.join('\\n')}
                                             </div>
                                         </div>
                                     ))}
+                                </div>
+
+                                {/* CamScanner Effect / Quality Selector */}
+                                <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 border border-amber-500/20 dark:border-amber-400/20 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-black text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                                            <Sparkles size={16} className="text-amber-500 animate-pulse" />
+                                            افکت هوشمند اسکنر (مشابه CamScanner):
+                                        </label>
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                                            کیفیت و رنگ خودکار
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                                        حذف سایه‌های تاریک عکس گوشی، سفید کردن پس‌زمینه کاغذ، تقویت شفافیت نوشته‌ها و حفظ رنگ مهرهای رسمی
+                                    </p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setScannerFilter('magic_color')}
+                                            className={`p-2.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                                                scannerFilter === 'magic_color'
+                                                    ? 'bg-amber-500 text-white border-amber-600 shadow-md scale-102'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-amber-400'
+                                            }`}
+                                        >
+                                            <span>✨ جادویی (Magic Color)</span>
+                                            <span className="text-[9px] opacity-85 font-normal">رنگ و کنتراست شفاف (پیشنهادی)</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setScannerFilter('crisp_bw')}
+                                            className={`p-2.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                                                scannerFilter === 'crisp_bw'
+                                                    ? 'bg-slate-800 text-white border-slate-900 shadow-md scale-102'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-slate-400'
+                                            }`}
+                                        >
+                                            <span>📄 سیاه‌سفید اسکنر</span>
+                                            <span className="text-[9px] opacity-85 font-normal">کنتراست بالا و تفکیک متن</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setScannerFilter('enhance')}
+                                            className={`p-2.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                                                scannerFilter === 'enhance'
+                                                    ? 'bg-blue-600 text-white border-blue-700 shadow-md scale-102'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                                            }`}
+                                        >
+                                            <span>⚡ تعادل خودکار</span>
+                                            <span className="text-[9px] opacity-85 font-normal">تنظیم هوشمند نور و وضوح</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setScannerFilter('original')}
+                                            className={`p-2.5 rounded-xl border text-xs font-black transition-all flex flex-col items-center gap-1 ${
+                                                scannerFilter === 'original'
+                                                    ? 'bg-gray-600 text-white border-gray-700 shadow-md scale-102'
+                                                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-gray-400'
+                                            }`}
+                                        >
+                                            <span>🖼️ حالت اصلی</span>
+                                            <span className="text-[9px] opacity-85 font-normal">بدون اعمال فیلتر</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <button 

@@ -66,6 +66,30 @@ const normalizeChannelId = (id) => {
     return id;
 };
 
+// Helper to extract Buffer from stored attachment (url, data, base64)
+const getAttachmentBuffer = (att) => {
+    if (!att) return null;
+    let dataStr = att.data || att.url || '';
+    if (!dataStr) return null;
+    if (dataStr.startsWith('data:')) {
+        const base64 = dataStr.replace(/^data:.*;base64,/, '');
+        return Buffer.from(base64, 'base64');
+    }
+    if (dataStr.startsWith('/uploads/') || dataStr.startsWith('uploads/')) {
+        const safeBase = path.basename(dataStr).replace(/[\/\\]/g, '');
+        const filePath = path.join(process.cwd(), 'uploads', safeBase);
+        if (fs.existsSync(filePath)) {
+            return fs.readFileSync(filePath);
+        }
+    }
+    if (typeof dataStr === 'string' && dataStr.length > 100 && !dataStr.includes('/') && !dataStr.includes('\\')) {
+        try {
+            return Buffer.from(dataStr, 'base64');
+        } catch (_) {}
+    }
+    return null;
+};
+
 // Session memory
 export const sessions = {}; 
 const lastSentIds = new Map(); // Use Map to store { key: timestamp }
@@ -216,6 +240,21 @@ export const detectAndTriggerReport = async (platform, chatId, userId, text, sen
         cleanText.includes('ایجاد دستور پرداخت')
     ) {
         await handleCallback(platform, chatId, userId, 'ACT_PAY_NEW', sendFn, sendPhotoFn, sendDocFn, checkMembershipFn);
+        return true;
+    }
+
+    // 9.1 Payment Order Attachment (افزودن پیوست به سند پرداخت)
+    if (
+        cleanText.includes('پیوست به سند') ||
+        cleanText.includes('افزودن پیوست') ||
+        cleanText.includes('پیوست دستور پرداخت') ||
+        cleanText.includes('اتچ دستور پرداخت') ||
+        cleanText.includes('اتچ فاکتور') ||
+        cleanText.includes('پیوست پرداخت') ||
+        cleanText.includes('ارسال عکس فاکتور') ||
+        cleanText.includes('ارسال پیوست')
+    ) {
+        await handleCallback(platform, chatId, userId, 'ACT_ATTACH_PAY_START', sendFn, sendPhotoFn, sendDocFn, checkMembershipFn);
         return true;
     }
 
@@ -1026,6 +1065,7 @@ const KEYBOARDS = {
             [{ text: '➕ ثبت دستور پرداخت', callback_data: 'ACT_PAY_NEW' }],
             [{ text: '📂 کارتابل پرداخت (تایید)', callback_data: 'ACT_PAY_CARTABLE' }],
             [{ text: '🔎 جستجو با شماره', callback_data: 'ACT_SEARCH_ID_PAY' }, { text: '🗄️ آرشیو تاریخی', callback_data: 'ACT_ARCHIVE_PAY' }],
+            [{ text: '📎 افزودن پیوست به سند پرداخت (عکس/PDF)', callback_data: 'ACT_ATTACH_PAY_START' }],
             [{ text: '🔙 بازگشت', callback_data: 'MENU_MAIN' }]
         ]
     },
@@ -1133,8 +1173,18 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
             let pdfCallback = '';
 
             if (type === 'PAYMENT') {
-                caption = `📄 *شماره ${item.trackingNumber}*\n🏢 شرکت: ${item.payingCompany || '-'}\n📅 تاریخ: ${toShamsiFull(item.date)}\n👤 ذینفع: ${item.payee}\n💰 مبلغ: ${parseInt(item.totalAmount).toLocaleString()} ریال\n📝 بابت: ${item.description}\n🔄 وضعیت: ${item.status}\n👤 درخواست‌کننده: ${item.requester || '-'}`;
-                pdfCallback = `GEN_PDF_ORDER_${item.id}`;
+                const hasAtt = (item.attachments && item.attachments.length > 0) || (item.archiveAttachments && item.archiveAttachments.length > 0);
+                const attCount = (item.attachments?.length || 0) + (item.archiveAttachments?.length || 0);
+
+                caption = `📄 *دستور پرداخت #${item.trackingNumber}*\n🏢 شرکت: ${item.payingCompany || '-'}\n📅 تاریخ: ${toShamsiFull(item.date)}\n👤 ذینفع: ${item.payee}\n💰 مبلغ: ${parseInt(item.totalAmount).toLocaleString()} ریال\n📝 بابت: ${item.description}\n🔄 وضعیت: ${item.status}\n👤 درخواست‌کننده: ${item.requester || '-'}\n📎 پیوست: ${hasAtt ? `✅ دارد (${attCount} فایل)` : '❌ ندارد'}`;
+                
+                const btnRow1 = [{ text: '📥 دریافت PDF سند', callback_data: `GEN_PDF_ORDER_${item.id}` }];
+                if (hasAtt) {
+                    btnRow1.push({ text: `📎 مشاهده پیوست‌ها (${attCount})`, callback_data: `ACT_VIEW_PAY_ATTACH_${item.id}` });
+                }
+                const btnRow2 = [{ text: '📎 افزودن پیوست (عکس/PDF)', callback_data: `ACT_ATTACH_PAY_FOR_${item.id}` }];
+                
+                kb = { inline_keyboard: [btnRow1, btnRow2] };
             } else if (type === 'EXIT') {
                 const totalReqCount = (item.items && item.items.length > 0) 
                     ? item.items.reduce((sum, i) => sum + (Number(i.cartonCount) || 0), 0)
@@ -1151,7 +1201,9 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
                 caption = `📥 *رسید ورود #${item.proformaNumber}*\n📅 تاریخ: ${toShamsiFull(item.date)}\n📦 اقلام: ${item.items.length} ردیف`;
             }
 
-            const kb = pdfCallback ? { inline_keyboard: [[{ text: '📥 دریافت PDF', callback_data: pdfCallback }]] } : undefined;
+            if (type !== 'PAYMENT') {
+                kb = pdfCallback ? { inline_keyboard: [[{ text: '📥 دریافت PDF', callback_data: pdfCallback }]] } : undefined;
+            }
 
             if (img && img.length > 0) {
                 await sendPhotoFn(platform, chatId, img, caption, { reply_markup: kb });
@@ -2451,6 +2503,114 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
         return;
     }
 
+    // --- PAYMENT ORDER ATTACHMENT WAITING NUMBERS ---
+    if (session.state === 'WAIT_PAYMENT_ORDER_FOR_ATTACH') {
+        const rawDigits = text.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^0-9a-zA-Z_-]/g, '').trim();
+        if (!rawDigits) {
+            return sendFn(chatId, "⚠️ لطفاً شماره پیگیری یا شماره سند معتبر را به صورت عدد وارد کنید:");
+        }
+        
+        const targetOrder = (db.orders || []).find(o => 
+            String(o.trackingNumber) === rawDigits || 
+            String(o.id) === rawDigits || 
+            (o.trackingNumber && String(o.trackingNumber) === rawDigits)
+        );
+
+        if (!targetOrder) {
+            return sendFn(chatId, `❌ دستور پرداختی با شماره پیگیری/سند «${rawDigits}» در سیستم یافت نشد.\n\nلطفاً شماره سند را مجدداً بررسی و وارد فرمایید، یا برای انصراف /start را بزنید:`);
+        }
+
+        session.state = 'WAIT_PAYMENT_ORDER_ATTACHMENT_FILE';
+        session.data.attachOrderId = targetOrder.id;
+        session.data.attachOrderTracking = targetOrder.trackingNumber;
+        session.data.paymentAttachFiles = [];
+
+        const existingAtts = (targetOrder.attachments?.length || 0) + (targetOrder.archiveAttachments?.length || 0);
+
+        const info = `💸 *دستور پرداخت #${targetOrder.trackingNumber}*
+🏢 شرکت: ${targetOrder.payingCompany || '-'}
+👤 ذینفع: ${targetOrder.payee || '-'}
+💰 مبلغ: ${Number(targetOrder.totalAmount || 0).toLocaleString()} ریال
+📝 بابت: ${targetOrder.description || '-'}
+🔄 وضعیت: ${targetOrder.status}
+📎 پیوست‌های فعلی: ${existingAtts > 0 ? `✅ ${existingAtts} فایل` : '❌ ندارد'}
+
+📸 *اکنون لطفاً عکس‌های فاکتور/رسید یا فایل PDF پیوست را ارسال کنید.*
+(می‌توانید چند عکس یا فایل را پشت سر هم بفرستید)`;
+
+        return sendFn(chatId, info, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 انصراف و بازگشت', callback_data: 'MENU_PAYMENT' }]
+                ]
+            }
+        });
+    }
+
+    if (session.state === 'WAIT_PAYMENT_ORDER_FOR_ATTACH_WITH_FILE') {
+        const rawDigits = text.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[^0-9a-zA-Z_-]/g, '').trim();
+        if (!rawDigits) {
+            return sendFn(chatId, "⚠️ لطفاً شماره پیگیری یا شماره سند معتبر را وارد کنید:");
+        }
+        
+        const targetOrder = (db.orders || []).find(o => 
+            String(o.trackingNumber) === rawDigits || 
+            String(o.id) === rawDigits
+        );
+
+        if (!targetOrder) {
+            return sendFn(chatId, `❌ دستور پرداختی با شماره «${rawDigits}» یافت نشد. لطفاً شماره صحیح را وارد کنید:`);
+        }
+
+        const files = session.data.paymentAttachFiles || [];
+        if (files.length === 0) {
+            session.state = 'IDLE';
+            return sendFn(chatId, "⚠️ فایلی برای پیوست موجود نیست.");
+        }
+
+        try {
+            let pdfBuffer;
+            if (files.length === 1 && (files[0].type === 'pdf' || (files[0].fileName && files[0].fileName.endsWith('.pdf')))) {
+                pdfBuffer = files[0].buffer;
+            } else {
+                pdfBuffer = await mergeFilesToPdf(files);
+            }
+
+            const safeName = `pay_attach_${targetOrder.trackingNumber}_${Date.now()}.pdf`;
+            const uploadDir = path.join(process.cwd(), 'uploads');
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            fs.writeFileSync(path.join(uploadDir, safeName), pdfBuffer);
+            const fileUrl = `/uploads/${safeName}`;
+
+            if (!targetOrder.attachments) targetOrder.attachments = [];
+            targetOrder.attachments.push({
+                id: generateUUID(),
+                fileName: `پیوست_سند_${targetOrder.trackingNumber}.pdf`,
+                name: `پیوست_سند_${targetOrder.trackingNumber}.pdf`,
+                url: fileUrl,
+                data: fileUrl,
+                type: 'application/pdf',
+                size: pdfBuffer.length,
+                uploadedAt: Date.now(),
+                uploadedBy: user ? user.fullName : (platform === 'bale' ? 'کاربر بله' : 'کاربر ربات')
+            });
+
+            saveDb(db);
+            session.state = 'IDLE';
+            session.data.paymentAttachFiles = [];
+
+            await sendFn(chatId, `✅ فایل پیوست با موفقیت به دستور پرداخت #${targetOrder.trackingNumber} متصل و ذخیره شد.`);
+            try {
+                await sendDocFn(chatId, pdfBuffer, `پیوست_سند_${targetOrder.trackingNumber}.pdf`, `📎 فایل PDF پیوست سند #${targetOrder.trackingNumber}`);
+            } catch (_) {}
+
+            return sendFn(chatId, "می‌توانید سایر امور مالی را مدیریت نمایید:", { reply_markup: KEYBOARDS.PAYMENT });
+        } catch (err) {
+            console.error("Error attaching file to order:", err);
+            return sendFn(chatId, `❌ خطا در ذخیره پیوست: ${err.message}`);
+        }
+    }
+
     // --- STATE MACHINES ---
 
     // 1. Manual Date Search
@@ -2537,7 +2697,15 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
         dbManager.saveDb(db);
         console.log(`[Bot] Registered Payment #${order.trackingNumber} for user ${user ? user.fullName : chatId}`);
         session.state = 'IDLE';
-        await sendFn(chatId, `✅ دستور پرداخت #${order.trackingNumber} با موفقیت ثبت شد.`);
+        
+        await sendFn(chatId, `✅ دستور پرداخت #${order.trackingNumber} با موفقیت ثبت شد.\n\n📎 برای ارسال و متصل کردن فاکتور/رسید، دکمه زیر را لمس کنید:`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: `📎 افزودن پیوست به همین سند (#${order.trackingNumber})`, callback_data: `ACT_ATTACH_PAY_FOR_${order.id}` }],
+                    [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
+                ]
+            }
+        });
         return;
     }
 
@@ -5047,6 +5215,219 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
         return sendFn(chatId, "💵 مبلغ پرداختی (ریال) را وارد کنید:");
     }
 
+    if (data === 'ACT_ATTACH_PAY_START') {
+        session.state = 'WAIT_PAYMENT_ORDER_FOR_ATTACH';
+        session.data.paymentAttachFiles = [];
+        return sendFn(chatId, "🔢 لطفاً شماره سند یا شماره پیگیری دستور پرداخت مورد نظر را وارد کنید:", {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 بازگشت به مدیریت پرداخت', callback_data: 'MENU_PAYMENT' }]
+                ]
+            }
+        });
+    }
+
+    if (data.startsWith('ACT_ATTACH_PAY_FOR_')) {
+        const orderId = data.replace('ACT_ATTACH_PAY_FOR_', '');
+        const order = (db.orders || []).find(o => o.id === orderId || String(o.trackingNumber) === orderId);
+        if (!order) return sendFn(chatId, "❌ دستور پرداخت مورد نظر یافت نشد.");
+
+        session.state = 'WAIT_PAYMENT_ORDER_ATTACHMENT_FILE';
+        session.data.attachOrderId = order.id;
+        session.data.attachOrderTracking = order.trackingNumber;
+        session.data.paymentAttachFiles = [];
+
+        const existingAtts = (order.attachments?.length || 0) + (order.archiveAttachments?.length || 0);
+
+        return sendFn(chatId, `📎 *افزودن پیوست به دستور پرداخت #${order.trackingNumber}*
+🏢 شرکت: ${order.payingCompany || '-'}
+👤 ذینفع: ${order.payee || '-'}
+💰 مبلغ: ${Number(order.totalAmount || 0).toLocaleString()} ریال
+📎 پیوست‌های فعلی: ${existingAtts > 0 ? `✅ ${existingAtts} فایل` : '❌ ندارد'}
+
+📸 *لطفاً عکس‌های فاکتور، رسید یا فایل PDF پیوست را ارسال فرمایید:*`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 بازگشت به مدیریت پرداخت', callback_data: 'MENU_PAYMENT' }]
+                ]
+            }
+        });
+    }
+
+    if (data.startsWith('ACT_VIEW_PAY_ATTACH_')) {
+        const orderId = data.replace('ACT_VIEW_PAY_ATTACH_', '');
+        const order = (db.orders || []).find(o => o.id === orderId || String(o.trackingNumber) === orderId);
+        if (!order) return sendFn(chatId, "❌ دستور پرداخت مورد نظر یافت نشد.");
+
+        const allAtts = [...(order.attachments || []), ...(order.archiveAttachments || [])];
+        if (allAtts.length === 0) {
+            return sendFn(chatId, `📎 دستور پرداخت #${order.trackingNumber} هیچ فایل پیوستی ندارد.`, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '➕ افزودن پیوست به همین سند', callback_data: `ACT_ATTACH_PAY_FOR_${order.id}` }],
+                        [{ text: '🔙 بازگشت', callback_data: 'MENU_PAYMENT' }]
+                    ]
+                }
+            });
+        }
+
+        await sendFn(chatId, `⏳ در حال آماده‌سازی و ارسال ${allAtts.length} فایل پیوست برای سند #${order.trackingNumber}...`);
+
+        let sentAny = false;
+        for (let i = 0; i < allAtts.length; i++) {
+            const att = allAtts[i];
+            try {
+                const buffer = getAttachmentBuffer(att);
+                if (!buffer || buffer.length === 0) continue;
+                
+                const isPdf = (att.type && att.type.includes('pdf')) || (att.fileName && att.fileName.toLowerCase().endsWith('.pdf')) || (att.name && att.name.toLowerCase().endsWith('.pdf'));
+                const fileName = att.fileName || att.name || `attachment_${i+1}.${isPdf ? 'pdf' : 'jpg'}`;
+                const caption = `📎 پیوست (${i+1}/${allAtts.length}) سند #${order.trackingNumber}\n📄 نام فایل: ${fileName}`;
+
+                if (isPdf) {
+                    await sendDocFn(chatId, buffer, fileName, caption);
+                    sentAny = true;
+                } else {
+                    try {
+                        await sendPhotoFn(platform, chatId, buffer, caption);
+                        sentAny = true;
+                    } catch (_) {
+                        await sendDocFn(chatId, buffer, fileName, caption);
+                        sentAny = true;
+                    }
+                }
+            } catch (fileErr) {
+                console.error("[View Attach Err]:", fileErr.message);
+            }
+        }
+
+        if (!sentAny) {
+            await sendFn(chatId, `⚠️ امکان بازخوانی فایل‌های پیوست از سرور میسر نشد.`);
+        }
+
+        return sendFn(chatId, `✅ نمایش پیوست‌های سند #${order.trackingNumber} پایان یافت.`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '➕ افزودن پیوست جدید', callback_data: `ACT_ATTACH_PAY_FOR_${order.id}` }],
+                    [{ text: '🔙 بازگشت', callback_data: 'MENU_PAYMENT' }]
+                ]
+            }
+        });
+    }
+
+    if (data.startsWith('ACT_PAY_ATTACH_MERGE_SAVE_')) {
+        const orderId = data.replace('ACT_PAY_ATTACH_MERGE_SAVE_', '');
+        const order = (db.orders || []).find(o => o.id === orderId || String(o.trackingNumber) === orderId);
+        if (!order) return sendFn(chatId, "❌ دستور پرداخت مورد نظر یافت نشد.");
+
+        const files = session.data.paymentAttachFiles || [];
+        if (files.length === 0) {
+            return sendFn(chatId, "⚠️ هیچ عکس یا فایلی ارسال نشده است. لطفاً ابتدا تصاویر یا فایل PDF را بفرستید.");
+        }
+
+        await sendFn(chatId, `⏳ در حال ادغام ${files.length} فایل و تبدیل به PDF پیوست...`);
+
+        try {
+            let pdfBuffer;
+            if (files.length === 1 && (files[0].type === 'pdf' || (files[0].fileName && files[0].fileName.endsWith('.pdf')))) {
+                pdfBuffer = files[0].buffer;
+            } else {
+                pdfBuffer = await mergeFilesToPdf(files);
+            }
+
+            const safeName = `pay_attach_${order.trackingNumber}_${Date.now()}.pdf`;
+            const uploadDir = path.join(process.cwd(), 'uploads');
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            fs.writeFileSync(path.join(uploadDir, safeName), pdfBuffer);
+            const fileUrl = `/uploads/${safeName}`;
+
+            if (!order.attachments) order.attachments = [];
+            order.attachments.push({
+                id: generateUUID(),
+                fileName: `پیوست_سند_${order.trackingNumber}.pdf`,
+                name: `پیوست_سند_${order.trackingNumber}.pdf`,
+                url: fileUrl,
+                data: fileUrl,
+                type: 'application/pdf',
+                size: pdfBuffer.length,
+                uploadedAt: Date.now(),
+                uploadedBy: user ? user.fullName : (platform === 'bale' ? 'کاربر بله' : 'کاربر تلگرام')
+            });
+
+            saveDb(db);
+            session.state = 'IDLE';
+            session.data.paymentAttachFiles = [];
+
+            await sendFn(chatId, `✅ فایل‌های پیوست با موفقیت ادغام و به سند #${order.trackingNumber} متصل شدند.`);
+            try {
+                await sendDocFn(chatId, pdfBuffer, `پیوست_سند_${order.trackingNumber}.pdf`, `📎 فایل نهایی پیوست دستور پرداخت #${order.trackingNumber}`);
+            } catch (_) {}
+
+            return sendFn(chatId, "عملیات دیگری مد نظر دارید؟", { reply_markup: KEYBOARDS.PAYMENT });
+        } catch (err) {
+            console.error("Error merging payment attachments:", err);
+            return sendFn(chatId, `❌ خطا در پردازش و ذخیره PDF: ${err.message}`);
+        }
+    }
+
+    if (data.startsWith('ACT_PAY_ATTACH_SAVE_RAW_')) {
+        const orderId = data.replace('ACT_PAY_ATTACH_SAVE_RAW_', '');
+        const order = (db.orders || []).find(o => o.id === orderId || String(o.trackingNumber) === orderId);
+        if (!order) return sendFn(chatId, "❌ دستور پرداخت مورد نظر یافت نشد.");
+
+        const files = session.data.paymentAttachFiles || [];
+        if (files.length === 0) {
+            return sendFn(chatId, "⚠️ هیچ فایلی برای ذخیره ارسال نشده است.");
+        }
+
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+        if (!order.attachments) order.attachments = [];
+
+        for (const file of files) {
+            const ext = (file.fileName && file.fileName.includes('.')) ? file.fileName.split('.').pop() : (file.type === 'image' ? 'jpg' : 'pdf');
+            const safeName = `pay_attach_${order.trackingNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}.${ext}`;
+            fs.writeFileSync(path.join(uploadDir, safeName), file.buffer);
+            const fileUrl = `/uploads/${safeName}`;
+
+            order.attachments.push({
+                id: generateUUID(),
+                fileName: file.fileName || safeName,
+                name: file.fileName || safeName,
+                url: fileUrl,
+                data: fileUrl,
+                type: file.type === 'image' ? 'image/jpeg' : 'application/pdf',
+                size: file.buffer.length,
+                uploadedAt: Date.now(),
+                uploadedBy: user ? user.fullName : (platform === 'bale' ? 'کاربر بله' : 'کاربر تلگرام')
+            });
+        }
+
+        saveDb(db);
+        const count = files.length;
+        session.state = 'IDLE';
+        session.data.paymentAttachFiles = [];
+
+        await sendFn(chatId, `✅ تعداد ${count} فایل با موفقیت به عنوان پیوست به دستور پرداخت #${order.trackingNumber} متصل شد.`);
+        return sendFn(chatId, "عملیات دیگری مد نظر دارید؟", { reply_markup: KEYBOARDS.PAYMENT });
+    }
+
+    if (data === 'ACT_ATTACH_RECENT_TO_PAYMENT') {
+        if (!session.data.recentFile) {
+            return sendFn(chatId, "⚠️ فایلی یافت نشد. لطفاً ابتدا عکس یا فایل PDF را ارسال نمایید.");
+        }
+        session.data.paymentAttachFiles = [session.data.recentFile];
+        session.state = 'WAIT_PAYMENT_ORDER_FOR_ATTACH_WITH_FILE';
+        return sendFn(chatId, "🔢 لطفاً شماره سند یا شماره پیگیری دستور پرداختی که مایلید این فایل به آن متصل شود را وارد کنید:", {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔙 انصراف', callback_data: 'MENU_PAYMENT' }]
+                ]
+            }
+        });
+    }
+
     if (data === 'ACT_PAY_CARTABLE') {
         // Logic to show pending payments based on role
         let pendingOrders = [];
@@ -5072,6 +5453,9 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
                 });
             }
             
+            const hasAtt = (order.attachments && order.attachments.length > 0) || (order.archiveAttachments && order.archiveAttachments.length > 0);
+            const attCount = (order.attachments?.length || 0) + (order.archiveAttachments?.length || 0);
+
             const methodType = (order.paymentDetails && order.paymentDetails.length > 0) ? order.paymentDetails[0].method : '-';
             const caption = `💸 *دستور پرداخت کارتابل*
 --------------------------
@@ -5084,13 +5468,23 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
 🏦 *بانک صادرکننده:* ${paymentBankInfo}
 💰 *مبلغ کل:* ${Number(order.totalAmount || 0).toLocaleString()} ریال
 📝 *بابت/توضیحات:* ${order.description || '-'}
-🔄 *وضعیت فعلی:* ${order.status}${detailsText}`;
+🔄 *وضعیت فعلی:* ${order.status}
+📎 *پیوست:* ${hasAtt ? `✅ دارد (${attCount} فایل)` : '❌ ندارد'}${detailsText}`;
+            
+            const actionRow = [
+                { text: '✅ تایید', callback_data: `APP_PAY_${order.id}` },
+                { text: '❌ رد', callback_data: `REJ_PAY_${order.id}` }
+            ];
+            const fileRow = [];
+            if (hasAtt) {
+                fileRow.push({ text: `📎 مشاهده پیوست‌ها (${attCount})`, callback_data: `ACT_VIEW_PAY_ATTACH_${order.id}` });
+            }
+            fileRow.push({ text: '📎 افزودن پیوست', callback_data: `ACT_ATTACH_PAY_FOR_${order.id}` });
+
             const kb = {
                 inline_keyboard: [
-                    [
-                        { text: '✅ تایید', callback_data: `APP_PAY_${order.id}` },
-                        { text: '❌ رد', callback_data: `REJ_PAY_${order.id}` }
-                    ]
+                    actionRow,
+                    fileRow
                 ]
             };
             await sendFn(chatId, caption, { reply_markup: kb });
@@ -6874,6 +7268,29 @@ export const handleIncomingFile = async (platform, chatId, senderId, fileData, s
     if (!sessions[chatId]) sessions[chatId] = { state: 'IDLE', data: {} };
     const session = sessions[chatId];
 
+    // If in Payment Order Attachment waiting state:
+    if (session.state === 'WAIT_PAYMENT_ORDER_ATTACHMENT_FILE') {
+        session.data.paymentAttachFiles = session.data.paymentAttachFiles || [];
+        session.data.paymentAttachFiles.push(fileData);
+
+        const count = session.data.paymentAttachFiles.length;
+        const isImg = fileData.type === 'image';
+        const typeLabel = isImg ? '🖼️ تصویر' : '📄 سند PDF';
+        const trackingNo = session.data.attachOrderTracking || '';
+        const orderId = session.data.attachOrderId || '';
+
+        return sendFn(chatId, `✅ ${typeLabel} *${fileData.fileName || ''}* دریافت شد.\n\n📊 تعداد کل فایل‌های دریافتی برای سند #${trackingNo}: *${count} عدد*\n\n🔹 می‌توانید تصاویر یا فایل‌های بعدی را بفرستید.\n🔹 برای ذخیره نهایی، یکی از گزینه‌های زیر را انتخاب کنید:`, {
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: `📑 تبدیل به یک PDF تجمیعی و اتصال به سند (${count} فایل)`, callback_data: `ACT_PAY_ATTACH_MERGE_SAVE_${orderId}` }],
+                    [{ text: `💾 ذخیره به صورت فایل‌های مجزا (${count} فایل)`, callback_data: `ACT_PAY_ATTACH_SAVE_RAW_${orderId}` }],
+                    [{ text: '🗑️ پاک کردن صف این سند', callback_data: `ACT_ATTACH_PAY_FOR_${orderId}` }],
+                    [{ text: '🔙 انصراف و بازگشت', callback_data: 'MENU_PAYMENT' }]
+                ]
+            }
+        });
+    }
+
     // If in PDF merge collecting state:
     if (session.state === 'MERGE_PDF_COLLECTING') {
         session.data.mergeFiles = session.data.mergeFiles || [];
@@ -6922,6 +7339,7 @@ export const handleIncomingFile = async (platform, chatId, senderId, fileData, s
         return sendFn(chatId, `📥 ${typeLabel} *${fileData.fileName || ''}* دریافت شد.\n\nمایلید چه عملیاتی روی این فایل انجام دهید؟`, {
             reply_markup: {
                 inline_keyboard: [
+                    [{ text: '📎 اتصال به یک دستور پرداخت (پیوست فاکتور/رسید)', callback_data: 'ACT_ATTACH_RECENT_TO_PAYMENT' }],
                     [{ text: '📑 افزودن به صف ساخت PDF تجمیعی', callback_data: 'ACT_MERGE_PDF_ADD_RECENT' }],
                     [{ text: '📂 ثبت به عنوان نامه در دبیرخانه', callback_data: 'SEC_NEW_LETTER_FLOW' }],
                     [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]

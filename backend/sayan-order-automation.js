@@ -205,14 +205,18 @@ export const getHistoricalVendorMap = async (forceRefresh = false) => {
 
     try {
         const sql = `
-            SELECT 
+            SELECT TOP 3000
                 t.Field_017 as Note,
                 t.Field_010 as PersonCode,
                 p.Field_006 as PersonName,
                 COUNT(*) as MatchCount
             FROM STR_TBL_010 t
             LEFT JOIN ACT_TBL_007 p ON t.Field_010 = p.Field_005
-            WHERE t.Field_010 IS NOT NULL AND t.Field_017 IS NOT NULL AND t.Field_009 IN ('57', '11', '12', '13', '14')
+            WHERE t.Field_004 IN ('2', '3', '4') 
+              AND t.Field_010 IS NOT NULL 
+              AND t.Field_017 IS NOT NULL 
+              AND LEN(t.Field_017) >= 3
+              AND t.Field_009 IN ('57', '11', '12', '13', '14')
             GROUP BY t.Field_017, t.Field_010, p.Field_006
             ORDER BY MatchCount DESC
         `;
@@ -448,19 +452,19 @@ export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
             t11.Field_036 as UnitId,
             t11.Field_037 as WarehouseCode,
             COALESCE(
-                NULLIF(RTRIM(LTRIM(g03.Field_008)), ''),
-                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
-                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
-                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
-                RTRIM(LTRIM(t11.Field_005))
+                NULLIF(g03.Field_008, ''),
+                NULLIF(s04.Field_003, ''),
+                NULLIF(t22.Field_004, ''),
+                NULLIF(t02.Field_003, ''),
+                t11.Field_005
             ) as ItemName,
             COALESCE(u.Field_003, N'عدد') as UnitName
         FROM STR_TBL_011 t11
-        LEFT JOIN GNR_TBL_003 g03 ON RTRIM(LTRIM(g03.Field_003)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN GNR_TBL_002 u ON RTRIM(LTRIM(u.Field_006)) = RTRIM(LTRIM(t11.Field_036))
+        LEFT JOIN GNR_TBL_003 g03 ON g03.Field_003 = t11.Field_005
+        LEFT JOIN STR_TBL_004 s04 ON s04.Field_004 = t11.Field_005
+        LEFT JOIN IND_TBL_022 t22 ON t22.Field_005 = t11.Field_005
+        LEFT JOIN IND_TBL_002 t02 ON t02.Field_008 = t11.Field_005
+        LEFT JOIN GNR_TBL_002 u ON u.Field_006 = t11.Field_036
         WHERE t11.Field_003 = '${fiscalYear}' 
           AND t11.Field_004 = '${docNo}' 
           AND t11.Field_012 = 3
@@ -499,33 +503,20 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     }
     const doc53 = docRows[0];
 
-    // 2. Verify that it is not already converted
+    // 2. Verify that it is not already converted (high-speed indexed check)
     const verifyNotConverted = `
-        SELECT COUNT(*) as ExistsCount
-        FROM STR_TBL_010 t57
-        WHERE t57.Field_004 = '${doc53.FiscalYear}'
-          AND t57.Field_009 = '57'
+        SELECT TOP 1 Field_005 as ExistsDocNo
+        FROM STR_TBL_010
+        WHERE Field_004 = '${doc53.FiscalYear}'
+          AND Field_009 = '57'
           AND (
-              EXISTS (
-                  SELECT 1 FROM STR_TBL_011 i53
-                  INNER JOIN STR_TBL_011 i57 
-                      ON i57.Field_003 = '${doc53.FiscalYear}' 
-                     AND i57.Field_012 = 3 
-                     AND (i57.Field_018 = i53.Field_001 OR i57.Field_008 = i53.Field_001)
-                  WHERE i53.Field_003 = '${doc53.FiscalYear}' 
-                    AND i53.Field_004 = '${doc53.DocNo}' 
-                    AND i53.Field_012 = 3
-                    AND i57.Field_004 = t57.Field_005
-              )
-              OR (
-                  '${doc53.SubCode || ''}' <> '' 
-                  AND t57.Field_007 = '${doc53.SubCode}'
-              )
+              ('${doc53.SubCode || ''}' <> '' AND Field_007 = '${doc53.SubCode}')
+              OR ('${doc53.DocNo || ''}' <> '' AND Field_007 = '${doc53.DocNo}')
           )
     `;
     const convertedRows = await executeSayanQuery(verifyNotConverted);
-    if (convertedRows[0]?.ExistsCount > 0) {
-        throw new Error(`این درخواست خرید (شماره ${doc53.DocNo}) قبلاً در سایان به پیش‌فاکتور تبدیل شده است.`);
+    if (convertedRows && convertedRows.length > 0 && convertedRows[0]?.ExistsDocNo) {
+        throw new Error(`این درخواست خرید (شماره ${doc53.DocNo}) قبلاً در سایان به پیش‌فاکتور شماره ${convertedRows[0].ExistsDocNo} تبدیل شده است.`);
     }
 
     // 3. Resolve Vendor
@@ -568,8 +559,11 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     const totalAmount = items.reduce((sum, it) => sum + (Number(it.Qty) || 1), 0);
     const desc = `تامین کننده: ${targetVendorCode} | درخواست کننده: ${requesterCode} | کد فرعی: ${subCode} | توضیحات: ${note} | نوع: غیر رسمی`.replace(/'/g, "''");
 
-    let itemsInsertSql = '';
+    // Build batch multi-value inserts (in chunks of 50 for max SQL compatibility)
+    const itemChunks = [];
+    let currentChunk = [];
     let rowIndex = 1;
+
     for (const item of items) {
         const itemCode = (item.ItemCode || '').replace(/'/g, "''");
         const qty = Number(item.Qty) || 1;
@@ -579,16 +573,28 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         const unitId = (item.UnitId || '11').replace(/'/g, "''");
         const whCode = (item.WarehouseCode || '30310').replace(/'/g, "''");
 
+        currentChunk.push(
+            `(@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''${itemCode}'', ${qty}, ${secQty}, N''${itemRowId}'', 0, N''${composite}'', N'''', 3, N''${targetVendorCode}'', N''${itemRowId}'', 0, 1, 0, N''تعداد کارتن: 0 | تخفیف: 0 | ارزش افزوده: 0'', N''${rowIndex}'', 0, N''${unitId}'', N''${whCode}'')`
+        );
+        rowIndex++;
+
+        if (currentChunk.length >= 50) {
+            itemChunks.push(currentChunk);
+            currentChunk = [];
+        }
+    }
+    if (currentChunk.length > 0) {
+        itemChunks.push(currentChunk);
+    }
+
+    let itemsInsertSql = '';
+    for (const chunk of itemChunks) {
         itemsInsertSql += `
         N'IN' + N'SERT INTO STR_TBL_011 (' +
         N'Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, ' +
         N'Field_010, Field_011, Field_012, Field_013, Field_018, Field_020, Field_024, ' +
-        N'Field_025, Field_031, Field_034, Field_035, Field_036, Field_037) ' +
-        N'VALUES (' +
-        N'@FiscalYear, CAST(@NextDocNo AS NVARCHAR(20)), N''${itemCode}'', ${qty}, ${secQty}, N''${itemRowId}'', 0, ' +
-        N'N''${composite}'', N'''', 3, N''${targetVendorCode}'', N''${itemRowId}'', 0, 1, ' +
-        N'0, N''تعداد کارتن: 0 | تخفیف: 0 | ارزش افزوده: 0'', N''${rowIndex}'', 0, N''${unitId}'', N''${whCode}''); ' + `;
-        rowIndex++;
+        N'Field_025, Field_031, Field_034, Field_035, Field_036, Field_037) VALUES ' +
+        N'${chunk.join(', ')}; ' + `;
     }
 
     // Dynamic Sayan ERP header parameters (STR_TBL_013)
@@ -628,8 +634,7 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         ${itemsInsertSql}
         ${paramsInsertSql}
         
-        N'IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) ' +
-        N'VALUES (${doc53Id}, @FiscalYear, ${doc53.DocNo}, 3, N''53'', GETDATE(), @New57Id, GETDATE(), ${items.length}, 0, 0); ' +
+        N'BEGIN TRY IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) VALUES (${doc53Id}, @FiscalYear, ${doc53.DocNo}, 3, N''53'', GETDATE(), @New57Id, GETDATE(), ${items.length}, 0, 0); END TRY BEGIN CATCH END CATCH; ' +
         
         ${endAction}
     );

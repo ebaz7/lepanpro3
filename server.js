@@ -99,7 +99,7 @@ import { GoogleGenAI, Type } from '@google/genai';
 import * as jalaali from 'jalaali-js';
 import * as sayanOrderAuto from './backend/sayan-order-automation.js';
 import * as sayanChequeService from './backend/sayan-cheque-service.js';
-import { mergeFilesToPdf } from './backend/pdf-merger.js';
+import { mergeFilesToPdf, enhanceDocumentImage } from './backend/pdf-merger.js';
 
 const getDb = dbManager.getDb;
 const saveDb = dbManager.saveDb;
@@ -9711,10 +9711,10 @@ app.post('/api/upload', (req, res) => {
     }
 });
 
-// PDF / Image merge tool endpoint
+// PDF / Image merge tool endpoint with CamScanner Magic Color enhancements
 app.post('/api/tools/merge-to-pdf', async (req, res) => {
     try {
-        const { files } = req.body;
+        const { files, filter = 'magic_color' } = req.body;
         if (!Array.isArray(files) || files.length === 0) {
             return res.status(400).json({ error: 'هیچ فایلی جهت ادغام ارسال نشده است.' });
         }
@@ -9746,7 +9746,7 @@ app.post('/api/tools/merge-to-pdf', async (req, res) => {
             return res.status(400).json({ error: 'هیچ فایل معتبری جهت پردازش یافت نشد.' });
         }
 
-        const mergedBuffer = await mergeFilesToPdf(preparedFiles);
+        const mergedBuffer = await mergeFilesToPdf(preparedFiles, { filter });
         const outputFileName = `Merged_${Date.now()}.pdf`;
         const outputPath = path.join(UPLOADS_DIR, outputFileName);
         fs.writeFileSync(outputPath, mergedBuffer);
@@ -9760,6 +9760,32 @@ app.post('/api/tools/merge-to-pdf', async (req, res) => {
     } catch (e) {
         console.error("PDF Merge endpoint error:", e);
         res.status(500).json({ error: 'خطا در تبدیل و ادغام فایل‌ها: ' + e.message });
+    }
+});
+
+// Single image CamScanner effect enhancement endpoint
+app.post('/api/tools/enhance-image', async (req, res) => {
+    try {
+        const { imageData, filter = 'magic_color' } = req.body;
+        if (!imageData) {
+            return res.status(400).json({ error: 'تصویری جهت ارتقاء کیفیت ارسال نشده است.' });
+        }
+        const base64Clean = imageData.replace(/^data:.*;base64,/, '');
+        const inputBuffer = Buffer.from(base64Clean, 'base64');
+        const enhancedBuffer = await enhanceDocumentImage(inputBuffer, filter);
+        const fileName = `enhanced_${Date.now()}.png`;
+        const outputPath = path.join(UPLOADS_DIR, fileName);
+        fs.writeFileSync(outputPath, enhancedBuffer);
+
+        res.json({
+            success: true,
+            fileName,
+            url: `/uploads/${fileName}`,
+            imageData: `data:image/png;base64,${enhancedBuffer.toString('base64')}`
+        });
+    } catch (e) {
+        console.error("Image enhance endpoint error:", e);
+        res.status(500).json({ error: 'خطا در اعمال فیلتر اسکنر: ' + e.message });
     }
 });
 

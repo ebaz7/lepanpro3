@@ -2,21 +2,73 @@ import { PDFDocument } from 'pdf-lib';
 import sharp from 'sharp';
 
 /**
- * Merges a list of image and PDF buffers into a single PDF document.
- * @param {Array<{ buffer: Buffer, type: 'image' | 'pdf' | string, fileName?: string }>} fileList 
+ * Applies CamScanner style Magic Color / Auto Document Enhancement to an image buffer
+ * @param {Buffer} buffer 
+ * @param {'magic_color' | 'crisp_bw' | 'enhance' | 'original'} mode 
  * @returns {Promise<Buffer>}
  */
-export async function mergeFilesToPdf(fileList) {
+export async function enhanceDocumentImage(buffer, mode = 'magic_color') {
+    if (!buffer || buffer.length === 0) return buffer;
+    if (mode === 'original') {
+        return sharp(buffer).rotate().png({ quality: 95, compressionLevel: 6 }).toBuffer();
+    }
+
+    try {
+        let pipeline = sharp(buffer).rotate(); // auto-rotate based on EXIF
+
+        if (mode === 'crisp_bw') {
+            // High-contrast clean Black & White scanner mode
+            pipeline = pipeline
+                .grayscale()
+                .normalize({ lower: 5, upper: 95 })
+                .linear(1.35, -35)
+                .sharpen({ sigma: 1.4, m1: 1.6, m2: 0.8 });
+        } else if (mode === 'enhance') {
+            // Balanced auto-enhancement
+            pipeline = pipeline
+                .normalize({ lower: 2, upper: 98 })
+                .modulate({ brightness: 1.05, saturation: 1.15 })
+                .linear(1.12, -10)
+                .sharpen({ sigma: 1.1, m1: 1.3, m2: 0.6 });
+        } else {
+            // Default: 'magic_color' (CamScanner Magic Color preset)
+            // 1. Normalize levels to stretch histogram (removes dark phone shadows)
+            // 2. Modulate brightness & color saturation (preserves blue/red stamps & seals)
+            // 3. Linear curve to make paper background pristine white while deepening ink
+            // 4. Studio unsharp mask for razor-sharp Persian / English calligraphy & printed text
+            pipeline = pipeline
+                .normalize({ lower: 3, upper: 97 })
+                .modulate({ brightness: 1.08, saturation: 1.35 })
+                .linear(1.22, -16)
+                .sharpen({ sigma: 1.3, m1: 1.5, m2: 0.7 });
+        }
+
+        return await pipeline.png({ quality: 92, compressionLevel: 6 }).toBuffer();
+    } catch (err) {
+        console.warn('[Image Enhancement] Failed to apply filter, falling back to standard image:', err.message);
+        return sharp(buffer).rotate().png({ quality: 90 }).toBuffer().catch(() => buffer);
+    }
+}
+
+/**
+ * Merges a list of image and PDF buffers into a single PDF document with CamScanner auto-enhancement.
+ * @param {Array<{ buffer: Buffer, type: 'image' | 'pdf' | string, fileName?: string }>} fileList 
+ * @param {object} [options] 
+ * @param {'magic_color' | 'crisp_bw' | 'enhance' | 'original'} [options.filter='magic_color']
+ * @returns {Promise<Buffer>}
+ */
+export async function mergeFilesToPdf(fileList, options = {}) {
     if (!Array.isArray(fileList) || fileList.length === 0) {
         throw new Error('هیچ فایلی برای ادغام ارسال نشده است.');
     }
 
+    const filterMode = options.filter || 'magic_color';
     const mergedPdf = await PDFDocument.create();
 
     // Standard A4 dimensions in points (72 points per inch)
     const A4_WIDTH = 595.28;
     const A4_HEIGHT = 841.89;
-    const MARGIN = 20;
+    const MARGIN = 18;
     const MAX_CONTENT_WIDTH = A4_WIDTH - (MARGIN * 2);
     const MAX_CONTENT_HEIGHT = A4_HEIGHT - (MARGIN * 2);
 
@@ -43,15 +95,10 @@ export async function mergeFilesToPdf(fileList) {
                 console.error(`[PDF Merger] Error processing PDF page at index ${index}:`, pdfErr.message);
             }
         } else {
-            // Process Image (JPEG, PNG, WEBP, GIF, TIFF, BMP, etc.)
+            // Process Image with CamScanner Magic Color filter
             try {
-                // Use sharp to normalize and convert to standard PNG for lossless embedding
-                const normalizedPng = await sharp(buffer)
-                    .rotate() // Auto-orient based on EXIF
-                    .png({ quality: 90, compressionLevel: 6 })
-                    .toBuffer();
-
-                const image = await mergedPdf.embedPng(normalizedPng);
+                const enhancedPngBuffer = await enhanceDocumentImage(buffer, filterMode);
+                const image = await mergedPdf.embedPng(enhancedPngBuffer);
                 const { width: imgWidth, height: imgHeight } = image.scale(1);
 
                 // Calculate scaling to fit within A4 margins while maintaining aspect ratio
