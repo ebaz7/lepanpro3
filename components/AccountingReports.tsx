@@ -1310,151 +1310,72 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         }
     };
 
-    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both' | 'current', returnHtml: boolean = false) => {
+    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both', returnHtml: boolean = false) => {
         const fullList = getFilteredTraz(false);
-        const sortedList = type === 'current'
-            ? [...fullList]
-            : fullList
-                .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
-                .sort((a, b) => {
-                    if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
-                    if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
-                    return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
-                });
+        const sortedList = fullList
+            .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
+            .sort((a, b) => {
+                if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
+                if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
+                return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
+            });
 
-        const catMap: Record<string, string> = {
-            '16': 'همه اشخاص (تمام دسته‌ها)',
-            'all': 'همه اشخاص (تمام دسته‌ها)',
-            '11': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
-            'suppliers': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
-            '12': '۱۲ مشتریان (حساب‌های دریافتنی)',
-            'customers': '۱۲ مشتریان (حساب‌های دریافتنی)',
-            '13': '۱۳ پرسنل و همکاران',
-            'personnel': '۱۳ پرسنل و همکاران',
-            '14': '۱۴ سهام‌داران و شرکا',
-            'shareholders': '۱۴ سهام‌داران و شرکا',
-            '15': '۱۵ سایر اشخاص',
-            'others': '۱۵ سایر اشخاص',
-            'debtors': 'بدهکاران',
-            'creditors': 'بستانکاران'
-        };
-
-        const sortLabelMap: Record<string, string> = {
-            sayan_hierarchy: 'سورت استاندارد لایه‌های سایان (۱۱ تا ۱۵)',
-            code: 'کد تفصیلی',
-            name: 'نام الفبایی',
-            balance: 'مانده حساب',
-            abs_balance: 'بیشترین مانده به کمترین',
-            bed: 'گردش بدهکار',
-            bes: 'گردش بستانکار'
-        };
-
-        let title = 'گزارش تراز معین مالی و راس‌گیری سایان ERP';
-        let subInfo = '';
-        if (type === 'current') {
-            title = `گزارش تراز تفصیلی (${catMap[trazCategory] || 'نمای انتخابی'}) همراه با راس‌گیری (FIFO)`;
-            subInfo = `دسته‌بندی: ${catMap[trazCategory] || 'انتخابی کاربر'}  |  سورت: ${sortLabelMap[trazSortBy] || 'جاری'} (${trazSortOrder === 'desc' ? 'نزولی' : 'صعودی'})`;
-        } else if (type === 'bed') {
-            title = 'گزارش مانده بدهکاران و تحلیل روزهای تاخیر راس (FIFO)';
-            subInfo = 'سورت: از بیشترین بدهی به کمترین بدهی (نزولی)';
-        } else if (type === 'bes') {
-            title = 'گزارش مانده بستانکاران و تحلیل راس حساب‌ها (FIFO)';
-            subInfo = 'سورت: از بیشترین طلب به کمترین طلب (نزولی)';
-        } else if (type === 'both') {
-            title = 'گزارش تراز بدهکاران و بستانکاران همراه با تحلیل راس‌گیری (FIFO)';
-            subInfo = 'شامل کلیه اشخاص بدهکار و بستانکار';
-        }
-
-        const totalBed = sortedList.reduce((sum, r) => sum + (r.bed || 0), 0);
-        const totalBes = sortedList.reduce((sum, r) => sum + (r.bes || 0), 0);
-        const totalBal = sortedList.reduce((sum, r) => sum + (r.balance || 0), 0);
-
+        const title = type === 'both' ? 'گزارش مانده بدهکاران و بستانکاران (سورت بیشترین به کمترین)' : (type === 'bed' ? 'گزارش مانده بدهکاران (سورت از بیشترین به کمترین)' : 'گزارش مانده بستانکاران (سورت از بیشترین به کمترین)');
         const docHtml = `
             <html dir="rtl" lang="fa">
             <head>
                 <meta charset="utf-8">
                 <title>${title}</title>
                 <style>
-                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 20px; background: #fff; color: #1e293b; direction: rtl; }
-                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
-                    .header h1 { margin: 0; font-size: 18px; color: #0f172a; font-weight: 800; }
-                    .header p { margin: 3px 0 0; font-size: 12px; color: #475569; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: right; font-size: 11px; }
-                    th { background-color: #f1f5f9; font-weight: bold; color: #0f172a; }
-                    tr:nth-child(even) { background-color: #f8fafc; }
+                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 25px; background: #fff; color: #333; direction: rtl; }
+                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
+                    .header h1 { margin: 0; font-size: 20px; color: #0f172a; }
+                    .header p { margin: 4px 0 0; font-size: 13px; color: #475569; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: right; font-size: 12px; }
+                    th { background-color: #f8fafc; font-weight: bold; color: #0f172a; }
+                    tr:nth-child(even) { background-color: #f1f5f9; }
                     .total { font-weight: bold; background: #e2e8f0 !important; }
-                    .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
-                    .num { font-family: 'Tahoma', monospace; direction: ltr; text-align: left; }
+                    .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
                 </style>
             </head>
             <body>
                 <div class="header">
                     <div>
                         <h1>${title}</h1>
-                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)} ${subInfo ? ` | ${subInfo}` : ''}</p>
+                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)}</p>
                     </div>
                     <div style="text-align: left;">
                         <p>تاریخ چاپ: ${formatDateToJalali(new Date().toISOString())}</p>
-                        <p>تعداد ردیف: ${sortedList.length} شخص</p>
+                        <p>تعداد ردیف: ${sortedList.length}</p>
                     </div>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 40px; text-align: center;">ردیف</th>
-                            <th style="width: 90px; text-align: center;">کد تفصیلی</th>
-                            <th>نام شخص / شرکت</th>
-                            <th style="text-align: left; width: 125px;">مجموع بدهکار (ریال)</th>
-                            <th style="text-align: left; width: 125px;">مجموع بستانکار (ریال)</th>
-                            <th style="text-align: left; width: 135px;">مانده حساب (ریال)</th>
-                            <th style="text-align: center; width: 140px;">راس و تاخیر (FIFO)</th>
-                            <th style="width: 65px; text-align: center;">تشخیص</th>
+                            <th style="width: 60px; text-align: center;">ردیف</th>
+                            <th style="width: 120px;">کد حسابداری</th>
+                            <th>نام شخص</th>
+                            <th style="text-align: left; width: 200px;">مبلغ مانده (ریال)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${sortedList.map((row, idx) => {
-                            const codeStr = String(row.code || '').trim();
-                            const ag = trazAging[codeStr];
-                            const isBed = (row.balance || 0) > 0;
-                            const rasText = !ag 
-                                ? 'در حال استعلام' 
-                                : ag.status === 'settled' 
-                                ? 'تسویه شده' 
-                                : `${ag.daysOverdue} روز ${ag.weightedDateJalali && ag.weightedDateJalali !== '---' ? `(${ag.weightedDateJalali})` : ''}`;
-                            
-                            const rasColor = !ag || ag.status === 'settled'
-                                ? '#64748b'
-                                : ag.daysOverdue > 90
-                                ? '#be123c'
-                                : ag.daysOverdue > 60
-                                ? '#b45309'
-                                : '#047857';
-
-                            return `
-                                <tr>
-                                    <td style="text-align: center;">${idx + 1}</td>
-                                    <td style="text-align: center; font-family: monospace;">${row.code}</td>
-                                    <td style="font-weight: 600;">${row.name}</td>
-                                    <td class="num">${formatMoney(row.bed || 0)}</td>
-                                    <td class="num">${formatMoney(row.bes || 0)}</td>
-                                    <td class="num" style="font-weight: bold; color: ${isBed ? '#be123c' : '#047857'};">${formatMoney(row.balance)}</td>
-                                    <td style="text-align: center; font-weight: bold; color: ${rasColor}; font-size: 10.5px;">${rasText}</td>
-                                    <td style="text-align: center; font-weight: bold; color: ${isBed ? '#be123c' : '#047857'};">${isBed ? 'بدهکار' : 'بستانکار'}</td>
-                                </tr>
-                            `;
-                        }).join('')}
+                        ${sortedList.map((row, idx) => `
+                            <tr>
+                                <td style="text-align: center;">${idx + 1}</td>
+                                <td>${row.code}</td>
+                                <td>${row.name}</td>
+                                <td style="text-align: left; font-weight: 500;">${formatMoney(row.balance)}</td>
+                            </tr>
+                        `).join('')}
                         <tr class="total">
-                            <td colspan="3" style="text-align: right;">جمع کل (${sortedList.length} حساب):</td>
-                            <td class="num">${formatMoney(totalBed)}</td>
-                            <td class="num">${formatMoney(totalBes)}</td>
-                            <td class="num" style="font-weight: bold;">${formatMoney(totalBal)}</td>
-                            <td colspan="2" style="text-align: center; font-size: 10px; color: #475569;">محاسبه خودکار راس بر اساس متد FIFO سایان</td>
+                            <td colspan="3" style="text-align: left;">جمع کل مانده‌ها:</td>
+                            <td style="text-align: left;">${formatMoney(sortedList.reduce((sum, r) => sum + r.balance, 0))}</td>
                         </tr>
                     </tbody>
                 </table>
                 <div class="footer">
-                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP • تولید گزارش رسمی و راس‌گیری زنده</p>
+                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP</p>
                 </div>
             </body>
             </html>
@@ -1545,13 +1466,12 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 { header: '', key: 'bed', width: 22 },
                 { header: '', key: 'bes', width: 22 },
                 { header: '', key: 'balance', width: 24 },
-                { header: '', key: 'ras', width: 26 },
                 { header: '', key: 'status', width: 14 }
             ];
 
             // 1. Title Banner
             const titleRow = ws.addRow([`گزارش ${typeLabel} - سیستم یکپارچه سایان ERP`]);
-            ws.mergeCells('A1:H1');
+            ws.mergeCells('A1:G1');
             titleRow.height = 36;
             titleRow.getCell(1).font = { name: 'Tahoma', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
             titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -1572,14 +1492,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             const infoRow = ws.addRow([
                 `دوره مالی: از ${dateFromStr} تا ${dateToStr}  |  سورت: ${type === 'bed' ? 'بیشترین بدهی به کمترین' : type === 'bes' ? 'بیشترین طلب به کمترین' : sortLabelMap[trazSortBy] || 'بیشترین به کمترین'}  |  جهت: راست به چپ (RTL)  |  تاریخ: ${formatDateToJalali(new Date().toISOString())}  |  تعداد: ${list.length}`
             ]);
-            ws.mergeCells('A2:H2');
+            ws.mergeCells('A2:G2');
             infoRow.height = 24;
             infoRow.getCell(1).font = { name: 'Tahoma', size: 9, bold: true, color: { argb: 'FF475569' } };
             infoRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
             infoRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
             // 3. Header Row
-            const headers = ['ردیف', 'کد تفصیلی', 'نام شخص / شرکت', 'مجموع بدهکار (ریال)', 'مجموع بستانکار (ریال)', 'مانده حساب (ریال)', 'راس و تاخیر (FIFO)', 'تشخیص'];
+            const headers = ['ردیف', 'کد تفصیلی', 'نام شخص / شرکت', 'مجموع بدهکار (ریال)', 'مجموع بستانکار (ریال)', 'مانده حساب (ریال)', 'تشخیص'];
             const headerRow = ws.addRow(headers);
             headerRow.height = 28;
             headerRow.eachCell((cell) => {
@@ -1604,14 +1524,6 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 totalBesSum += row.bes || 0;
                 totalBalSum += row.balance || 0;
 
-                const codeStr = String(row.code || '').trim();
-                const ag = trazAging[codeStr];
-                const rasText = !ag 
-                    ? 'در حال استعلام' 
-                    : ag.status === 'settled' 
-                    ? 'تسویه شده' 
-                    : `${ag.daysOverdue} روز ${ag.weightedDateJalali && ag.weightedDateJalali !== '---' ? `(${ag.weightedDateJalali})` : ''}`;
-
                 const isBed = row.balance > 0;
                 const r = ws.addRow([
                     idx + 1,
@@ -1620,7 +1532,6 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                     row.bed || 0,
                     row.bes || 0,
                     row.balance || 0,
-                    rasText,
                     isBed ? 'بدهکار' : 'بستانکار'
                 ]);
 
@@ -1651,9 +1562,6 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         }
                     } else if (colNum === 7) {
                         cell.alignment = { vertical: 'middle', horizontal: 'center' };
-                        cell.font = { name: 'Tahoma', size: 9, bold: true };
-                    } else if (colNum === 8) {
-                        cell.alignment = { vertical: 'middle', horizontal: 'center' };
                         cell.font = { name: 'Tahoma', size: 9, bold: true, color: { argb: isBed ? 'FFBE123C' : 'FF047857' } };
                     }
                 });
@@ -1667,7 +1575,6 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 totalBedSum,
                 totalBesSum,
                 totalBalSum,
-                'محاسبه FIFO',
                 totalBalSum > 0 ? 'بدهکار' : 'بستانکار'
             ]);
             totalRow.height = 26;
@@ -1683,7 +1590,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 if (colNum >= 4 && colNum <= 6) {
                     cell.alignment = { vertical: 'middle', horizontal: 'left' };
                     cell.numFmt = '#,##0';
-                } else if (colNum === 1 || colNum === 7 || colNum === 8) {
+                } else if (colNum === 1 || colNum === 7) {
                     cell.alignment = { vertical: 'middle', horizontal: 'center' };
                 } else {
                     cell.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -4980,80 +4887,20 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         const dateToStr = dateTo || 'امروز';
 
         if (activeTab === 'traz') {
-            const pdfFilename = `Sayan_Traz_${scope === 'current' ? 'Selected_View' : (scope === 'both' ? 'All' : (scope === 'bed' ? 'Debtors' : 'Creditors'))}_${Date.now()}.pdf`;
+            const pdfFilename = `Sayan_Traz_${scope === 'both' ? 'All' : (scope === 'bed' ? 'Debtors' : 'Creditors')}_${Date.now()}.pdf`;
             const htmlContent = handlePrintTrazReport(scope, true) as unknown as string;
             
-            const catMap: Record<string, string> = {
-                '16': 'همه اشخاص',
-                'all': 'همه اشخاص',
-                '11': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
-                'suppliers': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
-                '12': '۱۲ مشتریان (حساب‌های دریافتنی)',
-                'customers': '۱۲ مشتریان (حساب‌های دریافتنی)',
-                '13': '۱۳ پرسنل و همکاران',
-                'personnel': '۱۳ پرسنل و همکاران',
-                '14': '۱۴ سهام‌داران و شرکا',
-                'shareholders': '۱۴ سهام‌داران و شرکا',
-                '15': '۱۵ سایر اشخاص',
-                'others': '۱۵ سایر اشخاص',
-                'debtors': 'بدهکاران',
-                'creditors': 'بستانکاران'
-            };
-
-            const fullList = getFilteredTraz(false);
-            const targetList = scope === 'current'
-                ? fullList
-                : fullList.filter(t => scope === 'both' ? t.balance !== 0 : (scope === 'bed' ? t.balance > 0 : t.balance < 0));
-
-            const totalDebtors = targetList.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
-            const totalCreditors = targetList.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
-
-            // Compute ras/aging stats for the shared list
-            let withAgingCount = 0;
-            let totalDelayDays = 0;
-            targetList.forEach(item => {
-                const codeStr = String(item.code || '').trim();
-                const ag = trazAging[codeStr];
-                if (ag && ag.status !== 'settled' && ag.daysOverdue > 0) {
-                    withAgingCount++;
-                    totalDelayDays += ag.daysOverdue;
-                }
-            });
-            const avgDelay = withAgingCount > 0 ? Math.round(totalDelayDays / withAgingCount) : 0;
-
             let text = '';
-            if (scope === 'current') {
-                const categoryLabel = catMap[trazCategory] || 'فیلتر انتخابی';
-                text = `📊 گزارش تراز اشخاص [${categoryLabel}] (${dateFromStr} تا ${dateToStr})\n` +
-                       `• تعداد ردیف‌ها: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
-                       (totalDebtors > 0 ? `• جمع کل بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` : '') +
-                       (totalCreditors > 0 ? `• جمع کل بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n` : '') +
-                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورها (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
-                       `• ستون راس و تاخیر فاکتورها (FIFO) به همراه مانده‌ها در فایل پیوست درج شده است.\n` +
-                       `📄 فایل PDF اختصاصی پیوست گردید.`;
-            } else if (scope === 'both') {
-                text = `📊 گزارش تراز معین مالی و کل اشخاص سایان (${dateFromStr} تا ${dateToStr})\n` +
-                       `• تعداد کل حساب‌ها: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
-                       `• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` +
-                       `• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n` +
-                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورها (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
-                       `• ستون راس و تاخیر فاکتورها (FIFO) در PDF درج شده است.\n` +
-                       `📄 فایل PDF تراز پیوست گردید.`;
+            if (scope === 'both') {
+                const totalDebtors = filteredTraz.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
+                const totalCreditors = filteredTraz.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
+                text = `📊 گزارش تراز معین مالی سایان (${dateFromStr} تا ${dateToStr})\n• تعداد کل حساب‌ها: ${filteredTraz.length} حساب\n• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تراز پیوست گردید.`;
             } else if (scope === 'bed') {
-                text = `📊 گزارش بدهکاران سایان (سورت بیشترین به کمترین بدهی)\n` +
-                       `• بازه زمانی: ${dateFromStr} تا ${dateToStr}\n` +
-                       `• تعداد اشخاص بدهکار: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
-                       `• جمع کل بدهی‌ها: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` +
-                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورهای باز (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
-                       `• ستون اختصاصی راس و تاخیر فاکتورها در PDF درج شده است.\n` +
-                       `📄 فایل PDF تفکیکی بدهکاران پیوست گردید.`;
+                const totalDebtors = filteredTraz.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
+                text = `📊 گزارش بدهکاران سایان (${dateFromStr} تا ${dateToStr})\n• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تفکیکی بدهکاران پیوست گردید.`;
             } else {
-                text = `📊 گزارش بستانکاران سایان (سورت بیشترین به کمترین بستانکاری)\n` +
-                       `• بازه زمانی: ${dateFromStr} تا ${dateToStr}\n` +
-                       `• تعداد اشخاص بستانکار: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
-                       `• جمع کل بستانکاری‌ها (طلب اشخاص): ${totalCreditors.toLocaleString('fa-IR')} ریال\n` +
-                       `• ستون اختصاصی راس و تاخیر فاکتورها در PDF درج شده است.\n` +
-                       `📄 فایل PDF تفکیکی بستانکاران پیوست گردید.`;
+                const totalCreditors = filteredTraz.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
+                text = `📊 گزارش بستانکاران سایان (${dateFromStr} تا ${dateToStr})\n• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تفکیکی بستانکاران پیوست گردید.`;
             }
             return { htmlContent, pdfFilename, defaultMsg: text };
         } else if (activeTab === 'sales') {
@@ -5475,38 +5322,20 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                                 <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
 
-                                {/* PDF Print & Export Options */}
-                                <button 
-                                    type="button"
-                                    onClick={() => handlePrintTrazReport('current')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg border border-indigo-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                                    title="چاپ و PDF دقیقاً مطابق با دسته‌بندی و فیلترهای انتخابی فعلی شما همراه با راس‌گیری"
-                                >
-                                    <Printer className="w-3.5 h-3.5" /> PDF نمای انتخابی
-                                </button>
+                                {/* PDF Print */}
                                 <button 
                                     type="button"
                                     onClick={() => handlePrintTrazReport('bed')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                                    title="چاپ و PDF کلیه بدهکاران با سورت بیشترین بدهی همراه با روزهای تاخیر راس"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-200 text-xs font-semibold transition-colors cursor-pointer"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> PDF بدهکاران
                                 </button>
                                 <button 
                                     type="button"
                                     onClick={() => handlePrintTrazReport('bes')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                                    title="چاپ و PDF کلیه بستانکاران با سورت بیشترین طلب همراه با تحلیل راس"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg border border-slate-300 text-xs font-semibold transition-colors cursor-pointer"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> PDF بستانکاران
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={() => handlePrintTrazReport('both')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg border border-blue-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                                    title="چاپ و PDF کل تراز بدهکاران و بستانکاران همراه با ستون راس"
-                                >
-                                    <Printer className="w-3.5 h-3.5" /> PDF کل تراز
                                 </button>
                             </div>
                         </div>
@@ -6057,14 +5886,6 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                                 <button 
                                     type="button"
-                                    onClick={() => handlePrintTrazReport('current')} 
-                                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl border border-indigo-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
-                                    title="چاپ و PDF بر اساس دسته‌بندی و فیلترهای انتخابی فعلی"
-                                >
-                                    <Printer className="w-3.5 h-3.5" /> PDF نمای انتخابی
-                                </button>
-                                <button 
-                                    type="button"
                                     onClick={() => handlePrintTrazReport('bed')} 
                                     className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl border border-rose-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
                                 >
@@ -6076,14 +5897,6 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl border border-emerald-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> PDF بستانکاران
-                                </button>
-                                <button 
-                                    type="button"
-                                    onClick={() => handlePrintTrazReport('both')} 
-                                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl border border-blue-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
-                                    title="چاپ و PDF کامل کل تراز"
-                                >
-                                    <Printer className="w-3.5 h-3.5" /> PDF کل تراز
                                 </button>
                             </div>
                         </div>
@@ -8940,45 +8753,46 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             />
 
             {/* Individual Customer Detailed Statement Modal */}
-            {isStatementModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] max-h-[85vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200">
+            {isStatementModalOpen && createPortal(
+                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-7xl xl:max-w-[95vw] 2xl:max-w-[1650px] h-[92vh] max-h-[94vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
                         {/* Modal Header */}
-                        <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+                        <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex flex-wrap justify-between items-center gap-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-xl bg-white/20">
-                                    <FileText className="w-5 h-5 text-white" />
+                                <div className="p-2.5 rounded-xl bg-white/20">
+                                    <FileText className="w-6 h-6 text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="font-extrabold text-sm sm:text-base">
+                                    <h3 className="font-black text-base sm:text-lg">
                                         صورتحساب تفصیلی: {modalTafsiliName || (tafsilis.find(t => t.Code === (modalTafsiliCode || selectedTafsili))?.Name) || 'شخص'}
                                     </h3>
-                                    <p className="text-xs text-blue-100">
-                                        کد تفصیلی: <span className="font-mono">{modalTafsiliCode || selectedTafsili}</span> | بازه زمانی: {dateFrom} تا {dateTo}
+                                    <p className="text-xs text-blue-100 mt-0.5">
+                                        کد تفصیلی: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded">{modalTafsiliCode || selectedTafsili}</span> | بازه زمانی: {dateFrom} تا {dateTo}
                                     </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={handleShareStatementToChat}
-                                    className="px-3 py-1.5 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                                    className="px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer min-h-[38px]"
                                     title="ارسال PDF این صورتحساب به گفتگو"
                                 >
-                                    <Send className="w-3.5 h-3.5" />
+                                    <Send className="w-4 h-4" />
                                     <span>ارسال به گفتگو (PDF)</span>
                                 </button>
                                 <button
                                     onClick={() => handlePrintStatement()}
-                                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    className="px-3.5 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer min-h-[38px]"
                                 >
-                                    <Printer className="w-3.5 h-3.5" />
+                                    <Printer className="w-4 h-4" />
                                     <span>چاپ / PDF</span>
                                 </button>
                                 <button
                                     onClick={() => setIsStatementModalOpen(false)}
-                                    className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                                    className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/20 transition-colors cursor-pointer"
+                                    title="بستن"
                                 >
-                                    <X className="w-5 h-5" />
+                                    <X className="w-6 h-6" />
                                 </button>
                             </div>
                         </div>
@@ -8986,67 +8800,90 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         {/* Modal Body */}
                         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
                             {/* Statement Summary KPIs */}
-                            <div className="grid grid-cols-3 gap-3">
-                                <div className="bg-rose-50 dark:bg-rose-950/30 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
-                                    <span className="text-[10px] text-rose-600 font-bold block">مجموع بدهکار (واریزی‌ها/بدهی)</span>
-                                    <span className="text-sm sm:text-base font-black text-rose-900 dark:text-rose-200 font-mono">
-                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bed, 0))} <span className="text-[10px] font-normal">ریال</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div className="bg-rose-50 dark:bg-rose-950/30 p-3.5 rounded-2xl border border-rose-100 dark:border-rose-900/50 flex flex-col justify-between">
+                                    <span className="text-xs text-rose-600 font-extrabold block">مجموع بدهکار (واریزی‌ها / بدهی)</span>
+                                    <span className="text-base sm:text-xl font-black text-rose-900 dark:text-rose-200 font-mono mt-1 whitespace-nowrap">
+                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bed, 0))} <span className="text-xs font-normal text-rose-600">ریال</span>
                                     </span>
                                 </div>
-                                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
-                                    <span className="text-[10px] text-emerald-600 font-bold block">مجموع بستانکار (فروش/طلب)</span>
-                                    <span className="text-sm sm:text-base font-black text-emerald-900 dark:text-emerald-200 font-mono">
-                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bes, 0))} <span className="text-[10px] font-normal">ریال</span>
+                                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 flex flex-col justify-between">
+                                    <span className="text-xs text-emerald-600 font-extrabold block">مجموع بستانکار (فاکتورها / طلب)</span>
+                                    <span className="text-base sm:text-xl font-black text-emerald-900 dark:text-emerald-200 font-mono mt-1 whitespace-nowrap">
+                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bes, 0))} <span className="text-xs font-normal text-emerald-600">ریال</span>
                                     </span>
                                 </div>
-                                <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50">
-                                    <span className="text-[10px] text-blue-600 font-bold block">مانده نهایی</span>
-                                    <span className="text-sm sm:text-base font-black text-blue-900 dark:text-blue-200 font-mono">
-                                        {formatMoney(filteredStatementData[filteredStatementData.length - 1]?.balance || 0)} <span className="text-[10px] font-normal">ریال</span>
-                                    </span>
-                                </div>
+                                {(() => {
+                                    const lastBal = filteredStatementData[filteredStatementData.length - 1]?.balance || 0;
+                                    const isBed = lastBal > 0;
+                                    return (
+                                        <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                                            isBed 
+                                                ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900' 
+                                                : (lastBal < 0 ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900' : 'bg-slate-50 dark:bg-zinc-800 border-slate-200')
+                                        }`}>
+                                            <span className="text-xs font-extrabold flex items-center justify-between">
+                                                <span className={isBed ? 'text-rose-700' : 'text-emerald-700'}>مانده نهایی حساب</span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isBed ? 'bg-rose-200 text-rose-900' : (lastBal < 0 ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-800')}`}>
+                                                    {isBed ? 'بدهکار' : (lastBal < 0 ? 'بستانکار' : 'تسویه')}
+                                                </span>
+                                            </span>
+                                            <span className={`text-base sm:text-xl font-black font-mono mt-1 whitespace-nowrap ${isBed ? 'text-rose-700 dark:text-rose-300' : (lastBal < 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-700')}`}>
+                                                {formatMoney(Math.abs(lastBal))} <span className="text-xs font-normal">ریال</span>
+                                            </span>
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Table */}
                             {isLoading ? (
-                                <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400">
-                                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-                                    <span className="text-xs">در حال بارگذاری صورتحساب از سرور سایان...</span>
+                                <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
+                                    <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+                                    <span className="text-sm font-bold">در حال بارگذاری صورتحساب تفصیلی از سرور سایان...</span>
                                 </div>
                             ) : filteredStatementData.length === 0 ? (
-                                <div className="py-12 text-center text-slate-400 text-xs">
+                                <div className="py-20 text-center text-slate-400 text-sm border border-dashed rounded-2xl bg-slate-50 dark:bg-zinc-800/40">
                                     هیچ رکوردی برای این شخص در بازه زمانی انتخابی یافت نشد.
                                 </div>
                             ) : (
-                                <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden w-full">
-                                    <table className="w-full text-right text-xs table-fixed">
-                                        <thead className="bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-zinc-700">
+                                <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto overflow-y-auto max-h-[62vh] w-full shadow-xs">
+                                    <table className="w-full text-right text-xs border-collapse">
+                                        <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700 sticky top-0 z-10 shadow-xs">
                                             <tr>
-                                                <th className="p-2 w-[5%] text-center">#</th>
-                                                <th className="p-2 w-[12%]">تاریخ</th>
-                                                <th className="p-2 w-[8%]">سند</th>
-                                                <th className="p-2 w-[15%]">سرفصل معین</th>
-                                                <th className="p-2 w-[23%]">شرح تراکنش</th>
-                                                <th className="p-2 w-[12%] text-left">بدهکار</th>
-                                                <th className="p-2 w-[12%] text-left">بستانکار</th>
-                                                <th className="p-2 w-[13%] text-left">مانده</th>
+                                                <th className="px-3 py-3 w-12 text-center">#</th>
+                                                <th className="px-3 py-3 w-28 text-center whitespace-nowrap">تاریخ سند</th>
+                                                <th className="px-3 py-3 w-24 text-center whitespace-nowrap">شماره سند</th>
+                                                <th className="px-3 py-3 w-40 whitespace-nowrap">سرفصل معین</th>
+                                                <th className="px-4 py-3 min-w-[280px]">شرح سند و تراکنش</th>
+                                                <th className="px-4 py-3 w-36 text-left whitespace-nowrap">بدهکار (ریال)</th>
+                                                <th className="px-4 py-3 w-36 text-left whitespace-nowrap">بستانکار (ریال)</th>
+                                                <th className="px-4 py-3 w-40 text-left whitespace-nowrap">مانده حساب (ریال)</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
-                                            {filteredStatementData.map((row, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/50">
-                                                    <td className="p-2 text-center text-slate-400 font-sans truncate">{idx + 1}</td>
-                                                    <td className="p-2 text-slate-600 dark:text-slate-300 font-sans truncate">{formatDateToJalali(row.Date)}</td>
-                                                    <td className="p-2 text-slate-600 dark:text-slate-300 truncate">{row.SanadNo}</td>
-                                                    <td className="p-2 text-slate-600 dark:text-slate-300 font-sans truncate">{row.MoeinName || 'سایر'}</td>
-                                                    <td className="p-2 text-slate-800 dark:text-slate-100 font-sans truncate" title={row.Description || '-'}>{row.Description || '-'}</td>
-                                                    <td className="p-2 text-left text-rose-600 truncate">{row.bed > 0 ? formatMoney(row.bed) : '-'}</td>
-                                                    <td className="p-2 text-left text-emerald-600 truncate">{row.bes > 0 ? formatMoney(row.bes) : '-'}</td>
-                                                    <td className={`p-2 text-left font-bold truncate ${row.balance > 0 ? 'text-rose-700' : (row.balance < 0 ? 'text-emerald-700' : 'text-slate-600')}`}>
-                                                        {formatMoney(row.balance)}
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {filteredStatementData.map((row, idx) => {
+                                                const isBed = row.balance > 0;
+                                                const isBes = row.balance < 0;
+                                                return (
+                                                    <tr key={idx} className="hover:bg-blue-50/40 dark:hover:bg-zinc-800/60 transition-colors">
+                                                        <td className="px-3 py-2.5 text-center text-slate-400 font-sans font-bold">{idx + 1}</td>
+                                                        <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">{formatDateToJalali(row.Date)}</td>
+                                                        <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-300 whitespace-nowrap font-bold">{row.SanadNo}</td>
+                                                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">{row.MoeinName || 'سایر'}</td>
+                                                        <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 font-sans break-words">{row.Description || '-'}</td>
+                                                        <td className="px-4 py-2.5 text-left text-rose-600 font-bold whitespace-nowrap">
+                                                            {row.bed > 0 ? formatMoney(row.bed) : '-'}
+                                                        </td>
+                                                        <td className="px-4 py-2.5 text-left text-emerald-600 font-bold whitespace-nowrap">
+                                                            {row.bes > 0 ? formatMoney(row.bes) : '-'}
+                                                        </td>
+                                                        <td className={`px-4 py-2.5 text-left font-black whitespace-nowrap ${isBed ? 'text-rose-700 dark:text-rose-400' : (isBes ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600')}`}>
+                                                            {formatMoney(Math.abs(row.balance))} {isBed ? '(بد)' : (isBes ? '(بس)' : '')}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -9054,36 +8891,37 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         </div>
 
                         {/* Modal Footer */}
-                        <div className="flex-none p-3 sm:p-4 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center">
-                            <span className="text-xs text-slate-500">
-                                تعداد آرتیکل‌ها: {filteredStatementData.length.toLocaleString('fa-IR')} مورد
+                        <div className="flex-none p-3.5 sm:p-4 bg-slate-50 dark:bg-zinc-800/60 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap justify-between items-center gap-3">
+                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                تعداد آرتیکل‌ها: <span className="font-mono text-sm text-blue-700 dark:text-blue-400">{filteredStatementData.length.toLocaleString('fa-IR')}</span> رکورد ثبت شده
                             </span>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-2">
                                 <button
                                     type="button"
                                     onClick={handleShareStatementToChat}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer min-h-[38px]"
                                 >
-                                    <Send className="w-3.5 h-3.5" />
+                                    <Send className="w-4 h-4" />
                                     <span>ارسال این صورتحساب به گفتگو (PDF)</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setIsStatementModalOpen(false)}
-                                    className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                    className="px-5 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[38px]"
                                 >
                                     بستن
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Live Sayan Ras & FIFO Aging Breakdown Modal */}
-            {selectedAgingParty && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[88vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
+            {selectedAgingParty && createPortal(
+                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
                         {/* Header */}
                         <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white">
                             <div className="flex items-center gap-3">
@@ -9091,85 +8929,100 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     <Clock className="w-6 h-6 text-white" />
                                 </div>
                                 <div>
-                                    <h3 className="font-extrabold text-sm sm:text-base">
-                                        محاسبه زنده راس فاکتورها (FIFO): {selectedAgingParty.name}
+                                    <h3 className="font-black text-base sm:text-lg">
+                                        تحلیل اصول حسابداری و بازاری راس: {selectedAgingParty.name}
                                     </h3>
-                                    <p className="text-xs text-amber-100">
-                                        کد تفصیلی: <span className="font-mono">{selectedAgingParty.code}</span> | مانده نهایی: {formatMoney(selectedAgingParty.balance)} ریال
+                                    <p className="text-xs text-amber-100 mt-0.5">
+                                        کد تفصیلی: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded">{selectedAgingParty.code}</span> | مانده نهایی: {formatMoney(Math.abs(selectedAgingParty.balance))} ریال {selectedAgingParty.balance > 0 ? '(بدهکار)' : '(بستانکار)'}
                                     </p>
                                 </div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setSelectedAgingParty(null)}
-                                className="p-1.5 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                                className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/20 transition-colors cursor-pointer"
                             >
-                                <X className="w-5 h-5" />
+                                <X className="w-6 h-6" />
                             </button>
                         </div>
 
                         {/* Body */}
                         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-                            {/* KPI cards */}
+                            {/* KPI cards: Dual Market Ras & FIFO Aging */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div className="bg-amber-50 dark:bg-amber-950/30 p-3 rounded-xl border border-amber-100 dark:border-amber-900/50">
-                                    <span className="text-[10px] text-amber-600 font-bold block">روزهای تاخیر راس</span>
-                                    <span className="text-base font-black text-amber-900 dark:text-amber-200 font-mono">
+                                <div className="bg-amber-50 dark:bg-amber-950/30 p-3.5 rounded-2xl border border-amber-100 dark:border-amber-900/50">
+                                    <span className="text-[11px] text-amber-700 font-extrabold block">روزهای تاخیر راس مانده</span>
+                                    <span className="text-lg font-black text-amber-900 dark:text-amber-200 font-mono mt-1 block">
                                         {selectedAgingParty.daysOverdue ?? 0} <span className="text-xs font-normal">روز</span>
                                     </span>
-                                </div>
-                                <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-xl border border-blue-100 dark:border-blue-900/50">
-                                    <span className="text-[10px] text-blue-600 font-bold block">تاریخ میانگین وزنی راس</span>
-                                    <span className="text-sm font-black text-blue-900 dark:text-blue-200 font-mono">
-                                        {selectedAgingParty.weightedDateJalali || '---'}
+                                    <span className="text-[10px] text-amber-600 font-sans block mt-0.5">
+                                        تاریخ راس وزنی: {selectedAgingParty.weightedDateJalali || '---'}
                                     </span>
                                 </div>
-                                <div className="bg-rose-50 dark:bg-rose-950/30 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
-                                    <span className="text-[10px] text-rose-600 font-bold block">قدیمی‌ترین فاکتور باز</span>
-                                    <span className="text-sm font-black text-rose-900 dark:text-rose-200 font-mono">
-                                        {selectedAgingParty.oldestUnpaidDateJalali || '---'}
+
+                                <div className="bg-blue-50 dark:bg-blue-950/30 p-3.5 rounded-2xl border border-blue-100 dark:border-blue-900/50">
+                                    <span className="text-[11px] text-blue-700 font-extrabold block">راس کل فاکتورها</span>
+                                    <span className="text-sm font-black text-blue-950 dark:text-blue-200 font-mono mt-1 block">
+                                        {selectedAgingParty.invoicesRasJalali || selectedAgingParty.weightedDateJalali || '---'}
+                                    </span>
+                                    <span className="text-[10px] text-blue-600 font-sans block mt-0.5">
+                                        مبلغ فاکتورها: {formatMoney(selectedAgingParty.totalInvoicesAmt || 0)} ریال
                                     </span>
                                 </div>
-                                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
-                                    <span className="text-[10px] text-emerald-600 font-bold block">پوشش فاکتورها</span>
-                                    <span className="text-sm font-black text-emerald-900 dark:text-emerald-200 font-mono">
-                                        {selectedAgingParty.coveragePercent ?? 100}%
+
+                                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
+                                    <span className="text-[11px] text-emerald-700 font-extrabold block">راس کل دریافت‌ها / تسویه‌ها</span>
+                                    <span className="text-sm font-black text-emerald-950 dark:text-emerald-200 font-mono mt-1 block">
+                                        {selectedAgingParty.receiptsRasJalali || '---'}
+                                    </span>
+                                    <span className="text-[10px] text-emerald-600 font-sans block mt-0.5">
+                                        مجموع دریافت‌ها: {formatMoney(selectedAgingParty.totalReceiptsAmt || 0)} ریال
+                                    </span>
+                                </div>
+
+                                <div className="bg-purple-50 dark:bg-purple-950/30 p-3.5 rounded-2xl border border-purple-100 dark:border-purple-900/50">
+                                    <span className="text-[11px] text-purple-700 font-extrabold block">دوره تسویه بازاری (تاخیر تسویه)</span>
+                                    <span className="text-lg font-black text-purple-950 dark:text-purple-200 font-mono mt-1 block">
+                                        {selectedAgingParty.settlementLagDays ?? 0} <span className="text-xs font-normal">روز</span>
+                                    </span>
+                                    <span className="text-[10px] text-purple-600 font-sans block mt-0.5">
+                                        فاصله راس فاکتور تا دریافت
                                     </span>
                                 </div>
                             </div>
 
                             {/* Breakdown table */}
                             <div>
-                                <h4 className="text-xs font-black text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                                <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 mb-2.5 flex items-center gap-1.5">
                                     <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                                    ریز فاکتورهای تشکیل‌دهنده مانده حساب (به روش FIFO):
+                                    ریز فاکتورهای تشکیل‌دهنده مانده باز (به روش تطبیق FIFO حسابداری و بازار):
                                 </h4>
                                 {(!selectedAgingParty.unpaidInvoices || selectedAgingParty.unpaidInvoices.length === 0) ? (
-                                    <div className="py-8 text-center text-slate-400 text-xs border border-dashed rounded-xl">
-                                        فاکتور بازی در اسناد اخیر برای این شخص یافت نشد یا حساب کاملاً تسویه است.
+                                    <div className="py-10 text-center text-slate-400 text-xs border border-dashed rounded-2xl bg-slate-50 dark:bg-zinc-800/40">
+                                        فاکتور بازی در اسناد اخیر برای این شخص یافت نشد یا حساب به صورت کامل تسویه است.
                                     </div>
                                 ) : (
-                                    <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden">
+                                    <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto w-full">
                                         <table className="w-full text-right text-xs">
-                                            <thead className="bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 font-bold border-b border-slate-200 dark:border-zinc-700">
+                                            <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700">
                                                 <tr>
-                                                    <th className="p-2.5 text-center w-10">#</th>
-                                                    <th className="p-2.5 w-24">تاریخ سند</th>
-                                                    <th className="p-2.5 w-20">شماره سند</th>
-                                                    <th className="p-2.5">شرح سند</th>
-                                                    <th className="p-2.5 w-32 text-left">مبلغ کل فاکتور</th>
-                                                    <th className="p-2.5 w-32 text-left">بخش مانده باز</th>
+                                                    <th className="px-3 py-3 text-center w-12">#</th>
+                                                    <th className="px-3 py-3 w-28 whitespace-nowrap">تاریخ فاکتور</th>
+                                                    <th className="px-3 py-3 w-24 text-center whitespace-nowrap">شماره سند</th>
+                                                    <th className="px-4 py-3 min-w-[220px]">شرح سند</th>
+                                                    <th className="px-4 py-3 w-36 text-left whitespace-nowrap">مبلغ کل فاکتور (ریال)</th>
+                                                    <th className="px-4 py-3 w-40 text-left whitespace-nowrap">بخش مانده باز تسویه‌نشده</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
                                                 {selectedAgingParty.unpaidInvoices.map((inv: any, iIdx: number) => (
-                                                    <tr key={iIdx} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/50">
-                                                        <td className="p-2.5 text-center text-slate-400 font-sans">{iIdx + 1}</td>
-                                                        <td className="p-2.5 text-slate-700 dark:text-slate-300 font-sans">{inv.dateJalali}</td>
-                                                        <td className="p-2.5 text-slate-600 dark:text-slate-400">{inv.sanadNo}</td>
-                                                        <td className="p-2.5 text-slate-800 dark:text-slate-200 font-sans truncate max-w-xs">{inv.description || '-'}</td>
-                                                        <td className="p-2.5 text-left text-slate-600 dark:text-slate-400">{formatMoney(inv.totalAmount)}</td>
-                                                        <td className="p-2.5 text-left font-bold text-amber-700 dark:text-amber-400">{formatMoney(inv.unpaidPortion)}</td>
+                                                    <tr key={iIdx} className="hover:bg-amber-50/40 dark:hover:bg-zinc-800/50 transition-colors">
+                                                        <td className="px-3 py-2.5 text-center text-slate-400 font-sans font-bold">{iIdx + 1}</td>
+                                                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap font-bold">{inv.dateJalali}</td>
+                                                        <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-400 whitespace-nowrap font-bold">{inv.sanadNo}</td>
+                                                        <td className="px-4 py-2.5 text-slate-800 dark:text-slate-200 font-sans break-words">{inv.description || '-'}</td>
+                                                        <td className="px-4 py-2.5 text-left text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatMoney(inv.totalAmount)}</td>
+                                                        <td className="px-4 py-2.5 text-left font-black text-amber-700 dark:text-amber-400 whitespace-nowrap">{formatMoney(inv.unpaidPortion)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -9193,7 +9046,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     setIsStatementModalOpen(true);
                                     fetchStatement(c);
                                 }}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer min-h-[38px]"
                             >
                                 <FileText className="w-4 h-4" />
                                 <span>مشاهده صورتحساب کامل این شخص</span>
@@ -9201,19 +9054,20 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             <button
                                 type="button"
                                 onClick={() => setSelectedAgingParty(null)}
-                                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[38px]"
                             >
                                 بستن
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* 3. PERMANENT EXCLUDED PERSONS MANAGEMENT MODAL */}
-            {isExcludeManagerOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-fadeIn">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
+            {isExcludeManagerOpen && createPortal(
+                <div className="fixed inset-0 z-[99999] bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-fadeIn">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh] text-right" dir="rtl">
                         {/* Modal Header */}
                         <div className="p-4 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-white flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -9495,7 +9349,8 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

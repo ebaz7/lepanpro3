@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
 import { Upload, Download, Search, FileSpreadsheet, UserCheck, Trash2, Wallet, Plus, Loader2, Landmark, TrendingDown, TrendingUp, AlertCircle, RefreshCw, MessageSquare } from 'lucide-react';
 import { downloadAndOpenFile } from '../services/fileService';
@@ -1043,8 +1044,8 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
       {stmtModalCode && (() => {
         const customerName = balances.find(b => b.accountCode === stmtModalCode)?.name || 'سرفصل نامشخص';
         const customerStmts = statements.filter(s => s.accountCode === stmtModalCode);
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-900/80 backdrop-blur-xs duration-200">
+        return createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-zinc-900/80 backdrop-blur-xs duration-200">
             <div className="bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 rounded-3xl w-full max-w-lg max-h-[85vh] flex flex-col p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150 text-right overflow-hidden" dir="rtl">
               <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-zinc-800 mb-4">
                 <div>
@@ -1126,7 +1127,8 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
                 )}
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
       {/* Bulk Action Bar */}

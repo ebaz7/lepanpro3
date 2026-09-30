@@ -33,95 +33,193 @@ export function formatToJalaliStr(isoOrDate) {
 }
 
 /**
- * Calculates FIFO aging and weighted average date based on balance and transaction rows
+ * Calculates standard Accounting and Market Ras (Weighted Average Maturity)
+ * based on Chronological Invoices, Receipts/Payments and FIFO Balance Settlement.
  */
 export function calculateFifoAging(balance, transactions, nowMs = Date.now()) {
     const balNum = Number(balance || 0);
     const balAbs = Math.abs(balNum);
     const isDebtor = balNum > 0;
     
-    if (!balAbs || balAbs < 1 || !Array.isArray(transactions) || transactions.length === 0) {
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+        return {
+            balance: balNum,
+            daysOverdue: 0,
+            weightedDate: null,
+            weightedDateJalali: balAbs < 1 ? 'تسویه شده' : 'فاقد گردش فاکتور',
+            invoicesRasDate: null,
+            invoicesRasJalali: '---',
+            receiptsRasDate: null,
+            receiptsRasJalali: '---',
+            settlementLagDays: 0,
+            totalInvoicesAmt: 0,
+            totalReceiptsAmt: 0,
+            oldestUnpaidDate: null,
+            oldestUnpaidDateJalali: '---',
+            oldestDaysOverdue: 0,
+            lastInvoiceDate: null,
+            lastInvoiceDateJalali: '---',
+            status: balAbs < 1 ? 'settled' : 'unknown',
+            statusLabel: balAbs < 1 ? 'تسویه شده' : 'بدون گردش',
+            coveredAmt: 0,
+            coveragePercent: balAbs < 1 ? 100 : 0,
+            unpaidInvoices: []
+        };
+    }
+
+    // Sort transactions chronologically (Oldest to Newest) for correct accounting FIFO
+    const sortedTx = transactions
+        .map(t => {
+            const bed = Number(t.Bed || 0);
+            const bes = Number(t.Bes || 0);
+            const dateMs = new Date(t.Date).getTime();
+            return {
+                ...t,
+                bed,
+                bes,
+                dateMs,
+                dateJalali: formatToJalaliStr(t.Date)
+            };
+        })
+        .filter(t => !isNaN(t.dateMs))
+        .sort((a, b) => a.dateMs - b.dateMs);
+
+    // Invoices = Debits for Debtors, Credits for Creditors
+    // Receipts/Settlements = Credits for Debtors, Debits for Creditors
+    const invoices = sortedTx
+        .map(t => ({ ...t, amount: isDebtor ? t.bed : t.bes }))
+        .filter(t => t.amount > 0);
+
+    const receipts = sortedTx
+        .map(t => ({ ...t, amount: isDebtor ? t.bes : t.bed }))
+        .filter(t => t.amount > 0);
+
+    // 1. Calculate Market Ras of Total Invoices (میانگین وزنی کل فاکتورها)
+    let totalInvoicesAmt = 0;
+    let sumInvoicesWeight = 0;
+    invoices.forEach(inv => {
+        totalInvoicesAmt += inv.amount;
+        sumInvoicesWeight += inv.amount * inv.dateMs;
+    });
+    const invoicesRasMs = totalInvoicesAmt > 0 ? (sumInvoicesWeight / totalInvoicesAmt) : null;
+    const invoicesRasDate = invoicesRasMs ? new Date(invoicesRasMs).toISOString() : null;
+    const invoicesRasJalali = formatToJalaliStr(invoicesRasDate);
+
+    // 2. Calculate Market Ras of Total Receipts (میانگین وزنی کل دریافت‌ها/تسویه‌ها)
+    let totalReceiptsAmt = 0;
+    let sumReceiptsWeight = 0;
+    receipts.forEach(rec => {
+        totalReceiptsAmt += rec.amount;
+        sumReceiptsWeight += rec.amount * rec.dateMs;
+    });
+    const receiptsRasMs = totalReceiptsAmt > 0 ? (sumReceiptsWeight / totalReceiptsAmt) : null;
+    const receiptsRasDate = receiptsRasMs ? new Date(receiptsRasMs).toISOString() : null;
+    const receiptsRasJalali = formatToJalaliStr(receiptsRasDate);
+
+    // 3. Settlement Period / Market Lag (مدت زمان تسویه مشتری از راس فاکتور تا راس دریافت)
+    const settlementLagDays = (invoicesRasMs && receiptsRasMs) 
+        ? Math.round((receiptsRasMs - invoicesRasMs) / (1000 * 60 * 60 * 24)) 
+        : 0;
+
+    // 4. Accounting FIFO Settlement on Invoices (تطبیق دریافت‌ها با فاکتورهای قدیمی)
+    let totalReceiptsToCover = totalReceiptsAmt;
+    const invoiceSettlementState = invoices.map(inv => {
+        let covered = 0;
+        if (totalReceiptsToCover > 0) {
+            covered = Math.min(inv.amount, totalReceiptsToCover);
+            totalReceiptsToCover -= covered;
+        }
+        const remainingUnpaid = inv.amount - covered;
+        return {
+            ...inv,
+            coveredAmount: covered,
+            unpaidPortion: remainingUnpaid,
+            isSettled: remainingUnpaid <= 0
+        };
+    });
+
+    // Unpaid invoices that constitute the remaining balance
+    const openInvoices = invoiceSettlementState
+        .filter(inv => inv.unpaidPortion > 0)
+        .reverse(); // Newest first for display
+
+    let fifoWeightedSum = 0;
+    let fifoCoveredAmt = 0;
+    let oldestDate = null;
+    let newestDate = openInvoices[0]?.Date || invoices[invoices.length - 1]?.Date || null;
+    const unpaidInvoices = [];
+
+    // If balance is <= 0 or settled
+    if (balAbs < 1) {
         return {
             balance: balNum,
             daysOverdue: 0,
             weightedDate: null,
             weightedDateJalali: 'تسویه شده',
+            invoicesRasDate,
+            invoicesRasJalali,
+            receiptsRasDate,
+            receiptsRasJalali,
+            settlementLagDays,
+            totalInvoicesAmt,
+            totalReceiptsAmt,
             oldestUnpaidDate: null,
             oldestUnpaidDateJalali: '---',
             oldestDaysOverdue: 0,
-            lastInvoiceDate: transactions?.[0]?.Date || null,
-            lastInvoiceDateJalali: formatToJalaliStr(transactions?.[0]?.Date),
+            lastInvoiceDate: newestDate,
+            lastInvoiceDateJalali: formatToJalaliStr(newestDate),
             status: 'settled',
             statusLabel: 'تسویه شده',
             coveredAmt: 0,
-            coveragePercent: 100
+            coveragePercent: 100,
+            unpaidInvoices: []
         };
     }
 
-    // Filter relevant transactions: debtors look at Bed (debits/invoices), creditors look at Bes (credits/purchases)
-    const relevant = transactions
-        .map(t => {
-            const rawAmt = isDebtor ? Number(t.Bed || 0) : Number(t.Bes || 0);
-            return {
-                ...t,
-                targetAmount: rawAmt,
-                dateMs: new Date(t.Date).getTime()
-            };
-        })
-        .filter(t => t.targetAmount > 0 && !isNaN(t.dateMs))
-        .sort((a, b) => b.dateMs - a.dateMs); // Newest first
-
-    if (relevant.length === 0) {
-        return {
-            balance: balNum,
-            daysOverdue: 0,
-            weightedDate: null,
-            weightedDateJalali: 'فاقد گردش فاکتور',
-            oldestUnpaidDate: null,
-            oldestUnpaidDateJalali: '---',
-            oldestDaysOverdue: 0,
-            lastInvoiceDate: transactions[0]?.Date || null,
-            lastInvoiceDateJalali: formatToJalaliStr(transactions[0]?.Date),
-            status: 'unknown',
-            statusLabel: 'بدون فاکتور اخیر',
-            coveredAmt: 0,
-            coveragePercent: 0
-        };
-    }
-
-    let remainingBal = balAbs;
-    let weightedSum = 0;
-    let coveredAmt = 0;
-    let oldestDate = null;
-    let newestDate = relevant[0]?.Date;
-    const unpaidInvoices = [];
-
-    for (const tx of relevant) {
-        const amt = tx.targetAmount;
-        const used = Math.min(amt, remainingBal);
-        weightedSum += used * tx.dateMs;
-        coveredAmt += used;
-        remainingBal -= used;
-        oldestDate = tx.Date;
+    let remainingToMatch = balAbs;
+    for (const inv of openInvoices) {
+        const portion = Math.min(inv.unpaidPortion, remainingToMatch);
+        fifoWeightedSum += portion * inv.dateMs;
+        fifoCoveredAmt += portion;
+        remainingToMatch -= portion;
+        oldestDate = inv.Date;
 
         unpaidInvoices.push({
-            sanadNo: tx.SanadNo,
-            date: tx.Date,
-            dateJalali: formatToJalaliStr(tx.Date),
-            description: tx.Description,
-            totalAmount: amt,
-            unpaidPortion: used,
-            isFullyUnpaid: used === amt
+            sanadNo: inv.SanadNo,
+            date: inv.Date,
+            dateJalali: formatToJalaliStr(inv.Date),
+            description: inv.Description,
+            totalAmount: inv.amount,
+            unpaidPortion: portion,
+            isFullyUnpaid: portion === inv.amount
         });
 
-        if (remainingBal <= 0) break;
+        if (remainingToMatch <= 0) break;
     }
 
-    const weightedMs = coveredAmt > 0 ? (weightedSum / coveredAmt) : new Date(newestDate).getTime();
-    const weightedDateIso = new Date(weightedMs).toISOString();
-    const daysOverdue = Math.max(0, Math.round((nowMs - weightedMs) / (1000 * 60 * 60 * 24)));
+    // Fallback if no open invoices from matching but positive balance exists
+    if (fifoCoveredAmt === 0 && invoices.length > 0) {
+        const lastInv = invoices[invoices.length - 1];
+        fifoWeightedSum = balAbs * lastInv.dateMs;
+        fifoCoveredAmt = balAbs;
+        oldestDate = lastInv.Date;
+        newestDate = lastInv.Date;
+        unpaidInvoices.push({
+            sanadNo: lastInv.SanadNo,
+            date: lastInv.Date,
+            dateJalali: formatToJalaliStr(lastInv.Date),
+            description: lastInv.Description || 'مانده تعهد جاری',
+            totalAmount: lastInv.amount,
+            unpaidPortion: balAbs,
+            isFullyUnpaid: false
+        });
+    }
+
+    const fifoWeightedMs = fifoCoveredAmt > 0 ? (fifoWeightedSum / fifoCoveredAmt) : (invoicesRasMs || nowMs);
+    const weightedDateIso = new Date(fifoWeightedMs).toISOString();
+    const daysOverdue = Math.max(0, Math.round((nowMs - fifoWeightedMs) / (1000 * 60 * 60 * 24)));
     const oldestDaysOverdue = oldestDate ? Math.max(0, Math.round((nowMs - new Date(oldestDate).getTime()) / (1000 * 60 * 60 * 24))) : daysOverdue;
-    const coveragePercent = Math.min(100, Math.round((coveredAmt / balAbs) * 100));
+    const coveragePercent = Math.min(100, Math.round((fifoCoveredAmt / balAbs) * 100));
 
     let status = 'normal';
     let statusLabel = `${daysOverdue} روز`;
@@ -144,6 +242,13 @@ export function calculateFifoAging(balance, transactions, nowMs = Date.now()) {
         daysOverdue,
         weightedDate: weightedDateIso,
         weightedDateJalali: formatToJalaliStr(weightedDateIso),
+        invoicesRasDate,
+        invoicesRasJalali,
+        receiptsRasDate,
+        receiptsRasJalali,
+        settlementLagDays,
+        totalInvoicesAmt,
+        totalReceiptsAmt,
         oldestUnpaidDate: oldestDate,
         oldestUnpaidDateJalali: formatToJalaliStr(oldestDate),
         oldestDaysOverdue,
@@ -151,7 +256,7 @@ export function calculateFifoAging(balance, transactions, nowMs = Date.now()) {
         lastInvoiceDateJalali: formatToJalaliStr(newestDate),
         status,
         statusLabel,
-        coveredAmt,
+        coveredAmt: fifoCoveredAmt,
         coveragePercent,
         unpaidInvoices
     };
@@ -199,7 +304,7 @@ export async function getPartyAgingFromSayan(code, balance = 0) {
     const cleanCode = String(code).trim();
 
     const sql = `
-        SELECT TOP 25 
+        SELECT TOP 150 
             t9.Field_004 as SanadNo,
             t8.Field_008 as Date,
             t9.Field_009 as Bed,
@@ -216,7 +321,7 @@ export async function getPartyAgingFromSayan(code, balance = 0) {
           )
           AND t9.Field_007 NOT IN ('102', '103', '107', '109', '114', '116', '117')
           AND t9.Field_005 <> '9'
-        ORDER BY t8.Field_008 DESC
+        ORDER BY t8.Field_008 ASC
     `;
 
     try {
