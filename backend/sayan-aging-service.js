@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { getDb, saveDb } from './db-manager.js';
+import { getDb, saveDb, robustFetch, sanitizeSayanUrl } from './db-manager.js';
 
 // Safe Gregorian to Jalali converter
 function gregorianToJalali(gy, gm, gd) {
@@ -164,22 +163,32 @@ export function calculateFifoAging(balance, transactions, nowMs = Date.now()) {
 async function querySayan(sql) {
     const db = getDb();
     const settings = db.settings || {};
-    const url = settings.sayanApiUrl || process.env.SAYAN_API_URL;
-    const key = settings.sayanApiKey || process.env.SAYAN_API_KEY;
+    const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
+    const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
 
-    if (!url || !key) {
+    if (!sayanUrl || !sayanKey) {
         throw new Error('تنظیمات آدرس و کلید API سایان پیکربندی نشده است.');
     }
 
-    const cleanUrl = url.replace(/\/+$/, '');
-    const endpoint = cleanUrl.includes('/api/external/v1') ? `${cleanUrl}/query` : `${cleanUrl}/api/external/v1/query`;
-
-    const res = await axios.post(endpoint, { query: sql }, {
-        headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
-        timeout: 10000
+    const endpoint = `${sayanUrl}/query`;
+    const response = await robustFetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${sayanKey}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ query: sql }),
+        timeout: 15000
     });
 
-    return res.data?.data || [];
+    if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || `خطا در اجرای کوئری سایان (${response.status})`);
+    }
+
+    const json = await response.json();
+    return json.data || [];
 }
 
 /**
