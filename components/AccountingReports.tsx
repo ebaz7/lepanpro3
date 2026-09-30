@@ -1310,72 +1310,151 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         }
     };
 
-    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both', returnHtml: boolean = false) => {
+    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both' | 'current', returnHtml: boolean = false) => {
         const fullList = getFilteredTraz(false);
-        const sortedList = fullList
-            .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
-            .sort((a, b) => {
-                if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
-                if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
-                return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
-            });
+        const sortedList = type === 'current'
+            ? [...fullList]
+            : fullList
+                .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
+                .sort((a, b) => {
+                    if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
+                    if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
+                    return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
+                });
 
-        const title = type === 'both' ? 'گزارش مانده بدهکاران و بستانکاران (سورت بیشترین به کمترین)' : (type === 'bed' ? 'گزارش مانده بدهکاران (سورت از بیشترین به کمترین)' : 'گزارش مانده بستانکاران (سورت از بیشترین به کمترین)');
+        const catMap: Record<string, string> = {
+            '16': 'همه اشخاص (تمام دسته‌ها)',
+            'all': 'همه اشخاص (تمام دسته‌ها)',
+            '11': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+            'suppliers': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+            '12': '۱۲ مشتریان (حساب‌های دریافتنی)',
+            'customers': '۱۲ مشتریان (حساب‌های دریافتنی)',
+            '13': '۱۳ پرسنل و همکاران',
+            'personnel': '۱۳ پرسنل و همکاران',
+            '14': '۱۴ سهام‌داران و شرکا',
+            'shareholders': '۱۴ سهام‌داران و شرکا',
+            '15': '۱۵ سایر اشخاص',
+            'others': '۱۵ سایر اشخاص',
+            'debtors': 'بدهکاران',
+            'creditors': 'بستانکاران'
+        };
+
+        const sortLabelMap: Record<string, string> = {
+            sayan_hierarchy: 'سورت استاندارد لایه‌های سایان (۱۱ تا ۱۵)',
+            code: 'کد تفصیلی',
+            name: 'نام الفبایی',
+            balance: 'مانده حساب',
+            abs_balance: 'بیشترین مانده به کمترین',
+            bed: 'گردش بدهکار',
+            bes: 'گردش بستانکار'
+        };
+
+        let title = 'گزارش تراز معین مالی و راس‌گیری سایان ERP';
+        let subInfo = '';
+        if (type === 'current') {
+            title = `گزارش تراز تفصیلی (${catMap[trazCategory] || 'نمای انتخابی'}) همراه با راس‌گیری (FIFO)`;
+            subInfo = `دسته‌بندی: ${catMap[trazCategory] || 'انتخابی کاربر'}  |  سورت: ${sortLabelMap[trazSortBy] || 'جاری'} (${trazSortOrder === 'desc' ? 'نزولی' : 'صعودی'})`;
+        } else if (type === 'bed') {
+            title = 'گزارش مانده بدهکاران و تحلیل روزهای تاخیر راس (FIFO)';
+            subInfo = 'سورت: از بیشترین بدهی به کمترین بدهی (نزولی)';
+        } else if (type === 'bes') {
+            title = 'گزارش مانده بستانکاران و تحلیل راس حساب‌ها (FIFO)';
+            subInfo = 'سورت: از بیشترین طلب به کمترین طلب (نزولی)';
+        } else if (type === 'both') {
+            title = 'گزارش تراز بدهکاران و بستانکاران همراه با تحلیل راس‌گیری (FIFO)';
+            subInfo = 'شامل کلیه اشخاص بدهکار و بستانکار';
+        }
+
+        const totalBed = sortedList.reduce((sum, r) => sum + (r.bed || 0), 0);
+        const totalBes = sortedList.reduce((sum, r) => sum + (r.bes || 0), 0);
+        const totalBal = sortedList.reduce((sum, r) => sum + (r.balance || 0), 0);
+
         const docHtml = `
             <html dir="rtl" lang="fa">
             <head>
                 <meta charset="utf-8">
                 <title>${title}</title>
                 <style>
-                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 25px; background: #fff; color: #333; direction: rtl; }
-                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
-                    .header h1 { margin: 0; font-size: 20px; color: #0f172a; }
-                    .header p { margin: 4px 0 0; font-size: 13px; color: #475569; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: right; font-size: 12px; }
-                    th { background-color: #f8fafc; font-weight: bold; color: #0f172a; }
-                    tr:nth-child(even) { background-color: #f1f5f9; }
+                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 20px; background: #fff; color: #1e293b; direction: rtl; }
+                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
+                    .header h1 { margin: 0; font-size: 18px; color: #0f172a; font-weight: 800; }
+                    .header p { margin: 3px 0 0; font-size: 12px; color: #475569; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: right; font-size: 11px; }
+                    th { background-color: #f1f5f9; font-weight: bold; color: #0f172a; }
+                    tr:nth-child(even) { background-color: #f8fafc; }
                     .total { font-weight: bold; background: #e2e8f0 !important; }
-                    .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
+                    .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+                    .num { font-family: 'Tahoma', monospace; direction: ltr; text-align: left; }
                 </style>
             </head>
             <body>
                 <div class="header">
                     <div>
                         <h1>${title}</h1>
-                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)}</p>
+                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)} ${subInfo ? ` | ${subInfo}` : ''}</p>
                     </div>
                     <div style="text-align: left;">
                         <p>تاریخ چاپ: ${formatDateToJalali(new Date().toISOString())}</p>
-                        <p>تعداد ردیف: ${sortedList.length}</p>
+                        <p>تعداد ردیف: ${sortedList.length} شخص</p>
                     </div>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 60px; text-align: center;">ردیف</th>
-                            <th style="width: 120px;">کد حسابداری</th>
-                            <th>نام شخص</th>
-                            <th style="text-align: left; width: 200px;">مبلغ مانده (ریال)</th>
+                            <th style="width: 40px; text-align: center;">ردیف</th>
+                            <th style="width: 90px; text-align: center;">کد تفصیلی</th>
+                            <th>نام شخص / شرکت</th>
+                            <th style="text-align: left; width: 125px;">مجموع بدهکار (ریال)</th>
+                            <th style="text-align: left; width: 125px;">مجموع بستانکار (ریال)</th>
+                            <th style="text-align: left; width: 135px;">مانده حساب (ریال)</th>
+                            <th style="text-align: center; width: 140px;">راس و تاخیر (FIFO)</th>
+                            <th style="width: 65px; text-align: center;">تشخیص</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${sortedList.map((row, idx) => `
-                            <tr>
-                                <td style="text-align: center;">${idx + 1}</td>
-                                <td>${row.code}</td>
-                                <td>${row.name}</td>
-                                <td style="text-align: left; font-weight: 500;">${formatMoney(row.balance)}</td>
-                            </tr>
-                        `).join('')}
+                        ${sortedList.map((row, idx) => {
+                            const codeStr = String(row.code || '').trim();
+                            const ag = trazAging[codeStr];
+                            const isBed = (row.balance || 0) > 0;
+                            const rasText = !ag 
+                                ? 'در حال استعلام' 
+                                : ag.status === 'settled' 
+                                ? 'تسویه شده' 
+                                : `${ag.daysOverdue} روز ${ag.weightedDateJalali && ag.weightedDateJalali !== '---' ? `(${ag.weightedDateJalali})` : ''}`;
+                            
+                            const rasColor = !ag || ag.status === 'settled'
+                                ? '#64748b'
+                                : ag.daysOverdue > 90
+                                ? '#be123c'
+                                : ag.daysOverdue > 60
+                                ? '#b45309'
+                                : '#047857';
+
+                            return `
+                                <tr>
+                                    <td style="text-align: center;">${idx + 1}</td>
+                                    <td style="text-align: center; font-family: monospace;">${row.code}</td>
+                                    <td style="font-weight: 600;">${row.name}</td>
+                                    <td class="num">${formatMoney(row.bed || 0)}</td>
+                                    <td class="num">${formatMoney(row.bes || 0)}</td>
+                                    <td class="num" style="font-weight: bold; color: ${isBed ? '#be123c' : '#047857'};">${formatMoney(row.balance)}</td>
+                                    <td style="text-align: center; font-weight: bold; color: ${rasColor}; font-size: 10.5px;">${rasText}</td>
+                                    <td style="text-align: center; font-weight: bold; color: ${isBed ? '#be123c' : '#047857'};">${isBed ? 'بدهکار' : 'بستانکار'}</td>
+                                </tr>
+                            `;
+                        }).join('')}
                         <tr class="total">
-                            <td colspan="3" style="text-align: left;">جمع کل مانده‌ها:</td>
-                            <td style="text-align: left;">${formatMoney(sortedList.reduce((sum, r) => sum + r.balance, 0))}</td>
+                            <td colspan="3" style="text-align: right;">جمع کل (${sortedList.length} حساب):</td>
+                            <td class="num">${formatMoney(totalBed)}</td>
+                            <td class="num">${formatMoney(totalBes)}</td>
+                            <td class="num" style="font-weight: bold;">${formatMoney(totalBal)}</td>
+                            <td colspan="2" style="text-align: center; font-size: 10px; color: #475569;">محاسبه خودکار راس بر اساس متد FIFO سایان</td>
                         </tr>
                     </tbody>
                 </table>
                 <div class="footer">
-                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP</p>
+                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP • تولید گزارش رسمی و راس‌گیری زنده</p>
                 </div>
             </body>
             </html>
@@ -1466,12 +1545,13 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 { header: '', key: 'bed', width: 22 },
                 { header: '', key: 'bes', width: 22 },
                 { header: '', key: 'balance', width: 24 },
+                { header: '', key: 'ras', width: 26 },
                 { header: '', key: 'status', width: 14 }
             ];
 
             // 1. Title Banner
             const titleRow = ws.addRow([`گزارش ${typeLabel} - سیستم یکپارچه سایان ERP`]);
-            ws.mergeCells('A1:G1');
+            ws.mergeCells('A1:H1');
             titleRow.height = 36;
             titleRow.getCell(1).font = { name: 'Tahoma', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
             titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -1492,14 +1572,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             const infoRow = ws.addRow([
                 `دوره مالی: از ${dateFromStr} تا ${dateToStr}  |  سورت: ${type === 'bed' ? 'بیشترین بدهی به کمترین' : type === 'bes' ? 'بیشترین طلب به کمترین' : sortLabelMap[trazSortBy] || 'بیشترین به کمترین'}  |  جهت: راست به چپ (RTL)  |  تاریخ: ${formatDateToJalali(new Date().toISOString())}  |  تعداد: ${list.length}`
             ]);
-            ws.mergeCells('A2:G2');
+            ws.mergeCells('A2:H2');
             infoRow.height = 24;
             infoRow.getCell(1).font = { name: 'Tahoma', size: 9, bold: true, color: { argb: 'FF475569' } };
             infoRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
             infoRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
             // 3. Header Row
-            const headers = ['ردیف', 'کد تفصیلی', 'نام شخص / شرکت', 'مجموع بدهکار (ریال)', 'مجموع بستانکار (ریال)', 'مانده حساب (ریال)', 'تشخیص'];
+            const headers = ['ردیف', 'کد تفصیلی', 'نام شخص / شرکت', 'مجموع بدهکار (ریال)', 'مجموع بستانکار (ریال)', 'مانده حساب (ریال)', 'راس و تاخیر (FIFO)', 'تشخیص'];
             const headerRow = ws.addRow(headers);
             headerRow.height = 28;
             headerRow.eachCell((cell) => {
@@ -1524,6 +1604,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 totalBesSum += row.bes || 0;
                 totalBalSum += row.balance || 0;
 
+                const codeStr = String(row.code || '').trim();
+                const ag = trazAging[codeStr];
+                const rasText = !ag 
+                    ? 'در حال استعلام' 
+                    : ag.status === 'settled' 
+                    ? 'تسویه شده' 
+                    : `${ag.daysOverdue} روز ${ag.weightedDateJalali && ag.weightedDateJalali !== '---' ? `(${ag.weightedDateJalali})` : ''}`;
+
                 const isBed = row.balance > 0;
                 const r = ws.addRow([
                     idx + 1,
@@ -1532,6 +1620,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                     row.bed || 0,
                     row.bes || 0,
                     row.balance || 0,
+                    rasText,
                     isBed ? 'بدهکار' : 'بستانکار'
                 ]);
 
@@ -1562,6 +1651,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         }
                     } else if (colNum === 7) {
                         cell.alignment = { vertical: 'middle', horizontal: 'center' };
+                        cell.font = { name: 'Tahoma', size: 9, bold: true };
+                    } else if (colNum === 8) {
+                        cell.alignment = { vertical: 'middle', horizontal: 'center' };
                         cell.font = { name: 'Tahoma', size: 9, bold: true, color: { argb: isBed ? 'FFBE123C' : 'FF047857' } };
                     }
                 });
@@ -1575,6 +1667,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 totalBedSum,
                 totalBesSum,
                 totalBalSum,
+                'محاسبه FIFO',
                 totalBalSum > 0 ? 'بدهکار' : 'بستانکار'
             ]);
             totalRow.height = 26;
@@ -1590,7 +1683,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 if (colNum >= 4 && colNum <= 6) {
                     cell.alignment = { vertical: 'middle', horizontal: 'left' };
                     cell.numFmt = '#,##0';
-                } else if (colNum === 1 || colNum === 7) {
+                } else if (colNum === 1 || colNum === 7 || colNum === 8) {
                     cell.alignment = { vertical: 'middle', horizontal: 'center' };
                 } else {
                     cell.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -4887,20 +4980,80 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         const dateToStr = dateTo || 'امروز';
 
         if (activeTab === 'traz') {
-            const pdfFilename = `Sayan_Traz_${scope === 'both' ? 'All' : (scope === 'bed' ? 'Debtors' : 'Creditors')}_${Date.now()}.pdf`;
+            const pdfFilename = `Sayan_Traz_${scope === 'current' ? 'Selected_View' : (scope === 'both' ? 'All' : (scope === 'bed' ? 'Debtors' : 'Creditors'))}_${Date.now()}.pdf`;
             const htmlContent = handlePrintTrazReport(scope, true) as unknown as string;
             
+            const catMap: Record<string, string> = {
+                '16': 'همه اشخاص',
+                'all': 'همه اشخاص',
+                '11': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+                'suppliers': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+                '12': '۱۲ مشتریان (حساب‌های دریافتنی)',
+                'customers': '۱۲ مشتریان (حساب‌های دریافتنی)',
+                '13': '۱۳ پرسنل و همکاران',
+                'personnel': '۱۳ پرسنل و همکاران',
+                '14': '۱۴ سهام‌داران و شرکا',
+                'shareholders': '۱۴ سهام‌داران و شرکا',
+                '15': '۱۵ سایر اشخاص',
+                'others': '۱۵ سایر اشخاص',
+                'debtors': 'بدهکاران',
+                'creditors': 'بستانکاران'
+            };
+
+            const fullList = getFilteredTraz(false);
+            const targetList = scope === 'current'
+                ? fullList
+                : fullList.filter(t => scope === 'both' ? t.balance !== 0 : (scope === 'bed' ? t.balance > 0 : t.balance < 0));
+
+            const totalDebtors = targetList.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
+            const totalCreditors = targetList.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
+
+            // Compute ras/aging stats for the shared list
+            let withAgingCount = 0;
+            let totalDelayDays = 0;
+            targetList.forEach(item => {
+                const codeStr = String(item.code || '').trim();
+                const ag = trazAging[codeStr];
+                if (ag && ag.status !== 'settled' && ag.daysOverdue > 0) {
+                    withAgingCount++;
+                    totalDelayDays += ag.daysOverdue;
+                }
+            });
+            const avgDelay = withAgingCount > 0 ? Math.round(totalDelayDays / withAgingCount) : 0;
+
             let text = '';
-            if (scope === 'both') {
-                const totalDebtors = filteredTraz.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
-                const totalCreditors = filteredTraz.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
-                text = `📊 گزارش تراز معین مالی سایان (${dateFromStr} تا ${dateToStr})\n• تعداد کل حساب‌ها: ${filteredTraz.length} حساب\n• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تراز پیوست گردید.`;
+            if (scope === 'current') {
+                const categoryLabel = catMap[trazCategory] || 'فیلتر انتخابی';
+                text = `📊 گزارش تراز اشخاص [${categoryLabel}] (${dateFromStr} تا ${dateToStr})\n` +
+                       `• تعداد ردیف‌ها: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       (totalDebtors > 0 ? `• جمع کل بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` : '') +
+                       (totalCreditors > 0 ? `• جمع کل بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n` : '') +
+                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورها (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
+                       `• ستون راس و تاخیر فاکتورها (FIFO) به همراه مانده‌ها در فایل پیوست درج شده است.\n` +
+                       `📄 فایل PDF اختصاصی پیوست گردید.`;
+            } else if (scope === 'both') {
+                text = `📊 گزارش تراز معین مالی و کل اشخاص سایان (${dateFromStr} تا ${dateToStr})\n` +
+                       `• تعداد کل حساب‌ها: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       `• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` +
+                       `• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n` +
+                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورها (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
+                       `• ستون راس و تاخیر فاکتورها (FIFO) در PDF درج شده است.\n` +
+                       `📄 فایل PDF تراز پیوست گردید.`;
             } else if (scope === 'bed') {
-                const totalDebtors = filteredTraz.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
-                text = `📊 گزارش بدهکاران سایان (${dateFromStr} تا ${dateToStr})\n• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تفکیکی بدهکاران پیوست گردید.`;
+                text = `📊 گزارش بدهکاران سایان (سورت بیشترین به کمترین بدهی)\n` +
+                       `• بازه زمانی: ${dateFromStr} تا ${dateToStr}\n` +
+                       `• تعداد اشخاص بدهکار: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       `• جمع کل بدهی‌ها: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` +
+                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورهای باز (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
+                       `• ستون اختصاصی راس و تاخیر فاکتورها در PDF درج شده است.\n` +
+                       `📄 فایل PDF تفکیکی بدهکاران پیوست گردید.`;
             } else {
-                const totalCreditors = filteredTraz.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
-                text = `📊 گزارش بستانکاران سایان (${dateFromStr} تا ${dateToStr})\n• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تفکیکی بستانکاران پیوست گردید.`;
+                text = `📊 گزارش بستانکاران سایان (سورت بیشترین به کمترین بستانکاری)\n` +
+                       `• بازه زمانی: ${dateFromStr} تا ${dateToStr}\n` +
+                       `• تعداد اشخاص بستانکار: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       `• جمع کل بستانکاری‌ها (طلب اشخاص): ${totalCreditors.toLocaleString('fa-IR')} ریال\n` +
+                       `• ستون اختصاصی راس و تاخیر فاکتورها در PDF درج شده است.\n` +
+                       `📄 فایل PDF تفکیکی بستانکاران پیوست گردید.`;
             }
             return { htmlContent, pdfFilename, defaultMsg: text };
         } else if (activeTab === 'sales') {
@@ -5322,20 +5475,38 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                                 <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
 
-                                {/* PDF Print */}
+                                {/* PDF Print & Export Options */}
+                                <button 
+                                    type="button"
+                                    onClick={() => handlePrintTrazReport('current')} 
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg border border-indigo-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="چاپ و PDF دقیقاً مطابق با دسته‌بندی و فیلترهای انتخابی فعلی شما همراه با راس‌گیری"
+                                >
+                                    <Printer className="w-3.5 h-3.5" /> PDF نمای انتخابی
+                                </button>
                                 <button 
                                     type="button"
                                     onClick={() => handlePrintTrazReport('bed')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-200 text-xs font-semibold transition-colors cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="چاپ و PDF کلیه بدهکاران با سورت بیشترین بدهی همراه با روزهای تاخیر راس"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> PDF بدهکاران
                                 </button>
                                 <button 
                                     type="button"
                                     onClick={() => handlePrintTrazReport('bes')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg border border-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg border border-emerald-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="چاپ و PDF کلیه بستانکاران با سورت بیشترین طلب همراه با تحلیل راس"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> PDF بستانکاران
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => handlePrintTrazReport('both')} 
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg border border-blue-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="چاپ و PDF کل تراز بدهکاران و بستانکاران همراه با ستون راس"
+                                >
+                                    <Printer className="w-3.5 h-3.5" /> PDF کل تراز
                                 </button>
                             </div>
                         </div>
@@ -5886,6 +6057,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                                 <button 
                                     type="button"
+                                    onClick={() => handlePrintTrazReport('current')} 
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-xl border border-indigo-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
+                                    title="چاپ و PDF بر اساس دسته‌بندی و فیلترهای انتخابی فعلی"
+                                >
+                                    <Printer className="w-3.5 h-3.5" /> PDF نمای انتخابی
+                                </button>
+                                <button 
+                                    type="button"
                                     onClick={() => handlePrintTrazReport('bed')} 
                                     className="flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-xl border border-rose-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
                                 >
@@ -5897,6 +6076,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl border border-emerald-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
                                 >
                                     <Printer className="w-3.5 h-3.5" /> PDF بستانکاران
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => handlePrintTrazReport('both')} 
+                                    className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl border border-blue-200 text-xs font-bold transition-colors min-h-[44px] cursor-pointer"
+                                    title="چاپ و PDF کامل کل تراز"
+                                >
+                                    <Printer className="w-3.5 h-3.5" /> PDF کل تراز
                                 </button>
                             </div>
                         </div>

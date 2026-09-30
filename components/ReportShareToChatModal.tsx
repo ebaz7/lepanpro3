@@ -26,7 +26,7 @@ import { getEffectiveApiUrl } from '../services/apiService';
 import { generatePdfFromHtml } from '../utils/pdfGenerator';
 import { ChatGroup, ChatMessage, User } from '../types';
 
-export type TrazScope = 'both' | 'bed' | 'bes';
+export type TrazScope = 'both' | 'bed' | 'bes' | 'current';
 
 interface ReportShareToChatModalProps {
   isOpen: boolean;
@@ -310,11 +310,24 @@ export const ReportShareToChatModal: React.FC<ReportShareToChatModalProps> = ({
                 محدوده حساب‌های ارسالی در PDF:
               </span>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-200/60 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100">
-                {scope === 'both' ? 'هر دو گروه' : (scope === 'bed' ? 'فقط بدهکاران' : 'فقط بستانکاران')}
+                {scope === 'current' ? '🎯 نمای انتخابی (فیلتر جاری)' : (scope === 'both' ? '👥 کل اشخاص' : (scope === 'bed' ? '🔴 فقط بدهکاران' : '🟢 فقط بستانکاران'))}
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setScope('current')}
+                className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1 min-h-[38px] ${
+                  scope === 'current'
+                    ? 'bg-indigo-600 text-white shadow-md font-black ring-2 ring-indigo-400/40'
+                    : 'bg-white dark:bg-zinc-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 border border-slate-200 dark:border-zinc-700'
+                }`}
+                title="ارسال دقیقاً همان جدولی که فیلترها و دسته‌بندی روی آن اعمال شده است"
+              >
+                <span>🎯 نمای انتخابی</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setScope('both')}
@@ -323,8 +336,9 @@ export const ReportShareToChatModal: React.FC<ReportShareToChatModalProps> = ({
                     ? 'bg-blue-600 text-white shadow-md font-black ring-2 ring-blue-400/40'
                     : 'bg-white dark:bg-zinc-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 border border-slate-200 dark:border-zinc-700'
                 }`}
+                title="ارسال کل تراز اشخاص بدون تفکیک"
               >
-                <span>👥 هر دو گروه</span>
+                <span>👥 کل تراز</span>
               </button>
 
               <button
@@ -335,8 +349,9 @@ export const ReportShareToChatModal: React.FC<ReportShareToChatModalProps> = ({
                     ? 'bg-rose-600 text-white shadow-md font-black ring-2 ring-rose-400/40'
                     : 'bg-white dark:bg-zinc-800 text-rose-700 dark:text-rose-400 hover:bg-rose-50 border border-slate-200 dark:border-zinc-700'
                 }`}
+                title="فقط اشخاص بدهکار با سورت بیشترین به کمترین"
               >
-                <span>🔴 فقط بدهکاران</span>
+                <span>🔴 بدهکاران</span>
               </button>
 
               <button
@@ -347,8 +362,9 @@ export const ReportShareToChatModal: React.FC<ReportShareToChatModalProps> = ({
                     ? 'bg-emerald-600 text-white shadow-md font-black ring-2 ring-emerald-400/40'
                     : 'bg-white dark:bg-zinc-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 border border-slate-200 dark:border-zinc-700'
                 }`}
+                title="فقط اشخاص بستانکار با سورت بیشترین به کمترین"
               >
-                <span>🟢 فقط بستانکاران</span>
+                <span>🟢 بستانکاران</span>
               </button>
             </div>
           </div>
