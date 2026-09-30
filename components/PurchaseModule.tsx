@@ -2526,12 +2526,19 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     // Live Sayan Warehouse Stock Check State
     const [refreshingSayanStock, setRefreshingSayanStock] = useState(false);
     const [liveRequest, setLiveRequest] = useState<PurchaseRequest>(request);
+    const autoCheckedRef = React.useRef<string | null>(null);
 
     useEffect(() => {
         setLiveRequest(request);
+        // Automatically check live Sayan warehouse stock when request is opened
+        if (request && request.id && autoCheckedRef.current !== request.id) {
+            autoCheckedRef.current = request.id;
+            handleRefreshSayanStock(true);
+        }
     }, [request]);
 
-    const handleRefreshSayanStock = async () => {
+    const handleRefreshSayanStock = async (isSilent: boolean = false) => {
+        if (refreshingSayanStock) return;
         setRefreshingSayanStock(true);
         try {
             const rawItems = liveRequest.items && liveRequest.items.length > 0
@@ -2541,7 +2548,8 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
             const updatedItems = [];
             for (const it of rawItems) {
                 const queryName = it.itemName || liveRequest.itemName || '';
-                const matchRes = await matchSayanPart(queryName);
+                const itemCode = it.sayanItemCode || it.itemCode || '';
+                const matchRes = await matchSayanPart(queryName, itemCode);
                 updatedItems.push({
                     ...it,
                     sayanStock: matchRes.stock,
@@ -2575,7 +2583,9 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
             onSuccess();
         } catch (err) {
             console.error("Refresh Sayan stock error:", err);
-            alert('خطا در برقراری ارتباط با وب‌سرویس انبار سایان');
+            if (!isSilent) {
+                console.warn('خطا در برقراری ارتباط با وب‌سرویس انبار سایان');
+            }
         } finally {
             setRefreshingSayanStock(false);
         }

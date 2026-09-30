@@ -8035,10 +8035,32 @@ app.delete('/api/orders/:id/archive-attachments/:attachmentId', async (req, res)
 
         const order = db.orders[idx];
         const attId = String(req.params.attachmentId);
+
         if (Array.isArray(order.archiveAttachments)) {
-            order.archiveAttachments = order.archiveAttachments.filter(a => String(a.id) !== attId);
+            order.archiveAttachments = order.archiveAttachments.filter(a => 
+                String(a.id || '') !== attId && 
+                String(a.fileName || '') !== attId &&
+                String(a.url || '') !== attId
+            );
+        }
+        if (Array.isArray(order.attachments)) {
+            order.attachments = order.attachments.filter(a => 
+                String(a.id || '') !== attId && 
+                String(a.fileName || '') !== attId &&
+                String(a.url || '') !== attId
+            );
         }
         saveDb(db);
+
+        // Broadcast notification for real-time client sync
+        try {
+            await broadcastNotification(
+                `🗑️ حذف پیوست دستور پرداخت #${order.trackingNumber}`,
+                `یکی از پیوست‌های سند #${order.trackingNumber} حذف شد.`,
+                '/manage',
+                ['admin', 'financial', 'manager', 'ceo']
+            );
+        } catch (_) {}
 
         res.json({
             success: true,
@@ -8047,6 +8069,55 @@ app.delete('/api/orders/:id/archive-attachments/:attachmentId', async (req, res)
         });
     } catch (e) {
         console.error("DELETE archive attachment error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.delete('/api/orders/:id/attachments/:attachmentId', async (req, res) => {
+    try {
+        const db = getDb();
+        if (!db.orders) db.orders = [];
+        const reqId = String(req.params.id);
+        const idx = db.orders.findIndex(x => String(x.id) === reqId || (x.trackingNumber && String(x.trackingNumber) === reqId));
+        if (idx === -1) {
+            return res.status(404).json({ error: 'دستور پرداخت یافت نشد' });
+        }
+
+        const order = db.orders[idx];
+        const attId = String(req.params.attachmentId);
+
+        if (Array.isArray(order.attachments)) {
+            order.attachments = order.attachments.filter(a => 
+                String(a.id || '') !== attId && 
+                String(a.fileName || '') !== attId &&
+                String(a.url || '') !== attId
+            );
+        }
+        if (Array.isArray(order.archiveAttachments)) {
+            order.archiveAttachments = order.archiveAttachments.filter(a => 
+                String(a.id || '') !== attId && 
+                String(a.fileName || '') !== attId &&
+                String(a.url || '') !== attId
+            );
+        }
+        saveDb(db);
+
+        try {
+            await broadcastNotification(
+                `🗑️ حذف پیوست دستور پرداخت #${order.trackingNumber}`,
+                `یکی از پیوست‌های سند #${order.trackingNumber} حذف شد.`,
+                '/manage',
+                ['admin', 'financial', 'manager', 'ceo']
+            );
+        } catch (_) {}
+
+        res.json({
+            success: true,
+            order: order,
+            orders: db.orders
+        });
+    } catch (e) {
+        console.error("DELETE attachment error:", e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -8225,11 +8296,35 @@ app.get('/api/purchase-requests', (req, res) => {
 // Match requested item name with Sayan factory parts and get live stock in Sayan warehouse
 app.post('/api/sayan/match-part', async (req, res) => {
     try {
-        const { itemName } = req.body || {};
-        const result = await sayanPartsService.searchAndMatchSayanPart(itemName);
+        const { itemName, itemCode } = req.body || {};
+        const result = await sayanPartsService.searchAndMatchSayanPart(itemName, itemCode);
         res.json(result);
     } catch (e) {
         console.error("Match Sayan Part error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Batch match multiple items with Sayan parts and live stock
+app.post('/api/sayan/batch-match-parts', async (req, res) => {
+    try {
+        const { items } = req.body || {};
+        const results = await sayanPartsService.batchMatchSayanParts(items || []);
+        res.json({ success: true, results });
+    } catch (e) {
+        console.error("Batch match Sayan parts error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Auto-enrich full purchase request with live Sayan stock
+app.post('/api/sayan/enrich-purchase-request', async (req, res) => {
+    try {
+        const { request } = req.body || {};
+        const enriched = await sayanPartsService.enrichPurchaseRequestWithSayanStock(request);
+        res.json({ success: true, request: enriched });
+    } catch (e) {
+        console.error("Enrich purchase request error:", e);
         res.status(500).json({ error: e.message });
     }
 });

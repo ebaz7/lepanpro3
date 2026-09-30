@@ -506,11 +506,12 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
       }
   };
 
-  const handleDeleteArchiveAtt = async (attachmentId?: string) => {
-      if (!attachmentId) return;
-      if (!confirm('آیا از حذف این پیوست از بایگانی اطمینان دارید؟')) return;
+  const handleDeleteArchiveAtt = async (attachmentId?: string, fileName?: string) => {
+      const targetId = attachmentId || fileName;
+      if (!targetId) return;
+      if (!confirm('آیا از حذف این پیوست اطمینان دارید؟')) return;
       try {
-          const res = await deleteOrderArchiveAttachment(currentOrder.id, attachmentId);
+          const res = await deleteOrderArchiveAttachment(currentOrder.id, targetId);
           if (res && res.order) {
               setCurrentOrder(res.order);
               if (onOrderUpdated) onOrderUpdated(res.order);
@@ -853,12 +854,12 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                                          >
                                              <FileDown size={13} />
                                          </button>
-                                         {att.isArchive && canManageArchiveAttachments && (
+                                         {canManageArchiveAttachments && (
                                              <button 
                                                  type="button" 
-                                                 onClick={() => handleDeleteArchiveAtt(att.id)}
-                                                 className="p-1 hover:bg-red-100 text-red-600 rounded opacity-70 hover:opacity-100" 
-                                                 title="حذف از بایگانی"
+                                                 onClick={() => handleDeleteArchiveAtt(att.id, att.fileName || att.name)}
+                                                 className="p-1 hover:bg-red-100 text-red-600 rounded opacity-70 hover:opacity-100 cursor-pointer transition-colors" 
+                                                 title="حذف پیوست"
                                              >
                                                  <Trash2 size={13} />
                                              </button>

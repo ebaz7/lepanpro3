@@ -908,14 +908,37 @@ export interface SayanPartMatchResult {
     confidence: number;
 }
 
-export const matchSayanPart = async (itemName: string): Promise<SayanPartMatchResult> => {
+export const matchSayanPart = async (itemName: string, itemCode?: string): Promise<SayanPartMatchResult> => {
     try {
-        if (!itemName || !itemName.trim()) {
+        if (!itemName?.trim() && !itemCode?.trim()) {
             return { matched: false, part: null, stock: 0, confidence: 0 };
         }
-        return await apiCall<SayanPartMatchResult>('/sayan/match-part', 'POST', { itemName: itemName.trim() });
+        return await apiCall<SayanPartMatchResult>('/sayan/match-part', 'POST', { 
+            itemName: (itemName || '').trim(),
+            itemCode: (itemCode || '').trim()
+        });
     } catch (e) {
         return { matched: false, part: null, stock: 0, confidence: 0 };
+    }
+};
+
+export const batchMatchSayanParts = async (items: Array<{ id?: string; itemName?: string; itemCode?: string; sayanItemCode?: string }>): Promise<Array<{ id?: string; itemName: string; matchResult: SayanPartMatchResult }>> => {
+    try {
+        if (!items || items.length === 0) return [];
+        const res = await apiCall<{ success: boolean; results: Array<{ id?: string; itemName: string; matchResult: SayanPartMatchResult }> }>('/sayan/batch-match-parts', 'POST', { items });
+        return res.results || [];
+    } catch (e) {
+        return [];
+    }
+};
+
+export const enrichPurchaseRequestWithSayanStock = async (request: PurchaseRequest): Promise<PurchaseRequest> => {
+    try {
+        if (!request) return request;
+        const res = await apiCall<{ success: boolean; request: PurchaseRequest }>('/sayan/enrich-purchase-request', 'POST', { request });
+        return res.request || request;
+    } catch (e) {
+        return request;
     }
 };
 

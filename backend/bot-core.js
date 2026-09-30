@@ -1167,12 +1167,11 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
     const limitedResults = results.slice(0, 10);
 
     for (const item of limitedResults) {
-        try {
-            const img = await Renderer.generateRecordImage(item, imageType, { forceHidePrices: false });
-            
-            let caption = '';
-            let pdfCallback = '';
+        let caption = '';
+        let kb = undefined;
+        let pdfCallback = '';
 
+        try {
             if (type === 'PAYMENT') {
                 const hasAtt = (item.attachments && item.attachments.length > 0) || (item.archiveAttachments && item.archiveAttachments.length > 0);
                 const attCount = (item.attachments?.length || 0) + (item.archiveAttachments?.length || 0);
@@ -1206,12 +1205,34 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
                 kb = pdfCallback ? { inline_keyboard: [[{ text: '📥 دریافت PDF', callback_data: pdfCallback }]] } : undefined;
             }
 
-            if (img && img.length > 0) {
-                await sendPhotoFn(platform, chatId, img, caption, { reply_markup: kb });
-            } else {
+            let img = null;
+            try {
+                img = await Renderer.generateRecordImage(item, imageType, { forceHidePrices: false });
+            } catch (renderErr) {
+                console.warn("[Search Record Render Image Error]:", renderErr.message);
+            }
+
+            let photoSent = false;
+            if (img && img.length > 0 && sendPhotoFn) {
+                try {
+                    await sendPhotoFn(platform, chatId, img, caption, { reply_markup: kb });
+                    photoSent = true;
+                } catch (photoErr) {
+                    console.warn("[Search Send Photo Failed, falling back to text]:", photoErr.message);
+                }
+            }
+
+            if (!photoSent) {
                 await sendFn(chatId, caption, { reply_markup: kb });
             }
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            console.error("[searchAndSendResults Item Error]:", e);
+            try {
+                if (caption) {
+                    await sendFn(chatId, caption, { reply_markup: kb });
+                }
+            } catch (_) {}
+        }
     }
     
     if (results.length > 10) {
@@ -2583,8 +2604,7 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
             fs.writeFileSync(path.join(uploadDir, safeName), pdfBuffer);
             const fileUrl = `/uploads/${safeName}`;
 
-            if (!targetOrder.attachments) targetOrder.attachments = [];
-            targetOrder.attachments.push({
+            const attObj = {
                 id: generateUUID(),
                 fileName: `پیوست_سند_${targetOrder.trackingNumber}.pdf`,
                 name: `پیوست_سند_${targetOrder.trackingNumber}.pdf`,
@@ -2594,11 +2614,28 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
                 size: pdfBuffer.length,
                 uploadedAt: Date.now(),
                 uploadedBy: user ? user.fullName : (platform === 'bale' ? 'کاربر بله' : 'کاربر ربات')
-            });
+            };
+
+            if (!targetOrder.attachments) targetOrder.attachments = [];
+            if (!targetOrder.archiveAttachments) targetOrder.archiveAttachments = [];
+            targetOrder.attachments.push(attObj);
+            targetOrder.archiveAttachments.push(attObj);
 
             saveDb(db);
             session.state = 'IDLE';
             session.data.paymentAttachFiles = [];
+
+            // Real-time broadcast to all connected Web / App clients
+            import('../server.js').then(async m => {
+                if (m.broadcastNotification) {
+                    await m.broadcastNotification(
+                        `📎 پیوست جدید دستور پرداخت #${targetOrder.trackingNumber}`,
+                        `پیوست جدید توسط ${user ? user.fullName : (platform === 'bale' ? 'کاربر بله' : 'کاربر ربات')} به سند #${targetOrder.trackingNumber} متصل شد.`,
+                        '/manage',
+                        ['admin', 'financial', 'manager', 'ceo']
+                    );
+                }
+            }).catch(() => {});
 
             await sendFn(chatId, `✅ فایل پیوست با موفقیت به دستور پرداخت #${targetOrder.trackingNumber} متصل و ذخیره شد.`);
             try {
@@ -5446,6 +5483,7 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
         if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
         if (!order.attachments) order.attachments = [];
+        if (!order.archiveAttachments) order.archiveAttachments = [];
 
         for (const file of files) {
             const ext = (file.fileName && file.fileName.includes('.')) ? file.fileName.split('.').pop() : (file.type === 'image' ? 'jpg' : 'pdf');
@@ -5453,7 +5491,7 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
             fs.writeFileSync(path.join(uploadDir, safeName), file.buffer);
             const fileUrl = `/uploads/${safeName}`;
 
-            order.attachments.push({
+            const attObj = {
                 id: generateUUID(),
                 fileName: file.fileName || safeName,
                 name: file.fileName || safeName,
@@ -5463,13 +5501,28 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
                 size: file.buffer.length,
                 uploadedAt: Date.now(),
                 uploadedBy: user ? user.fullName : (platform === 'bale' ? 'کاربر بله' : 'کاربر تلگرام')
-            });
+            };
+
+            order.attachments.push(attObj);
+            order.archiveAttachments.push(attObj);
         }
 
         saveDb(db);
         const count = files.length;
         session.state = 'IDLE';
         session.data.paymentAttachFiles = [];
+
+        // Real-time broadcast to connected clients
+        import('../server.js').then(async m => {
+            if (m.broadcastNotification) {
+                await m.broadcastNotification(
+                    `📎 پیوست جدید دستور پرداخت #${order.trackingNumber}`,
+                    `${count} فایل جدید به دستور پرداخت #${order.trackingNumber} ضمیمه شد.`,
+                    '/manage',
+                    ['admin', 'financial', 'manager', 'ceo']
+                );
+            }
+        }).catch(() => {});
 
         await sendFn(chatId, `✅ تعداد ${count} فایل با موفقیت به عنوان پیوست به دستور پرداخت #${order.trackingNumber} متصل شد.`);
         return sendFn(chatId, "عملیات دیگری مد نظر دارید؟", { reply_markup: KEYBOARDS.PAYMENT });

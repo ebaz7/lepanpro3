@@ -179,16 +179,17 @@ export const OrderArchiveModal: React.FC<Props> = ({
     }
   };
 
-  const handleDeleteArchiveAtt = async (attachmentId?: string) => {
-    if (!attachmentId) return;
-    if (!confirm('آیا از حذف این فایل از بایگانی اطمینان دارید؟')) return;
+  const handleDeleteArchiveAtt = async (attachmentId?: string, fileName?: string) => {
+    const targetId = attachmentId || fileName;
+    if (!targetId) return;
+    if (!confirm('آیا از حذف این فایل پیوست اطمینان دارید؟')) return;
 
     try {
-      const res = await apiCall<{ order?: PaymentOrder; error?: string }>(`/orders/${currentOrder.id}/archive-attachments/${attachmentId}`, 'DELETE');
+      const res = await apiCall<{ order?: PaymentOrder; error?: string }>(`/orders/${currentOrder.id}/archive-attachments/${targetId}`, 'DELETE');
       if (res && res.order) {
         setCurrentOrder(res.order);
         onOrderUpdated(res.order);
-        setSuccessMsg('پیوست بایگانی با موفقیت حذف گردید.');
+        setSuccessMsg('پیوست با موفقیت حذف گردید.');
       } else {
         throw new Error(res?.error || 'خطا در حذف ضمیمه');
       }
@@ -404,15 +405,14 @@ export const OrderArchiveModal: React.FC<Props> = ({
                           <Eye size={14} />
                         </a>
 
-                        {att.isArchive && (
-                          <button
-                            onClick={() => handleDeleteArchiveAtt(att.id)}
-                            className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-bold"
-                            title="حذف از بایگانی"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteArchiveAtt(att.id, att.fileName || att.name)}
+                          className="p-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg font-bold cursor-pointer transition-colors"
+                          title="حذف پیوست"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </div>
                   );

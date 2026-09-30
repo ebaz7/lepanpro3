@@ -37,6 +37,13 @@ const CATEGORY_MAP = {
     '031034': 'انبار قطعات و ملزومات کارخانه'
 };
 
+const STOP_WORDS = new Set([
+    'با', 'برای', 'در', 'از', 'به', 'تا', 'و', 'یا', 'یک', 'دو', 'سه', 'چهار', 'پنج',
+    'جور', 'عدد', 'بسته', 'سایز', 'مدل', 'نوع', 'جهت', 'مربوط', 'عرض', 'طول', 'قطر',
+    'ضخامت', 'میلی', 'متر', 'سانت', 'سانتی', 'گرمی', 'کیلویی', 'شماره', 'قلم', 'دیگر',
+    'شامل', 'اصلی', 'مارک', 'برند', 'فابریک', 'دانه', 'دستگاه', 'مورد', 'نیاز', 'جهت'
+]);
+
 export const normalizePersianText = (str) => {
     if (!str || typeof str !== 'string') return '';
     return str
@@ -45,16 +52,16 @@ export const normalizePersianText = (str) => {
         .replace(/[\u200B\u200C\u200D\uFEFF]/g, ' ')
         .replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)])
         .replace(/[٠-٩]/g, d => '0123456789'['٠١٢٣٤٥٦٧٨٩'.indexOf(d)])
-        .replace(/[\(\)\[\]\{\}\-_,\.؛:\/\\\|\+]/g, ' ')
+        .replace(/[\(\)\[\]\{\}\-_,\.؛:\/\\\|\+\*]/g, ' ')
         .replace(/\s+/g, ' ')
         .toLowerCase()
         .trim();
 };
 
-// In-memory LRU-like cache for match & stock queries (TTL: 2 minutes)
+// In-memory LRU-like cache for match & stock queries (TTL: 3 minutes)
 const matchResultCache = new Map();
 const matchResultCacheTimestamps = new Map();
-const CACHE_TTL_MS = 120000;
+const CACHE_TTL_MS = 180000;
 
 /**
  * Execute query on Sayan ERP with robust error handling and timeout
@@ -120,23 +127,34 @@ const detectCategory = (code) => {
 };
 
 /**
- * Query Sayan for an item name directly in GNR_TBL_003 (with real-time stock from STR_TBL_011)
- * Optimized to execute in ~1 second with exact indexes
+ * Extract meaningful keywords from a part query string
  */
-export const searchAndMatchSayanPart = async (requestedItemName) => {
-    if (!requestedItemName || typeof requestedItemName !== 'string') {
+export const extractMeaningfulTokens = (rawInput) => {
+    const norm = normalizePersianText(rawInput);
+    if (!norm) return [];
+    
+    const allTokens = norm.split(/\s+/).filter(t => t.length >= 2);
+    const substantive = allTokens.filter(t => !STOP_WORDS.has(t));
+    return substantive.length > 0 ? substantive : allTokens;
+};
+
+/**
+ * Query Sayan for an item name or item code directly in GNR_TBL_003 (with real-time stock from STR_TBL_011)
+ * Highly optimized, multi-tier matching that handles complex specifications, extra words, and dimensions
+ */
+export const searchAndMatchSayanPart = async (requestedItemName, explicitCode = '') => {
+    const rawInput = (requestedItemName || '').trim();
+    const rawCode = (explicitCode || '').trim();
+
+    if (!rawInput && !rawCode) {
         return { matched: false, part: null, stock: 0 };
     }
 
-    const rawInput = requestedItemName.trim();
     const normInput = normalizePersianText(rawInput);
-    if (!normInput || normInput.length < 2) {
-        return { matched: false, part: null, stock: 0 };
-    }
+    const cacheKey = `${rawCode}_${normInput}`;
 
     // Check memory cache
     const now = Date.now();
-    const cacheKey = normInput;
     if (matchResultCache.has(cacheKey)) {
         const ts = matchResultCacheTimestamps.get(cacheKey) || 0;
         if (now - ts < CACHE_TTL_MS) {
@@ -145,21 +163,83 @@ export const searchAndMatchSayanPart = async (requestedItemName) => {
     }
 
     const db = getDb();
-    const tokens = normInput.split(/\s+/).filter(t => t.length >= 2);
-    const isCode = /^[0-9]{4,}$/.test(rawInput);
+
+    // 1. Direct Code Lookup if a valid Sayan numeric code is provided
+    if (rawCode && /^[0-9]{4,}$/.test(rawCode)) {
+        const codeSql = `
+            SELECT TOP 1
+                RTRIM(LTRIM(g03.Field_003)) as Code,
+                RTRIM(LTRIM(g03.Field_008)) as Title,
+                ISNULL((
+                    SELECT SUM(CASE 
+                        WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN t11.Field_006 
+                        WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN -t11.Field_006 
+                        ELSE 0 
+                    END)
+                    FROM STR_TBL_011 t11 WITH (NOLOCK)
+                    INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
+                                               AND t11.Field_003 = t10.Field_004 
+                                               AND t11.Field_012 = t10.Field_018
+                    WHERE t11.Field_005 = g03.Field_003
+                ), 0) as StockQty
+            FROM GNR_TBL_003 g03 WITH (NOLOCK)
+            WHERE g03.Field_003 = '${rawCode}'
+        `;
+        try {
+            const rows = await querySayanDirect(db, codeSql, 8000);
+            if (Array.isArray(rows) && rows.length > 0) {
+                const best = rows[0];
+                const stock = parseFloat(best.StockQty) || 0;
+                const result = {
+                    matched: true,
+                    part: {
+                        id: `sayan-part-${best.Code}`,
+                        code: best.Code,
+                        name: best.Title,
+                        category: detectCategory(best.Code),
+                        unit: detectUnit(best.Title),
+                        type: 'قطعات کارخانه',
+                        warehouseName: 'انبار ملزومات و قطعات',
+                        warehouseCode: '14',
+                        stock
+                    },
+                    stock,
+                    confidence: 100
+                };
+                matchResultCache.set(cacheKey, result);
+                matchResultCacheTimestamps.set(cacheKey, now);
+                return result;
+            }
+        } catch (e) {
+            console.warn('[Sayan Parts Service] Code lookup error:', e.message);
+        }
+    }
+
+    if (!normInput || normInput.length < 2) {
+        return { matched: false, part: null, stock: 0 };
+    }
+
+    const meaningfulTokens = extractMeaningfulTokens(rawInput);
+    const isNumericCode = /^[0-9]{4,}$/.test(rawInput);
 
     let whereClause = '';
-    if (isCode) {
+    if (isNumericCode) {
         whereClause = `g03.Field_003 = '${rawInput}'`;
-    } else if (tokens.length >= 2) {
-        const andParts = tokens.map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' AND ');
-        whereClause = `(${andParts}) OR g03.Field_008 LIKE N'%${rawInput}%'`;
+    } else if (meaningfulTokens.length >= 2) {
+        // Progressive matching: match all meaningful substantive tokens, OR top 2 tokens, OR full raw string
+        const allAnd = meaningfulTokens.map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' AND ');
+        const top2And = meaningfulTokens.slice(0, 2).map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' AND ');
+        const orClauses = meaningfulTokens.map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' OR ');
+
+        whereClause = `(${allAnd}) OR (${top2And}) OR (${orClauses}) OR g03.Field_008 LIKE N'%${rawInput}%'`;
+    } else if (meaningfulTokens.length === 1) {
+        whereClause = `g03.Field_008 LIKE N'%${meaningfulTokens[0]}%'`;
     } else {
         whereClause = `g03.Field_008 LIKE N'%${rawInput}%'`;
     }
 
     const sql = `
-        SELECT TOP 10
+        SELECT TOP 25
             RTRIM(LTRIM(g03.Field_003)) as Code,
             RTRIM(LTRIM(g03.Field_008)) as Title,
             ISNULL((
@@ -179,14 +259,13 @@ export const searchAndMatchSayanPart = async (requestedItemName) => {
           AND (${whereClause})
         ORDER BY 
             CASE WHEN g03.Field_008 = N'${rawInput}' THEN 0 ELSE 1 END,
-            CASE WHEN g03.Field_003 LIKE '03%' THEN 0 ELSE 1 END,
+            CASE WHEN g03.Field_003 LIKE '03%' OR g03.Field_003 LIKE '08%' THEN 0 ELSE 1 END,
             CASE WHEN g03.Field_008 LIKE N'${rawInput}%' THEN 0 ELSE 1 END
     `;
 
     try {
         const rows = await querySayanDirect(db, sql, 12000);
         if (Array.isArray(rows) && rows.length > 0) {
-            // Find best matching row
             let best = rows[0];
             let maxScore = -1;
 
@@ -195,16 +274,34 @@ export const searchAndMatchSayanPart = async (requestedItemName) => {
                 let score = 0;
 
                 // Exact match
-                if (normTitle === normInput) score += 100;
+                if (normTitle === normInput) score += 120;
                 // Starts with
-                if (normTitle.startsWith(normInput)) score += 50;
-                // Tokens match
-                const matchedTokens = tokens.filter(t => normTitle.includes(t)).length;
-                score += matchedTokens * 20;
-                // Prefer items that actually have positive stock
-                if (parseFloat(r.StockQty) > 0) score += 15;
-                // Prefer 03% parts (factory parts)
-                if (String(r.Code).startsWith('03')) score += 25;
+                if (normTitle.startsWith(normInput)) score += 60;
+                
+                // Count how many meaningful tokens are matched in the title
+                let matchedTokenCount = 0;
+                meaningfulTokens.forEach(t => {
+                    if (normTitle.includes(t)) {
+                        score += 35;
+                        matchedTokenCount++;
+                    }
+                });
+
+                // Extra bonus if first 2 primary tokens match
+                if (meaningfulTokens.length >= 2 && normTitle.includes(meaningfulTokens[0]) && normTitle.includes(meaningfulTokens[1])) {
+                    score += 40;
+                }
+
+                // If all tokens match
+                if (matchedTokenCount === meaningfulTokens.length) {
+                    score += 50;
+                }
+
+                // Prefer items that actually have positive stock in Sayan warehouse
+                if (parseFloat(r.StockQty) > 0) score += 20;
+
+                // Prefer 03% or 08% factory parts
+                if (String(r.Code).startsWith('03') || String(r.Code).startsWith('08')) score += 30;
 
                 if (score > maxScore) {
                     maxScore = score;
@@ -230,7 +327,7 @@ export const searchAndMatchSayanPart = async (requestedItemName) => {
                     stock
                 },
                 stock,
-                confidence: maxScore > 50 ? 95 : 75
+                confidence: maxScore > 60 ? 95 : 75
             };
 
             matchResultCache.set(cacheKey, result);
@@ -248,6 +345,24 @@ export const searchAndMatchSayanPart = async (requestedItemName) => {
 };
 
 /**
+ * Batch match parts for multiple items in parallel
+ */
+export const batchMatchSayanParts = async (items = []) => {
+    if (!Array.isArray(items) || items.length === 0) return [];
+    
+    return await Promise.all(items.map(async (it) => {
+        const queryName = it.itemName || it.name || it.Title || '';
+        const explicitCode = it.sayanItemCode || it.itemCode || it.code || '';
+        const matchResult = await searchAndMatchSayanPart(queryName, explicitCode);
+        return {
+            id: it.id || it.itemId,
+            itemName: queryName,
+            matchResult
+        };
+    }));
+};
+
+/**
  * Enriches all items in a purchase request with Sayan factory part matches and live warehouse stock
  */
 export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
@@ -260,7 +375,8 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
     for (let i = 0; i < items.length; i++) {
         const it = { ...items[i] };
         const queryName = it.itemName || purchaseRequest.itemName || '';
-        const matchResult = await searchAndMatchSayanPart(queryName);
+        const explicitCode = it.sayanItemCode || it.itemCode || '';
+        const matchResult = await searchAndMatchSayanPart(queryName, explicitCode);
 
         if (matchResult.matched && matchResult.part) {
             it.itemCode = it.itemCode || matchResult.part.code;
@@ -269,7 +385,7 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
             it.sayanStock = matchResult.stock;
             it.warehouseStock = matchResult.stock;
             it.isAvailableInWarehouse = matchResult.stock > 0;
-            it.sayanWarehouseName = matchResult.part.warehouseName;
+            it.sayanWarehouseName = matchResult.part.warehouseName || 'انبار ملزومات و قطعات';
             it.unit = it.unit || matchResult.part.unit;
 
             if (matchResult.stock > 0) {
@@ -278,17 +394,17 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
                 stockSummaryParts.push(`⚠️ ${it.itemName}: عدم موجودی در انبار سایان (۰ ${it.unit})`);
             }
         } else {
-            it.sayanStock = 0;
-            it.warehouseStock = 0;
-            it.isAvailableInWarehouse = false;
-            it.sayanWarehouseName = 'انبار ملزومات و قطعات';
+            it.sayanStock = it.sayanStock !== undefined ? it.sayanStock : 0;
+            it.warehouseStock = it.warehouseStock !== undefined ? it.warehouseStock : 0;
+            it.isAvailableInWarehouse = (it.sayanStock || 0) > 0;
+            it.sayanWarehouseName = it.sayanWarehouseName || 'انبار ملزومات و قطعات';
         }
         enrichedItems.push(it);
     }
 
     // Also enrich primary item if single-item request
     if (enrichedItems.length === 0 && purchaseRequest.itemName) {
-        const singleMatch = await searchAndMatchSayanPart(purchaseRequest.itemName);
+        const singleMatch = await searchAndMatchSayanPart(purchaseRequest.itemName, purchaseRequest.itemCodeAssigned || purchaseRequest.sayanItemCode);
         if (singleMatch.matched && singleMatch.part) {
             purchaseRequest.itemCodeAssigned = purchaseRequest.itemCodeAssigned || singleMatch.part.code;
             purchaseRequest.sayanStock = singleMatch.stock;
@@ -306,6 +422,10 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
     purchaseRequest.items = enrichedItems;
     if (stockSummaryParts.length > 0) {
         purchaseRequest.sayanStockSummary = stockSummaryParts.join(' | ');
+    }
+    if (enrichedItems.length > 0) {
+        purchaseRequest.sayanStock = enrichedItems[0]?.sayanStock;
+        purchaseRequest.sayanMatchedItem = enrichedItems[0]?.sayanMatchedItem;
     }
 
     return purchaseRequest;
@@ -329,66 +449,47 @@ export const syncSayanFactoryPartsToDatabase = async (limit = 60) => {
         INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
                                    AND t11.Field_003 = t10.Field_004 
                                    AND t11.Field_012 = t10.Field_018
-        INNER JOIN GNR_TBL_003 g03 WITH (NOLOCK) ON t11.Field_005 = g03.Field_003
-        WHERE t11.Field_014 IN ('11', '14', '18') 
-          AND (t11.Field_005 LIKE '03%' OR t11.Field_005 LIKE '08%' OR t11.Field_005 LIKE '02%')
+        LEFT JOIN GNR_TBL_003 g03 WITH (NOLOCK) ON t11.Field_005 = g03.Field_003
+        WHERE (t11.Field_005 LIKE '03%' OR t11.Field_005 LIKE '08%')
         GROUP BY t11.Field_005, g03.Field_008
-        HAVING SUM(CASE 
-            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN t11.Field_006 
-            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN -t11.Field_006 
-            ELSE 0 
-        END) > 0
         ORDER BY StockQty DESC
     `;
 
     try {
-        const rows = await querySayanDirect(db, sql, 20000);
+        const rows = await querySayanDirect(db, sql, 15000);
         if (Array.isArray(rows) && rows.length > 0) {
-            const mappedParts = rows.map(r => ({
-                id: `sayan-part-${r.Code}`,
-                code: r.Code,
-                name: r.Title,
-                category: detectCategory(r.Code),
-                unit: detectUnit(r.Title),
-                type: 'قطعات',
-                currentStock: parseFloat(r.StockQty) || 0,
-                minStock: 5,
-                warehouseName: 'انبار ملزومات و قطعات'
-            }));
+            const partsList = rows.map((r) => {
+                const code = r.Code;
+                const name = r.Title || `قطعه ${code}`;
+                const category = detectCategory(code);
+                const unit = detectUnit(name);
+                const stock = parseFloat(r.StockQty) || 0;
 
-            // Merge into db.partMasterData
-            if (!Array.isArray(db.partMasterData)) db.partMasterData = [];
-            const existingCodes = new Set(db.partMasterData.map(p => p.code || p.id));
-            for (const p of mappedParts) {
-                const idx = db.partMasterData.findIndex(x => x.code === p.code || x.id === p.id);
-                if (idx >= 0) {
-                    db.partMasterData[idx] = { ...db.partMasterData[idx], ...p };
-                } else {
-                    db.partMasterData.push(p);
-                }
-            }
-            saveDb(db);
-            return { success: true, count: mappedParts.length, parts: db.partMasterData };
+                return {
+                    id: `sayan-part-${code}`,
+                    name,
+                    code,
+                    category,
+                    unit,
+                    currentStock: stock,
+                    minStock: 0,
+                    reorderPoint: 5,
+                    location: 'انبار ملزومات و قطعات',
+                    type: 'قطعات کارخانه',
+                    isActive: true,
+                    lastSyncDate: new Date().toISOString()
+                };
+            });
+
+            return {
+                success: true,
+                count: partsList.length,
+                parts: partsList
+            };
         }
     } catch (err) {
-        console.error('[Sayan Parts Service] Error syncing parts to database:', err.message);
-        throw err;
+        console.error('[Sayan Parts Service] Sync catalog error:', err.message);
     }
-    return { success: false, count: 0, parts: db.partMasterData || [] };
-};
 
-/**
- * Get Sayan factory parts catalog, using local database cache or syncing from Sayan if empty/forced
- */
-export const getSayanFactoryPartsCatalog = async (force = false) => {
-    const db = getDb();
-    if (!force && Array.isArray(db.partMasterData) && db.partMasterData.length > 0) {
-        return db.partMasterData;
-    }
-    try {
-        const res = await syncSayanFactoryPartsToDatabase(300);
-        return res.parts || db.partMasterData || [];
-    } catch {
-        return db.partMasterData || [];
-    }
+    return { success: false, count: 0, parts: [] };
 };
