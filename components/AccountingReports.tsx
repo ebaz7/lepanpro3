@@ -1310,72 +1310,138 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         }
     };
 
-    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both', returnHtml: boolean = false) => {
+    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both' | 'current', returnHtml: boolean = false) => {
         const fullList = getFilteredTraz(false);
-        const sortedList = fullList
-            .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
-            .sort((a, b) => {
-                if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
-                if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
-                return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
-            });
+        const sortedList = type === 'current'
+            ? [...fullList]
+            : fullList
+                .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
+                .sort((a, b) => {
+                    if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
+                    if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
+                    return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
+                });
 
-        const title = type === 'both' ? 'گزارش مانده بدهکاران و بستانکاران (سورت بیشترین به کمترین)' : (type === 'bed' ? 'گزارش مانده بدهکاران (سورت از بیشترین به کمترین)' : 'گزارش مانده بستانکاران (سورت از بیشترین به کمترین)');
+        const catMap: Record<string, string> = {
+            '16': 'همه اشخاص (تمام دسته‌ها)',
+            'all': 'همه اشخاص (تمام دسته‌ها)',
+            '11': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+            'suppliers': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+            '12': '۱۲ مشتریان (حساب‌های دریافتنی)',
+            'customers': '۱۲ مشتریان (حساب‌های دریافتنی)',
+            '13': '۱۳ پرسنل و همکاران',
+            'personnel': '۱۳ پرسنل و همکاران',
+            '14': '۱۴ سهام‌داران و شرکا',
+            'shareholders': '۱۴ سهام‌داران و شرکا',
+            '15': '۱۵ سایر اشخاص',
+            'others': '۱۵ سایر اشخاص',
+            'debtors': 'بدهکاران',
+            'creditors': 'بستانکاران'
+        };
+
+        let title = 'گزارش تراز معین مالی و مانده اشخاص';
+        let subInfo = '';
+        if (type === 'current') {
+            title = `گزارش تراز اشخاص [${catMap[trazCategory] || 'نمای انتخابی'}]`;
+            subInfo = `مرتب‌سازی: ${trazSortBy === 'abs_balance' ? 'بیشترین به کمترین مانده' : (trazSortBy === 'code' ? 'بر اساس کد تفصیلی' : 'نام شخص')}`;
+        } else if (type === 'bed') {
+            title = 'گزارش مانده بدهکاران (سورت از بیشترین به کمترین بدهی)';
+        } else if (type === 'bes') {
+            title = 'گزارش مانده بستانکاران (سورت از بیشترین به کمترین بستانکاری)';
+        } else if (type === 'both') {
+            title = 'گزارش تراز کل اشخاص (بدهکاران و بستانکاران)';
+        }
+
+        const totalBed = sortedList.reduce((sum, r) => sum + (r.bed || 0), 0);
+        const totalBes = sortedList.reduce((sum, r) => sum + (r.bes || 0), 0);
+        const totalBal = sortedList.reduce((sum, r) => sum + (r.balance || 0), 0);
+
         const docHtml = `
             <html dir="rtl" lang="fa">
             <head>
                 <meta charset="utf-8">
                 <title>${title}</title>
                 <style>
-                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 25px; background: #fff; color: #333; direction: rtl; }
-                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
-                    .header h1 { margin: 0; font-size: 20px; color: #0f172a; }
-                    .header p { margin: 4px 0 0; font-size: 13px; color: #475569; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: right; font-size: 12px; }
-                    th { background-color: #f8fafc; font-weight: bold; color: #0f172a; }
-                    tr:nth-child(even) { background-color: #f1f5f9; }
-                    .total { font-weight: bold; background: #e2e8f0 !important; }
-                    .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
+                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 20px; background: #fff; color: #1e293b; direction: rtl; }
+                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 15px; }
+                    .header h1 { margin: 0; font-size: 17px; font-weight: bold; color: #0f172a; }
+                    .header p { margin: 3px 0 0; font-size: 11.5px; color: #475569; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+                    th, td { border: 1px solid #cbd5e1; padding: 7px 9px; text-align: right; }
+                    th { background-color: #f1f5f9; font-weight: bold; color: #0f172a; font-size: 11.5px; }
+                    tr:nth-child(even) { background-color: #f8fafc; }
+                    .total { font-weight: bold; background: #e2e8f0 !important; font-size: 11.5px; }
+                    .num { text-align: left; font-family: monospace; font-size: 11.5px; }
+                    .footer { text-align: center; margin-top: 25px; font-size: 10.5px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
                 </style>
             </head>
             <body>
                 <div class="header">
                     <div>
                         <h1>${title}</h1>
-                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)}</p>
+                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)} ${subInfo ? ` | ${subInfo}` : ''}</p>
                     </div>
                     <div style="text-align: left;">
                         <p>تاریخ چاپ: ${formatDateToJalali(new Date().toISOString())}</p>
-                        <p>تعداد ردیف: ${sortedList.length}</p>
+                        <p>تعداد ردیف: ${sortedList.length} شخص</p>
                     </div>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 60px; text-align: center;">ردیف</th>
-                            <th style="width: 120px;">کد حسابداری</th>
-                            <th>نام شخص</th>
-                            <th style="text-align: left; width: 200px;">مبلغ مانده (ریال)</th>
+                            <th style="width: 40px; text-align: center;">ردیف</th>
+                            <th style="width: 90px; text-align: center;">کد تفصیلی</th>
+                            <th>نام شخص / شرکت</th>
+                            <th style="text-align: left; width: 125px;">مجموع بدهکار (ریال)</th>
+                            <th style="text-align: left; width: 125px;">مجموع بستانکار (ریال)</th>
+                            <th style="text-align: left; width: 135px;">مانده حساب (ریال)</th>
+                            <th style="text-align: center; width: 155px;">راس و تاخیر (FIFO)</th>
+                            <th style="width: 65px; text-align: center;">تشخیص</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${sortedList.map((row, idx) => `
-                            <tr>
-                                <td style="text-align: center;">${idx + 1}</td>
-                                <td>${row.code}</td>
-                                <td>${row.name}</td>
-                                <td style="text-align: left; font-weight: 500;">${formatMoney(row.balance)}</td>
-                            </tr>
-                        `).join('')}
+                        ${sortedList.map((row, idx) => {
+                            const codeStr = String(row.code || '').trim();
+                            const ag = trazAging[codeStr];
+                            const isBed = (row.balance || 0) > 0;
+                            const rasText = !ag 
+                                ? 'در حال استعلام' 
+                                : ag.status === 'settled' 
+                                ? 'تسویه شده' 
+                                : `${ag.daysOverdue} روز ${ag.weightedDateJalali && ag.weightedDateJalali !== '---' ? `(${ag.weightedDateJalali})` : ''}`;
+                            
+                            const rasColor = !ag || ag.status === 'settled'
+                                ? '#64748b'
+                                : ag.daysOverdue > 90
+                                ? '#be123c'
+                                : ag.daysOverdue > 60
+                                ? '#b45309'
+                                : '#047857';
+
+                            return `
+                                <tr>
+                                    <td style="text-align: center;">${idx + 1}</td>
+                                    <td style="text-align: center; font-family: monospace;">${row.code}</td>
+                                    <td style="font-weight: 600;">${row.name}</td>
+                                    <td class="num">${formatMoney(row.bed || 0)}</td>
+                                    <td class="num">${formatMoney(row.bes || 0)}</td>
+                                    <td class="num" style="font-weight: bold; color: ${isBed ? '#be123c' : '#047857'};">${formatMoney(Math.abs(row.balance))}</td>
+                                    <td style="text-align: center; font-weight: bold; color: ${rasColor}; font-size: 10.5px;">${rasText}</td>
+                                    <td style="text-align: center; font-weight: bold; color: ${isBed ? '#be123c' : '#047857'};">${isBed ? 'بدهکار' : (row.balance < 0 ? 'بستانکار' : 'تسویه')}</td>
+                                </tr>
+                            `;
+                        }).join('')}
                         <tr class="total">
-                            <td colspan="3" style="text-align: left;">جمع کل مانده‌ها:</td>
-                            <td style="text-align: left;">${formatMoney(sortedList.reduce((sum, r) => sum + r.balance, 0))}</td>
+                            <td colspan="3" style="text-align: right;">جمع کل (${sortedList.length} حساب):</td>
+                            <td class="num">${formatMoney(totalBed)}</td>
+                            <td class="num">${formatMoney(totalBes)}</td>
+                            <td class="num" style="font-weight: bold;">${formatMoney(Math.abs(totalBal))} ${totalBal > 0 ? '(بدهکار)' : (totalBal < 0 ? '(بستانکار)' : '')}</td>
+                            <td colspan="2" style="text-align: center; font-size: 10px; color: #475569;">محاسبه خودکار راس بر اساس متد FIFO سایان</td>
                         </tr>
                     </tbody>
                 </table>
                 <div class="footer">
-                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP</p>
+                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP • تولید گزارش رسمی و راس‌گیری زنده</p>
                 </div>
             </body>
             </html>
@@ -4887,20 +4953,80 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         const dateToStr = dateTo || 'امروز';
 
         if (activeTab === 'traz') {
-            const pdfFilename = `Sayan_Traz_${scope === 'both' ? 'All' : (scope === 'bed' ? 'Debtors' : 'Creditors')}_${Date.now()}.pdf`;
+            const pdfFilename = `Sayan_Traz_${scope === 'current' ? 'Selected_View' : (scope === 'both' ? 'All' : (scope === 'bed' ? 'Debtors' : 'Creditors'))}_${Date.now()}.pdf`;
             const htmlContent = handlePrintTrazReport(scope, true) as unknown as string;
             
+            const catMap: Record<string, string> = {
+                '16': 'همه اشخاص (تمام دسته‌ها)',
+                'all': 'همه اشخاص (تمام دسته‌ها)',
+                '11': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+                'suppliers': '۱۱ تامین‌کنندگان (حساب‌های پرداختنی)',
+                '12': '۱۲ مشتریان (حساب‌های دریافتنی)',
+                'customers': '۱۲ مشتریان (حساب‌های دریافتنی)',
+                '13': '۱۳ پرسنل و همکاران',
+                'personnel': '۱۳ پرسنل و همکاران',
+                '14': '۱۴ سهام‌داران و شرکا',
+                'shareholders': '۱۴ سهام‌داران و شرکا',
+                '15': '۱۵ سایر اشخاص',
+                'others': '۱۵ سایر اشخاص',
+                'debtors': 'بدهکاران',
+                'creditors': 'بستانکاران'
+            };
+
+            const fullList = getFilteredTraz(false);
+            const targetList = scope === 'current'
+                ? fullList
+                : fullList.filter(t => scope === 'both' ? t.balance !== 0 : (scope === 'bed' ? t.balance > 0 : t.balance < 0));
+
+            const totalDebtors = targetList.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
+            const totalCreditors = targetList.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
+
+            // Compute ras/aging stats for the shared list
+            let withAgingCount = 0;
+            let totalDelayDays = 0;
+            targetList.forEach(item => {
+                const codeStr = String(item.code || '').trim();
+                const ag = trazAging[codeStr];
+                if (ag && ag.status !== 'settled' && ag.daysOverdue > 0) {
+                    withAgingCount++;
+                    totalDelayDays += ag.daysOverdue;
+                }
+            });
+            const avgDelay = withAgingCount > 0 ? Math.round(totalDelayDays / withAgingCount) : 0;
+
             let text = '';
-            if (scope === 'both') {
-                const totalDebtors = filteredTraz.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
-                const totalCreditors = filteredTraz.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
-                text = `📊 گزارش تراز معین مالی سایان (${dateFromStr} تا ${dateToStr})\n• تعداد کل حساب‌ها: ${filteredTraz.length} حساب\n• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تراز پیوست گردید.`;
+            if (scope === 'current') {
+                const categoryLabel = catMap[trazCategory] || 'فیلتر انتخابی';
+                text = `📊 گزارش تراز اشخاص [${categoryLabel}] (${dateFromStr} تا ${dateToStr})\n` +
+                       `• تعداد ردیف‌ها: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       (totalDebtors > 0 ? `• جمع کل بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` : '') +
+                       (totalCreditors > 0 ? `• جمع کل بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n` : '') +
+                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورها (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
+                       `• ستون اختصاصی راس و تاخیر فاکتورها (FIFO) به همراه مانده‌ها در فایل پیوست درج گردید.\n` +
+                       `📄 فایل PDF اختصاصی پیوست گردید.`;
+            } else if (scope === 'both') {
+                text = `📊 گزارش تراز معین مالی و کل اشخاص سایان (${dateFromStr} تا ${dateToStr})\n` +
+                       `• تعداد کل حساب‌ها: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       `• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` +
+                       `• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n` +
+                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورها (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
+                       `• ستون راس و تاخیر فاکتورها (FIFO) در PDF درج شده است.\n` +
+                       `📄 فایل PDF تراز پیوست گردید.`;
             } else if (scope === 'bed') {
-                const totalDebtors = filteredTraz.filter(t => t.balance > 0).reduce((sum, r) => sum + r.balance, 0);
-                text = `📊 گزارش بدهکاران سایان (${dateFromStr} تا ${dateToStr})\n• جمع بدهکاران: ${totalDebtors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تفکیکی بدهکاران پیوست گردید.`;
+                text = `📊 گزارش بدهکاران سایان (سورت بیشترین به کمترین بدهی)\n` +
+                       `• بازه زمانی: ${dateFromStr} تا ${dateToStr}\n` +
+                       `• تعداد اشخاص بدهکار: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       `• جمع کل بدهی‌ها: ${totalDebtors.toLocaleString('fa-IR')} ریال\n` +
+                       (avgDelay > 0 ? `• میانگین تاخیر راس فاکتورهای باز (FIFO): ${avgDelay.toLocaleString('fa-IR')} روز\n` : '') +
+                       `• ستون اختصاصی راس و تاخیر فاکتورها در PDF درج شده است.\n` +
+                       `📄 فایل PDF تفکیکی بدهکاران پیوست گردید.`;
             } else {
-                const totalCreditors = filteredTraz.filter(t => t.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
-                text = `📊 گزارش بستانکاران سایان (${dateFromStr} تا ${dateToStr})\n• جمع بستانکاران: ${totalCreditors.toLocaleString('fa-IR')} ریال\n📄 فایل PDF تفکیکی بستانکاران پیوست گردید.`;
+                text = `📊 گزارش بستانکاران سایان (سورت بیشترین به کمترین بستانکاری)\n` +
+                       `• بازه زمانی: ${dateFromStr} تا ${dateToStr}\n` +
+                       `• تعداد اشخاص بستانکار: ${targetList.length.toLocaleString('fa-IR')} شخص\n` +
+                       `• جمع کل بستانکاری‌ها (طلب اشخاص): ${totalCreditors.toLocaleString('fa-IR')} ریال\n` +
+                       `• ستون اختصاصی راس و تاخیر فاکتورها در PDF درج شده است.\n` +
+                       `📄 فایل PDF تفکیکی بستانکاران پیوست گردید.`;
             }
             return { htmlContent, pdfFilename, defaultMsg: text };
         } else if (activeTab === 'sales') {
