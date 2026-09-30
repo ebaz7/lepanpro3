@@ -884,7 +884,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
     const fetchingAgingCodesRef = React.useRef<Set<string>>(new Set());
 
-    // Calculate FIFO Aging and Overdue Days from Sayan database
+    // Calculate FIFO Aging and Overdue Days directly from live Sayan database
     const fetchAgingForTraz = async (targetItems?: any[], force: boolean = false) => {
         const itemsToProcess = targetItems || getFilteredTraz(false);
         if (!itemsToProcess || itemsToProcess.length === 0) {
@@ -892,10 +892,16 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             return;
         }
 
+        if (force) {
+            fetchingAgingCodesRef.current.clear();
+            localStorage.removeItem('SAYAN_TRAZ_AGING_CACHE');
+        }
+
         setIsLoadingAging(true);
-        const toastId = force ? toast.loading('در حال راس‌گیری زنده و محاسبه روزهای تاخیر از دیتابیس سایان...') : null;
+        const toastId = force ? toast.loading('در حال استعلام زنده و محاسبه دقیق راس فاکتورها از دیتابیس سایان...') : null;
         try {
-            const partiesPayload = itemsToProcess.slice(0, 30).map((it: any) => ({
+            const listToRun = force ? itemsToProcess.slice(0, 60) : itemsToProcess.slice(0, 30);
+            const partiesPayload = listToRun.map((it: any) => ({
                 code: it.code,
                 balance: it.balance
             }));
@@ -910,13 +916,13 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 const data = await res.json();
                 if (data.aging) {
                     setTrazAging(prev => {
-                        const updated = { ...prev, ...data.aging };
+                        const updated = force ? { ...data.aging } : { ...prev, ...data.aging };
                         try {
                             localStorage.setItem('SAYAN_TRAZ_AGING_CACHE', JSON.stringify(updated));
                         } catch {}
                         return updated;
                     });
-                    if (toastId) toast.success(`راس‌گیری و روزهای تاخیر ${Object.keys(data.aging).length} شخص با موفقیت بروز شد.`, { id: toastId });
+                    if (toastId) toast.success(`استعلام زنده راس فاکتورها و دریافت‌های ${Object.keys(data.aging).length} شخص مستقیماً از سایان دریافت شد.`, { id: toastId });
                 }
             } else {
                 if (toastId) toast.error('خطا در ارتباط با سرور سایان جهت راس‌گیری', { id: toastId });

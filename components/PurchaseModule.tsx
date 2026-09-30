@@ -2853,7 +2853,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     <div className="flex items-center gap-2">
                                         <button 
                                             type="button"
-                                            onClick={handleRefreshSayanStock} 
+                                            onClick={() => handleRefreshSayanStock(false)} 
                                             disabled={refreshingSayanStock}
                                             className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-emerald-200 dark:border-emerald-800"
                                             title="استعلام لحظه‌ای و مجدد موجودی قطعات این درخواست از انبار سایان"
@@ -3063,7 +3063,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                                     ) : (
                                                                         <button 
                                                                             type="button" 
-                                                                            onClick={handleRefreshSayanStock}
+                                                                            onClick={() => handleRefreshSayanStock(false)}
                                                                             className="text-[10px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 font-bold"
                                                                         >
                                                                             استعلام سایان

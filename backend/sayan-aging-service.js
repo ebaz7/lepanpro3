@@ -284,7 +284,7 @@ async function querySayan(sql) {
             'Accept': 'application/json'
         },
         body: JSON.stringify({ query: sql }),
-        timeout: 15000
+        timeout: 25000
     });
 
     if (!response.ok) {
@@ -297,7 +297,7 @@ async function querySayan(sql) {
 }
 
 /**
- * Fetches recent vouchers for a specific party code and computes their aging
+ * Fetches recent vouchers for a specific party code and computes their aging live from Sayan
  */
 export async function getPartyAgingFromSayan(code, balance = 0) {
     if (!code) return null;
@@ -347,32 +347,33 @@ export async function getPartyAgingFromSayan(code, balance = 0) {
 }
 
 /**
- * Computes aging for a batch of parties and stores in cache
+ * Computes aging for a batch of parties directly from Sayan
  */
-export async function getBatchAgingForParties(parties) {
+export async function getBatchAgingForParties(parties, force = false) {
     if (!Array.isArray(parties) || parties.length === 0) return {};
 
     const db = getDb();
-    if (!db.sayanAgingCache) db.sayanAgingCache = {};
+    if (!db.sayanAgingCache || force) db.sayanAgingCache = {};
 
     const results = {};
     const toQuery = [];
 
     const now = Date.now();
-    // Cache valid for 3 hours unless forced
+    // Cache valid for 5 minutes unless force is requested
+    const CACHE_TTL = 5 * 60 * 1000;
     for (const p of parties) {
         const code = String(p.code || p.accountCode || '').trim();
         if (!code) continue;
         const cached = db.sayanAgingCache[code];
-        if (cached && (now - (cached.cachedAt || 0) < 3 * 60 * 60 * 1000) && cached.balance === p.balance) {
+        if (!force && cached && (now - (cached.cachedAt || 0) < CACHE_TTL) && cached.balance === p.balance) {
             results[code] = cached;
         } else {
             toQuery.push({ code, balance: Number(p.balance || 0) });
         }
     }
 
-    // Process in batches of 4 concurrent queries to respect Sayan server capacity
-    const BATCH_SIZE = 4;
+    // Process in batches of 5 concurrent queries to respect Sayan server capacity
+    const BATCH_SIZE = 5;
     for (let i = 0; i < toQuery.length; i += BATCH_SIZE) {
         const chunk = toQuery.slice(i, i + BATCH_SIZE);
         const promises = chunk.map(item => getPartyAgingFromSayan(item.code, item.balance));

@@ -8357,11 +8357,12 @@ app.post('/api/sayan/sync-parts', async (req, res) => {
 app.post('/api/sayan/traz-aging', async (req, res) => {
     try {
         const parties = Array.isArray(req.body?.parties) ? req.body.parties : [];
+        const force = Boolean(req.body?.force);
         if (parties.length === 0 && req.body?.code) {
             const single = await sayanAgingService.getPartyAgingFromSayan(req.body.code, req.body.balance);
             return res.json({ success: true, aging: { [req.body.code]: single } });
         }
-        const results = await sayanAgingService.getBatchAgingForParties(parties);
+        const results = await sayanAgingService.getBatchAgingForParties(parties, force);
         res.json({ success: true, aging: results });
     } catch (e) {
         console.error("Calculate Sayan Aging error:", e);

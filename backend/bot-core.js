@@ -1239,8 +1239,32 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
         await sendFn(chatId, `⚠️ ... و ${results.length - 10} مورد دیگر. لطفا جستجو را محدودتر کنید.`);
     }
     
-    const endMenu = (platform === 'telegram' || platform === 'bale') && (chatId.toString().startsWith('-') || chatId.toString().length > 10) ? undefined : KEYBOARDS.MAIN;
-    await sendFn(chatId, "✅ پایان لیست.", { reply_markup: endMenu });
+    const isGroup = (platform === 'telegram' || platform === 'bale') && (chatId.toString().startsWith('-') || chatId.toString().length > 10);
+    if (!isGroup) {
+        let returnKeyboard = [];
+        if (type === 'PAYMENT') {
+            returnKeyboard = [
+                [{ text: '🔙 بازگشت به مدیریت پرداخت', callback_data: 'MENU_PAY' }],
+                [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
+            ];
+        } else if (type === 'EXIT') {
+            returnKeyboard = [
+                [{ text: '🔙 بازگشت به مدیریت خروج', callback_data: 'MENU_EXIT' }],
+                [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
+            ];
+        } else if (type === 'WH_OUT' || type === 'WH_BIJAK' || type === 'WH_IN') {
+            returnKeyboard = [
+                [{ text: '🔙 بازگشت به مدیریت انبار', callback_data: 'MENU_WH' }],
+                [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
+            ];
+        } else {
+            returnKeyboard = [
+                [{ text: '🔙 بازگشت به منوی اصلی', callback_data: 'MENU_MAIN' }]
+            ];
+        }
+
+        await sendFn(chatId, "🔙 بازگشت:", { reply_markup: { inline_keyboard: returnKeyboard } });
+    }
 };
 
 export const runDailyReport = async (platform, chatId, dateStr, sendFn, sendDocFn) => {
