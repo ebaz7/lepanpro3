@@ -64,7 +64,7 @@ export const OrderArchiveModal: React.FC<Props> = ({
           // Auto convert image to PDF with CamScanner enhancements if toggle is checked
           if (isImage && autoConvertToPdf) {
             try {
-              const mergeRes = await apiCall('/tools/merge-to-pdf', 'POST', {
+              const mergeRes = await apiCall<{ fileData?: string; pdfData?: string; url?: string; size?: number }>('/tools/merge-to-pdf', 'POST', {
                 files: [
                   {
                     name: file.name,
@@ -89,7 +89,7 @@ export const OrderArchiveModal: React.FC<Props> = ({
           }
 
           // Upload to order archive attachments endpoint
-          const res = await apiCall(`/orders/${currentOrder.id}/archive-attachments`, 'POST', {
+          const res = await apiCall<{ order?: PaymentOrder; error?: string }>(`/orders/${currentOrder.id}/archive-attachments`, 'POST', {
             fileName: finalFileName,
             fileData: finalData,
             type: finalType,
@@ -144,7 +144,7 @@ export const OrderArchiveModal: React.FC<Props> = ({
         payload.url = rawUrl;
       }
 
-      const mergeRes = await apiCall('/tools/merge-to-pdf', 'POST', {
+      const mergeRes = await apiCall<{ fileData?: string; pdfData?: string; url?: string; size?: number }>('/tools/merge-to-pdf', 'POST', {
         files: [payload],
         filter: scannerFilter
       });
@@ -157,7 +157,7 @@ export const OrderArchiveModal: React.FC<Props> = ({
       const baseName = (att.fileName || 'تصویر').replace(/\.[^/.]+$/, "");
       const finalPdfName = `[کم‌اسکنر]_${baseName}.pdf`;
 
-      const res = await apiCall(`/orders/${currentOrder.id}/archive-attachments`, 'POST', {
+      const res = await apiCall<{ order?: PaymentOrder; error?: string }>(`/orders/${currentOrder.id}/archive-attachments`, 'POST', {
         fileName: finalPdfName,
         fileData: convertedData,
         type: 'application/pdf',
@@ -184,7 +184,7 @@ export const OrderArchiveModal: React.FC<Props> = ({
     if (!confirm('آیا از حذف این فایل از بایگانی اطمینان دارید؟')) return;
 
     try {
-      const res = await apiCall(`/orders/${currentOrder.id}/archive-attachments/${attachmentId}`, 'DELETE');
+      const res = await apiCall<{ order?: PaymentOrder; error?: string }>(`/orders/${currentOrder.id}/archive-attachments/${attachmentId}`, 'DELETE');
       if (res && res.order) {
         setCurrentOrder(res.order);
         onOrderUpdated(res.order);

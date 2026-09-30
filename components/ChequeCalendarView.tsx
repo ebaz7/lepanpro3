@@ -139,7 +139,7 @@ export const ChequeCalendarView: React.FC<ChequeCalendarViewProps> = ({
         const q = searchQuery.trim().toLowerCase();
         const customer = (item.receipt.customerName || '').toLowerCase();
         const chequeNo = (item.cheque.chequeNumber || '').toLowerCase();
-        const sayad = (item.cheque.sayadId || '').toLowerCase();
+        const sayad = (item.cheque.sayyadId || '').toLowerCase();
         const bank = (item.cheque.bankName || '').toLowerCase();
         return customer.includes(q) || chequeNo.includes(q) || sayad.includes(q) || bank.includes(q);
       }
@@ -501,9 +501,9 @@ export const ChequeCalendarView: React.FC<ChequeCalendarViewProps> = ({
                       <span>بانک: <b>{item.cheque.bankName || '---'}</b></span>
                     </div>
 
-                    {item.cheque.sayadId && (
+                    {item.cheque.sayyadId && (
                       <div className="text-[11px] font-mono text-gray-500">
-                        شناسه صیاد: {item.cheque.sayadId}
+                        شناسه صیاد: {item.cheque.sayyadId}
                       </div>
                     )}
                   </div>

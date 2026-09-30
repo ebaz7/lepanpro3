@@ -601,6 +601,51 @@ const KnowledgeBaseModule: React.FC<KnowledgeBaseModuleProps> = ({ currentUser, 
         }, 500);
     };
 
+    const downloadSingleBankAsTxt = (companyName: string, bank: any) => {
+        let text = `📌 اطلاعات حساب بانکی\n`;
+        text += `صاحب حساب: ${companyName}\n`;
+        text += `بانک: ${bank.bankName}\n`;
+        text += `شماره حساب: ${bank.accountNumber}\n`;
+        if (bank.cardNumber) text += `شماره کارت: ${bank.cardNumber}\n`;
+        if (bank.sheba) text += `شماره شبا: IR${bank.sheba.replace(/^IR/i, '')}\n`;
+
+        downloadAsTxt(text, `${companyName}-${bank.bankName}`);
+    };
+
+    const downloadSingleBankAsPdf = (companyName: string, bank: any) => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        let html = `
+        <html dir="rtl">
+        <head>
+            <title>اطلاعات حساب ${bank.bankName} - ${companyName}</title>
+            <style>
+                body { font-family: Tahoma, Arial, sans-serif; padding: 40px; color: #333; line-height: 1.6; }
+                h1 { color: #1e3a8a; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; font-size: 22px; }
+                .bank-card { background: #fffbeb; padding: 25px; border: 2px solid #fde68a; border-radius: 16px; margin-top: 20px; }
+                .bank-name { font-size: 20px; font-weight: bold; color: #92400e; margin-bottom: 15px; border-bottom: 1px solid #fcd34d; padding-bottom: 8px; }
+                .bank-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: bold; font-size: 15px; }
+                .bank-row font { font-family: monospace; font-size: 18px; color: #1e293b; }
+            </style>
+        </head>
+        <body>
+            <h1>صاحب حساب: ${companyName}</h1>
+            <div class="bank-card">
+                <div class="bank-name">بانک ${bank.bankName}</div>
+                <div class="bank-row"><span>شماره حساب:</span> <font>${bank.accountNumber}</font></div>
+                ${bank.cardNumber ? `<div class="bank-row"><span>شماره کارت:</span> <font>${bank.cardNumber}</font></div>` : ''}
+                ${bank.sheba ? `<div class="bank-row"><span>شماره شبا:</span> <font dir="ltr">IR${bank.sheba.replace(/^IR/i, '')}</font></div>` : ''}
+            </div>
+        </body></html>`;
+
+        printWindow.document.write(html);
+        printWindow.document.close();
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+    };
+
     const handleSaveItem = async () => {
         if (!titleStr.trim() || !settings) return;
         const now = new Date().toISOString();

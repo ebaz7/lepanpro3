@@ -4137,8 +4137,8 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
             const btns = [];
             if (company.banks && company.banks.length > 0) {
                 text += `\n*حساب‌های بانکی:*`;
-                company.banks.forEach(b => {
-                    btns.push([{ text: `🏦 ${b.bankName} (${b.accountNumber.slice(-4)})`, callback_data: `GUEST_KNOW_BANK_${company.id}_${b.id}` }]);
+                company.banks.forEach((b, idx) => {
+                    btns.push([{ text: `🏦 ${b.bankName} (${b.accountNumber.slice(-4)})`, callback_data: `GUEST_KNOW_BANK_${company.id}:${b.id || idx}` }]);
                 });
             }
             btns.push([{ text: '🔙 بازگشت', callback_data: 'GUEST_COMPANY_INFO' }]);
@@ -4146,21 +4146,53 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
         }
 
         if (data.startsWith('GUEST_KNOW_BANK_')) {
-            const parts = data.replace('GUEST_KNOW_BANK_', '').split('_');
-            const companyId = parts[0];
-            const bankId = parts[1];
-            const company = (settings.companies || []).find(c => c.id === companyId);
-            const bank = (company?.banks || []).find(b => b.id === bankId);
-            if (!bank) return sendFn(userId, "❌ یافت نشد.");
+            const rawPayload = data.replace('GUEST_KNOW_BANK_', '');
+            const companies = settings.companies || [];
+            
+            let company = null;
+            let bank = null;
+            let bankKey = '';
+
+            if (rawPayload.includes(':')) {
+                const colonIdx = rawPayload.indexOf(':');
+                const companyId = rawPayload.substring(0, colonIdx);
+                bankKey = rawPayload.substring(colonIdx + 1);
+                company = companies.find(c => c.id === companyId);
+            } else {
+                for (const c of companies) {
+                    if (rawPayload.startsWith(c.id + '_') || rawPayload === c.id) {
+                        company = c;
+                        bankKey = rawPayload.substring(c.id.length + 1);
+                        break;
+                    }
+                }
+                if (!company) {
+                    const parts = rawPayload.split('_');
+                    company = companies.find(c => c.id === parts[0]);
+                    bankKey = parts.slice(1).join('_');
+                }
+            }
+
+            if (company) {
+                bank = (company.banks || []).find((b, idx) => 
+                    b.id === bankKey || 
+                    String(idx) === bankKey || 
+                    (b.accountNumber && b.accountNumber === bankKey)
+                );
+            }
+
+            if (!company || !bank) return sendFn(userId, "❌ اطلاعات حساب بانکی مورد نظر یافت نشد.");
             
             let text = `💳 *اطلاعات حساب بانکی*\n\n`;
             text += `👤 صاحب حساب: *${company.name}*\n`;
-            text += `🏦 بانک: *${bank.bankName}*\n`;
-            text += `🔸 شماره حساب: \`${bank.accountNumber}\`\n`;
-            if (bank.cardNumber) text += `🔸 شماره کارت: \`${bank.cardNumber}\`\n`;
-            if (bank.sheba) text += `🔸 شبا: \`IR${bank.sheba.replace(/^IR/i, '')}\`\n`;
+            text += `🏦 بانک: *${bank.bankName}*\n\n`;
+            text += `🔸 *شماره حساب:*\n\`${bank.accountNumber}\`\n`;
+            if (bank.cardNumber) text += `\n🔸 *شماره کارت:*\n\`${bank.cardNumber}\`\n`;
+            if (bank.sheba) text += `\n🔸 *شماره شبا:*\n\`IR${bank.sheba.replace(/^IR/i, '')}\`\n`;
             
-            return sendFn(userId, text, { reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت', callback_data: `GUEST_KNOWLEDGE_CO_${company.id}` }]] } });
+            text += `\n💡 _جهت کپی هر شماره، روی آن کلیک کنید._`;
+            
+            return sendFn(userId, text, { reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت به لیست حساب‌ها', callback_data: `GUEST_KNOWLEDGE_CO_${company.id}` }]] } });
         }
 
         if (data.startsWith('GUEST_KNOWLEDGE_CUST_')) {
@@ -4588,8 +4620,8 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
         const btns = [];
         if (company.banks && company.banks.length > 0) {
             text += `\n*برای مشاهده اطلاعات کامل هر حساب، روی دکمه‌های زیر کلیک کنید:*`;
-            company.banks.forEach(b => {
-                btns.push([{ text: `🏦 ${b.bankName} (${b.accountNumber.slice(-4)})`, callback_data: `KNOW_BANK_${company.id}_${b.id}` }]);
+            company.banks.forEach((b, idx) => {
+                btns.push([{ text: `🏦 ${b.bankName} (${b.accountNumber.slice(-4)})`, callback_data: `KNOW_BANK_${company.id}:${b.id || idx}` }]);
             });
         } else {
             text += `\n⚠️ (حساب بانکی ثبت نشده)\n`;
@@ -4600,24 +4632,53 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
     }
 
     if (data.startsWith('KNOW_BANK_')) {
-        const parts = data.replace('KNOW_BANK_', '').split('_');
-        const companyId = parts[0];
-        const bankId = parts[1];
+        const rawPayload = data.replace('KNOW_BANK_', '');
+        const companies = settings.companies || [];
         
-        const company = (settings.companies || []).find(c => c.id === companyId);
-        if (!company) return sendFn(chatId, "❌ یافت نشد.");
-        
-        const bank = (company.banks || []).find(b => b.id === bankId);
-        if (!bank) return sendFn(chatId, "❌ یافت نشد.");
+        let company = null;
+        let bank = null;
+        let bankKey = '';
+
+        if (rawPayload.includes(':')) {
+            const colonIdx = rawPayload.indexOf(':');
+            const companyId = rawPayload.substring(0, colonIdx);
+            bankKey = rawPayload.substring(colonIdx + 1);
+            company = companies.find(c => c.id === companyId);
+        } else {
+            for (const c of companies) {
+                if (rawPayload.startsWith(c.id + '_') || rawPayload === c.id) {
+                    company = c;
+                    bankKey = rawPayload.substring(c.id.length + 1);
+                    break;
+                }
+            }
+            if (!company) {
+                const parts = rawPayload.split('_');
+                company = companies.find(c => c.id === parts[0]);
+                bankKey = parts.slice(1).join('_');
+            }
+        }
+
+        if (company) {
+            bank = (company.banks || []).find((b, idx) => 
+                b.id === bankKey || 
+                String(idx) === bankKey || 
+                (b.accountNumber && b.accountNumber === bankKey)
+            );
+        }
+
+        if (!company || !bank) return sendFn(chatId, "❌ اطلاعات حساب بانکی مورد نظر یافت نشد.");
         
         let text = `💳 *اطلاعات حساب بانکی*\n\n`;
         text += `👤 صاحب حساب: *${company.name}*\n`;
-        text += `🏦 بانک: *${bank.bankName}*\n`;
-        text += `🔸 شماره حساب: \`${bank.accountNumber}\`\n`;
-        if (bank.cardNumber) text += `🔸 شماره کارت: \`${bank.cardNumber}\`\n`;
-        if (bank.sheba) text += `🔸 شبا: \`IR${bank.sheba.replace(/^IR/i, '')}\`\n`;
+        text += `🏦 بانک: *${bank.bankName}*\n\n`;
+        text += `🔸 *شماره حساب:*\n\`${bank.accountNumber}\`\n`;
+        if (bank.cardNumber) text += `\n🔸 *شماره کارت:*\n\`${bank.cardNumber}\`\n`;
+        if (bank.sheba) text += `\n🔸 *شماره شبا:*\n\`IR${bank.sheba.replace(/^IR/i, '')}\`\n`;
         
-        return sendFn(chatId, text, { reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت', callback_data: `KNOWLEDGE_CO_${company.id}` }]] } });
+        text += `\n💡 _جهت کپی هر شماره، روی آن کلیک کنید._`;
+        
+        return sendFn(chatId, text, { reply_markup: { inline_keyboard: [[{ text: '🔙 بازگشت به لیست حساب‌ها', callback_data: `KNOWLEDGE_CO_${company.id}` }]] } });
     }
 
     if (data.startsWith('KNOWLEDGE_CUST_')) {

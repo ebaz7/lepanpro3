@@ -16,7 +16,7 @@ interface Props {
   isProcessing?: boolean;
 }
 
-const MobileOrderCard: React.FC<Props> = ({ order, onView, onDelete, onApprove, onReject, canDelete, canApprove, isProcessing }) => {
+const MobileOrderCard: React.FC<Props> = ({ order, onView, onDelete, onApprove, onReject, onArchive, canDelete, canApprove, isProcessing }) => {
   const getStatusColor = (status: OrderStatus) => {
     switch (status) {
       case OrderStatus.APPROVED_CEO: return 'bg-green-100 text-green-800 border-green-200';

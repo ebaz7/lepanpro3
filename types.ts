@@ -1998,7 +1998,7 @@ export interface ChequeItem {
     dueDate: string;      // تاریخ سررسید (مثال: ۱۴۰۳/۰۵/۲۰)
     amount: number;       // مبلغ چک به ریال
     drawerName: string;   // صادرکننده چک / صاحب حساب
-    chequeStatus?: 'box' | 'cashed' | 'deposited' | 'spent'; // وضعیت چک: صندوق، وصول شده، به حساب خوابانده شده، خرج شده
+    chequeStatus?: 'box' | 'cashed' | 'deposited' | 'spent' | 'returned'; // وضعیت چک: صندوق، وصول شده، به حساب خوابانده شده، خرج شده، برگشتی
 }
 
 export interface ChequeReceipt {
