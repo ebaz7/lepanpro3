@@ -1183,8 +1183,12 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
                     btnRow1.push({ text: `📎 مشاهده پیوست‌ها (${attCount})`, callback_data: `ACT_VIEW_PAY_ATTACH_${item.id}` });
                 }
                 const btnRow2 = [{ text: '📎 افزودن پیوست (عکس/PDF)', callback_data: `ACT_ATTACH_PAY_FOR_${item.id}` }];
+                const btnRow3 = [
+                    { text: '🔙 بازگشت', callback_data: 'MENU_PAY' },
+                    { text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }
+                ];
                 
-                kb = { inline_keyboard: [btnRow1, btnRow2] };
+                kb = { inline_keyboard: [btnRow1, btnRow2, btnRow3] };
             } else if (type === 'EXIT') {
                 const totalReqCount = (item.items && item.items.length > 0) 
                     ? item.items.reduce((sum, i) => sum + (Number(i.cartonCount) || 0), 0)
@@ -1193,16 +1197,28 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
                 const totalDelivCount = showDeliv ? (item.items||[]).reduce((sum, i) => sum + (Number(i.deliveredCartonCount) || 0), 0) : totalReqCount;
                 
                 caption = `🚛 *مجوز خروج کالا #${item.permitNumber}*\n🏢 شرکت: ${item.company || '-'}\n📅 تاریخ: ${toShamsiFull(item.date)}\n👤 گیرنده: ${item.recipientName}\n📦 کالا: ${item.goodsName || 'چند مورد'}\n🔢 تعداد درخواستی: ${totalReqCount} ${showDeliv ? `\n✅ تعداد خروجی (انبار): ${totalDelivCount}` : ''}\n🔄 وضعیت: ${item.status}\n👤 درخواست‌کننده: ${item.requester || '-'}`;
-                pdfCallback = `GEN_PDF_EXIT_${item.id}`;
+                
+                const btnRow1 = [{ text: '📥 دریافت PDF', callback_data: `GEN_PDF_EXIT_${item.id}` }];
+                const btnRow2 = [
+                    { text: '🔙 بازگشت', callback_data: 'MENU_EXIT' },
+                    { text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }
+                ];
+                kb = { inline_keyboard: [btnRow1, btnRow2] };
             } else if (type === 'WH_OUT' || type === 'WH_BIJAK') {
                 caption = `📦 *حواله انبار (بیجک) #${item.number}*\n📅 تاریخ: ${toShamsiFull(item.date)}\n👤 گیرنده: ${item.recipientName}\n🚛 راننده: ${item.driverName||'-'}`;
-                pdfCallback = `GEN_PDF_BIJAK_${item.id}`;
+                const btnRow1 = [{ text: '📥 دریافت PDF', callback_data: `GEN_PDF_BIJAK_${item.id}` }];
+                const btnRow2 = [
+                    { text: '🔙 بازگشت', callback_data: 'MENU_WH' },
+                    { text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }
+                ];
+                kb = { inline_keyboard: [btnRow1, btnRow2] };
             } else if (type === 'WH_IN') {
                 caption = `📥 *رسید ورود #${item.proformaNumber}*\n📅 تاریخ: ${toShamsiFull(item.date)}\n📦 اقلام: ${item.items.length} ردیف`;
-            }
-
-            if (type !== 'PAYMENT') {
-                kb = pdfCallback ? { inline_keyboard: [[{ text: '📥 دریافت PDF', callback_data: pdfCallback }]] } : undefined;
+                const btnRow1 = [
+                    { text: '🔙 بازگشت', callback_data: 'MENU_WH' },
+                    { text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }
+                ];
+                kb = { inline_keyboard: [btnRow1] };
             }
 
             let img = null;
@@ -1237,33 +1253,6 @@ const searchAndSendResults = async (db, company, query, mode, type, platform, ch
     
     if (results.length > 10) {
         await sendFn(chatId, `⚠️ ... و ${results.length - 10} مورد دیگر. لطفا جستجو را محدودتر کنید.`);
-    }
-    
-    const isGroup = (platform === 'telegram' || platform === 'bale') && (chatId.toString().startsWith('-') || chatId.toString().length > 10);
-    if (!isGroup) {
-        let returnKeyboard = [];
-        if (type === 'PAYMENT') {
-            returnKeyboard = [
-                [{ text: '🔙 بازگشت به مدیریت پرداخت', callback_data: 'MENU_PAY' }],
-                [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
-            ];
-        } else if (type === 'EXIT') {
-            returnKeyboard = [
-                [{ text: '🔙 بازگشت به مدیریت خروج', callback_data: 'MENU_EXIT' }],
-                [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
-            ];
-        } else if (type === 'WH_OUT' || type === 'WH_BIJAK' || type === 'WH_IN') {
-            returnKeyboard = [
-                [{ text: '🔙 بازگشت به مدیریت انبار', callback_data: 'MENU_WH' }],
-                [{ text: '🏠 منوی اصلی', callback_data: 'MENU_MAIN' }]
-            ];
-        } else {
-            returnKeyboard = [
-                [{ text: '🔙 بازگشت به منوی اصلی', callback_data: 'MENU_MAIN' }]
-            ];
-        }
-
-        await sendFn(chatId, "🔙 بازگشت:", { reply_markup: { inline_keyboard: returnKeyboard } });
     }
 };
 

@@ -8290,7 +8290,37 @@ app.delete('/api/warehouse/transactions/:id', (req, res) => {
 // Dedicated Purchase Requests Endpoints with Automated Notifications
 app.get('/api/purchase-requests', (req, res) => {
     const db = getDb();
-    res.json(db.purchaseRequests || []);
+    const reqs = db.purchaseRequests || [];
+    let modified = false;
+    reqs.forEach(pr => {
+        if (Array.isArray(pr.items)) {
+            pr.items.forEach(it => {
+                if (it.itemName && it.sayanMatchedItem) {
+                    if (!sayanPartsService.isMatchValidForQuery(it.itemName, it.sayanMatchedItem)) {
+                        it.sayanMatchedItem = undefined;
+                        it.sayanItemCode = undefined;
+                        it.sayanStock = undefined;
+                        it.warehouseStock = undefined;
+                        it.isAvailableInWarehouse = false;
+                        modified = true;
+                    }
+                }
+            });
+        }
+        if (pr.itemName && pr.sayanMatchedItem) {
+            if (!sayanPartsService.isMatchValidForQuery(pr.itemName, pr.sayanMatchedItem)) {
+                pr.sayanMatchedItem = undefined;
+                pr.sayanStock = undefined;
+                pr.warehouseStock = undefined;
+                pr.isAvailableInWarehouse = false;
+                modified = true;
+            }
+        }
+    });
+    if (modified) {
+        saveDb(db);
+    }
+    res.json(reqs);
 });
 
 // Match requested item name with Sayan factory parts and get live stock in Sayan warehouse

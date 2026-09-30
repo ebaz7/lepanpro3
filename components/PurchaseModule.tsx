@@ -2550,15 +2550,27 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                 const queryName = it.itemName || liveRequest.itemName || '';
                 const itemCode = it.sayanItemCode || it.itemCode || '';
                 const matchRes = await matchSayanPart(queryName, itemCode);
-                updatedItems.push({
-                    ...it,
-                    sayanStock: matchRes.stock,
-                    warehouseStock: matchRes.stock,
-                    isAvailableInWarehouse: matchRes.stock > 0,
-                    sayanMatchedItem: matchRes.part?.name || it.sayanMatchedItem,
-                    sayanItemCode: matchRes.part?.code || it.sayanItemCode,
-                    sayanWarehouseName: matchRes.part?.warehouseName || it.sayanWarehouseName || 'انبار ملزومات و قطعات'
-                });
+                if (matchRes && matchRes.matched && matchRes.part) {
+                    updatedItems.push({
+                        ...it,
+                        sayanStock: matchRes.stock,
+                        warehouseStock: matchRes.stock,
+                        isAvailableInWarehouse: matchRes.stock > 0,
+                        sayanMatchedItem: matchRes.part.name,
+                        sayanItemCode: matchRes.part.code,
+                        sayanWarehouseName: matchRes.part.warehouseName || 'انبار ملزومات و قطعات'
+                    });
+                } else {
+                    updatedItems.push({
+                        ...it,
+                        sayanStock: undefined,
+                        warehouseStock: undefined,
+                        isAvailableInWarehouse: false,
+                        sayanMatchedItem: undefined,
+                        sayanItemCode: undefined,
+                        sayanWarehouseName: undefined
+                    });
+                }
             }
 
             const sayanSummaryList = updatedItems.map(it => {

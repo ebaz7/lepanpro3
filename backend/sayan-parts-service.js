@@ -129,6 +129,44 @@ const detectCategory = (code) => {
 /**
  * Extract meaningful keywords from a part query string
  */
+const CORE_EQUIPMENT_KEYWORDS = [
+    'تسمه', 'پولی', 'بلبرینگ', 'یاتاقان', 'رولربیرینگ', 'شفت', 'محور',
+    'پیچ', 'مهره', 'واشر', 'خار', 'پین', 'گوژین',
+    'سنسور', 'حسگر', 'چشمی', 'ترانسمیتر', 'اینکودر', 'خط کش',
+    'اینورتر', 'درایو', 'کنتاکتور', 'رله', 'کلید', 'فیوز', 'ترانس', 'پاور',
+    'موتور', 'الکتروموتور', 'دینام', 'سرووموتور', 'استپر', 'گیربکس',
+    'پمپ', 'شناور', 'شیر', 'شیربرقی', 'والو', 'سلونوئید', 'گیج', 'فشارسنج', 'مانومتر',
+    'فیلتر', 'صافی', 'المنت', 'هیتر', 'ترموکوپل',
+    'جک', 'سیلندر', 'پیستون', 'شیلنگ', 'شلنگ', 'لوله', 'اتصال', 'فیتینگ', 'کوپلینگ',
+    'تیغه', 'کاردک', 'چاقو', 'قیچی', 'سنبه', 'ماتریس', 'اره',
+    'چرخ دنده', 'دنده', 'زنجیر',
+    'کاسه نمد', 'اورینگ', 'پکینگ', 'سیل', 'گسکت',
+    'کابل', 'سیم', 'سوکت', 'کانکتور', 'ترمینال',
+    'روغن', 'گریس', 'اسپری', 'چسب', 'رنگ'
+];
+
+/**
+ * Identify the primary physical machine element / core noun of a phrase
+ */
+function identifyCoreEquipmentType(text) {
+    if (!text) return null;
+    const norm = normalizePersianText(text);
+    const tokens = norm.split(/\s+/).filter(Boolean);
+    
+    // First token is often the primary head noun
+    if (tokens.length > 0) {
+        for (const kw of CORE_EQUIPMENT_KEYWORDS) {
+            if (tokens[0] === kw || tokens[0].startsWith(kw)) return kw;
+        }
+    }
+    
+    // Secondary scan across all tokens
+    for (const kw of CORE_EQUIPMENT_KEYWORDS) {
+        if (tokens.includes(kw)) return kw;
+    }
+    return null;
+}
+
 export const extractMeaningfulTokens = (rawInput) => {
     const norm = normalizePersianText(rawInput);
     if (!norm) return [];
@@ -219,6 +257,7 @@ export const searchAndMatchSayanPart = async (requestedItemName, explicitCode = 
         return { matched: false, part: null, stock: 0 };
     }
 
+    const reqCoreType = identifyCoreEquipmentType(rawInput);
     const meaningfulTokens = extractMeaningfulTokens(rawInput);
     const isNumericCode = /^[0-9]{4,}$/.test(rawInput);
 
@@ -226,12 +265,18 @@ export const searchAndMatchSayanPart = async (requestedItemName, explicitCode = 
     if (isNumericCode) {
         whereClause = `g03.Field_003 = '${rawInput}'`;
     } else if (meaningfulTokens.length >= 2) {
-        // Progressive matching: match all meaningful substantive tokens, OR top 2 tokens, OR full raw string
         const allAnd = meaningfulTokens.map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' AND ');
         const top2And = meaningfulTokens.slice(0, 2).map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' AND ');
-        const orClauses = meaningfulTokens.map(t => `g03.Field_008 LIKE N'%${t}%'`).join(' OR ');
-
-        whereClause = `(${allAnd}) OR (${top2And}) OR (${orClauses}) OR g03.Field_008 LIKE N'%${rawInput}%'`;
+        
+        if (reqCoreType) {
+            const otherTokens = meaningfulTokens.filter(t => t !== reqCoreType);
+            const coreAndOthers = otherTokens.length > 0 
+                ? otherTokens.map(t => `(g03.Field_008 LIKE N'%${reqCoreType}%' AND g03.Field_008 LIKE N'%${t}%')`).join(' OR ')
+                : `g03.Field_008 LIKE N'%${reqCoreType}%'`;
+            whereClause = `(${allAnd}) OR (${top2And}) OR (${coreAndOthers}) OR g03.Field_008 LIKE N'%${rawInput}%'`;
+        } else {
+            whereClause = `(${allAnd}) OR (${top2And}) OR g03.Field_008 LIKE N'%${rawInput}%'`;
+        }
     } else if (meaningfulTokens.length === 1) {
         whereClause = `g03.Field_008 LIKE N'%${meaningfulTokens[0]}%'`;
     } else {
@@ -266,42 +311,74 @@ export const searchAndMatchSayanPart = async (requestedItemName, explicitCode = 
     try {
         const rows = await querySayanDirect(db, sql, 12000);
         if (Array.isArray(rows) && rows.length > 0) {
-            let best = rows[0];
+            let best = null;
             let maxScore = -1;
 
             for (const r of rows) {
                 const normTitle = normalizePersianText(r.Title);
+                const candCoreType = identifyCoreEquipmentType(r.Title);
+                const candTokens = normTitle.split(/\s+/).filter(Boolean);
+                
+                // 1. Critical Equipment Type Conflict Detection
+                // If user asked for 'تسمه' (Belt) but candidate is 'پولی' (Pulley), disqualify immediately!
+                if (reqCoreType && candCoreType && reqCoreType !== candCoreType) {
+                    if (candTokens[0] && candTokens[0] !== reqCoreType && CORE_EQUIPMENT_KEYWORDS.includes(candTokens[0])) {
+                        continue; // HARD REJECTION: Do not match a pulley when user requested a belt
+                    }
+                }
+
+                // If requested item has a known equipment type, candidate MUST contain it
+                if (reqCoreType && !normTitle.includes(reqCoreType)) {
+                    continue; // HARD REJECTION: Missing core equipment type
+                }
+
                 let score = 0;
 
                 // Exact match
-                if (normTitle === normInput) score += 120;
+                if (normTitle === normInput) score += 150;
                 // Starts with
-                if (normTitle.startsWith(normInput)) score += 60;
-                
+                if (normTitle.startsWith(normInput)) score += 80;
+
                 // Count how many meaningful tokens are matched in the title
                 let matchedTokenCount = 0;
-                meaningfulTokens.forEach(t => {
+                meaningfulTokens.forEach((t, idx) => {
                     if (normTitle.includes(t)) {
                         score += 35;
                         matchedTokenCount++;
+                        if (idx === 0 && (normTitle.startsWith(t) || candTokens[0] === t)) {
+                            score += 40;
+                        }
                     }
                 });
 
-                // Extra bonus if first 2 primary tokens match
+                // Penalize if candidate starts with a conflicting core noun not in query
+                if (candTokens.length > 0 && !meaningfulTokens.includes(candTokens[0])) {
+                    if (CORE_EQUIPMENT_KEYWORDS.includes(candTokens[0])) {
+                        score -= 80;
+                    }
+                }
+
+                // Bonus if first 2 primary tokens match
                 if (meaningfulTokens.length >= 2 && normTitle.includes(meaningfulTokens[0]) && normTitle.includes(meaningfulTokens[1])) {
                     score += 40;
                 }
 
                 // If all tokens match
                 if (matchedTokenCount === meaningfulTokens.length) {
-                    score += 50;
+                    score += 60;
+                }
+
+                // Token coverage ratio check
+                const tokenCoverage = meaningfulTokens.length > 0 ? (matchedTokenCount / meaningfulTokens.length) : 0;
+                if (tokenCoverage < 0.4 && matchedTokenCount < 2 && normTitle !== normInput) {
+                    continue; // REJECT if less than 40% tokens matched
                 }
 
                 // Prefer items that actually have positive stock in Sayan warehouse
                 if (parseFloat(r.StockQty) > 0) score += 20;
 
                 // Prefer 03% or 08% factory parts
-                if (String(r.Code).startsWith('03') || String(r.Code).startsWith('08')) score += 30;
+                if (String(r.Code).startsWith('03') || String(r.Code).startsWith('08')) score += 25;
 
                 if (score > maxScore) {
                     maxScore = score;
@@ -309,30 +386,33 @@ export const searchAndMatchSayanPart = async (requestedItemName, explicitCode = 
                 }
             }
 
-            const stock = parseFloat(best.StockQty) || 0;
-            const unit = detectUnit(best.Title);
-            const category = detectCategory(best.Code);
+            const MIN_REQUIRED_SCORE = 75;
+            if (best && maxScore >= MIN_REQUIRED_SCORE) {
+                const stock = parseFloat(best.StockQty) || 0;
+                const unit = detectUnit(best.Title);
+                const category = detectCategory(best.Code);
 
-            const result = {
-                matched: true,
-                part: {
-                    id: `sayan-part-${best.Code}`,
-                    code: best.Code,
-                    name: best.Title,
-                    category,
-                    unit,
-                    type: 'قطعات کارخانه',
-                    warehouseName: 'انبار ملزومات و قطعات',
-                    warehouseCode: '14',
-                    stock
-                },
-                stock,
-                confidence: maxScore > 60 ? 95 : 75
-            };
+                const result = {
+                    matched: true,
+                    part: {
+                        id: `sayan-part-${best.Code}`,
+                        code: best.Code,
+                        name: best.Title,
+                        category,
+                        unit,
+                        type: 'قطعات کارخانه',
+                        warehouseName: 'انبار ملزومات و قطعات',
+                        warehouseCode: '14',
+                        stock
+                    },
+                    stock,
+                    confidence: maxScore > 100 ? 95 : 80
+                };
 
-            matchResultCache.set(cacheKey, result);
-            matchResultCacheTimestamps.set(cacheKey, now);
-            return result;
+                matchResultCache.set(cacheKey, result);
+                matchResultCacheTimestamps.set(cacheKey, now);
+                return result;
+            }
         }
     } catch (err) {
         console.warn(`[Sayan Parts Service] Search error for "${requestedItemName}":`, err.message);
@@ -394,10 +474,11 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
                 stockSummaryParts.push(`⚠️ ${it.itemName}: عدم موجودی در انبار سایان (۰ ${it.unit})`);
             }
         } else {
-            it.sayanStock = it.sayanStock !== undefined ? it.sayanStock : 0;
-            it.warehouseStock = it.warehouseStock !== undefined ? it.warehouseStock : 0;
-            it.isAvailableInWarehouse = (it.sayanStock || 0) > 0;
-            it.sayanWarehouseName = it.sayanWarehouseName || 'انبار ملزومات و قطعات';
+            it.sayanMatchedItem = undefined;
+            it.sayanItemCode = undefined;
+            it.sayanStock = undefined;
+            it.warehouseStock = undefined;
+            it.isAvailableInWarehouse = false;
         }
         enrichedItems.push(it);
     }
@@ -416,6 +497,11 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
             } else {
                 stockSummaryParts.push(`⚠️ عدم موجودی در انبار سایان (۰ ${purchaseRequest.unit || 'عدد'})`);
             }
+        } else {
+            purchaseRequest.sayanMatchedItem = undefined;
+            purchaseRequest.sayanStock = undefined;
+            purchaseRequest.warehouseStock = undefined;
+            purchaseRequest.isAvailableInWarehouse = false;
         }
     }
 
@@ -430,6 +516,16 @@ export const enrichPurchaseRequestWithSayanStock = async (purchaseRequest) => {
 
     return purchaseRequest;
 };
+
+export function isMatchValidForQuery(queryName, matchedName) {
+    if (!queryName || !matchedName) return true;
+    const reqCore = identifyCoreEquipmentType(queryName);
+    const candCore = identifyCoreEquipmentType(matchedName);
+    if (reqCore && candCore && reqCore !== candCore) {
+        return false;
+    }
+    return true;
+}
 
 /**
  * Fetch top factory parts catalog from Sayan with live stock to populate the "قطعات" tab
