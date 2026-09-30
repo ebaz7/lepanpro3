@@ -60,7 +60,10 @@ import {
     ShieldAlert,
     ShieldCheck,
     Plus,
-    UserMinus
+    UserMinus,
+    Clock,
+    CalendarClock,
+    Info
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { 
@@ -192,6 +195,18 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const [trazSortOrder, setTrazSortOrder] = useState<'asc' | 'desc'>('asc');
     const [excludedTrazCodes, setExcludedTrazCodes] = useState<string[]>([]);
     const [showOnlyExcluded, setShowOnlyExcluded] = useState(false);
+    
+    // Live FIFO Aging and Overdue Days State
+    const [trazAging, setTrazAging] = useState<Record<string, any>>(() => {
+        try {
+            const cached = localStorage.getItem('SAYAN_TRAZ_AGING_CACHE');
+            return cached ? JSON.parse(cached) : {};
+        } catch {
+            return {};
+        }
+    });
+    const [isLoadingAging, setIsLoadingAging] = useState(false);
+    const [selectedAgingParty, setSelectedAgingParty] = useState<any | null>(null);
 
     // --- TAB 2: STATEMENT STATE ---
     const [tafsilis, setTafsilis] = useState<any[]>([]);
@@ -855,10 +870,62 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             const mapped = Array.from(groupedMap.values()).filter((r: any) => r.balance !== 0);
 
             setTrazData(mapped);
+
+            // Fetch live aging for top parties in background
+            if (mapped.length > 0) {
+                setTimeout(() => {
+                    fetchAgingForTraz(mapped.slice(0, 40), false);
+                }, 300);
+            }
         } catch (err: any) {
             toast.error(`خطا در دریافت تراز سایان: ${err.message}`);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    // Calculate FIFO Aging and Overdue Days from Sayan database
+    const fetchAgingForTraz = async (targetItems?: any[], force: boolean = false) => {
+        const itemsToProcess = targetItems || getFilteredTraz(false);
+        if (!itemsToProcess || itemsToProcess.length === 0) {
+            if (force) toast.error('هیچ شخصی برای محاسبه راس‌گیری وجود ندارد.');
+            return;
+        }
+
+        setIsLoadingAging(true);
+        const toastId = force ? toast.loading('در حال راس‌گیری زنده و محاسبه روزهای تاخیر از دیتابیس سایان...') : null;
+        try {
+            const partiesPayload = itemsToProcess.slice(0, 60).map((it: any) => ({
+                code: it.code,
+                balance: it.balance
+            }));
+
+            const res = await fetch(getEffectiveApiUrl('/api/sayan/traz-aging'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parties: partiesPayload, force })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.aging) {
+                    setTrazAging(prev => {
+                        const updated = { ...prev, ...data.aging };
+                        try {
+                            localStorage.setItem('SAYAN_TRAZ_AGING_CACHE', JSON.stringify(updated));
+                        } catch {}
+                        return updated;
+                    });
+                    if (toastId) toast.success(`راس‌گیری و روزهای تاخیر ${Object.keys(data.aging).length} شخص با موفقیت بروز شد.`, { id: toastId });
+                }
+            } else {
+                if (toastId) toast.error('خطا در ارتباط با سرور سایان جهت راس‌گیری', { id: toastId });
+            }
+        } catch (err: any) {
+            console.warn('Failed to fetch aging from Sayan:', err);
+            if (toastId) toast.error(`خطا در محاسبه راس‌گیری: ${err.message}`, { id: toastId });
+        } finally {
+            setIsLoadingAging(false);
         }
     };
 
@@ -1219,72 +1286,195 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         }
     };
 
-    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both', returnHtml: boolean = false) => {
+    const handlePrintTrazReport = (type: 'bed' | 'bes' | 'both' | 'current', returnHtml: boolean = false) => {
         const fullList = getFilteredTraz(false);
-        const sortedList = fullList
-            .filter(t => type === 'both' ? t.balance !== 0 : (type === 'bed' ? t.balance > 0 : t.balance < 0))
-            .sort((a, b) => {
-                if (type === 'bed') return (b.balance || 0) - (a.balance || 0); // بیشترین بدهی به کمترین
-                if (type === 'bes') return Math.abs(b.balance || 0) - Math.abs(a.balance || 0); // بیشترین طلب به کمترین
-                return Math.abs(b.balance || 0) - Math.abs(a.balance || 0);
-            });
+        let sortedList = [...fullList];
+        
+        if (type === 'bed') {
+            sortedList = fullList.filter(t => t.balance > 0).sort((a, b) => (b.balance || 0) - (a.balance || 0));
+        } else if (type === 'bes') {
+            sortedList = fullList.filter(t => t.balance < 0).sort((a, b) => Math.abs(b.balance || 0) - Math.abs(a.balance || 0));
+        } else if (type === 'both') {
+            sortedList = fullList.filter(t => t.balance !== 0).sort((a, b) => Math.abs(b.balance || 0) - Math.abs(a.balance || 0));
+        } else if (type === 'current') {
+            sortedList = [...fullList];
+        }
 
-        const title = type === 'both' ? 'گزارش مانده بدهکاران و بستانکاران (سورت بیشترین به کمترین)' : (type === 'bed' ? 'گزارش مانده بدهکاران (سورت از بیشترین به کمترین)' : 'گزارش مانده بستانکاران (سورت از بیشترین به کمترین)');
+        const catTitleMap: Record<string, string> = {
+            '11': 'تامین‌کنندگان (حساب‌های پرداختنی)',
+            'suppliers': 'تامین‌کنندگان (حساب‌های پرداختنی)',
+            '12': 'مشتریان (حساب‌های دریافتنی)',
+            'customers': 'مشتریان (حساب‌های دریافتنی)',
+            '13': 'پرسنل و همکاران',
+            'personnel': 'پرسنل و همکاران',
+            '14': 'سهام‌داران و شرکا',
+            'shareholders': 'سهام‌داران و شرکا',
+            '15': 'سایر اشخاص',
+            'others': 'سایر اشخاص',
+            'debtors': 'بدهکاران (مانده مثبت)',
+            'creditors': 'بستانکاران (مانده منفی)',
+            '16': 'همه اشخاص (تمام لایه‌ها)',
+            'all': 'همه اشخاص'
+        };
+
+        let typeLabel = 'تراز و مانده حساب اشخاص';
+        if (type === 'bed') {
+            typeLabel = 'مانده بدهکاران (سورت بیشترین بدهی به کمترین)';
+        } else if (type === 'bes') {
+            typeLabel = 'مانده بستانکاران (سورت بیشترین طلب به کمترین)';
+        } else if (type === 'both') {
+            typeLabel = 'مانده بدهکاران و بستانکاران (کل تراز)';
+        } else {
+            typeLabel = `مانده ${catTitleMap[trazCategory] || 'اشخاص (نمای فعلی)'}`;
+        }
+
+        const title = `گزارش ${typeLabel} - سیستم یکپارچه سایان ERP`;
+
+        const totalBedSum = sortedList.reduce((sum, r) => sum + (r.bed || 0), 0);
+        const totalBesSum = sortedList.reduce((sum, r) => sum + (r.bes || 0), 0);
+        const totalDebtorsBal = sortedList.filter(r => r.balance > 0).reduce((sum, r) => sum + r.balance, 0);
+        const totalCreditorsBal = sortedList.filter(r => r.balance < 0).reduce((sum, r) => sum + Math.abs(r.balance), 0);
+        const netBalance = totalDebtorsBal - totalCreditorsBal;
+
         const docHtml = `
+            <!DOCTYPE html>
             <html dir="rtl" lang="fa">
             <head>
                 <meta charset="utf-8">
                 <title>${title}</title>
                 <style>
-                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 25px; background: #fff; color: #333; direction: rtl; }
-                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
-                    .header h1 { margin: 0; font-size: 20px; color: #0f172a; }
-                    .header p { margin: 4px 0 0; font-size: 13px; color: #475569; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                    th, td { border: 1px solid #cbd5e1; padding: 10px 12px; text-align: right; font-size: 12px; }
-                    th { background-color: #f8fafc; font-weight: bold; color: #0f172a; }
-                    tr:nth-child(even) { background-color: #f1f5f9; }
-                    .total { font-weight: bold; background: #e2e8f0 !important; }
-                    .footer { text-align: center; margin-top: 40px; font-size: 11px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 15px; }
+                    @page { size: A4 landscape; margin: 12mm 10mm; }
+                    body { font-family: 'Tahoma', 'Segoe UI', sans-serif; padding: 15px; background: #fff; color: #1e293b; direction: rtl; margin: 0; font-size: 11px; }
+                    .header-box { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+                    .header-box h1 { margin: 0; font-size: 18px; color: #0f172a; font-weight: 800; }
+                    .header-box p { margin: 4px 0 0; font-size: 11px; color: #475569; }
+                    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; background: #f8fafc; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; }
+                    .stat-item { text-align: center; }
+                    .stat-label { font-size: 10px; color: #64748b; font-weight: 600; margin-bottom: 3px; }
+                    .stat-val { font-size: 12px; font-weight: 800; font-family: 'Tahoma', sans-serif; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    th, td { border: 1px solid #cbd5e1; padding: 7px 8px; text-align: right; font-size: 10.5px; }
+                    th { background-color: #0f172a; color: #ffffff; font-weight: bold; text-align: center; font-size: 11px; }
+                    tr:nth-child(even) { background-color: #f8fafc; }
+                    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 9.5px; font-weight: bold; border: 1px solid transparent; }
+                    .badge-debtor { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+                    .badge-creditor { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+                    .badge-critical { background: #fee2e2; color: #991b1b; font-weight: 800; border-color: #f87171; }
+                    .badge-warning { background: #fef3c7; color: #92400e; font-weight: 800; border-color: #fcd34d; }
+                    .badge-normal { background: #d1fae5; color: #065f46; font-weight: 700; border-color: #6ee7b7; }
+                    .num-cell { font-family: 'Tahoma', monospace; direction: ltr; text-align: left; }
+                    .total-row { font-weight: bold; background: #e2e8f0 !important; color: #0f172a; }
+                    .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px dashed #cbd5e1; padding-top: 10px; }
+                    @media print {
+                        body { padding: 0; }
+                        .no-print { display: none !important; }
+                        th { background-color: #0f172a !important; color: #ffffff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        tr:nth-child(even) { background-color: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                        .badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    }
                 </style>
             </head>
             <body>
-                <div class="header">
+                <div class="header-box">
                     <div>
                         <h1>${title}</h1>
-                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)}</p>
+                        <p>دوره مالی: از ${formatDateToJalali(dateFrom)} تا ${formatDateToJalali(dateTo)}  |  دسته‌بندی: ${catTitleMap[trazCategory] || 'نمای جاری'}</p>
                     </div>
                     <div style="text-align: left;">
-                        <p>تاریخ چاپ: ${formatDateToJalali(new Date().toISOString())}</p>
-                        <p>تعداد ردیف: ${sortedList.length}</p>
+                        <p><strong>تاریخ چاپ:</strong> ${formatDateToJalali(new Date().toISOString())}</p>
+                        <p><strong>تعداد ردیف:</strong> ${sortedList.length} شخص</p>
                     </div>
                 </div>
+
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">جمع کل بدهکاران</div>
+                        <div class="stat-val" style="color: #b91c1c;">${formatMoney(totalDebtorsBal)} ریال</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">جمع کل بستانکاران</div>
+                        <div class="stat-val" style="color: #047857;">${formatMoney(totalCreditorsBal)} ریال</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">خالص تراز تعهدات</div>
+                        <div class="stat-val" style="color: #0f172a;">${formatMoney(netBalance)} ریال</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">وضعیت کلی تراز</div>
+                        <div class="stat-val" style="color: ${netBalance > 0 ? '#b91c1c' : '#047857'};">${netBalance > 0 ? 'بدهکار (مطالبات بیشتر)' : 'بستانکار (بدهی بیشتر)'}</div>
+                    </div>
+                </div>
+
                 <table>
                     <thead>
                         <tr>
-                            <th style="width: 60px; text-align: center;">ردیف</th>
-                            <th style="width: 120px;">کد حسابداری</th>
-                            <th>نام شخص</th>
-                            <th style="text-align: left; width: 200px;">مبلغ مانده (ریال)</th>
+                            <th style="width: 35px;">ردیف</th>
+                            <th style="width: 75px;">کد تفصیلی</th>
+                            <th>نام شخص / شرکت</th>
+                            <th style="width: 45px;">لایه</th>
+                            <th style="width: 125px;">مجموع بدهکار (ریال)</th>
+                            <th style="width: 125px;">مجموع بستانکار (ریال)</th>
+                            <th style="width: 135px;">مانده نهایی (ریال)</th>
+                            <th style="width: 65px;">تشخیص</th>
+                            <th style="width: 95px;">راس فاکتورها</th>
+                            <th style="width: 120px;">تاخیر تسویه (روز)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${sortedList.map((row, idx) => `
-                            <tr>
-                                <td style="text-align: center;">${idx + 1}</td>
-                                <td>${row.code}</td>
-                                <td>${row.name}</td>
-                                <td style="text-align: left; font-weight: 500;">${formatMoney(row.balance)}</td>
-                            </tr>
-                        `).join('')}
-                        <tr class="total">
-                            <td colspan="3" style="text-align: left;">جمع کل مانده‌ها:</td>
-                            <td style="text-align: left;">${formatMoney(sortedList.reduce((sum, r) => sum + r.balance, 0))}</td>
+                        ${sortedList.map((row, idx) => {
+                            const aging = trazAging[row.code];
+                            const catInfo = getSayanCategoryInfo(row);
+                            const overdueDays = aging?.daysOverdue ?? null;
+                            const isDebtor = row.balance > 0;
+                            
+                            let agingBadgeClass = 'badge-normal';
+                            if (overdueDays !== null) {
+                                if (overdueDays > 90) agingBadgeClass = 'badge-critical';
+                                else if (overdueDays > 60) agingBadgeClass = 'badge-warning';
+                                else if (overdueDays > 30) agingBadgeClass = 'badge-warning';
+                            }
+
+                            return `
+                                <tr>
+                                    <td style="text-align: center; color: #64748b;">${idx + 1}</td>
+                                    <td style="text-align: center; font-family: monospace; font-weight: bold;">${row.code}</td>
+                                    <td style="font-weight: bold; color: #0f172a;">${row.name}</td>
+                                    <td style="text-align: center; font-weight: bold; color: #475569;">${catInfo.code}</td>
+                                    <td class="num-cell" style="color: #b91c1c;">${formatMoney(row.bed)}</td>
+                                    <td class="num-cell" style="color: #047857;">${formatMoney(row.bes)}</td>
+                                    <td class="num-cell" style="font-weight: 800; color: ${isDebtor ? '#b91c1c' : '#047857'};">${formatMoney(row.balance)}</td>
+                                    <td style="text-align: center;">
+                                        <span class="badge ${isDebtor ? 'badge-debtor' : 'badge-creditor'}">
+                                            ${isDebtor ? 'بدهکار' : 'بستانکار'}
+                                        </span>
+                                    </td>
+                                    <td style="text-align: center; font-family: monospace; font-size: 10px;">
+                                        ${aging?.weightedDateJalali || '---'}
+                                    </td>
+                                    <td style="text-align: center;">
+                                        ${aging ? `
+                                            <span class="badge ${agingBadgeClass}">
+                                                ${aging.statusLabel || `${overdueDays} روز`}
+                                            </span>
+                                        ` : '<span style="color: #94a3b8; font-size: 9px;">در انتظار استعلام</span>'}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                        <tr class="total-row">
+                            <td colspan="4" style="text-align: left; padding: 10px;">مجموع کل ردیف‌های گزارش (${sortedList.length} شخص):</td>
+                            <td class="num-cell" style="color: #b91c1c;">${formatMoney(totalBedSum)}</td>
+                            <td class="num-cell" style="color: #047857;">${formatMoney(totalBesSum)}</td>
+                            <td class="num-cell" style="color: ${netBalance > 0 ? '#b91c1c' : '#047857'};">${formatMoney(netBalance)}</td>
+                            <td style="text-align: center;">${netBalance > 0 ? 'بدهکار' : 'بستانکار'}</td>
+                            <td colspan="2" style="text-align: center; font-size: 9.5px; color: #475569;">محاسبه راس‌گیری FIFO دیتابیس سایان</td>
                         </tr>
                     </tbody>
                 </table>
+
                 <div class="footer">
-                    <p>سیستم گزارشات حسابداری یکپارچه سایان ERP</p>
+                    <div>سیستم گزارشات مالی و حسابداری هوشمند سایان ERP | تولید شده بر اساس دیتابیس زنده</div>
+                    <div>صفحه ۱ از ۱ | تراز رسمی اشخاص و سن بدهی</div>
                 </div>
             </body>
             </html>
@@ -1294,16 +1484,36 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             return docHtml;
         }
 
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-            printWindow.document.write(docHtml);
-            printWindow.document.close();
-            printWindow.focus();
-            setTimeout(() => {
-                printWindow.print();
-                printWindow.close();
-            }, 500);
+        let printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            const iframe = document.createElement('iframe');
+            iframe.style.position = 'fixed';
+            iframe.style.right = '0';
+            iframe.style.bottom = '0';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            document.body.appendChild(iframe);
+            const doc = iframe.contentWindow?.document || iframe.contentDocument;
+            if (doc) {
+                doc.open();
+                doc.write(docHtml);
+                doc.close();
+                setTimeout(() => {
+                    iframe.contentWindow?.focus();
+                    iframe.contentWindow?.print();
+                    setTimeout(() => document.body.removeChild(iframe), 3000);
+                }, 500);
+            }
+            return;
         }
+
+        printWindow.document.write(docHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow?.print();
+        }, 500);
     };
 
     // Export Traz (Debtors / Creditors / Full / Current View) to professional Excel (Auto-sorted Highest to Lowest & 100% RTL)
@@ -1375,12 +1585,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 { header: '', key: 'bed', width: 22 },
                 { header: '', key: 'bes', width: 22 },
                 { header: '', key: 'balance', width: 24 },
-                { header: '', key: 'status', width: 14 }
+                { header: '', key: 'status', width: 14 },
+                { header: '', key: 'weightedDate', width: 18 },
+                { header: '', key: 'overdueDays', width: 22 }
             ];
 
             // 1. Title Banner
             const titleRow = ws.addRow([`گزارش ${typeLabel} - سیستم یکپارچه سایان ERP`]);
-            ws.mergeCells('A1:G1');
+            ws.mergeCells('A1:I1');
             titleRow.height = 36;
             titleRow.getCell(1).font = { name: 'Tahoma', size: 14, bold: true, color: { argb: 'FFFFFFFF' } };
             titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
@@ -1401,14 +1613,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             const infoRow = ws.addRow([
                 `دوره مالی: از ${dateFromStr} تا ${dateToStr}  |  سورت: ${type === 'bed' ? 'بیشترین بدهی به کمترین' : type === 'bes' ? 'بیشترین طلب به کمترین' : sortLabelMap[trazSortBy] || 'بیشترین به کمترین'}  |  جهت: راست به چپ (RTL)  |  تاریخ: ${formatDateToJalali(new Date().toISOString())}  |  تعداد: ${list.length}`
             ]);
-            ws.mergeCells('A2:G2');
+            ws.mergeCells('A2:I2');
             infoRow.height = 24;
             infoRow.getCell(1).font = { name: 'Tahoma', size: 9, bold: true, color: { argb: 'FF475569' } };
             infoRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
             infoRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
             // 3. Header Row
-            const headers = ['ردیف', 'کد تفصیلی', 'نام شخص / شرکت', 'مجموع بدهکار (ریال)', 'مجموع بستانکار (ریال)', 'مانده حساب (ریال)', 'تشخیص'];
+            const headers = ['ردیف', 'کد تفصیلی', 'نام شخص / شرکت', 'مجموع بدهکار (ریال)', 'مجموع بستانکار (ریال)', 'مانده حساب (ریال)', 'تشخیص', 'راس فاکتورها', 'تاخیر تسویه (سن بدهی)'];
             const headerRow = ws.addRow(headers);
             headerRow.height = 28;
             headerRow.eachCell((cell) => {
@@ -1434,6 +1646,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 totalBalSum += row.balance || 0;
 
                 const isBed = row.balance > 0;
+                const aging = trazAging[row.code];
                 const r = ws.addRow([
                     idx + 1,
                     row.code,
@@ -1441,7 +1654,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                     row.bed || 0,
                     row.bes || 0,
                     row.balance || 0,
-                    isBed ? 'بدهکار' : 'بستانکار'
+                    isBed ? 'بدهکار' : 'بستانکار',
+                    aging?.weightedDateJalali || '---',
+                    aging?.statusLabel || (aging?.daysOverdue ? `${aging.daysOverdue} روز` : '---')
                 ]);
 
                 r.height = 22;
@@ -1458,7 +1673,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
                     };
 
-                    if (colNum === 1 || colNum === 2) {
+                    if (colNum === 1 || colNum === 2 || colNum === 8 || colNum === 9) {
                         cell.alignment = { vertical: 'middle', horizontal: 'center' };
                     } else if (colNum === 3) {
                         cell.alignment = { vertical: 'middle', horizontal: 'right' };
@@ -1484,7 +1699,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 totalBedSum,
                 totalBesSum,
                 totalBalSum,
-                totalBalSum > 0 ? 'بدهکار' : 'بستانکار'
+                totalBalSum > 0 ? 'بدهکار' : 'بستانکار',
+                '---',
+                'محاسبه سایان'
             ]);
             totalRow.height = 26;
             totalRow.eachCell((cell, colNum) => {
@@ -5184,6 +5401,46 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
+                                {/* Live Aging & Overdue Days Trigger */}
+                                <button
+                                    type="button"
+                                    onClick={() => fetchAgingForTraz(undefined, true)}
+                                    disabled={isLoadingAging}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 disabled:opacity-60"
+                                    title="محاسبه و راس‌گیری زنده سن بدهی، فاکتورهای تسویه‌نشده و تعداد روز گذشته از دیتابیس سایان"
+                                >
+                                    {isLoadingAging ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                        <CalendarClock className="w-3.5 h-3.5 text-blue-200" />
+                                    )}
+                                    <span>{isLoadingAging ? 'در حال راس‌گیری...' : '⚡ استعلام راس‌گیری و روزهای تاخیر'}</span>
+                                </button>
+
+                                <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
+
+                                {/* Print & PDF for Current Filter View */}
+                                <button 
+                                    type="button"
+                                    onClick={() => handlePrintTrazReport('current')} 
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="چاپ مستقیم گزارش مطابق با فیلتر ست‌شده (تامین‌کنندگان، مشتریان یا پرسنل)"
+                                >
+                                    <Printer className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>🖨️ چاپ نمای فعلی</span>
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => handlePrintTrazReport('current')} 
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="خروجی PDF رسمی از دسته‌بندی و فیلتر فعلی انتخاب شده"
+                                >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>📄 PDF نمای فعلی</span>
+                                </button>
+
+                                <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
+
                                 {/* Excel Exports */}
                                 <button 
                                     type="button"
@@ -5220,20 +5477,20 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                                 <div className="h-5 w-px bg-slate-300 mx-1 hidden sm:block" />
 
-                                {/* PDF Print */}
+                                {/* PDF Print Legacy */}
                                 <button 
                                     type="button"
                                     onClick={() => handlePrintTrazReport('bed')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-200 text-xs font-semibold transition-colors cursor-pointer"
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg border border-rose-200 text-xs font-semibold transition-colors cursor-pointer"
                                 >
-                                    <Printer className="w-3.5 h-3.5" /> PDF بدهکاران
+                                    <Printer className="w-3.5 h-3.5" /> بدهکاران
                                 </button>
                                 <button 
                                     type="button"
                                     onClick={() => handlePrintTrazReport('bes')} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg border border-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg border border-slate-300 text-xs font-semibold transition-colors cursor-pointer"
                                 >
-                                    <Printer className="w-3.5 h-3.5" /> PDF بستانکاران
+                                    <Printer className="w-3.5 h-3.5" /> بستانکاران
                                 </button>
                             </div>
                         </div>
@@ -5386,13 +5643,25 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                             </div>
                                         </th>
                                         <th className="p-3 font-bold text-slate-700 w-24 text-center">تشخیص</th>
+                                        <th className="p-3 font-bold text-slate-700 w-32 text-center" title="راس تاریخ فاکتورها و تراکنش‌های تسویه‌نشده">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+                                                <span>راس فاکتورها</span>
+                                            </div>
+                                        </th>
+                                        <th className="p-3 font-bold text-slate-700 w-36 text-center" title="تعداد روز گذشته از حساب و سن بدهی">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                <span>تاخیر تسویه (روز)</span>
+                                            </div>
+                                        </th>
                                         <th className="p-3 font-bold text-slate-700 w-48 text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 bg-white">
                                     {filteredTraz.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} className="text-center py-12 text-slate-400 font-medium">
+                                            <td colSpan={11} className="text-center py-12 text-slate-400 font-medium">
                                                 {isLoading ? (
                                                     <div className="flex items-center justify-center gap-2">
                                                         <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
@@ -5407,6 +5676,8 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                             const isExcluded = excludedTrazCodes.includes(row.code);
                                             const permRule = permanentExcluded.find(p => p.code === codeStr);
                                             const catInfo = getSayanCategoryInfo(row);
+                                            const aging = trazAging[row.code];
+                                            const overdueDays = aging?.daysOverdue ?? null;
 
                                             return (
                                                 <tr key={row.code || idx} className={`hover:bg-slate-50/80 transition-colors ${isExcluded ? 'bg-amber-50/40 opacity-60' : (permRule ? 'bg-amber-50/20' : '')}`}>
@@ -5465,6 +5736,45 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                                         }`}>
                                                             {row.balance > 0 ? 'بدهکار' : 'بستانکار'}
                                                         </span>
+                                                    </td>
+                                                    {/* Weighted Invoice Date */}
+                                                    <td className="p-3 text-center">
+                                                        {aging?.weightedDateJalali ? (
+                                                            <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200" title={`تاریخ آخرین فاکتور: ${aging.lastInvoiceDateJalali || '---'}`}>
+                                                                {aging.weightedDateJalali}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-slate-300 text-[10px]">---</span>
+                                                        )}
+                                                    </td>
+                                                    {/* Overdue Days Badge */}
+                                                    <td className="p-3 text-center">
+                                                        {aging ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedAgingParty({ ...row, aging })}
+                                                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-black border transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95 ${
+                                                                    aging.status === 'critical' ? 'bg-rose-50 text-rose-700 border-rose-300' :
+                                                                    aging.status === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-300' :
+                                                                    aging.status === 'caution' ? 'bg-yellow-50 text-yellow-800 border-yellow-300' :
+                                                                    aging.status === 'settled' ? 'bg-slate-50 text-slate-500 border-slate-200' :
+                                                                    'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                                                }`}
+                                                                title="کلیک برای مشاهده جزئیات محاسباتی راس‌گیری و فاکتورهای تسویه‌نشده"
+                                                            >
+                                                                <Clock className="w-3 h-3" />
+                                                                <span>{aging.statusLabel || `${aging.daysOverdue} روز`}</span>
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => fetchAgingForTraz([row], true)}
+                                                                className="text-[10px] text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 font-bold transition-all cursor-pointer"
+                                                                title="استعلام فوری راس‌گیری این شخص از دیتابیس سایان"
+                                                            >
+                                                                استعلام راس
+                                                            </button>
+                                                        )}
                                                     </td>
                                                     <td className="p-3 text-center">
                                                         <div className="flex items-center justify-center gap-1">
@@ -5554,6 +5864,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                         const isExcluded = excludedTrazCodes.includes(row.code);
                                         const permRule = permanentExcluded.find(p => p.code === codeStr);
                                         const catInfo = getSayanCategoryInfo(row);
+                                        const aging = trazAging[row.code];
 
                                         return (
                                             <div key={row.code || idx} className={`p-4 hover:bg-slate-50/50 transition-colors space-y-3 ${isExcluded ? 'bg-amber-50/40 opacity-60' : (permRule ? 'bg-amber-50/20' : '')}`}>
@@ -5616,6 +5927,36 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                                         <div className={`font-mono font-black mt-0.5 ${row.balance > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                                                             {formatMoney(row.balance)}
                                                         </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Mobile Aging Bar */}
+                                                <div className="flex items-center justify-between gap-2 p-2 bg-indigo-50/60 rounded-lg text-[10px] border border-indigo-100">
+                                                    <div className="flex items-center gap-1 text-slate-600 font-medium">
+                                                        <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+                                                        <span>راس فاکتورها:</span>
+                                                        <strong className="font-mono text-slate-900">{aging?.weightedDateJalali || '---'}</strong>
+                                                    </div>
+                                                    <div>
+                                                        {aging ? (
+                                                            <span className={`px-2 py-0.5 rounded font-black border ${
+                                                                aging.status === 'critical' ? 'bg-rose-100 text-rose-800 border-rose-300' :
+                                                                aging.status === 'warning' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                                                                aging.status === 'caution' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                                                aging.status === 'settled' ? 'bg-slate-100 text-slate-600 border-slate-300' :
+                                                                'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                                            }`}>
+                                                                {aging.statusLabel || `${aging.daysOverdue} روز`}
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => fetchAgingForTraz([row], true)}
+                                                                className="text-blue-600 underline font-bold"
+                                                            >
+                                                                استعلام راس
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -9016,6 +9357,190 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             >
                                 تأیید و بستن
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* FIFO Aging & Overdue Breakdown Detail Modal */}
+            {selectedAgingParty && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200">
+                        {/* Modal Header */}
+                        <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-blue-500/20 border border-blue-400/30">
+                                    <CalendarClock className="w-6 h-6 text-blue-300" />
+                                </div>
+                                <div>
+                                    <h3 className="font-extrabold text-base sm:text-lg flex items-center gap-2">
+                                        <span>راس‌گیری و سن بدهی:</span>
+                                        <span className="text-amber-300">{selectedAgingParty.name}</span>
+                                    </h3>
+                                    <p className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
+                                        <span>کد تفصیلی: <strong className="font-mono text-white">{selectedAgingParty.code}</strong></span>
+                                        <span>•</span>
+                                        <span>مانده حساب: <strong className="font-mono text-white">{formatMoney(selectedAgingParty.balance)} ریال</strong> ({selectedAgingParty.balance > 0 ? 'بدهکار' : 'بستانکار'})</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedAgingParty(null)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                            {/* KPI Metrics */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="bg-slate-50 dark:bg-zinc-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                                        <CalendarClock className="w-3.5 h-3.5 text-indigo-600" />
+                                        <span>راس تاریخ فاکتورها:</span>
+                                    </div>
+                                    <div className="font-mono text-base font-black text-slate-900 dark:text-white mt-1.5">
+                                        {selectedAgingParty.aging?.weightedDateJalali || '---'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">میانگین وزنی فاکتورهای باز</div>
+                                </div>
+
+                                <div className="bg-slate-50 dark:bg-zinc-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>تاخیر تسویه (روز):</span>
+                                    </div>
+                                    <div className={`font-mono text-base font-black mt-1.5 ${
+                                        (selectedAgingParty.aging?.daysOverdue || 0) > 90 ? 'text-rose-600' :
+                                        (selectedAgingParty.aging?.daysOverdue || 0) > 60 ? 'text-amber-600' : 'text-emerald-600'
+                                    }`}>
+                                        {selectedAgingParty.aging?.daysOverdue ?? 0} روز گذشته
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">{selectedAgingParty.aging?.statusLabel || 'محاسبه شده'}</div>
+                                </div>
+
+                                <div className="bg-slate-50 dark:bg-zinc-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                                        <History className="w-3.5 h-3.5 text-blue-600" />
+                                        <span>قدیمی‌ترین فاکتور باز:</span>
+                                    </div>
+                                    <div className="font-mono text-base font-black text-slate-900 dark:text-white mt-1.5">
+                                        {selectedAgingParty.aging?.oldestUnpaidDateJalali || '---'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {selectedAgingParty.aging?.oldestDaysOverdue ? `${selectedAgingParty.aging.oldestDaysOverdue} روز پیش` : 'بدون تاخیر'}
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-50 dark:bg-zinc-800/60 p-3.5 rounded-xl border border-slate-200 dark:border-zinc-700">
+                                    <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                        <span>پوشش فاکتورها:</span>
+                                    </div>
+                                    <div className="font-mono text-base font-black text-slate-900 dark:text-white mt-1.5">
+                                        %{selectedAgingParty.aging?.coveragePercent ?? 100}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">از کل مبلغ مانده تعهد</div>
+                                </div>
+                            </div>
+
+                            {/* Unpaid Invoices / Vouchers Breakdown Table */}
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                        <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
+                                        <span>فاکتورها و اسناد تشکیل‌دهنده مانده حساب (به روش FIFO سنتی):</span>
+                                    </h4>
+                                    <span className="text-[11px] text-slate-500">
+                                        تعداد اسناد موثر: {selectedAgingParty.aging?.unpaidInvoices?.length || 0} سند
+                                    </span>
+                                </div>
+
+                                {selectedAgingParty.aging?.unpaidInvoices && selectedAgingParty.aging.unpaidInvoices.length > 0 ? (
+                                    <div className="rounded-xl border border-slate-200 dark:border-zinc-700 overflow-hidden">
+                                        <table className="w-full text-right text-xs">
+                                            <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-700">
+                                                <tr>
+                                                    <th className="p-2.5 text-center w-12">ردیف</th>
+                                                    <th className="p-2.5 w-24 text-center">شماره سند</th>
+                                                    <th className="p-2.5 w-28 text-center">تاریخ سند</th>
+                                                    <th className="p-2.5">شرح سند در سایان</th>
+                                                    <th className="p-2.5 text-left w-36">مبلغ کل فاکتور</th>
+                                                    <th className="p-2.5 text-left w-36">سهم تسویه‌نشده</th>
+                                                    <th className="p-2.5 text-center w-28">وضعیت</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                                {selectedAgingParty.aging.unpaidInvoices.map((inv: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-zinc-800/40 transition-colors">
+                                                        <td className="p-2.5 text-center text-slate-400 font-medium">{idx + 1}</td>
+                                                        <td className="p-2.5 text-center font-mono font-bold text-blue-700 dark:text-blue-400">{inv.sanadNo}</td>
+                                                        <td className="p-2.5 text-center font-mono text-slate-600 dark:text-slate-400">{inv.dateJalali}</td>
+                                                        <td className="p-2.5 text-slate-800 dark:text-slate-200 font-medium">{inv.description}</td>
+                                                        <td className="p-2.5 text-left font-mono font-bold text-slate-700 dark:text-slate-300">{formatMoney(inv.totalAmount)}</td>
+                                                        <td className="p-2.5 text-left font-mono font-black text-rose-600">{formatMoney(inv.unpaidPortion)}</td>
+                                                        <td className="p-2.5 text-center">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                                                inv.isFullyUnpaid 
+                                                                    ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                            }`}>
+                                                                {inv.isFullyUnpaid ? 'تسویه نشده' : 'تسویه بخشی'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="bg-slate-50 dark:bg-zinc-800/40 p-8 rounded-xl border border-dashed border-slate-200 dark:border-zinc-700 text-center text-slate-400 text-xs">
+                                        اطلاعات فاکتورهای تسویه‌نشده بر اساس آخرین اسناد حسابداری ثبت شده در سایان محاسبه گردیده است.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex-none p-3 sm:p-4 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const code = selectedAgingParty.code;
+                                    const name = selectedAgingParty.name;
+                                    setSelectedAgingParty(null);
+                                    setSelectedTafsili(code);
+                                    setModalTafsiliCode(code);
+                                    setModalTafsiliName(name);
+                                    setIsStatementModalOpen(true);
+                                    fetchStatement(code);
+                                }}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+                            >
+                                <FileText className="w-4 h-4" />
+                                <span>مشاهده صورتحساب کامل شخص</span>
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => fetchAgingForTraz([selectedAgingParty], true)}
+                                    className="px-3.5 py-2 bg-white dark:bg-zinc-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-zinc-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                                >
+                                    <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
+                                    <span>استعلام مجدد از سایان</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedAgingParty(null)}
+                                    className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                                >
+                                    بستن
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1668,6 +1668,10 @@ export interface PurchaseRequestItem {
     warehouseStock?: number;
     isAvailableInWarehouse?: boolean;
     partId?: string;
+    sayanStock?: number; // موجودی لحظه‌ای داخل انبار سایان
+    sayanMatchedItem?: string; // نام تطبیق‌یافته در انبار قطعات کارخانه سایان
+    sayanItemCode?: string; // کد کالای مربوطه در سایان
+    sayanWarehouseName?: string; // نام انبار در سایان (مثلا: انبار ملزومات و قطعات)
 }
 
 export interface PurchaseAttachment {
@@ -1748,6 +1752,9 @@ export interface PurchaseRequest {
     items?: PurchaseRequestItem[]; // Multiple items in single request
     attachments?: PurchaseAttachment[]; // General attachments (PDF, Word, Excel, images)
     auditLogs?: PurchaseAuditLog[]; // Complete step history & time tracking
+    sayanStockSummary?: string; // خلاصه وضعیت موجودی اقلام در انبار سایان
+    sayanStock?: number; // موجودی قلم اصلی در انبار سایان
+    sayanMatchedItem?: string; // نام تطبیق‌یافته قلم اصلی در انبار سایان
     
     status: PurchaseRequestStatus;
     proformas: PurchaseProforma[];

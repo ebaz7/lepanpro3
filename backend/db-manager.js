@@ -405,7 +405,9 @@ export const getDb = () => {
             fiscalYears: {},
             sequences: {},
             notes: [],
-            customCalendarEvents: []
+            customCalendarEvents: [],
+            purchaseRequests: [],
+            partMasterData: []
         };
 
         if (fs.existsSync(DB_FILE)) {

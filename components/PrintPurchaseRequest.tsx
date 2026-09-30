@@ -85,12 +85,13 @@ const PrintPurchaseRequest: React.FC<Props> = ({ request }) => {
             <table className="w-full border-collapse border-2 border-black mb-4">
                 <thead>
                     <tr className="bg-gray-200 text-[11px]">
-                        <th className="border border-black p-2 font-bold w-12 text-center">ردیف</th>
+                        <th className="border border-black p-2 font-bold w-10 text-center">ردیف</th>
                         <th className="border border-black p-2 font-bold w-24 text-center">کد کالا</th>
                         <th className="border border-black p-2 font-bold text-right">نام قطعه / شرح کالا</th>
-                        <th className="border border-black p-2 font-bold w-28 text-center">برند پیشنهادی</th>
+                        <th className="border border-black p-2 font-bold w-24 text-center">برند پیشنهادی</th>
                         <th className="border border-black p-2 font-bold w-16 text-center">تعداد</th>
                         <th className="border border-black p-2 font-bold w-16 text-center">واحد</th>
+                        <th className="border border-black p-2 font-bold w-24 text-center">موجودی انبار سایان</th>
                         <th className="border border-black p-2 font-bold text-right">مشخصات فنی</th>
                     </tr>
                 </thead>
@@ -99,10 +100,26 @@ const PrintPurchaseRequest: React.FC<Props> = ({ request }) => {
                         <tr key={item.id || idx} className="text-xs">
                             <td className="border border-black p-2 text-center font-bold">{idx + 1}</td>
                             <td className="border border-black p-2 text-center font-mono">{item.itemCode || '---'}</td>
-                            <td className="border border-black p-2 font-black">{item.itemName}</td>
+                            <td className="border border-black p-2 font-black">
+                                <div>{item.itemName}</div>
+                                {item.sayanMatchedItem && item.sayanMatchedItem !== item.itemName && (
+                                    <div className="text-[9px] text-gray-500 font-normal">سایان: {item.sayanMatchedItem}</div>
+                                )}
+                            </td>
                             <td className="border border-black p-2 text-center">{item.suggestedBrand || '---'}</td>
                             <td className="border border-black p-2 text-center font-black text-sm">{item.quantity}</td>
                             <td className="border border-black p-2 text-center">{item.unit}</td>
+                            <td className="border border-black p-2 text-center font-bold">
+                                {item.sayanStock !== undefined && item.sayanStock !== null ? (
+                                    <span className={item.sayanStock > 0 ? "text-green-700 font-black" : "text-gray-500"}>
+                                        {item.sayanStock.toLocaleString('fa-IR')} {item.unit}
+                                    </span>
+                                ) : item.warehouseStock !== undefined ? (
+                                    <span>{item.warehouseStock.toLocaleString('fa-IR')} {item.unit}</span>
+                                ) : (
+                                    <span className="text-gray-400">---</span>
+                                )}
+                            </td>
                             <td className="border border-black p-2">{item.specifications || '---'}</td>
                         </tr>
                     ))}

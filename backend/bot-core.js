@@ -6470,7 +6470,13 @@ export const notifyPurchaseRequestStep = async (p, platform, chatId, sendPhotoFn
         if (isDuplicateNotification(dedupeKey)) return;
 
         let header = isDelete ? `❌ *حذف شد: درخواست خرید*` : (isEdit ? `✏️ *ویرایش شد: درخواست خرید*` : `🛒 *درخواست خرید*`);
-        const caption = `${header}\n🔢 شماره: ${p.requestNumber || '-'}\n📅 تاریخ: ${p.date || '-'}\n👤 درخواست‌کننده: ${p.requester || '-'}\n📦 کالا: ${p.itemName || '-'}\n📂 گروه: ${p.category || '-'} - ${p.subCategory || '-'}\n🔢 مقدار: ${p.quantity} ${p.unit}\n📝 توضیحات: ${p.specifications || '-'}\n\n✅ *مرحله:* ${stepName}\n🔄 *وضعیت:* ${p.status}${isEdit ? '\n⚠️ *این پیام ویرایشی است*' : ''}`;
+        let sayanStockText = '';
+        if (p.sayanStockSummary) {
+            sayanStockText = `\n🏭 *موجودی در انبار سایان:* ${p.sayanStockSummary}`;
+        } else if (p.sayanStock !== undefined && p.sayanStock !== null) {
+            sayanStockText = `\n🏭 *موجودی در انبار سایان:* ${p.sayanStock.toLocaleString('fa-IR')} ${p.unit || 'عدد'} ${p.sayanMatchedItem ? `(${p.sayanMatchedItem})` : ''}`;
+        }
+        const caption = `${header}\n🔢 شماره: ${p.requestNumber || '-'}\n📅 تاریخ: ${p.date || '-'}\n👤 درخواست‌کننده: ${p.requester || '-'}\n📦 کالا: ${p.itemName || '-'}\n📂 گروه: ${p.category || '-'} - ${p.subCategory || '-'}\n🔢 مقدار: ${p.quantity} ${p.unit}\n📝 توضیحات: ${p.specifications || '-'}${sayanStockText}\n\n✅ *مرحله:* ${stepName}\n🔄 *وضعیت:* ${p.status}${isEdit ? '\n⚠️ *این پیام ویرایشی است*' : ''}`;
         
         if (chatId && sendPhotoFn) {
             sendPhotoFn(platform, chatId, 'https://placehold.co/800x400/4f46e5/ffffff?text=Purchase+Request', caption).catch(e => {});

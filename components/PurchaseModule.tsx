@@ -10,7 +10,8 @@ import {
     getPurchaseRequests, savePurchaseRequest, updatePurchaseRequest, 
     deletePurchaseRequest, getNextPurchaseRequestNumber, 
     getPartMasterData, savePartMasterData, updatePartMasterData, 
-    deletePartMasterData, getPartKardex, uploadFileChunked 
+    deletePartMasterData, getPartKardex, uploadFileChunked,
+    matchSayanPart, syncSayanFactoryParts
 } from '../services/storageService';
 import { 
     ShoppingCart, Plus, Search, Filter, Eye, Edit, Trash2, 
@@ -20,7 +21,7 @@ import {
     Ruler, Layers, Tag, Upload, Info, FileUp, UploadCloud, Settings, Printer, FileDown, AlertCircle, X,
     GitFork, Clock, CornerUpLeft, UserCheck, FileCode, AlertTriangle, Check, ExternalLink, Paperclip, Wrench,
     FileSpreadsheet, Container, ArrowDownCircle, ArrowUpCircle, MessageSquare, Sparkles, Bot, ChevronUp, ChevronDown,
-    Crown, Briefcase, ShoppingBag, Lock, ShieldAlert, RotateCcw
+    Crown, Briefcase, ShoppingBag, Lock, ShieldAlert, RotateCcw, RefreshCw
 } from 'lucide-react';
 import { shareElementToChat, openSendToChat } from '../services/chatShareService';
 import { formatDate, formatCurrency, generateUUID, getCurrentShamsiDate } from '../constants';
@@ -235,7 +236,19 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
     const loadParts = async () => {
         try {
             const data = await getPartMasterData();
-            setParts(data);
+            if (Array.isArray(data) && data.length > 0) {
+                setParts(data);
+            } else {
+                // Auto-sync factory parts from Sayan if local catalog is empty
+                try {
+                    const syncRes = await syncSayanFactoryParts(60);
+                    if (syncRes && syncRes.parts && syncRes.parts.length > 0) {
+                        setParts(syncRes.parts);
+                        return;
+                    }
+                } catch {}
+                setParts(data || []);
+            }
         } catch (e) { console.error(e); }
     };
 
@@ -870,6 +883,33 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
                         <span>{req.comments?.length || 0} نظر</span>
                     </span>
                 </div>
+
+                {/* Sayan Warehouse Inventory Status */}
+                {(req.sayanStock !== undefined || req.sayanStockSummary || (req.items && req.items.some((it: any) => it.sayanStock !== undefined))) && (
+                    <div className="mt-2.5 pt-2 border-t border-dashed border-gray-100 dark:border-gray-800">
+                        {(() => {
+                            const totalStock = req.sayanStock !== undefined
+                                ? req.sayanStock
+                                : (req.items || []).reduce((acc: number, it: any) => acc + (it.sayanStock || 0), 0);
+                            const isAvail = totalStock > 0;
+                            return (
+                                <div className={`text-[10px] font-bold px-2 py-1 rounded-lg flex items-center justify-between gap-1 ${
+                                    isAvail 
+                                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60' 
+                                        : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60'
+                                }`}>
+                                    <span className="flex items-center gap-1">
+                                        <Package size={11} className={isAvail ? "text-emerald-600" : "text-amber-600"} />
+                                        <span>موجودی انبار سایان:</span>
+                                    </span>
+                                    <span className="font-black font-mono">
+                                        {isAvail ? `${totalStock.toLocaleString('fa-IR')} ${req.unit || 'عدد'} ✅` : 'عدم موجودی (۰) ⚠️'}
+                                    </span>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
                 {req.image && (
                     <div className="mt-3 rounded-lg overflow-hidden h-12 bg-gray-100 border">
                         <CachedImage src={req.image} className="w-full h-full object-cover" alt="part" referrerPolicy="no-referrer" />
@@ -912,29 +952,93 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
     const [uploading, setUploading] = useState(false);
     const [previewAttachment, setPreviewAttachment] = useState<{ url: string; fileName: string } | null>(null);
 
+    // Live Sayan Part Matching & Warehouse Stock State
+    const [sayanMatches, setSayanMatches] = useState<Record<string, { loading: boolean; matched: boolean; part?: any; stock?: number }>>({});
+    const debounceTimers = React.useRef<Record<string, any>>({});
+
+    const triggerSayanPartMatch = (rowId: string, name: string) => {
+        const cleanName = (name || '').trim();
+        if (!cleanName || cleanName.length < 2) {
+            setSayanMatches(prev => ({ ...prev, [rowId]: { loading: false, matched: false, stock: 0 } }));
+            return;
+        }
+
+        if (debounceTimers.current[rowId]) {
+            clearTimeout(debounceTimers.current[rowId]);
+        }
+
+        setSayanMatches(prev => ({ ...prev, [rowId]: { loading: true, matched: false, stock: 0 } }));
+
+        debounceTimers.current[rowId] = setTimeout(async () => {
+            try {
+                const res = await matchSayanPart(cleanName);
+                setSayanMatches(prev => ({
+                    ...prev,
+                    [rowId]: {
+                        loading: false,
+                        matched: res.matched,
+                        part: res.part,
+                        stock: res.stock
+                    }
+                }));
+
+                if (res.matched && res.part) {
+                    setItems(prevItems => prevItems.map(it => {
+                        if (it.id !== rowId) return it;
+                        return {
+                            ...it,
+                            itemCode: it.itemCode || res.part.code || '',
+                            unit: it.unit || res.part.unit || 'عدد',
+                            sayanItemCode: res.part.code,
+                            sayanMatchedItem: res.part.name,
+                            sayanStock: res.stock,
+                            warehouseStock: res.stock,
+                            isAvailableInWarehouse: res.stock > 0,
+                            sayanWarehouseName: res.part.warehouseName || 'انبار ملزومات و قطعات'
+                        };
+                    }));
+                }
+            } catch (err) {
+                setSayanMatches(prev => ({ ...prev, [rowId]: { loading: false, matched: false, stock: 0 } }));
+            }
+        }, 350);
+    };
+
     const handleAddItemRow = () => {
         setItems([...items, { id: generateUUID(), itemName: '', itemCode: '', suggestedBrand: '', quantity: 1, unit: 'عدد', specifications: '' }]);
     };
 
     const handleRemoveItemRow = (id: string) => {
         if (items.length <= 1) return;
+        if (debounceTimers.current[id]) {
+            clearTimeout(debounceTimers.current[id]);
+            delete debounceTimers.current[id];
+        }
+        setSayanMatches(prev => {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+        });
         setItems(items.filter(it => it.id !== id));
     };
 
     const handleItemChange = (id: string, field: keyof PurchaseRequestItem, value: any) => {
-        if (field === 'itemName' && parts && parts.length > 0) {
-            const trimmedVal = String(value).trim().toLowerCase();
-            const matchedPart = parts.find((p: any) => p.name.trim().toLowerCase() === trimmedVal);
-            if (matchedPart) {
-                setItems(items.map(it => it.id === id ? {
-                    ...it,
-                    partId: matchedPart.id,
-                    itemName: matchedPart.name,
-                    itemCode: matchedPart.code || matchedPart.id.slice(0, 8),
-                    unit: matchedPart.unit || 'عدد',
-                    specifications: matchedPart.dimensions || '',
-                } : it));
-                return;
+        if (field === 'itemName') {
+            triggerSayanPartMatch(id, String(value));
+            if (parts && parts.length > 0) {
+                const trimmedVal = String(value).trim().toLowerCase();
+                const matchedPart = parts.find((p: any) => p.name.trim().toLowerCase() === trimmedVal);
+                if (matchedPart) {
+                    setItems(items.map(it => it.id === id ? {
+                        ...it,
+                        partId: matchedPart.id,
+                        itemName: matchedPart.name,
+                        itemCode: matchedPart.code || matchedPart.id.slice(0, 8),
+                        unit: matchedPart.unit || 'عدد',
+                        specifications: matchedPart.dimensions || '',
+                    } : it));
+                    return;
+                }
             }
         }
         setItems(items.map(it => it.id === id ? { ...it, [field]: value } : it));
@@ -943,6 +1047,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
     const handleSelectPart = (id: string, partId: string) => {
         const p = parts.find((pt: any) => pt.id === partId);
         if (!p) return;
+        triggerSayanPartMatch(id, p.name);
         setItems(items.map(it => it.id === id ? {
             ...it,
             partId: p.id,
@@ -995,23 +1100,38 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
         const initialValidItems = items.filter(it => it.itemName.trim().length > 0);
         if (initialValidItems.length === 0) return alert('لطفاً حداقل یک کالا یا قطعه با نام مشخص وارد کنید');
 
-        // Auto-link any items that match existing part names in the catalog
+        // Auto-link any items that match existing part names in the catalog or Sayan ERP
         const validItems = initialValidItems.map(it => {
-            if (!it.partId && parts && parts.length > 0) {
+            const sm = sayanMatches[it.id];
+            let enriched = { ...it };
+
+            if (sm && sm.matched && sm.part) {
+                enriched.itemCode = enriched.itemCode || sm.part.code;
+                enriched.sayanItemCode = sm.part.code;
+                enriched.sayanMatchedItem = sm.part.name;
+                enriched.sayanStock = sm.stock || 0;
+                enriched.warehouseStock = sm.stock || 0;
+                enriched.isAvailableInWarehouse = (sm.stock || 0) > 0;
+                enriched.sayanWarehouseName = sm.part.warehouseName || 'انبار ملزومات و قطعات';
+                enriched.unit = enriched.unit || sm.part.unit || 'عدد';
+            } else if (!it.partId && parts && parts.length > 0) {
                 const trimmedName = it.itemName.trim().toLowerCase();
                 const matchedPart = parts.find((p: any) => p.name.trim().toLowerCase() === trimmedName);
                 if (matchedPart) {
-                    return {
-                        ...it,
-                        partId: matchedPart.id,
-                        itemName: matchedPart.name,
-                        itemCode: matchedPart.code || matchedPart.id.slice(0, 8),
-                        unit: matchedPart.unit || 'عدد',
-                        specifications: matchedPart.dimensions || ''
-                    };
+                    enriched.partId = matchedPart.id;
+                    enriched.itemName = matchedPart.name;
+                    enriched.itemCode = matchedPart.code || matchedPart.id.slice(0, 8);
+                    enriched.unit = matchedPart.unit || 'عدد';
+                    enriched.specifications = matchedPart.dimensions || '';
+                    enriched.warehouseStock = matchedPart.currentStock || 0;
+                    enriched.sayanStock = matchedPart.currentStock || 0;
+                    enriched.isAvailableInWarehouse = (matchedPart.currentStock || 0) > 0;
+                    enriched.sayanWarehouseName = matchedPart.warehouseName || 'انبار ملزومات و قطعات';
+                    enriched.sayanMatchedItem = matchedPart.name;
+                    enriched.sayanItemCode = matchedPart.code;
                 }
             }
-            return it;
+            return enriched;
         });
 
         setLoading(true);
@@ -1020,6 +1140,15 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
             const nowIso = new Date().toISOString();
 
             const primaryItem = validItems[0];
+            const sayanSummaryList = validItems.map(it => {
+                if (it.sayanMatchedItem || it.sayanStock !== undefined) {
+                    return (it.sayanStock && it.sayanStock > 0)
+                        ? `✅ ${it.itemName}: ${it.sayanStock.toLocaleString('fa-IR')} ${it.unit} در انبار سایان`
+                        : `⚠️ ${it.itemName}: عدم موجودی در انبار سایان (۰ ${it.unit})`;
+                }
+                return null;
+            }).filter(Boolean);
+
             const newAuditLog: PurchaseAuditLog = {
                 id: generateUUID(),
                 stage: PurchaseRequestStatus.PENDING_TECHNICAL,
@@ -1027,7 +1156,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                 performedBy: currentUser.fullName,
                 role: currentUser.role,
                 timestamp: nowIso,
-                comment: `ثبت درخواست با ${validItems.length} قلم کالا (${urgency})`
+                comment: `ثبت درخواست با ${validItems.length} قلم کالا (${urgency})${sayanSummaryList.length > 0 ? ` [موجودی سایان: ${sayanSummaryList.join(' | ')}]` : ''}`
             };
 
             const newRequest: PurchaseRequest = {
@@ -1048,6 +1177,9 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                 quantity: primaryItem.quantity,
                 unit: primaryItem.unit,
                 specifications: primaryItem.specifications || breakdownDescription,
+                sayanStock: primaryItem.sayanStock,
+                sayanMatchedItem: primaryItem.sayanMatchedItem,
+                sayanStockSummary: sayanSummaryList.length > 0 ? sayanSummaryList.join(' | ') : undefined,
                 
                 items: validItems,
                 attachments,
@@ -1188,6 +1320,43 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                                                     required 
                                                 />
                                             </div>
+
+                                            {/* Sayan Part Match & Warehouse Stock Status Banner */}
+                                            {sayanMatches[it.id]?.loading ? (
+                                                <div className="flex items-center gap-2 p-2 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 rounded-xl text-xs text-indigo-700 dark:text-indigo-300 animate-pulse">
+                                                    <Loader2 size={13} className="animate-spin text-indigo-600" />
+                                                    <span className="font-bold text-[11px]">در حال استعلام تطابق با قطعات کارخانه و موجودی انبار سایان...</span>
+                                                </div>
+                                            ) : sayanMatches[it.id]?.matched && sayanMatches[it.id]?.part ? (
+                                                <div className={`p-2.5 rounded-xl border space-y-1 transition-all ${
+                                                    (sayanMatches[it.id]?.stock || 0) > 0 
+                                                        ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200' 
+                                                        : 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200'
+                                                }`}>
+                                                    <div className="flex items-center justify-between text-xs">
+                                                        <span className="font-black flex items-center gap-1.5">
+                                                            <Package size={14} className={(sayanMatches[it.id]?.stock || 0) > 0 ? "text-emerald-600" : "text-amber-600"} />
+                                                            <span>تطابق با قطعات سایان: {sayanMatches[it.id]?.part?.name}</span>
+                                                        </span>
+                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                                            (sayanMatches[it.id]?.stock || 0) > 0 
+                                                                ? 'bg-emerald-600 text-white shadow-xs' 
+                                                                : 'bg-amber-500 text-white shadow-xs'
+                                                        }`}>
+                                                            {(sayanMatches[it.id]?.stock || 0) > 0 ? '✅ موجود در انبار' : '⚠️ فاقد موجودی'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-[11px] font-bold opacity-90 pt-0.5">
+                                                        <span>کد کالا در سایان: <span className="font-mono">{sayanMatches[it.id]?.part?.code}</span></span>
+                                                        <span>موجودی فعلی انبار: <b className="font-black font-mono text-xs">{(sayanMatches[it.id]?.stock || 0).toLocaleString('fa-IR')} {it.unit || 'عدد'}</b></span>
+                                                    </div>
+                                                </div>
+                                            ) : it.itemName && it.itemName.trim().length >= 2 ? (
+                                                <div className="p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-800/40 text-gray-500 dark:text-gray-400 text-[10px] font-bold flex items-center gap-1.5">
+                                                    <Info size={12} className="text-gray-400" />
+                                                    <span>این کالا در سیستم قطعات کارخانه سایان ثبت نیست (ثبت به عنوان قلم جدید)</span>
+                                                </div>
+                                            ) : null}
                                         </div>
 
                                         {/* Qty and Unit */}
@@ -1280,6 +1449,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                                             <th className="p-2.5 w-32">برند / سازنده پیشنهاد</th>
                                             <th className="p-2.5 w-20 text-center">تعداد</th>
                                             <th className="p-2.5 w-24">واحد</th>
+                                            <th className="p-2.5 w-36 text-center">موجودی انبار سایان</th>
                                             <th className="p-2.5">مشخصات فنی و نقشه</th>
                                             <th className="p-2.5 w-10"></th>
                                         </tr>
@@ -1297,6 +1467,12 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                                                             </select>
                                                         )}
                                                         <input className="w-full border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-xs font-black text-gray-800 dark:text-gray-100 bg-white dark:bg-gray-800" value={it.itemName} onChange={e => handleItemChange(it.id, 'itemName', e.target.value)} placeholder="نام دقیق کالا / قطعه" required />
+                                                        {sayanMatches[it.id]?.matched && sayanMatches[it.id]?.part && (
+                                                            <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 truncate max-w-[260px]" title={`نام قطعه در سایان: ${sayanMatches[it.id]?.part?.name}`}>
+                                                                <Package size={11} className="shrink-0" />
+                                                                <span className="truncate">سایان: {sayanMatches[it.id]?.part?.name}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="p-2"><input className="w-full border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-xs font-mono bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" value={it.itemCode || ''} onChange={e => handleItemChange(it.id, 'itemCode', e.target.value)} placeholder="PN-1002" /></td>
@@ -1315,6 +1491,44 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                                                         <option value="طاقه">طاقه</option>
                                                         <option value="ست">ست</option>
                                                     </select>
+                                                </td>
+                                                {/* Sayan Warehouse Stock Cell */}
+                                                <td className="p-2 text-center">
+                                                    {sayanMatches[it.id]?.loading ? (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-1 rounded-lg animate-pulse font-bold">
+                                                            <Loader2 size={12} className="animate-spin" />
+                                                            <span>بررسی...</span>
+                                                        </span>
+                                                    ) : sayanMatches[it.id]?.matched && sayanMatches[it.id]?.part ? (
+                                                        <div className="flex flex-col items-center gap-0.5">
+                                                            <span className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg border ${
+                                                                (sayanMatches[it.id]?.stock || 0) > 0 
+                                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800' 
+                                                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                                                            }`}>
+                                                                {(sayanMatches[it.id]?.stock || 0) > 0 ? (
+                                                                    <>
+                                                                        <Check size={11} className="text-emerald-600 font-black" />
+                                                                        <span>{(sayanMatches[it.id]?.stock || 0).toLocaleString('fa-IR')} {it.unit || 'عدد'}</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <AlertTriangle size={11} className="text-amber-600" />
+                                                                        <span>عدم موجودی (۰)</span>
+                                                                    </>
+                                                                )}
+                                                            </span>
+                                                            <span className="text-[9px] text-gray-400 font-bold truncate max-w-[120px]" title={sayanMatches[it.id]?.part?.warehouseName || 'انبار ملزومات و قطعات'}>
+                                                                {sayanMatches[it.id]?.part?.warehouseName || 'انبار ملزومات'}
+                                                            </span>
+                                                        </div>
+                                                    ) : it.itemName && it.itemName.trim().length >= 2 ? (
+                                                        <span className="text-[9px] text-gray-400 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700" title="در قطعات سایان یافت نشد">
+                                                            قلم جدید
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-300">---</span>
+                                                    )}
                                                 </td>
                                                 <td className="p-2"><input className="w-full border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-xs bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" value={it.specifications || ''} onChange={e => handleItemChange(it.id, 'specifications', e.target.value)} placeholder="ابعاد، ولتاژ، استاندارد و..." /></td>
                                                 <td className="p-2 text-center">
@@ -2309,6 +2523,64 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     const [sharingType, setSharingType] = useState<'REQUEST' | 'PROFORMA' | 'RECEIPT' | null>(null);
     const [sharingProforma, setSharingProforma] = useState<PurchaseProforma | null>(null);
 
+    // Live Sayan Warehouse Stock Check State
+    const [refreshingSayanStock, setRefreshingSayanStock] = useState(false);
+    const [liveRequest, setLiveRequest] = useState<PurchaseRequest>(request);
+
+    useEffect(() => {
+        setLiveRequest(request);
+    }, [request]);
+
+    const handleRefreshSayanStock = async () => {
+        setRefreshingSayanStock(true);
+        try {
+            const rawItems = liveRequest.items && liveRequest.items.length > 0
+                ? liveRequest.items
+                : [{ id: '1', itemName: liveRequest.itemName, quantity: liveRequest.quantity, unit: liveRequest.unit }];
+
+            const updatedItems = [];
+            for (const it of rawItems) {
+                const queryName = it.itemName || liveRequest.itemName || '';
+                const matchRes = await matchSayanPart(queryName);
+                updatedItems.push({
+                    ...it,
+                    sayanStock: matchRes.stock,
+                    warehouseStock: matchRes.stock,
+                    isAvailableInWarehouse: matchRes.stock > 0,
+                    sayanMatchedItem: matchRes.part?.name || it.sayanMatchedItem,
+                    sayanItemCode: matchRes.part?.code || it.sayanItemCode,
+                    sayanWarehouseName: matchRes.part?.warehouseName || it.sayanWarehouseName || 'انبار ملزومات و قطعات'
+                });
+            }
+
+            const sayanSummaryList = updatedItems.map(it => {
+                if (it.sayanMatchedItem || it.sayanStock !== undefined) {
+                    return (it.sayanStock && it.sayanStock > 0)
+                        ? `✅ ${it.itemName}: ${it.sayanStock.toLocaleString('fa-IR')} ${it.unit} در انبار سایان`
+                        : `⚠️ ${it.itemName}: عدم موجودی در انبار سایان (۰ ${it.unit})`;
+                }
+                return null;
+            }).filter(Boolean);
+
+            const updatedReq: PurchaseRequest = {
+                ...liveRequest,
+                items: updatedItems,
+                sayanStock: updatedItems[0]?.sayanStock,
+                sayanMatchedItem: updatedItems[0]?.sayanMatchedItem,
+                sayanStockSummary: sayanSummaryList.length > 0 ? sayanSummaryList.join(' | ') : liveRequest.sayanStockSummary
+            };
+
+            setLiveRequest(updatedReq);
+            await updatePurchaseRequest(updatedReq);
+            onSuccess();
+        } catch (err) {
+            console.error("Refresh Sayan stock error:", err);
+            alert('خطا در برقراری ارتباط با وب‌سرویس انبار سایان');
+        } finally {
+            setRefreshingSayanStock(false);
+        }
+    };
+
     const handleSharePurchaseDoc = (type: 'REQUEST' | 'PROFORMA' | 'RECEIPT') => {
         setIsSharingDoc(true);
         setSharingType(type);
@@ -2571,6 +2843,16 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     <div className="flex items-center gap-2">
                                         <button 
                                             type="button"
+                                            onClick={handleRefreshSayanStock} 
+                                            disabled={refreshingSayanStock}
+                                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-emerald-200 dark:border-emerald-800"
+                                            title="استعلام لحظه‌ای و مجدد موجودی قطعات این درخواست از انبار سایان"
+                                        >
+                                            <RefreshCw size={13} className={`text-emerald-600 dark:text-emerald-400 ${refreshingSayanStock ? 'animate-spin' : ''}`} />
+                                            <span>{refreshingSayanStock ? 'در حال استعلام...' : 'استعلام موجودی سایان'}</span>
+                                        </button>
+                                        <button 
+                                            type="button"
                                             onClick={() => setModalTab('COMMENTS')} 
                                             className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-indigo-200 dark:border-indigo-800"
                                             title="مشاهده بخش کامنت‌ها و نظرات این درخواست"
@@ -2613,10 +2895,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                 </div>
 
                                 {/* Items: Mobile Card Layout (No horizontal scrolling) */}
-                                {request.items && request.items.length > 0 ? (
+                                {(liveRequest.items || request.items) && (liveRequest.items || request.items).length > 0 ? (
                                     <div className="space-y-3">
                                         <div className="block md:hidden space-y-2.5">
-                                            {request.items.map((it: any, idx: number) => {
+                                            {(liveRequest.items || request.items).map((it: any, idx: number) => {
                                                 const matchedPart = parts.find(p => (it.partId && p.id === it.partId) || (p.name && it.itemName && p.name.trim().toLowerCase() === it.itemName.trim().toLowerCase()) || (it.itemCode && (p.id === it.itemCode || (p as any).code === it.itemCode)));
                                                 const partForSheet: PartMasterData = matchedPart || {
                                                     id: it.partId || it.itemCode || generateUUID(),
@@ -2626,7 +2908,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                     type: 'قطعات',
                                                     category: request.category || 'عمومی',
                                                     subCategory: '',
-                                                    currentStock: 0,
+                                                    currentStock: it.sayanStock || it.warehouseStock || 0,
                                                     minStock: 0
                                                 };
 
@@ -2643,6 +2925,30 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                                 </span>
                                                             </div>
                                                         </div>
+
+                                                        {/* Sayan Live Stock Banner in Mobile */}
+                                                        {(it.sayanStock !== undefined || it.warehouseStock !== undefined) && (
+                                                            <div className={`flex items-center justify-between p-2 rounded-xl border text-xs ${
+                                                                (it.sayanStock || it.warehouseStock || 0) > 0 
+                                                                    ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200' 
+                                                                    : 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200'
+                                                            }`}>
+                                                                <span className="text-[11px] font-bold flex items-center gap-1.5">
+                                                                    <Package size={13} className={(it.sayanStock || it.warehouseStock || 0) > 0 ? "text-emerald-600" : "text-amber-600"} />
+                                                                    <span>موجودی انبار سایان:</span>
+                                                                </span>
+                                                                <span className={`font-black text-xs px-2 py-0.5 rounded-lg border ${
+                                                                    (it.sayanStock || it.warehouseStock || 0) > 0 
+                                                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs' 
+                                                                        : 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                                                                }`}>
+                                                                    {(it.sayanStock || it.warehouseStock || 0) > 0 
+                                                                        ? `${(it.sayanStock || it.warehouseStock || 0).toLocaleString('fa-IR')} ${it.unit} ✅` 
+                                                                        : `عدم موجودی (۰ ${it.unit}) ⚠️`}
+                                                                </span>
+                                                            </div>
+                                                        )}
+
                                                         {it.specifications && (
                                                             <div className="text-[11px] text-gray-600 dark:text-gray-400 bg-white/70 dark:bg-gray-900/60 p-2 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
                                                                 <span className="font-bold text-gray-400 text-[10px] block mb-0.5">مشخصات فنی / ابعاد:</span>
@@ -2654,7 +2960,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                         )}
                                                         <div className="flex items-center justify-end gap-2 pt-1 border-t border-indigo-100/40 dark:border-gray-700">
                                                             <button 
-                                                                type="button"
+                                                                type="button" 
                                                                 onClick={() => setViewingPartDataSheet(partForSheet)}
                                                                 className="text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 px-2.5 py-1 rounded-lg flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer"
                                                                 title="مشاهده شناسنامه فنی، مشخصات، ابعاد و پیوست‌های کالا"
@@ -2663,7 +2969,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                                 <span>جزئیات و شناسنامه کالا</span>
                                                             </button>
                                                             <button 
-                                                                type="button"
+                                                                type="button" 
                                                                 onClick={() => {
                                                                     setAiAdvisorInitialIndex(idx);
                                                                     setShowAiAdvisorModal(true);
@@ -2687,14 +2993,15 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                     <tr>
                                                         <th className="p-3 w-12 text-center">ردیف</th>
                                                         <th className="p-3">نام قطعه / کالا</th>
-                                                        <th className="p-3 w-28 text-center">تعداد / مقدار</th>
+                                                        <th className="p-3 w-24 text-center">تعداد / مقدار</th>
+                                                        <th className="p-3 w-36 text-center">موجودی انبار سایان</th>
                                                         <th className="p-3">مشخصات فنی و ابعاد</th>
-                                                        <th className="p-3 w-36 text-center">شناسنامه و جزئیات کالا</th>
+                                                        <th className="p-3 w-32 text-center">شناسنامه کالا</th>
                                                         <th className="p-3 w-32 text-center">استعلام و تامین‌کننده</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                                                    {request.items.map((it: any, idx: number) => {
+                                                    {(liveRequest.items || request.items).map((it: any, idx: number) => {
                                                         const matchedPart = parts.find(p => (it.partId && p.id === it.partId) || (p.name && it.itemName && p.name.trim().toLowerCase() === it.itemName.trim().toLowerCase()) || (it.itemCode && (p.id === it.itemCode || (p as any).code === it.itemCode)));
                                                         const partForSheet: PartMasterData = matchedPart || {
                                                             id: it.partId || it.itemCode || generateUUID(),
@@ -2704,9 +3011,11 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                             type: 'قطعات',
                                                             category: request.category || 'عمومی',
                                                             subCategory: '',
-                                                            currentStock: 0,
+                                                            currentStock: it.sayanStock || it.warehouseStock || 0,
                                                             minStock: 0
                                                         };
+
+                                                        const stockVal = it.sayanStock !== undefined ? it.sayanStock : it.warehouseStock;
 
                                                         return (
                                                             <tr key={it.id || idx} className="hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
@@ -2716,10 +3025,45 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                                     {it.itemCode && <div className="text-[10px] font-mono text-gray-400 font-normal">کد: {it.itemCode}</div>}
                                                                 </td>
                                                                 <td className="p-3 text-center font-black text-indigo-600">{it.quantity} {it.unit}</td>
+                                                                {/* Sayan Stock Column */}
+                                                                <td className="p-3 text-center">
+                                                                    {stockVal !== undefined && stockVal !== null ? (
+                                                                        <div className="flex flex-col items-center gap-0.5">
+                                                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-black border ${
+                                                                                stockVal > 0 
+                                                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800' 
+                                                                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+                                                                            }`}>
+                                                                                {stockVal > 0 ? (
+                                                                                    <>
+                                                                                        <Check size={12} className="text-emerald-600 font-black" />
+                                                                                        <span>{stockVal.toLocaleString('fa-IR')} {it.unit}</span>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <>
+                                                                                        <AlertTriangle size={12} className="text-amber-600" />
+                                                                                        <span>عدم موجودی (۰)</span>
+                                                                                    </>
+                                                                                )}
+                                                                            </span>
+                                                                            <span className="text-[9px] text-gray-400 font-bold truncate max-w-[130px]" title={it.sayanWarehouseName || 'انبار ملزومات و قطعات'}>
+                                                                                {it.sayanMatchedItem ? `سایان: ${it.sayanMatchedItem}` : (it.sayanWarehouseName || 'انبار ملزومات')}
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <button 
+                                                                            type="button" 
+                                                                            onClick={handleRefreshSayanStock}
+                                                                            className="text-[10px] text-indigo-600 hover:text-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 font-bold"
+                                                                        >
+                                                                            استعلام سایان
+                                                                        </button>
+                                                                    )}
+                                                                </td>
                                                                 <td className="p-3 text-gray-600 dark:text-gray-400">{it.specifications || '---'}</td>
                                                                 <td className="p-3 text-center">
                                                                     <button 
-                                                                        type="button"
+                                                                        type="button" 
                                                                         onClick={() => setViewingPartDataSheet(partForSheet)}
                                                                         className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-black text-indigo-700 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300 rounded-xl border border-indigo-200 dark:border-indigo-800 transition-all active:scale-95 cursor-pointer shadow-2xs"
                                                                         title="مشاهده شناسنامه فنی، مشخصات، ابعاد و پیوست‌های کالا"
@@ -2730,7 +3074,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                                 </td>
                                                                 <td className="p-3 text-center">
                                                                     <button 
-                                                                        type="button"
+                                                                        type="button" 
                                                                         onClick={() => {
                                                                             setAiAdvisorInitialIndex(idx);
                                                                             setShowAiAdvisorModal(true);

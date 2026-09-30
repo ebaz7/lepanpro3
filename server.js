@@ -99,6 +99,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import * as jalaali from 'jalaali-js';
 import * as sayanOrderAuto from './backend/sayan-order-automation.js';
 import * as sayanChequeService from './backend/sayan-cheque-service.js';
+import * as sayanPartsService from './backend/sayan-parts-service.js';
+import * as sayanAgingService from './backend/sayan-aging-service.js';
 import { mergeFilesToPdf, enhanceDocumentImage } from './backend/pdf-merger.js';
 
 const getDb = dbManager.getDb;
@@ -1737,8 +1739,8 @@ const parseJalaliStrToGregorian = (jalaliStr) => {
 
 const executeSayanQuery = async (db, queryStr, timeoutMs = 25000) => {
     const settings = db.settings || {};
-    let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL);
-    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY;
+    let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
+    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
         throw new Error('تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است. لطفاً ابتدا از بخش تنظیمات، آدرس و کلید وب‌سرویس سایان را وارد نمایید.');
     }
@@ -8220,12 +8222,83 @@ app.get('/api/purchase-requests', (req, res) => {
     res.json(db.purchaseRequests || []);
 });
 
+// Match requested item name with Sayan factory parts and get live stock in Sayan warehouse
+app.post('/api/sayan/match-part', async (req, res) => {
+    try {
+        const { itemName } = req.body || {};
+        const result = await sayanPartsService.searchAndMatchSayanPart(itemName);
+        res.json(result);
+    } catch (e) {
+        console.error("Match Sayan Part error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Fetch Sayan factory parts catalog
+app.get('/api/sayan/factory-parts', async (req, res) => {
+    try {
+        const force = req.query.force === 'true';
+        const catalog = await sayanPartsService.getSayanFactoryPartsCatalog(force);
+        res.json(catalog);
+    } catch (e) {
+        console.error("Get Sayan Factory Parts error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Force sync top Sayan factory parts with live stock into database.json
+app.post('/api/sayan/sync-parts', async (req, res) => {
+    try {
+        const limit = Number(req.body?.limit) || 150;
+        const result = await sayanPartsService.syncSayanFactoryPartsToDatabase(limit);
+        res.json(result);
+    } catch (e) {
+        console.error("Sync Sayan Factory Parts error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Calculate FIFO Aging and Overdue Days for Sayan Parties (Debtors and Creditors)
+app.post('/api/sayan/traz-aging', async (req, res) => {
+    try {
+        const parties = Array.isArray(req.body?.parties) ? req.body.parties : [];
+        if (parties.length === 0 && req.body?.code) {
+            const single = await sayanAgingService.getPartyAgingFromSayan(req.body.code, req.body.balance);
+            return res.json({ success: true, aging: { [req.body.code]: single } });
+        }
+        const results = await sayanAgingService.getBatchAgingForParties(parties);
+        res.json({ success: true, aging: results });
+    } catch (e) {
+        console.error("Calculate Sayan Aging error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/sayan/party-aging/:code', async (req, res) => {
+    try {
+        const code = req.params.code;
+        const balance = Number(req.query.balance || 0);
+        const result = await sayanAgingService.getPartyAgingFromSayan(code, balance);
+        res.json(result);
+    } catch (e) {
+        console.error("Get Party Aging error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/purchase-requests', async (req, res) => {
     try {
         const db = getDb();
         if (!db.purchaseRequests) db.purchaseRequests = [];
         const item = req.body;
         if (!item.createdAt) item.createdAt = Date.now();
+
+        // Automatically match requested items with Sayan factory parts & attach real-time warehouse stock
+        try {
+            await sayanPartsService.enrichPurchaseRequestWithSayanStock(item);
+        } catch (enrichErr) {
+            console.warn("[Purchase Request POST] Sayan stock enrichment warning:", enrichErr.message);
+        }
 
         const existingIdx = db.purchaseRequests.findIndex(x => x.id === item.id);
         const isEdit = existingIdx > -1;
@@ -8248,7 +8321,7 @@ app.post('/api/purchase-requests', async (req, res) => {
                 await notifyPurchaseRequestStep(reqItem, null, null, null, freshDb, stepName, eventType);
                 await broadcastNotification(
                     isEdit ? `✏️ ویرایش درخواست خرید #${reqItem.requestNumber || reqItem.id}` : `🛒 درخواست خرید جدید #${reqItem.requestNumber || reqItem.id}`,
-                    `عنوان: ${reqItem.title || '-'} | درخواست‌کننده: ${reqItem.requester || '-'} | شرکت: ${reqItem.company || '-'}`,
+                    `عنوان: ${reqItem.title || reqItem.itemName || '-'} | درخواست‌کننده: ${reqItem.requester || '-'} | شرکت: ${reqItem.company || '-'}${reqItem.sayanStockSummary ? ` | ${reqItem.sayanStockSummary}` : ''}`,
                     '/purchase',
                     ['admin', 'ceo', 'manager', 'commercial', 'financial'],
                     null,
@@ -8272,11 +8345,19 @@ app.put('/api/purchase-requests/:id', async (req, res) => {
         const isEdit = req.body.isEdit || false;
         let updatedItem;
 
+        const bodyData = { ...req.body };
+        // Automatically match requested items with Sayan factory parts & attach real-time warehouse stock
+        try {
+            await sayanPartsService.enrichPurchaseRequestWithSayanStock(bodyData);
+        } catch (enrichErr) {
+            console.warn("[Purchase Request PUT] Sayan stock enrichment warning:", enrichErr.message);
+        }
+
         if (idx > -1) {
-            db.purchaseRequests[idx] = { ...db.purchaseRequests[idx], ...req.body };
+            db.purchaseRequests[idx] = { ...db.purchaseRequests[idx], ...bodyData };
             updatedItem = db.purchaseRequests[idx];
         } else {
-            updatedItem = { id: req.params.id, ...req.body };
+            updatedItem = { id: req.params.id, ...bodyData };
             db.purchaseRequests.push(updatedItem);
         }
         saveDb(db);
@@ -8294,7 +8375,7 @@ app.put('/api/purchase-requests/:id', async (req, res) => {
                 await notifyPurchaseRequestStep(reqItem, null, null, null, freshDb, stepName, eventType);
                 await broadcastNotification(
                     `🔄 بروزرسانی درخواست خرید #${reqItem.requestNumber || reqItem.id}`,
-                    `وضعیت/مرحله: ${stepName} | عنوان: ${reqItem.title || '-'}`,
+                    `وضعیت/مرحله: ${stepName} | کالا: ${reqItem.itemName || '-'}${reqItem.sayanStockSummary ? ` | ${reqItem.sayanStockSummary}` : ''}`,
                     '/purchase',
                     ['admin', 'ceo', 'manager', 'commercial', 'financial'],
                     targets.length > 0 ? targets : null

@@ -891,6 +891,38 @@ export const getPartKardex = async (partId: string): Promise<PartKardex[]> => {
     return safeArray(res);
 };
 
+export interface SayanPartMatchResult {
+    matched: boolean;
+    part: {
+        id: string;
+        code: string;
+        name: string;
+        category?: string;
+        unit?: string;
+        type?: string;
+        warehouseName?: string;
+        warehouseCode?: string;
+        stock: number;
+    } | null;
+    stock: number;
+    confidence: number;
+}
+
+export const matchSayanPart = async (itemName: string): Promise<SayanPartMatchResult> => {
+    try {
+        if (!itemName || !itemName.trim()) {
+            return { matched: false, part: null, stock: 0, confidence: 0 };
+        }
+        return await apiCall<SayanPartMatchResult>('/sayan/match-part', 'POST', { itemName: itemName.trim() });
+    } catch (e) {
+        return { matched: false, part: null, stock: 0, confidence: 0 };
+    }
+};
+
+export const syncSayanFactoryParts = async (limit: number = 150): Promise<{ success: boolean; count: number; parts: PartMasterData[] }> => {
+    return await apiCall<{ success: boolean; count: number; parts: PartMasterData[] }>('/sayan/sync-parts', 'POST', { limit });
+};
+
 // --- SECRETARIAT ---
 import { SecretariatLetter, SecretariatCompanySettings, SecretariatTemplate } from '../types';
 
