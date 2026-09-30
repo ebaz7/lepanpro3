@@ -62,6 +62,100 @@ const callApi = (method, data, isMultipart = false) => {
     });
 };
 
+const downloadBaleFile = async (filePath) => {
+    if (!filePath) throw new Error("آدرس فایل در سرور بله یافت نشد.");
+    const cleanPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+    const urlsToTry = [
+        `https://tapi.bale.ai/file/bot${botToken}/${cleanPath}`,
+        `https://tapi.bale.ai/file/bot${botToken}/${filePath}`,
+        `https://tapi.bale.ai/bot${botToken}/getFile/${cleanPath}`
+    ];
+
+    let lastError = null;
+
+    for (const urlStr of urlsToTry) {
+        try {
+            const buf = await new Promise((resolve, reject) => {
+                const urlObj = new URL(urlStr);
+                const req = https.request({
+                    hostname: urlObj.hostname,
+                    port: urlObj.port || 443,
+                    path: urlObj.pathname + urlObj.search,
+                    method: 'GET',
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': '*/*'
+                    },
+                    timeout: 30000
+                }, (res) => {
+                    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                        const redirectUrl = res.headers.location.startsWith('http') 
+                            ? res.headers.location 
+                            : `https://${urlObj.hostname}${res.headers.location}`;
+                        const redObj = new URL(redirectUrl);
+                        const redReq = https.request({
+                            hostname: redObj.hostname,
+                            port: redObj.port || 443,
+                            path: redObj.pathname + redObj.search,
+                            method: 'GET',
+                            headers: { 'User-Agent': 'Mozilla/5.0' },
+                            timeout: 30000
+                        }, (redRes) => {
+                            if (redRes.statusCode !== 200) {
+                                return reject(new Error(`HTTP ${redRes.statusCode}`));
+                            }
+                            const chunks = [];
+                            redRes.on('data', c => chunks.push(c));
+                            redRes.on('end', () => resolve(Buffer.concat(chunks)));
+                        });
+                        redReq.on('error', reject);
+                        redReq.on('timeout', () => { redReq.destroy(); reject(new Error("Timeout")); });
+                        redReq.end();
+                        return;
+                    }
+
+                    if (res.statusCode !== 200) {
+                        return reject(new Error(`HTTP ${res.statusCode}`));
+                    }
+                    const chunks = [];
+                    res.on('data', c => chunks.push(c));
+                    res.on('end', () => resolve(Buffer.concat(chunks)));
+                });
+
+                req.on('error', reject);
+                req.on('timeout', () => {
+                    req.destroy();
+                    reject(new Error("مهلت زمان دانلود فایل به پایان رسید (Timeout)"));
+                });
+                req.end();
+            });
+
+            if (buf && buf.length > 0) {
+                return buf;
+            }
+        } catch (err) {
+            lastError = err;
+        }
+    }
+
+    // Secondary fallback with axios and custom https agent
+    try {
+        const axios = (await import('axios')).default;
+        const res = await axios.get(urlsToTry[0], {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            httpsAgent: new https.Agent({ rejectUnauthorized: false })
+        });
+        if (res.data) {
+            return Buffer.from(res.data);
+        }
+    } catch (axiosErr) {
+        lastError = axiosErr;
+    }
+
+    throw lastError || new Error("دانلود فایل از سرور بله ناموفق بود.");
+};
+
 export const initBaleBot = (token) => {
     if (!token) {
         pollingActive = false;
@@ -171,10 +265,7 @@ const poll = async () => {
                         try {
                             const fileInfo = await callApi('getFile', { file_id: fileId });
                             if (fileInfo && fileInfo.ok && fileInfo.result && fileInfo.result.file_path) {
-                                const fileUrl = `https://tapi.bale.ai/file/bot${botToken}/${fileInfo.result.file_path}`;
-                                const response = await fetch(fileUrl);
-                                const arrayBuffer = await response.arrayBuffer();
-                                const audioBuffer = Buffer.from(arrayBuffer);
+                                const audioBuffer = await downloadBaleFile(fileInfo.result.file_path);
 
                                 const aiModule = await import('./ai-service.js');
                                 const result = await aiModule.processVoiceAudio(audioBuffer, mimeType);
@@ -223,10 +314,7 @@ const poll = async () => {
                                 try {
                                     const fileInfo = await callApi('getFile', { file_id: fileId });
                                     if (fileInfo && fileInfo.ok && fileInfo.result && fileInfo.result.file_path) {
-                                        const fileUrl = `https://tapi.bale.ai/file/bot${botToken}/${fileInfo.result.file_path}`;
-                                        const response = await fetch(fileUrl);
-                                        const arrayBuffer = await response.arrayBuffer();
-                                        const fileBuffer = Buffer.from(arrayBuffer);
+                                        const fileBuffer = await downloadBaleFile(fileInfo.result.file_path);
 
                                         await BotCore.handleIncomingFile('bale', chatId, u.message.from?.id || chatId, {
                                             fileId,
@@ -234,6 +322,8 @@ const poll = async () => {
                                             type: fileType,
                                             buffer: fileBuffer
                                         }, sendFn, sendPhotoFn, sendDocFn, checkMembershipFn, u.message);
+                                    } else {
+                                        sendFn(chatId, '⚠️ امکان دریافت مسیر فایل از سرور بله فراهم نشد.');
                                     }
                                 } catch (baleFileErr) {
                                     console.error("[Bale File Processing Error]:", baleFileErr);
