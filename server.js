@@ -2369,8 +2369,8 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
                     SELECT 
                         t11.Field_005 as ItemCode,
                         SUM(CASE 
-                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN t11.Field_006 
-                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN -t11.Field_006 
+                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '14', '24', '26', '28', '29', '40', '44', '46', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
+                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '25', '27', '30', '37', '42', '62', '68', '71', '74', '80', '84') THEN -t11.Field_006 
                             ELSE 0 
                         END) as StockQty
                     FROM STR_TBL_011 t11
@@ -2423,14 +2423,14 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
                 SELECT 
                     t11.Field_005 as ItemCode,
                     SUM(CASE 
-                        WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN
+                        WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '14', '24', '26', '28', '29', '40', '44', '46', '61', '65', '67', '70', '73', '79', '83') THEN
                             TRY_CAST(
                                 LEFT(
                                     LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)),
                                     PATINDEX('%[^0-9]%', LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)) + 'X') - 1
                                 ) as float
                             )
-                        WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN
+                        WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '25', '27', '30', '37', '42', '62', '68', '71', '74', '80', '84') THEN
                             -TRY_CAST(
                                 LEFT(
                                     LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)),
@@ -2543,8 +2543,8 @@ let warehouseLiveStatusCache = { data: null, timestamp: 0 };
 
 app.get('/api/warehouse-overview/live-status', async (req, res) => {
     try {
-        // Return memory cached data if queried within the last 30 seconds and not forced
-        if (req.query.force !== 'true' && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 30000)) {
+        // Return memory cached data if queried within the last 5 minutes and not forced
+        if (req.query.force !== 'true' && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 300000)) {
             return res.json(warehouseLiveStatusCache.data);
         }
 
@@ -2615,18 +2615,14 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             return `${year + 621}-03-21`;
         };
 
-        const todayObj = new Date();
-        const todayMiladi = todayObj.toISOString().split('T')[0];
-        const todayJalali = todayObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' });
-
         const y1 = getJalaliYear(meta.report1Jalali || "۱۴۰۳/۱۲/۳۰");
-        const y2 = getJalaliYear(meta.report2Jalali || todayJalali);
+        const y2 = getJalaliYear(meta.report2Jalali || "۱۴۰۴/۰۸/۲۲");
 
         const lastYearDateFrom = getJalaliYearStartMiladi(y1);
         const lastYearDateTo = meta.report1Miladi || '2025-03-20';
 
         const currentYearDateFrom = isCumulative ? getJalaliYearStartMiladi(y1) : getJalaliYearStartMiladi(y2);
-        const currentYearDateTo = meta.report2Miladi || todayMiladi;
+        const currentYearDateTo = meta.report2Miladi || new Date().toISOString().split('T')[0];
 
         const getStockWeights = async (targetDate, fromDate) => {
             const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
@@ -2635,8 +2631,8 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
                     SELECT 
                         t11.Field_005 as ItemCode,
                         SUM(CASE 
-                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN t11.Field_006 
-                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN -t11.Field_006 
+                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '14', '24', '26', '28', '29', '40', '44', '46', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
+                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '25', '27', '30', '37', '42', '62', '68', '71', '74', '80', '84') THEN -t11.Field_006 
                             ELSE 0 
                         END) as StockQty
                     FROM STR_TBL_011 t11 WITH (NOLOCK)

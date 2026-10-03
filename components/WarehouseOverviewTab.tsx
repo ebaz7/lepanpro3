@@ -738,13 +738,8 @@ export const WarehouseOverviewTab: React.FC = () => {
                 setAllowedCompanies(currentAllowedComps);
             }
 
-            const nowObj = new Date();
-            const todayMiladi = nowObj.toISOString().split('T')[0];
-            const todayJalali = nowObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' });
-            const currentJalaliYear = parseInt(nowObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', timeZone: 'Asia/Tehran' })) || 1404;
-
             // Fetch main system settings to dynamically compute defaults based on active fiscal year if there's no saved config
-            let activeYearLabel = String(currentJalaliYear);
+            let activeYearLabel = "1405"; // Default fallback
             try {
                 const settingsRes = await fetch('/api/settings');
                 const settingsData = await settingsRes.json();
@@ -755,8 +750,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                     
                     if (settingsData.fiscalYears && settingsData.activeFiscalYearId) {
                         const activeYearObj = settingsData.fiscalYears.find((y: any) => y.id === settingsData.activeFiscalYearId);
-                        const labelNum = parseInt(activeYearObj?.label || '0');
-                        if (activeYearObj && activeYearObj.label && labelNum >= 1403) {
+                        if (activeYearObj && activeYearObj.label) {
                             activeYearLabel = activeYearObj.label;
                         }
                     }
@@ -765,8 +759,13 @@ export const WarehouseOverviewTab: React.FC = () => {
                 console.error("Failed to fetch settings for active fiscal year", e);
             }
 
-            let r1Date = '2025-03-20'; // Default for 1403/12/30
-            let r2Date = todayMiladi; // Real-time live date for current fiscal year (today)
+            // Dynamic defaults based on system's active fiscal year and real-time today date
+            const nowObj = new Date();
+            const todayMiladi = nowObj.toISOString().split('T')[0];
+            const todayJalali = nowObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' });
+
+            let r1Date = '2026-03-20'; // Default for previous fiscal year end (1404/12/29)
+            let r2Date = todayMiladi; // Real-time live date for current fiscal year (1405 today)
 
             if (activeYearLabel === "1405") {
                 r1Date = '2026-03-20'; // 1404/12/29
@@ -793,16 +792,17 @@ export const WarehouseOverviewTab: React.FC = () => {
                 setReport2Miladi(todayMiladi);
                 setReportDate(todayJalali);
             } else {
-                const yr = parseInt(activeYearLabel) || currentJalaliYear;
+                // Generalized mathematical solar-to-miladi mapping fallback for any active year
+                const yr = parseInt(activeYearLabel) || 1405;
                 const prevYr = yr - 1;
                 const miladiYear = yr + 621;
                 
-                r1Date = `${miladiYear - 1}-03-20`;
+                r1Date = `${miladiYear}-03-20`;
                 r2Date = todayMiladi;
 
                 setReport1Label(`منتهی به سال ${prevYr.toLocaleString('fa-IR', {useGrouping: false})}`);
                 setReport1Jalali(`${prevYr.toLocaleString('fa-IR', {useGrouping: false})}/۱۲/۲۹`);
-                setReport1Miladi(`${miladiYear - 1}-03-20`);
+                setReport1Miladi(`${miladiYear}-03-20`);
 
                 setReport2Label(`وضعیت فعلی سال ${yr.toLocaleString('fa-IR', {useGrouping: false})}`);
                 setReport2Jalali(todayJalali);
@@ -1272,6 +1272,21 @@ export const WarehouseOverviewTab: React.FC = () => {
         field: 'proforma' | 'cartons' | 'weight' | 'containers' | 'dollars',
         isGroup = false
     ): any => {
+        // For weight and cartons, directly return live Sayan ERP inventory stock when available
+        if (field === 'weight' || field === 'cartons') {
+            const liveStockVal = isGroup ? getSayanGroupSum(itemKey, isLastYear, field) : getSayanItemValue(itemKey, isLastYear, field);
+            // Return live Sayan value if loaded or if no manual override is active
+            if (sayanLastYear.length > 0 || sayanCurrent.length > 0 || liveStockVal !== 0) {
+                const overrides = isLastYear ? lastYearOverrides : currentOverrides;
+                const itemOverride = overrides[itemKey];
+                // If user manually edited in edit mode, allow override, otherwise prefer live Sayan DB value
+                if (isEditMode && itemOverride && itemOverride[field] !== undefined && itemOverride[field] !== '') {
+                    return itemOverride[field];
+                }
+                return liveStockVal;
+            }
+        }
+
         const overrides = isLastYear ? lastYearOverrides : currentOverrides;
         
         let itemOverride = overrides[itemKey];
