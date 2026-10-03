@@ -185,10 +185,10 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
     const getActionLabel = (status: ExitPermitStatus) => {
         switch(status) {
             case ExitPermitStatus.PENDING_CEO: return 'تایید مدیرعامل';
-            case ExitPermitStatus.PENDING_FACTORY: return 'تایید مدیر کارخانه';
+            case ExitPermitStatus.PENDING_FACTORY: return 'تایید اولیه مدیر کارخانه (مرحله ۱)';
             case ExitPermitStatus.PENDING_WAREHOUSE: return 'توزین و تحویل انبار';
             case ExitPermitStatus.PENDING_SECURITY: return 'ثبت مشخصات راننده';
-            case ExitPermitStatus.PENDING_FACTORY_FINAL: return 'تایید نهایی خروج و ارسال گروه';
+            case ExitPermitStatus.PENDING_FACTORY_FINAL: return 'تایید نهایی خروج کارخانه (مرحله ۲)';
             default: return '';
         }
     };
@@ -555,6 +555,13 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                 </div>
             )}
 
+            {p.status === ExitPermitStatus.PENDING_FACTORY_FINAL && (
+                <div className="mb-3 text-[11px] p-2 rounded-xl font-bold bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-1.5">
+                    <ShieldCheck size={14} className="text-blue-600 shrink-0" />
+                    <span className="leading-snug">اطلاعات راننده و توزین انبار/انتظامات تکمیل شد. آماده تایید نهایی خروج (مرحله ۲).</span>
+                </div>
+            )}
+
             {p.rejectionReason && (
                 <div className={`mb-3 text-[11px] p-2 rounded-xl font-bold flex items-center gap-1.5 ${p.status === ExitPermitStatus.REJECTED ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
                     <AlertTriangle size={14} className={p.status === ExitPermitStatus.REJECTED ? 'text-red-500 shrink-0' : 'text-amber-600 shrink-0'} />
@@ -628,6 +635,12 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                                         </span>
                                     )}
                                 </div>
+                                {p.status === ExitPermitStatus.PENDING_FACTORY_FINAL && (
+                                    <div className="mt-2 text-xs p-1.5 px-2.5 rounded-lg font-bold flex items-center gap-1.5 w-fit bg-blue-50 text-blue-800 border border-blue-200">
+                                        <ShieldCheck size={13} className="text-blue-600 shrink-0" />
+                                        <span>اطلاعات راننده و توزین توسط انبار و انتظامات تکمیل گردیده و اکنون منتظر تایید نهایی خروج است (مرحله ۲).</span>
+                                    </div>
+                                )}
                                 {p.rejectionReason && (
                                     <div className={`mt-2 text-xs p-1.5 px-2.5 rounded-lg font-bold flex items-center gap-1.5 w-fit ${p.status === ExitPermitStatus.REJECTED ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
                                         <AlertTriangle size={13} className={p.status === ExitPermitStatus.REJECTED ? 'text-red-500 shrink-0' : 'text-amber-600 shrink-0'} />

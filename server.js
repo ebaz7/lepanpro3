@@ -2363,99 +2363,42 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
         }
 
         const getWarehouseInventoryForDate = async (targetDate, fromDate) => {
-            const isClosedFY = targetDate <= '2026-03-20';
             const fyCode = targetDate <= '2025-03-20' ? '2' : (targetDate <= '2026-03-20' ? '3' : '4');
             const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
 
-            const sqlStockAndNames = isClosedFY ? `
-                WITH GroupedStock AS (
+            const sqlStockAndNames = `
+                WITH GroupedTurnover AS (
                     SELECT 
                         t11.Field_005 as ItemCode,
-                        SUM(t11.Field_006) as StockQty
+                        SUM(CASE 
+                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '13', '14', '24', '26', '28', '40', '44', '46', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006
+                            ELSE 0 
+                        END) as InflowQty,
+                        SUM(CASE 
+                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '25', '27', '30', '37', '42', '62', '68', '71', '74', '80', '84') THEN t11.Field_006
+                            ELSE 0 
+                        END) as OutflowQty
                     FROM STR_TBL_011 t11 WITH (NOLOCK)
                     INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
                                                AND t11.Field_003 = t10.Field_004 
                                                AND t11.Field_012 = t10.Field_018
                     WHERE t10.Field_004 = '${fyCode}'
-                      AND t10.Field_009 = '19'
-                      AND t10.Field_018 IN (1, 10006, 10007, 10008)
-                    GROUP BY t11.Field_005
-                )
-                SELECT 
-                    gs.ItemCode,
-                    gs.StockQty,
-                    COALESCE(
-                        NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
-                        NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
-                        NULLIF(RTRIM(LTRIM(t02_exact.Field_003)), ''),
-                        NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
-                        NULLIF(RTRIM(LTRIM(t_group.GroupName)), ''),
-                        NULLIF(RTRIM(LTRIM(c01.Field_003)), ''),
-                        RTRIM(LTRIM(gs.ItemCode)),
-                        N'کالای بدون نام'
-                    ) as ItemName,
-                    t_group.GroupName,
-                    t_group.SubGroupName
-                FROM GroupedStock gs
-                LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(gs.ItemCode))
-                LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(gs.ItemCode))
-                LEFT JOIN IND_TBL_002 t02_exact ON RTRIM(LTRIM(t02_exact.Field_008)) = RTRIM(LTRIM(gs.ItemCode))
-                LEFT JOIN COM_TBL_001 c01 ON RTRIM(LTRIM(c01.Field_004)) = RTRIM(LTRIM(gs.ItemCode))
-                LEFT JOIN (
-                    SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, MIN(t02_sub.Field_003) as ItemName
-                    FROM IND_TBL_021 t21_sub
-                    LEFT JOIN IND_TBL_002 t02_sub ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
-                    GROUP BY t21_sub.Field_004
-                ) t_name ON RTRIM(LTRIM(gs.ItemCode)) = RTRIM(LTRIM(t_name.ItemCode))
-                LEFT JOIN (
-                    SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, 
-                           MIN(t02_sub.Field_003) as SubGroupName,
-                           MIN(COALESCE(t02_grandparent.Field_003, t02_parent.Field_003, t02_sub.Field_003)) as GroupName
-                    FROM IND_TBL_021 t21_sub
-                    LEFT JOIN IND_TBL_002 t02_sub ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
-                    LEFT JOIN IND_TBL_002 t02_parent ON RTRIM(LTRIM(t02_sub.Field_009)) = RTRIM(LTRIM(t02_parent.Field_008))
-                    LEFT JOIN IND_TBL_002 t02_grandparent ON RTRIM(LTRIM(t02_parent.Field_009)) = RTRIM(LTRIM(t02_grandparent.Field_008))
-                    GROUP BY t21_sub.Field_004
-                ) t_group ON RTRIM(LTRIM(gs.ItemCode)) = RTRIM(LTRIM(t_group.ItemCode))
-            ` : `
-                WITH Wh1Inflows AS (
-                    SELECT 
-                        t11.Field_005 as ItemCode,
-                        SUM(t11.Field_006) as InflowQty
-                    FROM STR_TBL_011 t11 WITH (NOLOCK)
-                    INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
-                                               AND t11.Field_003 = t10.Field_004 
-                                               AND t11.Field_012 = t10.Field_018
-                    WHERE t10.Field_004 = '${fyCode}' AND t10.Field_018 = 1
-                      AND RTRIM(LTRIM(t10.Field_009)) IN ('10', '14', '24', '26', '28', '29', '40', '44', '46', '61', '65', '67', '70', '73', '79', '83')
-                      AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
-                      ${dateFromFilter}
-                    GROUP BY t11.Field_005
-                ),
-                AllOutflows AS (
-                    SELECT 
-                        t11.Field_005 as ItemCode,
-                        SUM(t11.Field_006) as OutflowQty
-                    FROM STR_TBL_011 t11 WITH (NOLOCK)
-                    INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
-                                               AND t11.Field_003 = t10.Field_004 
-                                               AND t11.Field_012 = t10.Field_018
-                    WHERE t10.Field_004 = '${fyCode}' AND t10.Field_009 <> '19'
-                      AND (t10.Field_018 = 1 OR t10.Field_009 = '62')
-                      AND RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '25', '27', '30', '37', '42', '62', '68', '71', '74', '80', '84')
                       AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
                       ${dateFromFilter}
                     GROUP BY t11.Field_005
                 ),
                 GroupedStock AS (
                     SELECT 
-                        COALESCE(i.ItemCode, o.ItemCode) as ItemCode,
-                        COALESCE(i.InflowQty, 0) - COALESCE(o.OutflowQty, 0) as StockQty
-                    FROM Wh1Inflows i
-                    FULL OUTER JOIN AllOutflows o ON i.ItemCode = o.ItemCode
+                        ItemCode,
+                        InflowQty,
+                        OutflowQty,
+                        (InflowQty - OutflowQty) as StockQty
+                    FROM GroupedTurnover
                 )
                 SELECT 
                     gs.ItemCode,
+                    gs.InflowQty,
+                    gs.OutflowQty,
                     gs.StockQty,
                     COALESCE(
                         NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
@@ -2545,6 +2488,8 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
                     itemName: r.ItemName ? r.ItemName.trim() : 'کالای بدون نام',
                     groupName: r.GroupName ? r.GroupName.trim() : 'سایر گروه‌ها',
                     subGroupName: r.SubGroupName ? r.SubGroupName.trim() : '',
+                    inflowQty: parseFloat(r.InflowQty || 0),
+                    outflowQty: parseFloat(r.OutflowQty || 0),
                     stockQty: parseFloat(r.StockQty || 0),
                     cartonsQty: cartonsMap[itemCodeTrimmed] || 0
                 };
