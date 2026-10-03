@@ -176,6 +176,9 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
     const [editingDoc, setEditingDoc] = useState<PendingRequest | null>(null);
     const [overrideVendorCode, setOverrideVendorCode] = useState('');
     const [overrideVendorName, setOverrideVendorName] = useState('');
+    const [sayanPersons, setSayanPersons] = useState<Array<{ personCode: string; fullName: string; nationalId?: string; mobile?: string }>>([]);
+    const [sayanPersonsLoading, setSayanPersonsLoading] = useState(false);
+    const [personSearchQuery, setPersonSearchQuery] = useState('');
 
     // Settings drawer / expandable
     const [showConfigPanel, setShowConfigPanel] = useState(false);
@@ -565,11 +568,35 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
         }
     };
 
+    const loadSayanPersons = async (query = '') => {
+        setSayanPersonsLoading(true);
+        try {
+            const res = await fetchApiJson(`/api/sayan/order-automation/persons?query=${encodeURIComponent(query)}&limit=60`);
+            if (res && res.success) {
+                setSayanPersons(res.persons || []);
+            }
+        } catch (err: any) {
+            console.error('Error loading Sayan persons:', err);
+        } finally {
+            setSayanPersonsLoading(false);
+        }
+    };
+
     const openVendorEditModal = (doc: PendingRequest) => {
         setEditingDoc(doc);
         setOverrideVendorCode(doc.detectedVendor?.personCode || '');
         setOverrideVendorName(doc.detectedVendor?.personName || '');
+        setPersonSearchQuery('');
+        loadSayanPersons('');
     };
+
+    useEffect(() => {
+        if (!editingDoc) return;
+        const timer = setTimeout(() => {
+            loadSayanPersons(personSearchQuery);
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [personSearchQuery, editingDoc]);
 
     if (!canAccessSayanRegistrations) {
         return (
@@ -1565,90 +1592,253 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                 </div>
             )}
 
-            {/* Vendor Override / Manual Action Modal */}
+            {/* Vendor Override / Manual Action Modal with Real Sayan Sarfasl Lookup */}
             {editingDoc && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
                         <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Building2 className="w-5 h-5 text-amber-600" />
-                                <h3 className="font-black text-sm text-slate-900 dark:text-white">
-                                    تعیین یا تغییر تامین‌کننده درخواست #{editingDoc.docNo}
-                                </h3>
+                                <div>
+                                    <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                                        تعیین سرفصل و طرف حساب سایان ERP
+                                    </h3>
+                                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                                        درخواست خرید #{editingDoc.docNo} (کد فرعی: {editingDoc.subCode || '-'})
+                                    </span>
+                                </div>
                             </div>
                             <button
                                 onClick={() => setEditingDoc(null)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
 
-                        <div className="p-4 space-y-4 text-xs">
-                            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1">
-                                <div className="font-bold text-slate-800 dark:text-slate-200">
-                                    شرح سند درخواست خرید در سایان:
+                        <div className="p-4 space-y-3.5 text-xs overflow-y-auto flex-1">
+                            {/* Request Notes in Sayan */}
+                            <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-800/50 space-y-1">
+                                <div className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>شرح و توضیحات ثبت شده در درخواست سایان (Opcode 53):</span>
                                 </div>
-                                <div className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                                <div className="text-amber-800 dark:text-amber-300 leading-relaxed font-medium">
                                     {editingDoc.note || editingDoc.descText || 'توضیحاتی ثبت نشده است.'}
                                 </div>
                             </div>
 
+                            {/* Quick Suggestion Chips */}
                             <div>
-                                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                    کد تفصیلی تامین‌کننده در سایان:
-                                </label>
-                                <input
-                                    type="text"
-                                    value={overrideVendorCode}
-                                    onChange={(e) => setOverrideVendorCode(e.target.value)}
-                                    placeholder="مثال: 001004"
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-sm"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                    نام تامین‌کننده / طرف حساب:
-                                </label>
-                                <input
-                                    type="text"
-                                    value={overrideVendorName}
-                                    onChange={(e) => setOverrideVendorName(e.target.value)}
-                                    placeholder="نام شخص یا شرکت..."
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
-                                />
-                            </div>
-
-                            <div className="pt-2 flex items-center justify-between gap-2">
-                                <button
-                                    onClick={() => handleConvertSingle(editingDoc, overrideVendorCode, overrideVendorName, true)}
-                                    disabled={actionLoading !== null || !overrideVendorCode}
-                                    className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold transition-colors"
-                                >
-                                    تست شبیه‌سازی
-                                </button>
-                                
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                        <span>تامین‌کنندگان و سرفصل‌های پرتکرار:</span>
+                                    </span>
                                     <button
-                                        onClick={() => setEditingDoc(null)}
-                                        className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 hover:bg-slate-100 transition-colors"
+                                        type="button"
+                                        onClick={() => { setPersonSearchQuery(''); loadSayanPersons(''); }}
+                                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                                     >
-                                        انصراف
-                                    </button>
-                                    <button
-                                        onClick={() => handleConvertSingle(editingDoc, overrideVendorCode, overrideVendorName, false)}
-                                        disabled={actionLoading !== null || !overrideVendorCode}
-                                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md flex items-center gap-1.5"
-                                    >
-                                        {actionLoading === `convert_${editingDoc.doc53Id}` ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Check className="w-4 h-4" />
-                                        )}
-                                        <span>تایید و صدور پیش‌فاکتور ۵۷</span>
+                                        <RefreshCw className={`w-2.5 h-2.5 ${sayanPersonsLoading ? 'animate-spin' : ''}`} />
+                                        <span>تازه‌سازی لیست سایان</span>
                                     </button>
                                 </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                        { code: '3178', name: 'شرکت کیا زیپ' },
+                                        { code: '1147', name: 'شرکت پتروشیمی تندگویان' },
+                                        { code: '1161', name: 'آصال الیاف سپاهان-فوده ای' },
+                                        { code: '2557', name: 'شرکت الیاف سازان بهکوش' },
+                                        { code: '2412', name: 'کارتن سازان عدل البرز' },
+                                        { code: '2334', name: 'نعمتی (کارتن)' },
+                                        { code: '3095', name: 'رسول شیری دوک' },
+                                        { code: '1840', name: 'شعباني جعفر (دوک) آسیا پلاستیک' },
+                                        { code: '1367', name: 'شرکت زرتاب زاینده رود' }
+                                    ].map(item => (
+                                        <button
+                                            key={item.code}
+                                            type="button"
+                                            onClick={() => {
+                                                setOverrideVendorCode(item.code);
+                                                setOverrideVendorName(item.name);
+                                            }}
+                                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all flex items-center gap-1.5 ${
+                                                overrideVendorCode === item.code 
+                                                    ? 'bg-emerald-50 border-emerald-500 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-600 font-bold shadow-xs' 
+                                                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <span>{item.name}</span>
+                                            <span className="text-[9px] opacity-60 font-mono">({item.code})</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Sayan Accounts Live Search & List */}
+                            <div className="space-y-2">
+                                <label className="block font-bold text-slate-700 dark:text-slate-300">
+                                    جستجو و انتخاب از پایگاه داده سایان (جدول ACT_TBL_007):
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={personSearchQuery}
+                                        onChange={(e) => setPersonSearchQuery(e.target.value)}
+                                        placeholder="جستجوی نام شخص، شرکت یا کد تفصیلی در سایان..."
+                                        className="w-full pl-9 pr-9 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                    />
+                                    <Search className="w-4 h-4 text-slate-400 absolute right-3 top-2.5" />
+                                    {sayanPersonsLoading ? (
+                                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin absolute left-3 top-2.5" />
+                                    ) : personSearchQuery ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => setPersonSearchQuery('')}
+                                            className="w-4 h-4 text-slate-400 hover:text-slate-600 absolute left-3 top-2.5"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    ) : null}
+                                </div>
+
+                                {/* Results Box */}
+                                <div className="rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-850/50">
+                                    {sayanPersonsLoading && sayanPersons.length === 0 ? (
+                                        <div className="p-4 text-center text-slate-500 flex items-center justify-center gap-2">
+                                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                            <span>در حال واکشی سرفصل‌ها از سرور سایان...</span>
+                                        </div>
+                                    ) : sayanPersons.length === 0 ? (
+                                        <div className="p-4 text-center text-slate-400">
+                                            {personSearchQuery ? 'هیچ طرف حسابی با این عبارت در سایان یافت نشد.' : 'در حال بارگذاری لیست سرفصل‌ها از سایان...'}
+                                        </div>
+                                    ) : (
+                                        sayanPersons.map((p) => {
+                                            const isSelected = overrideVendorCode === p.personCode;
+                                            return (
+                                                <div
+                                                    key={p.personCode}
+                                                    onClick={() => {
+                                                        setOverrideVendorCode(p.personCode);
+                                                        setOverrideVendorName(p.fullName);
+                                                    }}
+                                                    className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
+                                                        isSelected 
+                                                            ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-100 font-bold' 
+                                                            : 'hover:bg-blue-50/60 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] ${
+                                                            isSelected 
+                                                                ? 'bg-emerald-500 text-white' 
+                                                                : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                                        }`}>
+                                                            {isSelected ? <Check className="w-3.5 h-3.5" /> : <Building2 className="w-3.5 h-3.5" />}
+                                                        </div>
+                                                        <span className="text-xs">{p.fullName}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-mono text-[11px] px-2 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                                            {p.personCode}
+                                                        </span>
+                                                        <span className="text-[10px] text-blue-600 dark:text-blue-400 opacity-80">
+                                                            سایان
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Currently Selected Summary Card */}
+                            {overrideVendorCode ? (
+                                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-300 dark:border-emerald-800 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                        <div>
+                                            <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold">
+                                                سرفصل و تامین‌کننده انتخاب شده جهت صدور پیش‌فاکتور (۵۷):
+                                            </div>
+                                            <div className="font-black text-xs text-emerald-900 dark:text-emerald-100">
+                                                {overrideVendorName || 'بدون نام'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-left font-mono font-bold text-xs bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 px-2.5 py-1 rounded-lg">
+                                        کد: {overrideVendorCode}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800/60 flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                                    <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                                    <span>لطفاً از لیست سایان یا پیشنهادات بالا، سرفصل/تامین‌کننده را انتخاب نمایید.</span>
+                                </div>
+                            )}
+
+                            {/* Manual Fine-Tuning Fields */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                <div>
+                                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                        کد تفصیلی در سایان:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={overrideVendorCode}
+                                        onChange={(e) => setOverrideVendorCode(e.target.value)}
+                                        placeholder="مثال: 1147"
+                                        className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                        نام طرف حساب / شرکت:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={overrideVendorName}
+                                        onChange={(e) => setOverrideVendorName(e.target.value)}
+                                        placeholder="نام شخص یا شرکت..."
+                                        className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-xs"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                            <button
+                                onClick={() => handleConvertSingle(editingDoc, overrideVendorCode, overrideVendorName, true)}
+                                disabled={actionLoading !== null || !overrideVendorCode}
+                                className="px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-bold transition-colors disabled:opacity-50"
+                            >
+                                تست شبیه‌سازی
+                            </button>
+                            
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setEditingDoc(null)}
+                                    className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                >
+                                    انصراف
+                                </button>
+                                <button
+                                    onClick={() => handleConvertSingle(editingDoc, overrideVendorCode, overrideVendorName, false)}
+                                    disabled={actionLoading !== null || !overrideVendorCode}
+                                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                    {actionLoading === `convert_${editingDoc.doc53Id}` ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Check className="w-4 h-4" />
+                                    )}
+                                    <span>تایید و صدور پیش‌فاکتور ۵۷ در سایان</span>
+                                </button>
                             </div>
                         </div>
                     </div>

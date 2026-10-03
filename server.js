@@ -2058,11 +2058,24 @@ app.get('/api/sayan/cheque-receipts/meta', async (req, res) => {
 app.get('/api/sayan/cheque-receipts/persons', async (req, res) => {
     try {
         const query = req.query.query || req.query.q || req.query.search || '';
-        const limit = parseInt(req.query.limit, 10) || 40;
+        const limit = parseInt(req.query.limit, 10) || 50;
         const persons = await sayanChequeService.searchSayanPersons(query, limit);
         res.json({ success: true, persons });
     } catch (err) {
         console.error("Error searching Sayan persons:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 2.1. Search Sayan Tafsili / Vendors for Order Automation module
+app.get('/api/sayan/order-automation/persons', async (req, res) => {
+    try {
+        const query = req.query.query || req.query.q || req.query.search || '';
+        const limit = parseInt(req.query.limit, 10) || 60;
+        const persons = await sayanChequeService.searchSayanPersons(query, limit);
+        res.json({ success: true, persons });
+    } catch (err) {
+        console.error("Error searching Sayan persons for automation:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -13076,7 +13089,7 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
     console.log("Starting in Development mode with Vite Middleware...");
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: { middlewareMode: true, hmr: false },
         appType: "spa",
     });
     app.use(vite.middlewares);

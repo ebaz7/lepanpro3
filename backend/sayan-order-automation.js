@@ -70,7 +70,10 @@ export const addAutomationLog = (db, logEntry) => {
 export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     const db = getDb();
     const settings = db.settings || {};
-    let serverSayanBaseUrl = (settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://lep.templatetesti.shop:5000/api/external/v1').trim();
+    let serverSayanBaseUrl = (settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1').trim();
+    if (serverSayanBaseUrl.includes('lep.templatetesti.shop')) {
+        serverSayanBaseUrl = 'http://80.210.31.176:5000/api/external/v1';
+    }
     if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
         serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
     }
@@ -134,8 +137,9 @@ export const normalizePersianText = (str) => {
 };
 
 export const cleanVendorKeywords = (text) => {
+    if (!text) return '';
     let s = normalizePersianText(text);
-    s = s.replace(/^(ارسالی\s*از\s*آقای|ارسالی\s*آقای|ارسالی\s*از|ارسال\s*شده|توسط|شرکت|آقای|خانم|مهندس|حاج|سید)\s+/gi, '');
+    s = s.replace(/^(ارسالی\s*از\s*آقای|ارسالی\s*آقای|ارسالی\s*از|ارسال\s*شده|اسالی\s*از\s*آقای|اسالی\s*آقای|اسالی\s*از|اسال\s*شده|توسط|شرکت|آقای|خانم|مهندس|حاج|سید)\s+/gi, '');
     s = s.replace(/\s*(دوک\s*کارکرده|کارمزدی|دوک|تکه|کارتن|طاقه|کیلویی|بار|۲|2|۱|1)\s*$/gi, '');
     return s.trim();
 };
@@ -348,10 +352,11 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 ORDER BY Field_004 DESC, Field_005 DESC
             `;
 
-            const [allDocRows, allPre57Rows, vendorMap] = await Promise.all([
+            const [allDocRows, allPre57Rows, vendorMap, allPersons] = await Promise.all([
                 executeSayanQuery(docsSql).catch(() => []),
                 executeSayanQuery(pre57Sql).catch(() => []),
-                getHistoricalVendorMap().catch(() => new Map())
+                getHistoricalVendorMap().catch(() => new Map()),
+                getAllPersonsList().catch(() => [])
             ]);
 
             const docRows = allDocRows.filter(r => String(r.FiscalYear) === String(fiscalYear));
@@ -360,28 +365,24 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
             if (!docRows || docRows.length === 0) return [];
             docRows.sort((a, b) => Number(b.DocNo) - Number(a.DocNo));
 
-            // Index 57 pre-invoices by SubCode, DocNo, and Note
+            // Index 57 pre-invoices strictly by SubCode and DocNo
             const preDocsBySubCode = new Map();
             const preDocsByDocNo = new Map();
-            const preDocsByNote = new Map();
             for (const pr of pre57Rows) {
                 if (pr.PreInvoiceDocNo) {
-                    preDocsByDocNo.set(String(pr.PreInvoiceDocNo), pr);
+                    preDocsByDocNo.set(String(pr.PreInvoiceDocNo).trim(), pr);
                 }
                 if (pr.SubCode && String(pr.SubCode).trim()) {
                     preDocsBySubCode.set(String(pr.SubCode).trim(), pr);
                 }
-                if (pr.PreNote && String(pr.PreNote).trim()) {
-                    const clean = String(pr.PreNote).trim();
-                    if (!preDocsByNote.has(clean)) preDocsByNote.set(clean, pr);
-                }
             }
 
             const result = docRows.map(r => {
-                const vendor = resolveVendorForNote(r.Note, vendorMap, []);
+                const noteText = r.Note || r.DescText || '';
+                const vendor = resolveVendorForNote(noteText, vendorMap, allPersons);
                 const itemStats = { count: 1, totalQty: 0 };
                 
-                // Comprehensive 53 -> 57 linking:
+                // Comprehensive authentic 53 -> 57 linking:
                 // 1. Check SubCode matching (Sayan ERP standard: 53 and 57 share identical SubCode)
                 let preInvoice = null;
                 const cleanSubCode = r.SubCode ? String(r.SubCode).trim() : '';
@@ -391,7 +392,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     preInvoice = preDocsBySubCode.get(cleanSubCode);
                 }
 
-                // 2. Check if 57 SubCode points to 53 DocNo
+                // 2. Check if 57 SubCode explicitly points to 53 DocNo
                 if (!preInvoice && r.DocNo) {
                     const cleanDocNo = String(r.DocNo).trim();
                     if (preDocsBySubCode.has(cleanDocNo)) {
@@ -399,13 +400,8 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     }
                 }
 
-                // 3. Check exact Note matching
-                if (!preInvoice && cleanNote && preDocsByNote.has(cleanNote)) {
-                    preInvoice = preDocsByNote.get(cleanNote);
-                }
-
-                // Internal customs batch requests or empty notes are completed internal records in Sayan
-                const isInternalBatch = cleanNote.includes('گمرک') || cleanNote.includes('اسکله') || !cleanNote;
+                // Internal customs batch requests (explicit keyword 'گمرک' or 'اسکله')
+                const isInternalBatch = cleanNote.includes('گمرک') || cleanNote.includes('اسکله');
                 const hasPreInvoice = Boolean((preInvoice && preInvoice.PreInvoiceDocNo) || isInternalBatch);
 
                 return {
@@ -478,9 +474,20 @@ export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
             t11.Field_031 as ItemDesc,
             t11.Field_036 as UnitId,
             t11.Field_037 as WarehouseCode,
-            t11.Field_005 as ItemName,
-            N'عدد' as UnitName
+            COALESCE(
+                NULLIF(RTRIM(LTRIM(g03.Field_008)), ''),
+                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
+                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
+                t11.Field_005
+            ) as ItemName,
+            COALESCE(NULLIF(RTRIM(LTRIM(u.Field_003)), ''), N'عدد') as UnitName
         FROM STR_TBL_011 t11 WITH (NOLOCK)
+        LEFT JOIN GNR_TBL_003 g03 WITH (NOLOCK) ON RTRIM(LTRIM(g03.Field_003)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN STR_TBL_004 s04 WITH (NOLOCK) ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_022 t22 WITH (NOLOCK) ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_002 t02 WITH (NOLOCK) ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN GNR_TBL_002 u WITH (NOLOCK) ON RTRIM(LTRIM(u.Field_006)) = RTRIM(LTRIM(t11.Field_036))
         WHERE t11.Field_003 = ${fYear} 
           AND t11.Field_004 = ${dNo} 
           AND t11.Field_012 = 3
@@ -812,9 +819,15 @@ export const getRealSayanDocumentDetails = async (doc57No, fiscalYear = '4') => 
             t11.Field_001 as ItemRowId,
             t11.Field_002 as RowSeq,
             t11.Field_005 as ItemCode,
-            COALESCE(g03.Field_002, s04.Field_002, t22.Field_002, t02.Field_002, 'کالای شماره ' + CAST(t11.Field_005 as varchar)) as ItemName,
+            COALESCE(
+                NULLIF(RTRIM(LTRIM(g03.Field_008)), ''),
+                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
+                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
+                t11.Field_005
+            ) as ItemName,
             t11.Field_006 as Quantity,
-            u.Field_002 as UnitName,
+            COALESCE(NULLIF(RTRIM(LTRIM(u.Field_003)), ''), N'عدد') as UnitName,
             t11.Field_009 as Fee,
             t11.Field_010 as TotalPrice,
             t11.Field_017 as ItemNote,
