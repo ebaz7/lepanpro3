@@ -759,51 +759,55 @@ export const WarehouseOverviewTab: React.FC = () => {
                 console.error("Failed to fetch settings for active fiscal year", e);
             }
 
-            // Dynamic defaults based on system's active fiscal year
-            let r1Date = '2025-03-20'; // Default for 1403
-            let r2Date = '2026-08-22'; // Default for 1405 (actual today date in 1405)
+            // Dynamic defaults based on system's active fiscal year and real-time today date
+            const nowObj = new Date();
+            const todayMiladi = nowObj.toISOString().split('T')[0];
+            const todayJalali = nowObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' });
+
+            let r1Date = '2026-03-20'; // Default for previous fiscal year end (1404/12/29)
+            let r2Date = todayMiladi; // Real-time live date for current fiscal year (1405 today)
 
             if (activeYearLabel === "1405") {
                 r1Date = '2026-03-20'; // 1404/12/29
-                r2Date = '2026-08-22'; // 1405/05/31
+                r2Date = todayMiladi;
                 
                 setReport1Label("منتهی به سال ۱۴۰۴");
                 setReport1Jalali("۱۴۰۴/۱۲/۲۹");
                 setReport1Miladi("2026-03-20");
 
                 setReport2Label("وضعیت فعلی سال ۱۴۰۵");
-                setReport2Jalali("۱۴۰۵/۰۵/۳۱");
-                setReport2Miladi("2026-08-22");
-                setReportDate("۱۴۰۵/۰۵/۳۱");
+                setReport2Jalali(todayJalali);
+                setReport2Miladi(todayMiladi);
+                setReportDate(todayJalali);
             } else if (activeYearLabel === "1404") {
                 r1Date = '2025-03-20'; // 1403/12/30
-                r2Date = '2025-11-13'; // 1404/08/22
+                r2Date = todayMiladi;
                 
                 setReport1Label("منتهی به سال ۱۴۰۳");
                 setReport1Jalali("۱۴۰۳/۱۲/۳۰");
                 setReport1Miladi("2025-03-20");
 
                 setReport2Label("وضعیت فعلی سال ۱۴۰۴");
-                setReport2Jalali("۱۴۰۴/۰۸/۲۲");
-                setReport2Miladi("2025-11-13");
-                setReportDate("۱۴۰۴/۰۸/۲۲");
+                setReport2Jalali(todayJalali);
+                setReport2Miladi(todayMiladi);
+                setReportDate(todayJalali);
             } else {
                 // Generalized mathematical solar-to-miladi mapping fallback for any active year
-                const yr = parseInt(activeYearLabel) || 1404;
+                const yr = parseInt(activeYearLabel) || 1405;
                 const prevYr = yr - 1;
-                const miladiYear = yr + 1121;
+                const miladiYear = yr + 621;
                 
-                r1Date = `${miladiYear - 1}-03-20`;
-                r2Date = `${miladiYear}-08-22`;
+                r1Date = `${miladiYear}-03-20`;
+                r2Date = todayMiladi;
 
                 setReport1Label(`منتهی به سال ${prevYr.toLocaleString('fa-IR', {useGrouping: false})}`);
                 setReport1Jalali(`${prevYr.toLocaleString('fa-IR', {useGrouping: false})}/۱۲/۲۹`);
-                setReport1Miladi(`${miladiYear - 1}-03-20`);
+                setReport1Miladi(`${miladiYear}-03-20`);
 
                 setReport2Label(`وضعیت فعلی سال ${yr.toLocaleString('fa-IR', {useGrouping: false})}`);
-                setReport2Jalali(`${yr.toLocaleString('fa-IR', {useGrouping: false})}/۰۸/۲۲`);
-                setReport2Miladi(`${miladiYear}-08-22`);
-                setReportDate(`${yr.toLocaleString('fa-IR', {useGrouping: false})}/۰۸/۲۲`);
+                setReport2Jalali(todayJalali);
+                setReport2Miladi(todayMiladi);
+                setReportDate(todayJalali);
             }
 
             // Fetch trade records to dynamically compute commercial goods in transit, in customs, and purchased
@@ -898,38 +902,42 @@ export const WarehouseOverviewTab: React.FC = () => {
                 }
             }
 
+            const nowObj = new Date();
+            const todayMiladi = nowObj.toISOString().split('T')[0];
+            const todayJalali = nowObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' });
+
             if (activeYearLabel === "1405") {
                 setReport1Label("منتهی به سال ۱۴۰۴");
                 setReport1Jalali("۱۴۰۴/۱۲/۲۹");
                 setReport1Miladi("2026-03-20");
 
                 setReport2Label("وضعیت فعلی سال ۱۴۰۵");
-                setReport2Jalali("۱۴۰۵/۰۵/۳۱");
-                setReport2Miladi("2026-08-22");
-                setReportDate("۱۴۰۵/۰۵/۳۱");
+                setReport2Jalali(todayJalali);
+                setReport2Miladi(todayMiladi);
+                setReportDate(todayJalali);
             } else if (activeYearLabel === "1404") {
                 setReport1Label("منتهی به سال ۱۴۰۳");
                 setReport1Jalali("۱۴۰۳/۱۲/۳۰");
                 setReport1Miladi("2025-03-20");
 
                 setReport2Label("وضعیت فعلی سال ۱۴۰۴");
-                setReport2Jalali("۱۴۰۴/۰۸/۲۲");
-                setReport2Miladi("2025-11-13");
-                setReportDate("۱۴۰۴/۰۸/۲۲");
+                setReport2Jalali(todayJalali);
+                setReport2Miladi(todayMiladi);
+                setReportDate(todayJalali);
             } else {
                 // Generalized mathematical solar-to-miladi mapping fallback for any active year
-                const yr = parseInt(activeYearLabel) || 1404;
+                const yr = parseInt(activeYearLabel) || 1405;
                 const prevYr = yr - 1;
-                const miladiYear = yr + 1121;
+                const miladiYear = yr + 621;
                 
                 setReport1Label(`منتهی به سال ${prevYr.toLocaleString('fa-IR', {useGrouping: false})}`);
                 setReport1Jalali(`${prevYr.toLocaleString('fa-IR', {useGrouping: false})}/۱۲/۲۹`);
-                setReport1Miladi(`${miladiYear - 1}-03-20`);
+                setReport1Miladi(`${miladiYear}-03-20`);
 
                 setReport2Label(`وضعیت فعلی سال ${yr.toLocaleString('fa-IR', {useGrouping: false})}`);
-                setReport2Jalali(`${yr.toLocaleString('fa-IR', {useGrouping: false})}/۰۸/۲۲`);
-                setReport2Miladi(`${miladiYear}-08-22`);
-                setReportDate(`${yr.toLocaleString('fa-IR', {useGrouping: false})}/۰۸/۲۲`);
+                setReport2Jalali(todayJalali);
+                setReport2Miladi(todayMiladi);
+                setReportDate(todayJalali);
             }
             alert(`تاریخ‌ها بر اساس سال مالی فعال سیستم (${activeYearLabel}) بازنشانی شدند. جهت ذخیره به عنوان پیش‌فرض دائم، دکمه «ثبت دائم و استعلام جدید» را بزنید.`);
         } catch (err) {
