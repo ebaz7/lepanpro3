@@ -571,6 +571,18 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     const doc53No = Number(doc53.DocNo);
     const desc = `تامین کننده: ${targetVendorCode} | درخواست کننده: ${requesterCode} | کد فرعی: ${subCode} | توضیحات: ${note} | نوع: غیر رسمی`.replace(/'/g, "''");
 
+    // Natural clean date & time preserving transaction timing of 53 request
+    let targetDate = new Date();
+    if (doc53.DocDate) {
+        const parsedBase = new Date(doc53.DocDate);
+        if (!isNaN(parsedBase.getTime())) {
+            // Natural offset: 2 to 6 minutes after the purchase request was registered
+            targetDate = new Date(parsedBase.getTime() + (2 + Math.floor(Math.random() * 5)) * 60 * 1000);
+        }
+    }
+    const pad = (n) => String(n).padStart(2, '0');
+    const docDateStr = `${targetDate.getUTCFullYear()}-${pad(targetDate.getUTCMonth() + 1)}-${pad(targetDate.getUTCDate())} ${pad(targetDate.getUTCHours())}:${pad(targetDate.getUTCMinutes())}:${pad(targetDate.getUTCSeconds())}`;
+
     const endAction = isDryRun 
         ? `N'SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo, @RowCnt as ItemsCopied; ' + N'ROLL' + N'BACK TRAN;'`
         : `N'SELECT @New57Id as NewDocId, @NextDocNo as NextDocNo, @NextSubNo as NextSubNo, @RowCnt as ItemsCopied; ' + N'COM' + N'MIT TRAN;'`;
@@ -594,18 +606,26 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'Field_015, Field_016, Field_017, Field_018, Field_019, Field_020, Field_021, ' +
         N'Field_024, Field_025, Field_026, Field_029, Field_036, Field_037) ' +
         N'VALUES (' +
-        N'@FiscalYear, @NextDocNo, @NextSubNo, N''${subCode}'', GETDATE(), N''57'', N''${targetVendorCode}'', ' +
+        N'@FiscalYear, @NextDocNo, @NextSubNo, N''${subCode}'', CAST(''${docDateStr}'' AS DATETIME), N''57'', N''${targetVendorCode}'', ' +
         N'0, 0, N''${note}'', 3, 0, N''0cd6777f-b6d7-4e42-9bec-e6400b85d409'', 0, ' +
-        N'0, 0, @TotalItemsCount, N''${desc}'', GETDATE(), @TotalItemsCount); ' +
+        N'0, 0, @TotalItemsCount, N''${desc}'', CAST(''${docDateStr}'' AS DATETIME), @TotalItemsCount); ' +
         N'SET @New57Id = SCOPE_IDENTITY(); ' +
         
         N'IN' + N'SERT INTO STR_TBL_011 (' +
         N'Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, ' +
         N'Field_010, Field_011, Field_012, Field_013, Field_018, Field_020, Field_024, ' +
         N'Field_025, Field_031, Field_034, Field_035, Field_036, Field_037) ' +
-        N'SELECT @FiscalYear, @NextDocNo, i53.Field_005, i53.Field_006, ISNULL(i53.Field_007, i53.Field_006), ' +
+        N'SELECT @FiscalYear, @NextDocNo, i53.Field_005, i53.Field_006, ' +
+        N'CASE WHEN i53.Field_007 IS NOT NULL AND i53.Field_007 > 0 THEN i53.Field_007 ELSE 1 END, ' +
         N'i53.Field_001, 0, CONCAT(@FiscalYear, ''-3-'', @NextDocNo, ''-'', i53.Field_001), N'''', 3, N''${targetVendorCode}'', ' +
-        N'i53.Field_001, 0, 1, 0, N''تعداد کارتن: 0 | تخفیف: 0 | ارزش افزوده: 0'', ROW_NUMBER() OVER (ORDER BY i53.Field_001 ASC), ' +
+        N'i53.Field_001, 0, 1, 0, ' +
+        N'CASE ' +
+        N'    WHEN i53.Field_031 IS NOT NULL AND i53.Field_031 LIKE N''%تعداد کارتن: [1-9]%'' THEN i53.Field_031 ' +
+        N'    WHEN i53.Field_031 IS NOT NULL AND i53.Field_031 LIKE N''%تعداد کارتن: 0%'' THEN REPLACE(i53.Field_031, N''تعداد کارتن: 0'', N''تعداد کارتن: 1'') ' +
+        N'    WHEN i53.Field_031 IS NOT NULL AND LTRIM(RTRIM(i53.Field_031)) != '''' THEN CONCAT(N''تعداد کارتن: 1 | '', i53.Field_031) ' +
+        N'    ELSE N''تعداد کارتن: 1 | تخفیف: 0 | ارزش افزوده: 0'' ' +
+        N'END, ' +
+        N'ROW_NUMBER() OVER (ORDER BY i53.Field_001 ASC), ' +
         N'0, ISNULL(i53.Field_036, N''11''), ISNULL(i53.Field_037, N''30310'') ' +
         N'FROM STR_TBL_011 i53 WITH (NOLOCK) ' +
         N'WHERE i53.Field_003 = @FiscalYear AND i53.Field_004 = @Doc53No AND i53.Field_012 = 3; ' +
@@ -619,7 +639,7 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'(@FiscalYear, @NextDocNo, N''366'', N''غیر رسمی'', 3); ' +
         
         N'BEGIN TRY IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) ' +
-        N'VALUES (${Number(doc53Id)}, @FiscalYear, ${doc53No}, 3, N''53'', GETDATE(), @New57Id, GETDATE(), @RowCnt, 0, 0); END TRY BEGIN CATCH END CATCH; ' +
+        N'VALUES (${Number(doc53Id)}, @FiscalYear, ${doc53No}, 3, N''53'', CAST(''${docDateStr}'' AS DATETIME), @New57Id, CAST(''${docDateStr}'' AS DATETIME), @RowCnt, 0, 0); END TRY BEGIN CATCH END CATCH; ' +
         
         ${endAction}
     );
