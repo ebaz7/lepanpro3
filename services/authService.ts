@@ -358,5 +358,10 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         }
     }
 
+    // If user has permission to manage/attach files to payment archives, they inherently need view access to payments
+    if (perms.canManageArchiveAttachments) {
+        perms.canViewPaymentOrders = true;
+    }
+
     return perms;
 };

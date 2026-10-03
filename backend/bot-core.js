@@ -4271,7 +4271,7 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
         if (isGroup) return; // Silent in groups
         session.state = 'IDLE';
         if (data === 'MENU_MAIN') return sendFn(chatId, "🏠 منوی اصلی:", { reply_markup: KEYBOARDS.MAIN });
-        if (data === 'MENU_PAY') return sendFn(chatId, "💰 مدیریت پرداخت:", { reply_markup: KEYBOARDS.PAYMENT });
+        if (data === 'MENU_PAY' || data === 'MENU_PAYMENT') return sendFn(chatId, "💰 مدیریت پرداخت:", { reply_markup: KEYBOARDS.PAYMENT });
         if (data === 'MENU_EXIT') return sendFn(chatId, "🚛 مدیریت خروج:", { reply_markup: KEYBOARDS.EXIT });
         if (data === 'MENU_WH') return sendFn(chatId, "📦 مدیریت انبار:", { reply_markup: KEYBOARDS.WAREHOUSE });
         if (data === 'MENU_TRADE') return sendFn(chatId, "🌍 مدیریت بازرگانی:", { reply_markup: KEYBOARDS.TRADE });
@@ -5563,6 +5563,13 @@ export const handleCallback = async (platform, chatId, userId, data, sendFn, sen
         else if (user.role === 'manager') pendingOrders = db.orders.filter(o => o.status === 'تایید مالی / در انتظار مدیریت');
         else if (user.role === 'ceo') pendingOrders = db.orders.filter(o => o.status === 'تایید مدیریت / در انتظار مدیرعامل');
         else if (user.role === 'admin') pendingOrders = db.orders.filter(o => !o.status.includes('نهایی') && !o.status.includes('رد'));
+        else {
+            // Normal users or users with attachment rights: show their own requests or active orders awaiting attachments
+            pendingOrders = (db.orders || []).filter(o => 
+                (user && o.requester === user.fullName) || 
+                (user && user.canManageArchiveAttachments && !o.status.includes('رد'))
+            ).slice(0, 10);
+        }
 
         if (pendingOrders.length === 0) return sendFn(chatId, "✅ کارتابل شما خالی است.");
 

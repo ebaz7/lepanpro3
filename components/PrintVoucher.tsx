@@ -81,7 +81,8 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
       currentUser.role === UserRole.ADMIN ||
       currentUser.canManageArchiveAttachments ||
       userPerms?.canManageArchiveAttachments ||
-      (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN))
+      (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN)) ||
+      (currentOrder.requester && currentOrder.requester === currentUser.fullName)
     )
   );
 

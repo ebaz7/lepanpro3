@@ -1130,7 +1130,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
   // Permission Check
   const permissions = settings ? getRolePermissions(currentUser.role, settings, currentUser) : { canViewPaymentOrders: false };
-  const hasPaymentAccess = permissions.canViewPaymentOrders === true;
+  const hasPaymentAccess = permissions.canViewPaymentOrders === true || permissions.canManageArchiveAttachments === true || currentUser.canManageArchiveAttachments === true || currentUser.role === UserRole.ADMIN;
   const hasExitAccess = permissions.canViewExitPermits === true;
   const hasWarehouseAccess = permissions.canManageWarehouse === true || permissions.canApproveBijak === true;
   const hasPurchaseAccess = permissions.canManagePurchase === true || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.FACTORY_MANAGER;

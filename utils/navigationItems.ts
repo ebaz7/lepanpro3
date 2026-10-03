@@ -56,7 +56,7 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
     : { canCreatePaymentOrder: false, canViewPaymentOrders: false };
 
   const canCreatePayment = perms.canCreatePaymentOrder === true;
-  const canViewPayment = perms.canViewPaymentOrders === true;
+  const canViewPayment = currentUser.role === UserRole.ADMIN || perms.canViewPaymentOrders === true || perms.canManageArchiveAttachments === true || currentUser.canManageArchiveAttachments === true || perms.canCreatePaymentOrder === true;
   const canCreateExit = perms.canCreateExitPermit === true;
   const canViewInvoices = perms.canViewInvoices === true;
   const canViewExit = perms.canViewExitPermits === true;

@@ -120,7 +120,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       };
   }, [localOrders]);
 
-  const permissions = getRolePermissions(currentUser.role, settings || null);
+  const permissions = getRolePermissions(currentUser.role, settings || null, currentUser);
   const availableCompanies = settings?.companies?.map(c => c.name) || settings?.companyNames || [];
 
   const isRevocationStatus = (status: OrderStatus) => {
@@ -346,6 +346,8 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
 
       const roleBasedFilter = (o: PaymentOrder) => {
           if (o.requester === currentUser.fullName) return true;
+          // Users with archive attachment permission must be able to view orders (especially archive orders) to attach documents
+          if (permissions.canManageArchiveAttachments || currentUser.canManageArchiveAttachments) return true;
           if ((currentUser.role === UserRole.FINANCIAL || permissions.canApproveFinancial) && (o.status === OrderStatus.PENDING || o.status === OrderStatus.REVOCATION_PENDING_FINANCE)) return true;
           if ((currentUser.role === UserRole.MANAGER || permissions.canApproveManager) && (o.status === OrderStatus.APPROVED_FINANCE || o.status === OrderStatus.REVOCATION_PENDING_MANAGER)) return true;
           if ((currentUser.role === UserRole.CEO || permissions.canApproveCeo) && (o.status === OrderStatus.APPROVED_MANAGER || o.status === OrderStatus.REVOCATION_PENDING_CEO)) return true;
