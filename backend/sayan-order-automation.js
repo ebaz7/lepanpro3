@@ -319,37 +319,39 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
         try {
             const fYear = Number(fiscalYear) || 4;
 
-            // 1. Fetch recent Opcode 53 and 57 documents using fast backward index scan
+            // 1. Fetch recent Opcode 53 and 57 documents strictly for the requested Fiscal Year
             const docsSql = `
-                SELECT TOP 120
+                SELECT 
                     t10.Field_001 as Doc53Id,
                     t10.Field_004 as FiscalYear,
-                    t10.Field_005 as DocNo,
-                    t10.Field_006 as SubNo,
+                    t10.Field_005 as ArchiveCode,
+                    t10.Field_006 as DocNo,
                     t10.Field_007 as SubCode,
                     t10.Field_008 as DocDate,
                     t10.Field_010 as PersonCode53,
                     t10.Field_017 as Note,
-                    t10.Field_036 as RegDate
+                    t10.Field_029 as DescText,
+                    t10.Field_036 as RegDate,
+                    (SELECT COUNT(*) FROM STR_TBL_011 t11 WITH (NOLOCK) WHERE t11.Field_003 = t10.Field_001) as ItemsCount
                 FROM STR_TBL_010 t10 WITH (NOLOCK)
-                WHERE t10.Field_009 = 53
-                ORDER BY t10.Field_004 DESC, t10.Field_005 DESC
+                WHERE t10.Field_009 = 53 AND t10.Field_004 = ${fYear}
+                ORDER BY CAST(t10.Field_005 as int) DESC
             `;
 
             const pre57Sql = `
-                SELECT TOP 120
+                SELECT 
                     Field_001 as PreInvoiceDocId,
                     Field_004 as FiscalYear,
-                    Field_005 as PreInvoiceDocNo,
-                    Field_006 as PreInvoiceSubNo,
+                    Field_005 as PreInvoiceArchiveCode,
+                    Field_006 as PreInvoiceDocNo,
                     Field_007 as SubCode,
                     Field_008 as PreInvoiceDate,
                     Field_010 as PreInvoiceVendorCode,
                     Field_017 as PreNote,
                     Field_029 as PreDesc
                 FROM STR_TBL_010 WITH (NOLOCK)
-                WHERE Field_009 = 57
-                ORDER BY Field_004 DESC, Field_005 DESC
+                WHERE Field_009 = 57 AND Field_004 = ${fYear}
+                ORDER BY CAST(Field_005 as int) DESC
             `;
 
             const [allDocRows, allPre57Rows, vendorMap, allPersons] = await Promise.all([
@@ -359,11 +361,22 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 getAllPersonsList().catch(() => [])
             ]);
 
-            const docRows = allDocRows.filter(r => String(r.FiscalYear) === String(fiscalYear));
+            const docRows = allDocRows.filter(r => {
+                if (String(r.FiscalYear) !== String(fiscalYear)) return false;
+                const note = (r.Note || '').trim();
+                const desc = (r.DescText || '').trim();
+                const cleanDesc = desc.replace(/درخواست کننده:\s*\d+\s*\|\s*کد فرعی:\s*\d*\s*\|\s*توضیحات:\s*/g, '').trim();
+                const subCode = (r.SubCode || '').trim();
+                const itemsCount = parseInt(r.ItemsCount || 0, 10);
+                
+                // Filter out empty administrative/internal test drafts without items, note, subcode or meaningful description
+                if (itemsCount === 0 && !note && !subCode && !cleanDesc) return false;
+                return true;
+            });
             const pre57Rows = allPre57Rows.filter(r => String(r.FiscalYear) === String(fiscalYear));
 
             if (!docRows || docRows.length === 0) return [];
-            docRows.sort((a, b) => Number(b.DocNo) - Number(a.DocNo));
+            docRows.sort((a, b) => Number(b.DocNo || b.ArchiveCode) - Number(a.DocNo || a.ArchiveCode));
 
             // Index 57 pre-invoices strictly by SubCode and DocNo
             const preDocsBySubCode = new Map();
@@ -386,17 +399,20 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 // 1. Check SubCode matching (Sayan ERP standard: 53 and 57 share identical SubCode)
                 let preInvoice = null;
                 const cleanSubCode = r.SubCode ? String(r.SubCode).trim() : '';
-                const cleanNote = r.Note ? String(r.Note).trim() : '';
+                const cleanNote = (r.Note || r.DescText || '').trim();
 
                 if (cleanSubCode && preDocsBySubCode.has(cleanSubCode)) {
                     preInvoice = preDocsBySubCode.get(cleanSubCode);
                 }
 
-                // 2. Check if 57 SubCode explicitly points to 53 DocNo
-                if (!preInvoice && r.DocNo) {
-                    const cleanDocNo = String(r.DocNo).trim();
-                    if (preDocsBySubCode.has(cleanDocNo)) {
+                // 2. Check if 57 SubCode explicitly points to 53 DocNo or ArchiveCode
+                if (!preInvoice && (r.DocNo || r.ArchiveCode)) {
+                    const cleanDocNo = String(r.DocNo || '').trim();
+                    const cleanArch = String(r.ArchiveCode || '').trim();
+                    if (cleanDocNo && preDocsBySubCode.has(cleanDocNo)) {
                         preInvoice = preDocsBySubCode.get(cleanDocNo);
+                    } else if (cleanArch && preDocsBySubCode.has(cleanArch)) {
+                        preInvoice = preDocsBySubCode.get(cleanArch);
                     }
                 }
 
@@ -407,7 +423,8 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 return {
                     doc53Id: r.Doc53Id,
                     fiscalYear: r.FiscalYear,
-                    docNo: r.DocNo,
+                    docNo: r.DocNo || r.ArchiveCode,
+                    archiveCode: r.ArchiveCode,
                     subNo: r.SubNo,
                     subCode: r.SubCode,
                     docDate: r.DocDate,

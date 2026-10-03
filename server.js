@@ -2543,8 +2543,8 @@ let warehouseLiveStatusCache = { data: null, timestamp: 0 };
 
 app.get('/api/warehouse-overview/live-status', async (req, res) => {
     try {
-        // Return memory cached data if queried within the last 5 minutes and not forced
-        if (req.query.force !== 'true' && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 300000)) {
+        // Return memory cached data if queried within the last 30 seconds and not forced
+        if (req.query.force !== 'true' && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 30000)) {
             return res.json(warehouseLiveStatusCache.data);
         }
 
@@ -2615,14 +2615,18 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             return `${year + 621}-03-21`;
         };
 
+        const todayObj = new Date();
+        const todayMiladi = todayObj.toISOString().split('T')[0];
+        const todayJalali = todayObj.toLocaleDateString('fa-IR-u-nu-latn', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Tehran' });
+
         const y1 = getJalaliYear(meta.report1Jalali || "۱۴۰۳/۱۲/۳۰");
-        const y2 = getJalaliYear(meta.report2Jalali || "۱۴۰۴/۰۸/۲۲");
+        const y2 = getJalaliYear(meta.report2Jalali || todayJalali);
 
         const lastYearDateFrom = getJalaliYearStartMiladi(y1);
         const lastYearDateTo = meta.report1Miladi || '2025-03-20';
 
         const currentYearDateFrom = isCumulative ? getJalaliYearStartMiladi(y1) : getJalaliYearStartMiladi(y2);
-        const currentYearDateTo = meta.report2Miladi || new Date().toISOString().split('T')[0];
+        const currentYearDateTo = meta.report2Miladi || todayMiladi;
 
         const getStockWeights = async (targetDate, fromDate) => {
             const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
