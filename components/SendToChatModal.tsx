@@ -217,7 +217,7 @@ export const SendToChatModal: React.FC<SendToChatModalProps> = ({
 
   return createPortal(
     <div 
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-hidden select-text" 
+      className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-hidden select-text" 
       dir="rtl"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
