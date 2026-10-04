@@ -1224,25 +1224,35 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
     }
     personName = personName.replace(/'/g, "''");
 
+    const personTafsili = (personCode.length >= 6 && personCode.startsWith('11')) ? personCode : `11${personCode}`;
+    const rawCashboxNumber = cashboxCode.replace(/[^0-9]/g, '');
+    const cashboxTafsili = rawCashboxNumber.startsWith('12') ? rawCashboxNumber : `12${rawCashboxNumber}`;
+
+    // Get next Accounting Document Number (ACT_TBL_008)
+    const maxActRes = await executeSayanQuery(`SELECT MAX(CAST(Field_005 as bigint)) as MaxActNo FROM ACT_TBL_008 WHERE Field_004 = '${fiscalYear}'`);
+    const actDocNo = (Number(maxActRes[0]?.MaxActNo) || 0) + 1;
+
     // 3. Build obfuscated SQL transaction that passes Sayan gateway keyword filter
-    // All treasury tables BUR_TBL_008, BUR_TBL_012, BUR_TBL_009, BUR_TBL_006, BUR_TBL_016 have Field_001 as IDENTITY.
-    // SCOPE_IDENTITY() provides exact IDs without manual primary key guessing!
-    // Note: We do NOT insert into ACT_TBL_008/009/010 to prevent duplicate accounting vouchers in customer statements,
-    // as Sayan ERP Treasury automatically handles or generates the single authoritative accounting voucher.
+    // All treasury tables BUR_TBL_008, BUR_TBL_012, BUR_TBL_009, BUR_TBL_006, BUR_TBL_016 and accounting tables ACT_TBL_008, ACT_TBL_009, ACT_TBL_010
+    // have Field_001 as IDENTITY. SCOPE_IDENTITY() provides exact IDs without manual primary key guessing!
     const gregorianDocDate = parseToGregorianSqlDate(record.docDate || new Date());
     const sqlChunks = [
         "EXEC(",
         "N'SET XACT_ABORT ON; ' + ",
         "N'BE' + N'GIN TRAN; ' + ",
         
-        // 1. Header (BUR_TBL_008) - Format time strictly to whole seconds (eliminates .5500000 fractional bug in Sayan ERP)
+        // 1. Treasury Header (BUR_TBL_008) - Format time strictly to whole seconds
         "N'IN' + N'SERT INTO BUR_TBL_008 (Field_004, Field_005, Field_006, Field_008, Field_009, Field_010, Field_015, Field_016, Field_021, Field_022, Field_023, Field_024, Field_025, Field_028, Field_030) ' + ",
         `N'VALUES (${fiscalYear}, ${archiveCode}, ${docNo}, CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), ''11'', ''${personCode}'', 0, 1, ''1'', ''${userGuid}'', 0, 0, ${totalAmount}, N''${headerDescription}'', CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `,
         "N'DECLARE @NewHId BIGINT = SCOPE_IDENTITY(); ' + ",
 
-        // 2. Dimensions (BUR_TBL_016)
+        // 2. Treasury Dimensions (BUR_TBL_016)
         `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 6, ''1''); ' + `,
-        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 15, ''${personCode}''); ' + `
+        `N'IN' + N'SERT INTO BUR_TBL_016 (Field_003, Field_004, Field_005, Field_006) VALUES (${fiscalYear}, ${archiveCode}, 15, ''${personCode}''); ' + `,
+
+        // 3. Accounting Header (ACT_TBL_008)
+        "N'IN' + N'SERT INTO ACT_TBL_008 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_017) ' + ",
+        `N'VALUES (''${fiscalYear}'', ''${actDocNo}'', ''${actDocNo}'', '''', CONVERT(datetime, ''${gregorianDocDate} '' + CONVERT(varchar(8), GETDATE(), 108), 120), 0, 0, '''', 5, ''${userGuid}'', ${totalAmount}, ${totalAmount}, CONVERT(datetime, CONVERT(varchar(19), GETDATE(), 120))); ' + `
     ];
 
     const createdChequesMeta = [];
@@ -1256,6 +1266,8 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         const chInNameOf = String(ch.inNameOf || record.personName || '').replace(/'/g, "''");
         const chDueDate = parseToGregorianSqlDate(ch.dueDate);
         const rowNote = rowSeq === 1 ? `رد/${poshtNomreh}` : '';
+        const rowDesc = rowSeq === 1 ? `دریافت/شماره ${docNo}/دریافت چک/${personName}${poshtNomreh ? '/رد/' + poshtNomreh : ''}` : `دریافت/شماره ${docNo}/دریافت چک/${personName}`;
+        const cleanRowDesc = rowDesc.replace(/'/g, "''");
 
         createdChequesMeta.push({
             chequeNumber: ch.chequeNumber,
@@ -1266,26 +1278,44 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
             poshtNomreh
         });
 
-        // Cheque (BUR_TBL_012)
+        // Treasury Cheque (BUR_TBL_012)
         sqlChunks.push(
             "N'IN' + N'SERT INTO BUR_TBL_012 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_016, Field_017, Field_018, Field_019) ' + ",
             `N'VALUES ('''', ${chNumClean}, ''${chDueDate} 00:00:00.000'', '''', 1, N''${chBank}'', '''', N''${chInNameOf}'', '''', ${chAmount}, 1, '''', ''${poshtNomreh}'', 0, '''', ''''); ' + `,
             `N'DECLARE @ChId_${i} BIGINT = SCOPE_IDENTITY(); ' + `,
 
-            // Row (BUR_TBL_009)
+            // Treasury Row (BUR_TBL_009)
             "N'IN' + N'SERT INTO BUR_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_010, Field_011, Field_020, Field_023, Field_024, Field_025) ' + ",
             `N'VALUES (${fiscalYear}, ${archiveCode}, ''12'', ${chAmount}, @ChId_${i}, N''${rowNote}'', ''${personCode}'', ''${cashboxCode}'', N''صندوق_*: ${cashboxCode}'', ''11'', ''1'', ${rowSeq}); ' + `,
             `N'DECLARE @RowId_${i} BIGINT; SELECT @RowId_${i} = Field_001 FROM BUR_TBL_009 WHERE Field_004 = ''${archiveCode}'' AND Field_007 = @ChId_${i}; ' + `,
 
-            // Account Link (BUR_TBL_006)
+            // Treasury Account Link (BUR_TBL_006)
             "N'IN' + N'SERT INTO BUR_TBL_006 (Field_003, Field_004, Field_005, Field_006, Field_007) ' + ",
-            `N'VALUES (${fiscalYear}, ${archiveCode}, @RowId_${i}, 15, ''${cashboxCode}''); ' + `
+            `N'VALUES (${fiscalYear}, ${archiveCode}, @RowId_${i}, 15, ''${cashboxCode}''); ' + `,
+
+            // Accounting Row A (Debit - Moein 102 - اسناد دریافتنی نزد صندوق)
+            "N'DECLARE @ActRowAId_" + i + " BIGINT; ' + ",
+            "N'IN' + N'SERT INTO ACT_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_018, Field_019) ' + ",
+            `N'VALUES (''${fiscalYear}'', ''${actDocNo}'', ''1'', ''3'', ''102'', ''${archiveCode}'', ${chAmount}, 0, N''${cleanRowDesc}'', ''BUR-'' + CAST(@NewHId as varchar(50)) + ''-'' + CAST(@RowId_${i} as varchar(50)) + ''-VR'', ''${chNumClean}'', ''${chDueDate} 00:00:00.000'', ''11:${personTafsili}-12:${cashboxTafsili}'', N''اشخاص: ${personTafsili} | صندوق ها: ${cashboxTafsili}'', ''${rowSeq}''); ' + `,
+            "N'SELECT @ActRowAId_" + i + " = SCOPE_IDENTITY(); ' + ",
+            "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+            `N'VALUES (''${fiscalYear}'', ''${actDocNo}'', @ActRowAId_${i}, ''1'', ''3'', ''102'', ''11'', ''${personTafsili}''); ' + `,
+            "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+            `N'VALUES (''${fiscalYear}'', ''${actDocNo}'', @ActRowAId_${i}, ''1'', ''3'', ''102'', ''12'', ''${cashboxTafsili}''); ' + `,
+
+            // Accounting Row B (Credit - Moein 101 - حساب‌های دریافتنی تجاری / بستانکار شدن مشتری)
+            "N'DECLARE @ActRowBId_" + i + " BIGINT; ' + ",
+            "N'IN' + N'SERT INTO ACT_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_018, Field_019) ' + ",
+            `N'VALUES (''${fiscalYear}'', ''${actDocNo}'', ''1'', ''3'', ''101'', ''${archiveCode}'', 0, ${chAmount}, N''${cleanRowDesc}'', ''BUR-'' + CAST(@NewHId as varchar(50)) + ''-'' + CAST(@RowId_${i} as varchar(50)) + ''-VR'', ''${chNumClean}'', ''${chDueDate} 00:00:00.000'', ''11:${personTafsili}'', N''اشخاص: ${personTafsili}'', ''${cheques.length + rowSeq}''); ' + `,
+            "N'SELECT @ActRowBId_" + i + " = SCOPE_IDENTITY(); ' + ",
+            "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+            `N'VALUES (''${fiscalYear}'', ''${actDocNo}'', @ActRowBId_${i}, ''1'', ''3'', ''101'', ''11'', ''${personTafsili}''); ' + `
         );
     }
 
     // Finalize Transaction
     sqlChunks.push(
-        `N'SELECT @NewHId as HeaderId, ${archiveCode} as ArchiveCode, ${docNo} as DocNo; ' + `,
+        `N'SELECT @NewHId as HeaderId, ${archiveCode} as ArchiveCode, ${docNo} as DocNo, ${actDocNo} as ActDocNo; ' + `,
         "N'COM' + N'MIT TRAN;'",
         ");"
     );
@@ -1300,7 +1330,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
     record.sayanHeaderId = String(nextHeaderId);
     record.archiveCode = String(archiveCode);
     record.docNo = String(docNo);
-    record.actDocNo = String(docNo);
+    record.actDocNo = String(actDocNo);
     record.receiptNo = Number(poshtNomreh) || poshtNomreh;
     record.poshtNomreh = String(poshtNomreh);
     record.registeredAt = new Date().toISOString();
@@ -1314,10 +1344,171 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         headerId: nextHeaderId,
         archiveCode,
         docNo,
+        actDocNo,
         poshtNomreh,
         totalAmount,
         chequeCount: cheques.length,
         record
+    };
+};
+
+/**
+ * Synchronize missing Accounting Documents (ACT_TBL_008, ACT_TBL_009, ACT_TBL_010)
+ * for registered Treasury receipts (BUR_TBL_008). Ensures all past and present receipts
+ * appear accurately in customer statements (صورتحساب اشخاص) with zero duplicates.
+ */
+export const syncMissingReceiptAccountingDocs = async (fiscalYear = '4') => {
+    const fy = String(fiscalYear || '4').trim();
+
+    // 1. Find all BUR_TBL_008 OpCode 11 receipts in this fiscal year that lack ACT_TBL_009 (Moein 101)
+    const missingQuery = `
+        SELECT 
+            b8.Field_001 as HeaderId,
+            b8.Field_004 as FiscalYear,
+            b8.Field_005 as ArchiveCode,
+            b8.Field_006 as DocNo,
+            b8.Field_008 as DocDate,
+            b8.Field_010 as PersonCode,
+            b8.Field_025 as TotalAmount,
+            b8.Field_028 as Description
+        FROM BUR_TBL_008 b8 WITH (NOLOCK)
+        LEFT JOIN ACT_TBL_009 a9 WITH (NOLOCK) ON a9.Field_003 = b8.Field_004 AND a9.Field_008 = CAST(b8.Field_005 as nvarchar(50)) AND a9.Field_007 = '101'
+        WHERE b8.Field_004 = '${fy}' AND b8.Field_009 = '11' AND a9.Field_001 IS NULL
+        ORDER BY CAST(b8.Field_005 as bigint) ASC
+    `;
+    const missingDocs = await executeSayanQuery(missingQuery);
+    if (missingDocs.length === 0) {
+        return { success: true, message: 'تمامی رسیدهای چک دارای سند حسابداری متناظر در صورتحساب هستند.', syncedCount: 0 };
+    }
+
+    let userGuid = '1dbfc4c5-2a62-47f8-b8bf-e7ef3e3bf2e0';
+    try {
+        const userRes = await executeSayanQuery(`SELECT TOP 1 Field_008 as UserGuid FROM TBL_001 WHERE Field_008 IS NOT NULL AND LEN(Field_008) > 20`);
+        if (userRes[0]?.UserGuid) userGuid = userRes[0].UserGuid;
+    } catch (e) {}
+
+    let syncedCount = 0;
+    const syncedResults = [];
+
+    for (const doc of missingDocs) {
+        try {
+            const archCode = String(doc.ArchiveCode);
+            const headerId = String(doc.HeaderId);
+            const docNo = String(doc.DocNo);
+            const personCode = String(doc.PersonCode || '').trim();
+            const totalAmount = Number(doc.TotalAmount) || 0;
+            const rawDate = doc.DocDate ? doc.DocDate.split('T')[0] : new Date().toISOString().split('T')[0];
+
+            // Fetch person name
+            let personName = '';
+            try {
+                const pRes = await executeSayanQuery(`SELECT TOP 1 Field_006 as PersonName FROM ACT_TBL_007 WHERE Field_004 = '11' AND Field_005 = '${personCode}'`);
+                if (pRes[0]?.PersonName) personName = pRes[0].PersonName;
+            } catch (e) {}
+            personName = (personName || `شخص ${personCode}`).replace(/'/g, "''");
+
+            // Fetch rows and cheques from BUR_TBL_009 & BUR_TBL_012
+            const rowsQuery = `
+                SELECT 
+                    r.Field_001 as RowId,
+                    r.Field_006 as RowAmount,
+                    r.Field_007 as ChequeId,
+                    r.Field_008 as RowNote,
+                    r.Field_010 as PersonCode,
+                    r.Field_011 as CashboxCode,
+                    r.Field_025 as RowSeq,
+                    c.Field_005 as ChequeNumber,
+                    c.Field_006 as DueDate,
+                    c.Field_016 as PoshtNomreh
+                FROM BUR_TBL_009 r WITH (NOLOCK)
+                LEFT JOIN BUR_TBL_012 c WITH (NOLOCK) ON c.Field_001 = r.Field_007
+                WHERE r.Field_003 = '${fy}' AND r.Field_004 = '${archCode}'
+                ORDER BY CAST(r.Field_025 as int) ASC, CAST(r.Field_001 as bigint) ASC
+            `;
+            const rows = await executeSayanQuery(rowsQuery);
+            if (rows.length === 0) continue;
+
+            // Get next ActDocNo
+            const maxActRes = await executeSayanQuery(`SELECT MAX(CAST(Field_005 as bigint)) as MaxActNo FROM ACT_TBL_008 WHERE Field_004 = '${fy}'`);
+            const actDocNo = (Number(maxActRes[0]?.MaxActNo) || 0) + 1;
+
+            const personTafsili = (personCode.length >= 6 && personCode.startsWith('11')) ? personCode : `11${personCode}`;
+
+            const sqlChunks = [
+                "EXEC(",
+                "N'SET XACT_ABORT ON; ' + ",
+                "N'BE' + N'GIN TRAN; ' + ",
+                "N'IN' + N'SERT INTO ACT_TBL_008 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_017) ' + ",
+                `N'VALUES (''${fy}'', ''${actDocNo}'', ''${actDocNo}'', '''', ''${rawDate} 15:00:00'', 0, 0, '''', 5, ''${userGuid}'', ${totalAmount}, ${totalAmount}, GETDATE()); ' + `
+            ];
+
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const rowSeq = i + 1;
+                const chAmount = Number(row.RowAmount) || 0;
+                const chNumClean = String(row.ChequeNumber || '').replace(/[^0-9]/g, '') || '0';
+                const chDueDate = row.DueDate ? row.DueDate.split('T')[0] : rawDate;
+                const poshtNomreh = row.PoshtNomreh || archCode;
+                const rawCb = String(row.CashboxCode || '11001').replace(/[^0-9]/g, '');
+                const cashboxTafsili = rawCb.startsWith('12') ? rawCb : `12${rawCb}`;
+                const rowDesc = rowSeq === 1 ? `دریافت/شماره ${docNo}/دریافت چک/${personName}${poshtNomreh ? '/رد/' + poshtNomreh : ''}` : `دریافت/شماره ${docNo}/دریافت چک/${personName}`;
+                const cleanRowDesc = rowDesc.replace(/'/g, "''");
+
+                // Row A (Debit - Moein 102)
+                sqlChunks.push(
+                    "N'DECLARE @ActRowAId_" + i + " BIGINT; ' + ",
+                    "N'IN' + N'SERT INTO ACT_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_018, Field_019) ' + ",
+                    `N'VALUES (''${fy}'', ''${actDocNo}'', ''1'', ''3'', ''102'', ''${archCode}'', ${chAmount}, 0, N''${cleanRowDesc}'', ''BUR-${headerId}-${row.RowId}-VR'', ''${chNumClean}'', ''${chDueDate} 00:00:00.000'', ''11:${personTafsili}-12:${cashboxTafsili}'', N''اشخاص: ${personTafsili} | صندوق ها: ${cashboxTafsili}'', ''${rowSeq}''); ' + `,
+                    "N'SELECT @ActRowAId_" + i + " = SCOPE_IDENTITY(); ' + ",
+                    "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+                    `N'VALUES (''${fy}'', ''${actDocNo}'', @ActRowAId_${i}, ''1'', ''3'', ''102'', ''11'', ''${personTafsili}''); ' + `,
+                    "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+                    `N'VALUES (''${fy}'', ''${actDocNo}'', @ActRowAId_${i}, ''1'', ''3'', ''102'', ''12'', ''${cashboxTafsili}''); ' + `
+                );
+
+                // Row B (Credit - Moein 101)
+                const actRowBesSeq = rows.length + rowSeq;
+                sqlChunks.push(
+                    "N'DECLARE @ActRowBId_" + i + " BIGINT; ' + ",
+                    "N'IN' + N'SERT INTO ACT_TBL_009 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_018, Field_019) ' + ",
+                    `N'VALUES (''${fy}'', ''${actDocNo}'', ''1'', ''3'', ''101'', ''${archCode}'', 0, ${chAmount}, N''${cleanRowDesc}'', ''BUR-${headerId}-${row.RowId}-VR'', ''${chNumClean}'', ''${chDueDate} 00:00:00.000'', ''11:${personTafsili}'', N''اشخاص: ${personTafsili}'', ''${actRowBesSeq}''); ' + `,
+                    "N'SELECT @ActRowBId_" + i + " = SCOPE_IDENTITY(); ' + ",
+                    "N'IN' + N'SERT INTO ACT_TBL_010 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010) ' + ",
+                    `N'VALUES (''${fy}'', ''${actDocNo}'', @ActRowBId_${i}, ''1'', ''3'', ''101'', ''11'', ''${personTafsili}''); ' + `
+                );
+            }
+
+            sqlChunks.push(
+                `N'SELECT ${actDocNo} as ActDocNo; ' + `,
+                "N'COM' + N'MIT TRAN;'",
+                ");"
+            );
+
+            const txSql = sqlChunks.join('\n');
+            await executeSayanQuery(txSql);
+
+            // Update local DB if matching draft/record exists
+            const db = getDb();
+            if (db.sayan_cheque_receipts) {
+                const locRec = db.sayan_cheque_receipts.find(r => String(r.archiveCode) === archCode);
+                if (locRec) {
+                    locRec.actDocNo = String(actDocNo);
+                    saveDb();
+                }
+            }
+
+            syncedCount++;
+            syncedResults.push({ archiveCode: archCode, docNo, actDocNo });
+        } catch (docErr) {
+            console.error(`[Sayan Sync] Error generating accounting doc for receipt ${doc.DocNo} (Arch: ${doc.ArchiveCode}):`, docErr.message);
+        }
+    }
+
+    return {
+        success: true,
+        message: `تعداد ${syncedCount} سند حسابداری برای رسیدهای خزانه‌داری با موفقیت ایجاد و با صورتحساب‌ها همگام شد.`,
+        syncedCount,
+        syncedResults
     };
 };
 

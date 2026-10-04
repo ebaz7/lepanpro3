@@ -2275,6 +2275,18 @@ app.post('/api/sayan/cheque-receipts/register-in-sayan', async (req, res) => {
     }
 });
 
+// 10.5. Sync missing Accounting Vouchers (ACT_TBL) for registered Treasury receipts
+app.post('/api/sayan/cheque-receipts/sync-accounting-docs', async (req, res) => {
+    try {
+        const fiscalYear = req.body?.fiscalYear || req.query?.fiscalYear || '4';
+        const result = await sayanChequeService.syncMissingReceiptAccountingDocs(fiscalYear);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("Error syncing missing cheque receipt accounting docs:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // 11. Delete draft / cancel receipt
 app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
     try {
