@@ -31,6 +31,11 @@ const PERMISSION_GROUPS = [
             { id: 'canWarehouseFinalize', label: 'صدور رسید انبار نهایی' },
             { id: 'canCommercialFinalize', label: 'تایید نهایی و بایگانی بازرگانی' },
             { id: 'canManageParts', label: 'تعریف و کدینگ کالا (ثبت، ویرایش و اکسل کالا)' },
+            { id: 'canViewPricingAndInvoices', label: '🔒 مشاهده فی، مبالغ ریالی و پیش‌فاکتورها (محرمانه مالی)' },
+            { id: 'canManageZanjanPurchasing', label: '🏭 ثبت استعلام و فاکتور خرید محلی کارخانه (زنجان)' },
+            { id: 'canExecuteBuyerZanjan', label: '🛍️ ثبت خرید و فاکتور نهایی توسط کارپرداز زنجان (کارخانه)' },
+            { id: 'scopeZanjanOnly', label: '📍 محدودیت حوزه: فقط مشاهده خریدهای محلی کارخانه (زنجان)' },
+            { id: 'scopeTehranOnly', label: '🏢 محدودیت حوزه: فقط مشاهده خریدهای بازرگانی تهران' },
         ] 
     },
     { 

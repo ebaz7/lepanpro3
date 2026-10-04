@@ -141,7 +141,7 @@ const ChequeReviewRow: React.FC<ChequeRowProps> = ({
                 )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {/* 1. Cheque Number */}
                 <div>
                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -245,6 +245,20 @@ const ChequeReviewRow: React.FC<ChequeRowProps> = ({
                             <option key={b} value={b}>{b}</option>
                         ))}
                     </select>
+                </div>
+
+                {/* 5. In Name Of (در وجه / صاحب حساب) */}
+                <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        در وجه / صاحب حساب
+                    </label>
+                    <input
+                        type="text"
+                        value={item.inNameOf || ''}
+                        onChange={(e) => onChange(index, 'inNameOf', e.target.value)}
+                        placeholder="نام صاحب حساب / در وجه"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold outline-none focus:border-emerald-500 transition-colors"
+                    />
                 </div>
             </div>
         </div>
@@ -528,6 +542,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                                                     setEditPerson(p);
                                                     setEditPersonQuery(p.fullName);
                                                     setEditPersonResults([]);
+                                                    setEditCheques(prev => prev.map(ch => ({ ...ch, inNameOf: p.fullName })));
                                                 }}
                                                 className="p-2.5 hover:bg-amber-50 dark:hover:bg-amber-950/40 cursor-pointer border-b border-slate-100 dark:border-slate-800 last:border-0 flex items-center justify-between text-xs"
                                             >

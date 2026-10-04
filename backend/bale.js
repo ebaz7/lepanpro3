@@ -23,13 +23,25 @@ const ensureBaleActive = () => {
 
 const callApi = (method, data, isMultipart = false) => {
     return new Promise((resolve, reject) => {
-        if (!botToken) return reject("No Token");
+        if (!botToken) return reject(new Error("No Token"));
+        let headers = { 'Content-Type': 'application/json' };
+        if (isMultipart && data) {
+            headers = data.getHeaders ? data.getHeaders() : {};
+            try {
+                if (typeof data.getLengthSync === 'function') {
+                    const len = data.getLengthSync();
+                    if (typeof len === 'number' && len > 0) {
+                        headers['Content-Length'] = len;
+                    }
+                }
+            } catch (e) {}
+        }
         const options = {
             hostname: 'tapi.bale.ai',
             path: `/bot${botToken}/${method}`,
             method: 'POST',
-            headers: isMultipart ? data.getHeaders() : { 'Content-Type': 'application/json' },
-            timeout: 15000 // 15 seconds timeout
+            headers,
+            timeout: 25000 // 25 seconds timeout
         };
 
         const req = https.request(options, (res) => {

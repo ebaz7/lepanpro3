@@ -338,25 +338,35 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
         const qPersian = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک');
         const qArabic = cleanQ.replace(/\u06CC/g, 'ي').replace(/\u06A9/g, 'ك');
 
-        let actFilter = '';
+        let gnrFilter = '';
         if (cleanQ) {
-            actFilter = ` AND (
-                Field_005 LIKE '%${cleanQ}%' OR 
-                Field_006 LIKE N'%${cleanQ}%' OR 
-                Field_006 LIKE N'%${qPersian}%' OR 
-                Field_006 LIKE N'%${qArabic}%'
+            gnrFilter = ` AND (
+                g.Field_003 LIKE '%${cleanQ}%' OR 
+                g.Field_006 LIKE N'%${cleanQ}%' OR 
+                g.Field_007 LIKE N'%${cleanQ}%' OR 
+                g.Field_006 LIKE N'%${qPersian}%' OR 
+                g.Field_007 LIKE N'%${qPersian}%' OR 
+                g.Field_006 LIKE N'%${qArabic}%' OR 
+                g.Field_007 LIKE N'%${qArabic}%' OR
+                a.Field_006 LIKE N'%${cleanQ}%' OR
+                a.Field_006 LIKE N'%${qPersian}%' OR
+                a.Field_006 LIKE N'%${qArabic}%'
             )`;
         }
 
+        // Primary search: JOIN GNR_TBL_001 (Real Persons/Companies Master) with ACT_TBL_007 (Tafsili Accounts)
+        // This strictly guarantees ONLY real persons/companies are returned, and excludes parts/inventory items from ACT_TBL_007.
         const sql = `
             SELECT TOP ${limit}
-                RTRIM(LTRIM(Field_005)) as PersonCode,
-                RTRIM(LTRIM(Field_006)) as FullName,
-                '' as NationalId,
-                '' as Mobile
-            FROM ACT_TBL_007 WITH (NOLOCK)
-            WHERE Field_006 IS NOT NULL AND RTRIM(LTRIM(Field_006)) != '' ${actFilter}
-            ORDER BY Field_005 DESC
+                RTRIM(LTRIM(a.Field_005)) as PersonCode,
+                RTRIM(LTRIM(COALESCE(NULLIF(a.Field_006, ''), CONCAT(COALESCE(g.Field_006, ''), ' ', COALESCE(g.Field_007, ''))))) as FullName,
+                COALESCE(g.Field_009, '') as NationalId,
+                COALESCE(g.Field_015, '') as Mobile
+            FROM GNR_TBL_001 g WITH (NOLOCK)
+            INNER JOIN ACT_TBL_007 a WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
+            WHERE (g.Field_018 = 1 OR g.Field_018 IS NULL)
+              AND RTRIM(LTRIM(a.Field_006)) != '' ${gnrFilter}
+            ORDER BY a.Field_005 DESC
         `;
 
         const rows = await executeSayanQuery(sql);
@@ -369,19 +379,7 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
             }));
         }
 
-        // Secondary fallback to GNR_TBL_001
-        let gnrFilter = '';
-        if (cleanQ) {
-            gnrFilter = ` AND (
-                Field_003 LIKE '%${cleanQ}%' OR 
-                Field_006 LIKE N'%${cleanQ}%' OR 
-                Field_007 LIKE N'%${cleanQ}%' OR 
-                Field_006 LIKE N'%${qPersian}%' OR 
-                Field_007 LIKE N'%${qPersian}%' OR 
-                Field_006 LIKE N'%${qArabic}%' OR 
-                Field_007 LIKE N'%${qArabic}%'
-            )`;
-        }
+        // Fallback search directly on GNR_TBL_001
         const gnrSql = `
             SELECT TOP ${limit}
                 RTRIM(LTRIM(Field_003)) as PersonCode,
@@ -390,7 +388,7 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
                 COALESCE(Field_015, '') as Mobile
             FROM GNR_TBL_001 WITH (NOLOCK)
             WHERE (Field_018 = 1 OR Field_018 IS NULL)
-              AND RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) != '' ${gnrFilter}
+              AND RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) != '' ${gnrFilter.replace(/a\.Field_006|g\./g, '')}
             ORDER BY Field_003 DESC
         `;
         const gnrRows = await executeSayanQuery(gnrSql);
@@ -604,7 +602,7 @@ export const saveChequeReceiptDraft = async (receiptData, currentUser) => {
         amount: Number(ch.amount) || 0,
         dueDate: ch.dueDate || '',
         bankName: String(ch.bankName || '').trim(),
-        inNameOf: String(ch.inNameOf || '').trim(),
+        inNameOf: String(ch.inNameOf || receiptData.personName || '').trim() || String(receiptData.personName || '').trim(),
         accountNo: String(ch.accountNo || '').trim(),
         poshtNomreh: String(receiptData.poshtNomreh || ch.poshtNomreh || '').trim(),
         description: String(ch.description || '').trim(),
@@ -731,7 +729,7 @@ export const approveAccountingReceipt = async (receiptId, currentUser, note = ''
                 amount: Number(ch.amount) || 0,
                 dueDate: ch.dueDate || '',
                 bankName: String(ch.bankName || '').trim(),
-                inNameOf: String(ch.inNameOf || '').trim(),
+                inNameOf: String(ch.inNameOf || record.personName || '').trim() || String(record.personName || '').trim(),
                 accountNo: String(ch.accountNo || '').trim(),
                 poshtNomreh: String(record.poshtNomreh || ch.poshtNomreh || '').trim(),
                 description: String(ch.description || '').trim(),
@@ -826,7 +824,7 @@ export const updateChequeReceipt = async (receiptId, updatePayload, currentUser)
             amount: Number(ch.amount) || 0,
             dueDate: ch.dueDate || '',
             bankName: String(ch.bankName || '').trim(),
-            inNameOf: String(ch.inNameOf || '').trim(),
+            inNameOf: String(ch.inNameOf || record.personName || '').trim() || String(record.personName || '').trim(),
             accountNo: String(ch.accountNo || '').trim(),
             poshtNomreh: String(record.poshtNomreh || ch.poshtNomreh || '').trim(),
             description: String(ch.description || '').trim(),

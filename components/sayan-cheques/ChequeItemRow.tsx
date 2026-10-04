@@ -565,11 +565,11 @@ export const ChequeItemRow: React.FC<Props> = ({
                     <input
                         id={`cheque-${index}-inNameOf`}
                         type="text"
-                        value={item.inNameOf || defaultInNameOf}
+                        value={item.inNameOf !== undefined && item.inNameOf !== '' ? item.inNameOf : defaultInNameOf}
                         onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) => onChange(index, 'inNameOf', e.target.value)}
                         onKeyDown={(e) => handleFieldKeyDown(e, 'inNameOf')}
-                        placeholder="نام صادرکننده چک"
+                        placeholder="نام صادرکننده / در وجه (صاحب حساب)"
                         className="w-full bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none caret-emerald-600 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-900 focus:ring-4 focus:ring-emerald-500/20 transition-all"
                     />
                 </div>

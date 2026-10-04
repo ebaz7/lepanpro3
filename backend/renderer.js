@@ -502,10 +502,25 @@ export const generateRecordImage = async (record, type, options = {}) => {
       };
 
       const html = `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8">
-            <script src="https://cdn.tailwindcss.com"></script>
             <style>
                 ${fontFaceRule}
                 body { background: white; padding: 0 !important; font-family: 'Vazirmatn', sans-serif !important; margin: 0; }
+                .flex { display: flex; }
+                .justify-between { justify-content: space-between; }
+                .items-center { align-items: center; }
+                .font-bold { font-weight: bold; }
+                .font-black { font-weight: 900; }
+                .text-gray-500 { color: #6b7280; }
+                .ml-2 { margin-left: 0.5rem; }
+                .text-lg { font-size: 1.125rem; }
+                .text-sm { font-size: 0.875rem; }
+                .font-mono { font-family: monospace; }
+                .dir-ltr { direction: ltr; }
+                .border-b-2 { border-bottom-width: 2px; }
+                .border-gray-200 { border-color: #e5e7eb; }
+                .pb-2 { padding-bottom: 0.5rem; }
+                .mb-2 { margin-bottom: 0.5rem; }
+                .mb-1 { margin-bottom: 0.25rem; }
                 .watermark-badge { position: absolute; top: 40px; left: 40px; font-size: 40px; font-weight: 900; opacity: 0.2; transform: rotate(-15deg); user-select: none; border: 4px solid; padding: 5px 20px; border-radius: 12px; z-index: 50; }
                 .badge-edit { color: #d97706; border-color: #d97706; }
                 .badge-delete { color: #dc2626; border-color: #dc2626; opacity: 0.4; }
@@ -715,18 +730,21 @@ export const generateRecordImage = async (record, type, options = {}) => {
                 }
             </div></body></html>`;
 
-      // Make viewport wide enough
-      await page.setViewport({
-        width: 900,
-        height: 1300,
-        deviceScaleFactor: 2,
-      });
-      await page.setContent(html, { waitUntil: "networkidle0" });
+      try {
+        await page.setViewport({
+          width: 900,
+          height: 1300,
+          deviceScaleFactor: 2,
+        });
+        await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 15000 });
 
-      const card = await page.$("#capture-wrapper");
-      const buffer = await card.screenshot({ type: "png" });
-      await page.close();
-      return buffer;
+        const card = await page.$("#capture-wrapper");
+        if (!card) throw new Error("Element #capture-wrapper not found in EXIT document");
+        const buffer = await card.screenshot({ type: "png" });
+        return buffer;
+      } finally {
+        await page.close().catch(() => {});
+      }
     } else if (type === "BIJAK" || type === "RECEIPT") {
       const isBijak = type === "BIJAK";
       const showPrices = options.forceHidePrices !== true;

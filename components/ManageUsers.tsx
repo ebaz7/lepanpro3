@@ -23,6 +23,11 @@ const ManageUsers: React.FC = () => {
     canManageParts: false,
     canManageArchiveAttachments: false,
     canManageProformas: false,
+    canViewPricingAndInvoices: false,
+    canManageZanjanPurchasing: false,
+    canExecuteBuyerZanjan: false,
+    scopeZanjanOnly: false,
+    scopeTehranOnly: false,
     canAccessSayanRegistrations: false,
     canSayanPreInvoices: false,
     canSayanRegisterCheque: false,
@@ -94,6 +99,11 @@ const ManageUsers: React.FC = () => {
           canManageParts: false,
           canManageArchiveAttachments: false,
           canManageProformas: false,
+          canViewPricingAndInvoices: false,
+          canManageZanjanPurchasing: false,
+          canExecuteBuyerZanjan: false,
+          scopeZanjanOnly: false,
+          scopeTehranOnly: false,
           canAccessSayanRegistrations: false,
           canSayanPreInvoices: false,
           canSayanRegisterCheque: false,
@@ -128,6 +138,11 @@ const ManageUsers: React.FC = () => {
           canManageParts: user.canManageParts || false,
           canManageArchiveAttachments: user.canManageArchiveAttachments || false,
           canManageProformas: user.canManageProformas || false,
+          canViewPricingAndInvoices: user.canViewPricingAndInvoices || false,
+          canManageZanjanPurchasing: user.canManageZanjanPurchasing || false,
+          canExecuteBuyerZanjan: user.canExecuteBuyerZanjan || false,
+          scopeZanjanOnly: user.scopeZanjanOnly || false,
+          scopeTehranOnly: user.scopeTehranOnly || false,
           canAccessSayanRegistrations: user.canAccessSayanRegistrations || false,
           canSayanPreInvoices: user.canSayanPreInvoices || false,
           canSayanRegisterCheque: user.canSayanRegisterCheque || false,
@@ -162,6 +177,11 @@ const ManageUsers: React.FC = () => {
           canManageParts: false,
           canManageArchiveAttachments: false,
           canManageProformas: false,
+          canViewPricingAndInvoices: false,
+          canManageZanjanPurchasing: false,
+          canExecuteBuyerZanjan: false,
+          scopeZanjanOnly: false,
+          scopeTehranOnly: false,
           canAccessSayanRegistrations: false,
           canSayanPreInvoices: false,
           canSayanRegisterCheque: false,
@@ -396,6 +416,26 @@ const ManageUsers: React.FC = () => {
               <label className="flex items-center gap-2 text-xs text-gray-700 bg-indigo-50 px-2 py-1.5 rounded cursor-pointer border border-indigo-200">
                   <input type="checkbox" checked={formData.canManageProformas} onChange={e => setFormData({...formData, canManageProformas: e.target.checked})} className="w-4 h-4 text-indigo-600" />
                   <span>ثبت پیش‌فاکتور (در ماژول درخواست خرید)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-amber-900 bg-amber-50 px-2 py-1.5 rounded cursor-pointer border border-amber-300 font-bold">
+                  <input type="checkbox" checked={formData.canViewPricingAndInvoices} onChange={e => setFormData({...formData, canViewPricingAndInvoices: e.target.checked})} className="w-4 h-4 text-amber-600" />
+                  <span>🔒 مشاهده فی، مبالغ ریالی و پیش‌فاکتورها (محرمانه مالی)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-teal-900 bg-teal-50 px-2 py-1.5 rounded cursor-pointer border border-teal-300">
+                  <input type="checkbox" checked={formData.canManageZanjanPurchasing} onChange={e => setFormData({...formData, canManageZanjanPurchasing: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                  <span>🏭 ثبت استعلام و فاکتور خرید محلی کارخانه (زنجان)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-teal-900 bg-teal-50 px-2 py-1.5 rounded cursor-pointer border border-teal-300">
+                  <input type="checkbox" checked={formData.canExecuteBuyerZanjan} onChange={e => setFormData({...formData, canExecuteBuyerZanjan: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                  <span>🛍️ ثبت خرید و فاکتور کارپرداز زنجان (کارخانه)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded cursor-pointer border border-gray-300">
+                  <input type="checkbox" checked={formData.scopeZanjanOnly} onChange={e => setFormData({...formData, scopeZanjanOnly: e.target.checked, scopeTehranOnly: e.target.checked ? false : formData.scopeTehranOnly})} className="w-4 h-4 text-teal-600" />
+                  <span>📍 محدودیت حوزه: فقط خریدهای محلی کارخانه (زنجان)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded cursor-pointer border border-gray-300">
+                  <input type="checkbox" checked={formData.scopeTehranOnly} onChange={e => setFormData({...formData, scopeTehranOnly: e.target.checked, scopeZanjanOnly: e.target.checked ? false : formData.scopeZanjanOnly})} className="w-4 h-4 text-sky-600" />
+                  <span>🏢 محدودیت حوزه: فقط خریدهای بازرگانی تهران</span>
               </label>
 
               {/* Sayan Specific Permissions Section */}

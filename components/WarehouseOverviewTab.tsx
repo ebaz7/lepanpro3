@@ -86,6 +86,8 @@ export const WarehouseOverviewTab: React.FC = () => {
     // Live Sayan Data States
     const [sayanLastYear, setSayanLastYear] = useState<any[]>([]);
     const [sayanCurrent, setSayanCurrent] = useState<any[]>([]);
+    const [isSayanLive, setIsSayanLive] = useState<boolean>(true);
+    const [isFromBenchmark, setIsFromBenchmark] = useState<boolean>(false);
 
     // Overrides & Extra tables saved in our local DB
     const [lastYearOverrides, setLastYearOverrides] = useState<Record<string, Partial<WarehouseItem>>>({});
@@ -708,6 +710,8 @@ export const WarehouseOverviewTab: React.FC = () => {
             }
             const sayanData = await sayanRes.json();
             if (sayanData && sayanData.success) {
+                setIsSayanLive(!!sayanData.isLive);
+                setIsFromBenchmark(!!sayanData.fromBenchmark);
                 if (Array.isArray(sayanData.lastYearStock) && sayanData.lastYearStock.length > 0) {
                     setSayanLastYear(sayanData.lastYearStock);
                 }
@@ -2288,9 +2292,20 @@ export const WarehouseOverviewTab: React.FC = () => {
                             <FileText className="w-5 h-5" />
                         </div>
                         <div>
-                            <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2">
+                            <h2 className="text-base sm:text-lg font-black text-slate-800 flex items-center gap-2 flex-wrap">
                                 <span>سامانه نمای کلی موجودی و مغایرت سالانه انبار</span>
                                 <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">داشبورد هوشمند</span>
+                                {isSayanLive ? (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                        <span>سایان: استخراج زنده (Live)</span>
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                        <span>سایان: داده‌های معیار</span>
+                                    </span>
+                                )}
                             </h2>
                             <p className="text-[11px] text-slate-500 font-medium hidden sm:block">پایش همزمان موجودی‌های سایان، انبارهای تجاری، بارهای در راه و ترخیصی گمرک</p>
                         </div>

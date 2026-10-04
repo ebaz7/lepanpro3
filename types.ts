@@ -55,6 +55,11 @@ export interface User {
   _id?: string;
   canManageProformas?: boolean;
   canSelectProforma?: boolean;
+  canViewPricingAndInvoices?: boolean;
+  canManageZanjanPurchasing?: boolean;
+  canExecuteBuyerZanjan?: boolean;
+  scopeZanjanOnly?: boolean;
+  scopeTehranOnly?: boolean;
   canViewSayan?: boolean;
   canViewSayanTraz?: boolean;
   canViewSayanSales?: boolean;
@@ -564,6 +569,11 @@ export interface PurchaseRolePermissions {
   canWarehouseFinalize?: boolean;
   canCommercialFinalize?: boolean;
   canManageParts?: boolean;
+  canViewPricingAndInvoices?: boolean; // دسترسی به دیدن فی، مبالغ ریالی و پیش‌فاکتورها/فاکتورها
+  canManageZanjanPurchasing?: boolean; // ثبت استعلام و فاکتور خرید محلی کارخانه (زنجان)
+  canExecuteBuyerZanjan?: boolean; // ثبت و خرید نهایی توسط کارپرداز زنجان (کارخانه)
+  scopeZanjanOnly?: boolean; // محدودیت مشاهده: فقط خریدهای محلی کارخانه (زنجان)
+  scopeTehranOnly?: boolean; // محدودیت مشاهده: فقط خریدهای بازرگانی تهران
 }
 
 export interface BirthdayGreetingTemplate {

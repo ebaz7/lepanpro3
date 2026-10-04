@@ -76,6 +76,18 @@ export const canUserViewProformas = (
         return true;
     }
 
+    // Check direct user override or role permission for canViewPricingAndInvoices
+    if (user.canViewPricingAndInvoices === true) {
+        return true;
+    }
+
+    for (const r of roles) {
+        const perms = (settings?.purchaseRolePermissions as any)?.[r] || {};
+        if (perms.canViewPricingAndInvoices === true) {
+            return true;
+        }
+    }
+
     // 2. Unconditional Senior Managers: Commercial Manager, CEO, Financial Manager
     if (
         checkRole(UserRole.COMMERCIAL) || checkRole('commercial') || checkRole('بازرگانی') || checkRole('مدیر بازرگانی') ||
@@ -124,10 +136,10 @@ export const canUserViewProformas = (
             return true;
         }
 
-        // Check if role has canManageProformas or canApproveFactory in settings
+        // Check if role has canManageProformas, canManageZanjanPurchasing, canExecuteBuyerZanjan, or canApproveFactory in settings
         for (const r of roles) {
             const perms = (settings?.purchaseRolePermissions as any)?.[r] || {};
-            if (perms.canManageProformas || perms.canApproveFactory) {
+            if (perms.canManageProformas || perms.canManageZanjanPurchasing || perms.canExecuteBuyerZanjan || perms.canApproveFactory) {
                 return true;
             }
         }
@@ -707,12 +719,51 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
 
 // --- REQUESTS TAB ---
 const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, isArchive, settings }: any) => {
-    const isAdmin = currentUser.role === UserRole.ADMIN;
+    const isAdmin = currentUser.role === UserRole.ADMIN || (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN));
     const [searchTerm, setSearchTerm] = useState('');
+    const [locationFilter, setLocationFilter] = useState<'ALL' | 'TEHRAN' | 'ZANJAN'>('ALL');
     const [showCreate, setShowCreate] = useState(false);
     const [viewingRequest, setViewingRequest] = useState<PurchaseRequest | null>(null);
 
+    const hasPurchasePerm = (perm: string) => {
+        if (isAdmin) return true;
+        const userDirect = (currentUser as any)[perm];
+        if (userDirect !== undefined && userDirect !== null) return !!userDirect;
+        const rolesList = currentUser.roles && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
+        for (const r of rolesList) {
+            if (r === UserRole.ADMIN) return true;
+            const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
+            if (!!(rolePerms as any)[perm]) return true;
+        }
+        return false;
+    };
+
+    const isZanjanScopedUser = hasPurchasePerm('scopeZanjanOnly') || currentUser.purchaseScope === 'ZANJAN_ONLY';
+    const isTehranScopedUser = hasPurchasePerm('scopeTehranOnly') || currentUser.purchaseScope === 'TEHRAN_ONLY';
+
     const filtered = requests.filter((r: PurchaseRequest) => {
+        // Enforce user role hard scope restrictions
+        if (!isAdmin) {
+            if (isZanjanScopedUser) {
+                const isFactoryReq = r.location === 'Factory' || r.location === 'Zanjan' || 
+                                     (typeof r.status === 'string' && (r.status.includes('FACTORY') || r.status.includes('ZANJAN') || r.status.includes('WAREHOUSE') || r.status.includes('SECURITY') || r.status.includes('QC')));
+                if (!isFactoryReq) return false;
+            } else if (isTehranScopedUser) {
+                const isTehranReq = r.location === 'Tehran' || 
+                                    (typeof r.status === 'string' && (r.status.includes('TEHRAN') || r.status.includes('CEO') || r.status.includes('COMMERCIAL')));
+                if (!isTehranReq) return false;
+            }
+        }
+
+        // Apply interactive location filter button
+        if (locationFilter === 'TEHRAN') {
+            const isTehran = r.location === 'Tehran' || (typeof r.status === 'string' && (r.status.includes('TEHRAN') || r.status.includes('CEO') || r.status.includes('COMMERCIAL')));
+            if (!isTehran) return false;
+        } else if (locationFilter === 'ZANJAN') {
+            const isZanjan = r.location === 'Factory' || r.location === 'Zanjan' || (typeof r.status === 'string' && (r.status.includes('FACTORY') || r.status.includes('ZANJAN')));
+            if (!isZanjan) return false;
+        }
+
         const search = searchTerm.toLowerCase();
         return (
             (r.itemName?.toLowerCase() || '').includes(search) || 
@@ -722,23 +773,44 @@ const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, is
         );
     });
 
-    const hasPurchasePerm = (perm: string) => {
-        if (isAdmin) return true;
-        const rolePerms = settings?.purchaseRolePermissions?.[currentUser.role] || {};
-        return !!(rolePerms as any)[perm];
-    };
-
     const canCreate = hasPurchasePerm('canCreate');
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-2">
-                <div className="relative flex-1">
+            <div className="flex flex-col md:flex-row gap-2 items-center">
+                <div className="relative flex-1 w-full">
                     <input className="w-full glass-panel border border-gray-200 rounded-xl p-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-indigo-100" placeholder="جستجوی در کالا، شماره درخواست یا درخواست‌کننده..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                     <Search className="absolute right-3 top-3.5 text-gray-400" size={18}/>
                 </div>
+
+                {/* Scope Location Filter Pills */}
+                {!isZanjanScopedUser && !isTehranScopedUser && (
+                    <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-800 rounded-xl gap-1 shrink-0 border border-gray-200 dark:border-gray-700">
+                        <button
+                            onClick={() => setLocationFilter('ALL')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${locationFilter === 'ALL' ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            همه حوزه‌ها
+                        </button>
+                        <button
+                            onClick={() => setLocationFilter('TEHRAN')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${locationFilter === 'TEHRAN' ? 'bg-white dark:bg-gray-700 text-sky-700 dark:text-sky-300 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <span>🏢</span>
+                            <span>بازرگانی تهران</span>
+                        </button>
+                        <button
+                            onClick={() => setLocationFilter('ZANJAN')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${locationFilter === 'ZANJAN' ? 'bg-white dark:bg-gray-700 text-teal-700 dark:text-teal-300 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <span>🏭</span>
+                            <span>کارخانه (زنجان)</span>
+                        </button>
+                    </div>
+                )}
+
                 {canCreate && !isArchive && (
-                    <button onClick={() => setShowCreate(true)} className="bg-indigo-600 text-white p-3 px-6 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 font-bold text-sm">
+                    <button onClick={() => setShowCreate(true)} className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white p-3 px-6 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 font-bold text-sm transition-all cursor-pointer shrink-0">
                         <Plus size={20}/> ثبت درخواست جدید
                     </button>
                 )}
@@ -3587,21 +3659,21 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         )}
 
                         {/* Zanjan Branch: Proposal & Purchasing */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) && (isAdmin || hasPurchasePerm('canManageProformas')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL, {}, 'ارسال پیشنهاد خرید کارخانه به مدیر')} className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg" disabled={actionLoading}>ارسال پیشنهاد خرید به مدیر کارخانه</button>
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) && (isAdmin || hasPurchasePerm('canManageZanjanPurchasing') || hasPurchasePerm('canManageProformas')) && (
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL, {}, 'ارسال پیشنهاد خرید کارخانه به مدیر')} className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg cursor-pointer hover:bg-teal-700 transition-all" disabled={actionLoading}>ارسال پیشنهاد خرید به مدیر کارخانه</button>
                         )}
 
                         {/* Zanjan Branch: Factory Manager Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_BUYER_EXECUTION, {}, 'دستور خرید و صدور سفارش کارخانه')} className="bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2" disabled={actionLoading}>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_BUYER_EXECUTION, {}, 'دستور خرید و صدور سفارش کارخانه')} className="bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 cursor-pointer hover:bg-teal-800 transition-all" disabled={actionLoading}>
                                 <Warehouse size={16} className="text-teal-200" />
                                 <span>دستور خرید و ارجاع به کارپرداز (مدیر کارخانه)</span>
                             </button>
                         )}
 
                         {/* Zanjan Branch: Purchasing Agent Execution */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_BUYER_EXECUTION) && (isAdmin || hasPurchasePerm('canManageProformas')) && (
-                            <button onClick={() => setShowPurchasingAgentModal(true)} className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg hover:scale-105 transition-all">ثبت خرید کارپرداز و صدور فاکتور</button>
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_BUYER_EXECUTION) && (isAdmin || hasPurchasePerm('canExecuteBuyerZanjan') || hasPurchasePerm('canManageProformas')) && (
+                            <button onClick={() => setShowPurchasingAgentModal(true)} className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg hover:scale-105 transition-all cursor-pointer">ثبت خرید کارپرداز و صدور فاکتور</button>
                         )}
 
                         {/* Common: Technical Specs Approval */}

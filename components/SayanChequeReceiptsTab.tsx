@@ -884,7 +884,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                     amount: Number(r.amount),
                     dueDate: r.dueDate,
                     bankName: r.bankName.trim() || 'سامان',
-                    inNameOf: r.inNameOf.trim() || (selectedPerson?.fullName || personQuery),
+                    inNameOf: r.inNameOf.trim() || (selectedPerson?.fullName || personQuery.trim()),
                     poshtNomreh: poshtNomreh.trim() || '1',
                     rowSeq: idx + 1,
                     description: r.description?.trim() || ''
@@ -1369,7 +1369,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                     setSelectedPerson(first);
                                                     setPersonQuery(first.fullName);
                                                     setPersonDropdownOpen(false);
-                                                    setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || first.fullName })));
+                                                    setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: first.fullName })));
                                                     document.getElementById('input-receipt-no')?.focus();
                                                 } else {
                                                     handleEnterNext(0, 'person');
@@ -1411,8 +1411,8 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                         setSelectedPerson(p);
                                                         setPersonQuery(p.fullName);
                                                         setPersonDropdownOpen(false);
-                                                        // Autofill InNameOf in cheque rows if empty
-                                                        setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: r.inNameOf || p.fullName })));
+                                                        // Sync InNameOf in cheque rows to selected person
+                                                        setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: p.fullName })));
                                                         document.getElementById('input-receipt-no')?.focus();
                                                     }}
                                                     className="w-full text-right p-2.5 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between group"
