@@ -210,16 +210,16 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   const isRevoked = order.status === OrderStatus.REVOKED;
 
   const Stamp = ({ name, title }: { name: string; title: string }) => (
-    <div className={`border-[2px] border-blue-800 text-blue-800 rounded-lg ${isCompact ? 'py-0.2 px-1' : 'py-1 px-3'} rotate-[-5deg] opacity-90 mix-blend-multiply shadow-sm inline-block`}>
-      <div className={`${isCompact ? 'text-[7px]' : 'text-[9px]'} font-bold border-b border-blue-800 mb-0.5 text-center pb-0.5`}>{title}</div>
-      <div className={`${isCompact ? 'text-[8px]' : 'text-[10px]'} text-center font-bold whitespace-nowrap`}>{name}</div>
+    <div className={`border-[1.5px] border-blue-900 text-blue-900 rounded-md py-0.5 px-2 rotate-[-4deg] opacity-95 mix-blend-multiply shadow-xs inline-block bg-blue-50/30`}>
+      <div className="text-[7.5px] font-bold border-b border-blue-800/60 mb-0.5 text-center pb-0.5">{title}</div>
+      <div className="text-[9px] text-center font-black whitespace-nowrap">{name}</div>
     </div>
   );
 
   const handlePrint = () => { 
       const isBankForm = printMode === 'bank_form' && dynamicTemplate;
-      const w = isBankForm ? (dynamicTemplate?.width || 210) : 210;
-      const h = isBankForm ? (dynamicTemplate?.height || 297) : 148;
+      const w = isBankForm ? (dynamicTemplate?.width || 210) : 200;
+      const h = isBankForm ? (dynamicTemplate?.height || 297) : 140;
       const size = isBankForm ? `${dynamicTemplate?.pageSize || 'A4'} ${dynamicTemplate?.orientation || 'portrait'}` : 'A5 landscape';
 
       const style = document.getElementById('page-size-style');
@@ -269,15 +269,15 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                     justify-content: space-between !important;
                     visibility: visible !important;
                     position: absolute !important; 
-                    left: 0 !important; 
-                    top: 0 !important; 
+                    left: ${isBankForm ? '0' : '5mm'} !important; 
+                    top: ${isBankForm ? '0' : '4mm'} !important; 
                     width: ${w}mm !important; 
                     height: ${h}mm !important;
                     max-height: ${h}mm !important;
                     margin: 0 !important;
-                    padding: ${isBankForm ? '0' : (isCompact ? '4mm 6mm' : '8mm 10mm')} !important;
-                    border: ${isBankForm ? 'none' : '2px solid #1f2937'} !important;
-                    border-radius: ${isBankForm ? '0' : '10px'} !important;
+                    padding: ${isBankForm ? '0' : '3.5mm 5mm'} !important;
+                    border: ${isBankForm ? 'none' : '2px solid #0f172a'} !important;
+                    border-radius: ${isBankForm ? '0' : '8px'} !important;
                     box-sizing: border-box !important;
                     box-shadow: none !important;
                     background: white !important;
@@ -285,6 +285,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                     overflow: hidden !important;
                     page-break-inside: avoid !important;
                     break-inside: avoid !important;
+                    page-break-after: avoid !important;
                 }
                 #${printAreaId} * { 
                     visibility: visible !important; 
@@ -602,63 +603,150 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   const receiptContent = (
       <div 
         id={printAreaId} 
-        className="printable-content bg-white border-2 border-gray-800 rounded-xl relative text-gray-900 flex flex-col justify-between overflow-hidden" 
-        style={{ direction: 'rtl', width: '210mm', height: '148mm', padding: isCompact ? '4mm 6mm' : '8mm 10mm', boxSizing: 'border-box', margin: '0 auto', maxHeight: '148mm', overflow: 'hidden' }}
+        className="printable-content bg-white border-2 border-slate-900 rounded-xl relative text-slate-900 flex flex-col justify-between overflow-hidden select-text" 
+        style={{ 
+          direction: 'rtl', 
+          width: '200mm', 
+          height: '140mm', 
+          maxHeight: '140mm', 
+          padding: '3.5mm 5mm', 
+          boxSizing: 'border-box', 
+          margin: '0 auto', 
+          backgroundColor: '#ffffff',
+          color: '#0f172a'
+        }}
       >
         {currentOrder.status === OrderStatus.REJECTED && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-9xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none">REJECTED</div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-600/30 text-red-600/30 font-black text-8xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none">REJECTED</div>
         )}
         {isRevoked && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-gray-400/40 text-gray-400/40 font-black text-8xl rotate-[-25deg] p-6 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">باطل شد</div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-gray-400/40 text-gray-400/40 font-black text-7xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">باطل شد</div>
         )}
         {isRevocationProcess && (
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-200/50 text-red-200/50 font-black text-6xl rotate-[-25deg] p-6 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">در حال ابطال</div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-200/50 text-red-200/50 font-black text-5xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">در حال ابطال</div>
         )}
-        <div className="relative z-10">
-            <div className={`border-b-2 border-gray-800 ${isCompact ? 'pb-1.5 mb-2' : 'pb-2 mb-3'} flex justify-between items-center`}>
-                <div className="flex items-center gap-4 w-2/3">
-                    {company?.logo ? <img src={company.logo} alt="Company Logo" className={`${isCompact ? 'h-11 w-11' : 'h-16 w-16'} object-contain mix-blend-multiply`} /> : <div className={`${isCompact ? 'h-11 w-11 text-[9px]' : 'h-16 w-16 text-xs'} bg-gray-100 text-gray-800 flex items-center justify-center rounded text-center border border-dashed border-gray-300`}>بدون لوگو</div>}
+        <div className="relative z-10 flex flex-col gap-1.5">
+            {/* Header */}
+            <div className="border-b-2 border-slate-900 pb-1.5 flex justify-between items-center">
+                <div className="flex items-center gap-2.5 w-7/12">
+                    {company?.logo ? (
+                        <img src={company.logo} alt="Company Logo" className="h-10 w-10 object-contain mix-blend-multiply shrink-0" />
+                    ) : (
+                        <div className="h-10 w-10 text-[8px] bg-slate-100 text-slate-700 flex items-center justify-center rounded text-center border border-dashed border-slate-300 font-bold shrink-0">لوگو</div>
+                    )}
                     <div className="flex flex-col">
-                        <h1 className={`${isCompact ? 'text-base' : 'text-xl'} font-bold text-gray-900`}>{currentOrder.payingCompany || 'شرکت بازرگانی'}</h1>
-                        <p className="text-[10px] text-gray-500 font-bold mt-0.5">سیستم مدیریت مالی و پرداخت</p>
+                        <h1 className="text-sm sm:text-base font-black text-slate-900 leading-tight">{currentOrder.payingCompany || 'شرکت بازرگانی'}</h1>
+                        <p className="text-[9px] text-slate-500 font-bold mt-0.5">سامانه مدیریت مالی و دستور پرداخت</p>
                     </div>
                 </div>
-                <div className="text-left flex flex-col items-end gap-1 w-1/3">
-                    <h2 className={`${isCompact ? 'text-xs px-2 py-0.5' : 'text-base px-3 py-1'} font-black bg-gray-100 border border-gray-200/60 text-gray-800 rounded-lg mb-1 whitespace-nowrap`}>رسید پرداخت وجه</h2>
-                    <div className="flex items-center gap-2 text-[10px]"><span className="font-bold text-gray-500">شماره:</span><span className="font-mono font-bold text-sm text-gray-900">{currentOrder.trackingNumber}</span></div>
-                    <div className="flex items-center gap-2 text-[10px]"><span className="font-bold text-gray-500">تاریخ:</span><span className="font-bold text-gray-800">{formatDate(currentOrder.date)}</span></div>
+                <div className="text-left flex flex-col items-end gap-0.5 w-5/12">
+                    <h2 className="text-[11px] px-2.5 py-0.5 font-black bg-slate-100 border border-slate-300 text-slate-900 rounded-md mb-0.5 whitespace-nowrap">رسید دستور پرداخت</h2>
+                    <div className="flex items-center gap-1.5 text-[9.5px]">
+                        <span className="font-bold text-slate-500">شماره سند:</span>
+                        <span className="font-mono font-black text-xs text-slate-900">{currentOrder.trackingNumber || '-'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[9.5px]">
+                        <span className="font-bold text-slate-500">تاریخ:</span>
+                        <span className="font-bold text-slate-800">{formatDate(currentOrder.date)}</span>
+                    </div>
                 </div>
             </div>
-            <div className={`${isCompact ? 'space-y-1.5' : 'space-y-3'}`}>
-                <div className="grid grid-cols-2 gap-3">
-                    <div className={`bg-gray-100/70 border-2 border-gray-800 ${isCompact ? 'p-1 px-1.5' : 'p-2'} rounded-lg`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 text-[9px] mb-0.5 font-bold underline underline-offset-2">در وجه (ذینفع):</span><span className={`font-bold text-gray-900 ${isCompact ? 'text-xs' : 'text-base'}`}>{currentOrder.payee}</span></div>
-                    <div className={`bg-gray-100/70 border-2 border-gray-800 ${isCompact ? 'p-1 px-1.5' : 'p-2'} rounded-lg`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 text-[9px] mb-0.5 font-bold underline underline-offset-2">مبلغ کل پرداختی:</span><span className={`font-bold text-gray-900 ${isCompact ? 'text-xs' : 'text-base'}`}>{formatCurrency(currentOrder.totalAmount)}</span></div>
+
+            {/* Info Cards */}
+            <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-50 border border-slate-700/80 p-1 px-2 rounded-lg">
+                        <span className="block text-slate-600 text-[8.5px] mb-0.5 font-bold">در وجه (ذینفع):</span>
+                        <span className="font-black text-slate-900 text-xs sm:text-[13px] block truncate">{currentOrder.payee || '-'}</span>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-700/80 p-1 px-2 rounded-lg">
+                        <span className="block text-slate-600 text-[8.5px] mb-0.5 font-bold">مبلغ کل پرداختی:</span>
+                        <span className="font-black text-slate-900 text-xs sm:text-[13px] font-mono block truncate">{formatCurrency(currentOrder.totalAmount)}</span>
+                    </div>
                 </div>
-                <div className={`bg-gray-100/70 border-2 border-gray-800 ${isCompact ? 'p-1 px-1.5 min-h-[22px]' : 'p-2 min-h-[45px]'} rounded-lg`} style={{borderStyle: 'solid', borderWidth: '2px'}}><span className="block text-gray-600 text-[9px] mb-0.5 font-bold underline underline-offset-2">بابت (شرح پرداخت):</span><p className={`text-gray-800 text-justify font-medium leading-tight ${isCompact ? 'text-[9px]' : 'text-xs'}`}>{currentOrder.description}</p></div>
-                <div className="border-2 border-gray-800 rounded-lg overflow-hidden" style={{borderStyle: 'solid', borderWidth: '2px'}}>
-                    <table className={`w-full text-right ${isCompact ? 'text-[8.5px]' : 'text-[10px]'}`}>
-                        <thead className="bg-gray-200 border-b border-gray-800" style={{borderBottomStyle: 'solid', borderBottomWidth: '2px'}}><tr><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-700 w-6 text-center`}>#</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-700`}>نوع پرداخت</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-700`}>مبلغ</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-700`}>بانک / چک / شبا</th><th className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold text-gray-700`}>توضیحات</th></tr></thead>
-                        <tbody className="divide-y divide-gray-300">{currentOrder.paymentDetails.map((detail, idx) => (
-                            <tr key={detail.id}>
-                                <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} text-center`}>{idx + 1}</td>
-                                <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-bold`}>{detail.method}</td>
-                                <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} font-mono`}>{formatCurrency(detail.amount)}</td>
-                                <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} truncate`}>
-                                    {detail.method === PaymentMethod.CHEQUE ? `چک: ${detail.chequeNumber}` : detail.method === PaymentMethod.SHEBA || detail.method === PaymentMethod.SATNA || detail.method === PaymentMethod.PAYA ? `شبا: IR-${detail.sheba}` : detail.method === PaymentMethod.INTERNAL_TRANSFER ? `به حساب: ${detail.destinationAccount} (${detail.destinationOwner})` : detail.method === PaymentMethod.TRANSFER ? `بانک: ${detail.bankName}` : '-'}
-                                </td>
-                                <td className={`${isCompact ? 'p-0.5 px-1' : 'p-1.5'} text-gray-600`}>{detail.description || '-'}</td>
+                
+                <div className="bg-slate-50 border border-slate-700/80 p-1 px-2 rounded-lg min-h-[22px]">
+                    <span className="block text-slate-600 text-[8.5px] mb-0.5 font-bold">بابت (شرح پرداخت):</span>
+                    <p className="text-slate-800 text-justify font-medium leading-snug text-[9.5px] line-clamp-2">{currentOrder.description || '-'}</p>
+                </div>
+
+                {/* Table */}
+                <div className="border border-slate-700/80 rounded-lg overflow-hidden">
+                    <table className="w-full text-right text-[8.5px] sm:text-[9px]">
+                        <thead className="bg-slate-100 border-b border-slate-700/80">
+                            <tr>
+                                <th className="p-0.5 px-1 font-black text-slate-800 w-6 text-center">#</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800 w-24">نوع پرداخت</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800 w-32">مبلغ (ریال)</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800">بانک / چک / شبا</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800">توضیحات</th>
                             </tr>
-                        ))}</tbody>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                            {currentOrder.paymentDetails.map((detail, idx) => (
+                                <tr key={detail.id} className="hover:bg-slate-50/50">
+                                    <td className="p-0.5 px-1 text-center font-bold text-slate-500">{idx + 1}</td>
+                                    <td className="p-0.5 px-1.5 font-bold text-slate-900">{detail.method}</td>
+                                    <td className="p-0.5 px-1.5 font-mono font-bold text-slate-900">{formatCurrency(detail.amount)}</td>
+                                    <td className="p-0.5 px-1.5 text-slate-800 truncate">
+                                        {detail.method === PaymentMethod.CHEQUE ? `چک: ${detail.chequeNumber}` : detail.method === PaymentMethod.SHEBA || detail.method === PaymentMethod.SATNA || detail.method === PaymentMethod.PAYA ? `شبا: IR-${detail.sheba}` : detail.method === PaymentMethod.INTERNAL_TRANSFER ? `حساب: ${detail.destinationAccount} (${detail.destinationOwner || ''})` : detail.method === PaymentMethod.TRANSFER ? `بانک: ${detail.bankName}` : '-'}
+                                    </td>
+                                    <td className="p-0.5 px-1.5 text-slate-600 truncate">{detail.description || '-'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
                     </table>
                 </div>
             </div>
         </div>
-        <div className={`mt-auto ${isCompact ? 'pt-0.5' : 'pt-2'} border-t-2 border-gray-800 relative z-10`}>
+
+        {/* Footer Signatures */}
+        <div className="mt-auto pt-1 border-t-2 border-slate-900 relative z-10">
             <div className="grid grid-cols-4 gap-2 text-center">
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full"><Stamp name={currentOrder.requester} title="درخواست کننده" /></div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">درخواست کننده</span></div></div>
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(currentOrder.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? <Stamp name={currentOrder.approverFinancial || 'تایید شده'} title="تایید مالی" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیر مالی</span></div></div>
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(currentOrder.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? <Stamp name={currentOrder.approverManager || 'تایید شده'} title="تایید مدیریت" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیریت</span></div></div>
-                <div className={`flex flex-col items-center justify-end ${isCompact ? 'min-h-[35px]' : 'min-h-[60px]'}`}><div className="mb-0.5 flex items-center justify-center h-full">{(currentOrder.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? <Stamp name={currentOrder.approverCeo || 'تایید شده'} title="مدیر عامل" /> : <span className="text-gray-300 text-[8px]">امضا نشده</span>}</div><div className="w-full border-t border-gray-400 pt-0.5"><span className="text-[8px] font-bold text-gray-600">مدیر عامل</span></div></div>
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
+                        <Stamp name={currentOrder.requester || 'درخواست کننده'} title="درخواست‌کننده" />
+                    </div>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">درخواست کننده</span>
+                    </div>
+                </div>
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
+                        {(currentOrder.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
+                            <Stamp name={currentOrder.approverFinancial || 'تایید شده'} title="تایید مالی" />
+                        ) : (
+                            <span className="text-slate-300 text-[8px]">امضا نشده</span>
+                        )}
+                    </div>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">مدیر مالی</span>
+                    </div>
+                </div>
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
+                        {(currentOrder.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
+                            <Stamp name={currentOrder.approverManager || 'تایید شده'} title="تایید مدیریت" />
+                        ) : (
+                            <span className="text-slate-300 text-[8px]">امضا نشده</span>
+                        )}
+                    </div>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">مدیریت</span>
+                    </div>
+                </div>
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
+                        {(currentOrder.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
+                            <Stamp name={currentOrder.approverCeo || 'تایید شده'} title="مدیر عامل" />
+                        ) : (
+                            <span className="text-slate-300 text-[8px]">امضا نشده</span>
+                        )}
+                    </div>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">مدیر عامل</span>
+                    </div>
+                </div>
             </div>
         </div>
       </div>

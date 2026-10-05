@@ -101,6 +101,7 @@ import * as sayanOrderAuto from './backend/sayan-order-automation.js';
 import * as sayanChequeService from './backend/sayan-cheque-service.js';
 import * as sayanPartsService from './backend/sayan-parts-service.js';
 import * as sayanAgingService from './backend/sayan-aging-service.js';
+import * as sayanRemittanceService from './backend/sayan-remittance-service.js';
 import { mergeFilesToPdf, enhanceDocumentImage } from './backend/pdf-merger.js';
 import { generateBenchmarkData } from './backend/sayanBenchmarkData.js';
 
@@ -5527,6 +5528,106 @@ app.all('/api/sayan/sales-remittances', async (req, res) => {
     } catch (e) {
         console.error("Fetch Sayan Sales Remittances Error:", e);
         res.status(500).json({ success: false, message: e.message, error: e.message, remittances: [] });
+    }
+});
+
+// Live Sayan Warehouses List
+app.get('/api/sayan/warehouses', async (req, res) => {
+    try {
+        const warehouses = await sayanRemittanceService.getSayanWarehouses();
+        res.json({ success: true, warehouses });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, warehouses: [] });
+    }
+});
+
+// Live Sayan Warehouses Detailed Stats per Fiscal Year
+app.get('/api/sayan/warehouses/live-stats', async (req, res) => {
+    try {
+        const fiscalYear = req.query.fiscalYear || '4';
+        const stats = await sayanRemittanceService.getSayanWarehousesLiveStats(fiscalYear);
+        res.json({ success: true, stats, fiscalYear });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, stats: [] });
+    }
+});
+
+// Recent Documents per Warehouse in Sayan
+app.get('/api/sayan/warehouses/:code/documents', async (req, res) => {
+    try {
+        const warehouseCode = req.params.code;
+        const fiscalYear = req.query.fiscalYear || '4';
+        const limit = req.query.limit || 20;
+        const documents = await sayanRemittanceService.getWarehouseRecentDocuments(warehouseCode, fiscalYear, limit);
+        res.json({ success: true, documents, warehouseCode, fiscalYear });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, documents: [] });
+    }
+});
+
+// Live Sayan Fiscal Years List
+app.get('/api/sayan/fiscal-years', async (req, res) => {
+    try {
+        const fiscalYears = await sayanRemittanceService.getSayanFiscalYears();
+        res.json({ success: true, fiscalYears });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, fiscalYears: [] });
+    }
+});
+
+// Search Sayan Goods for Remittance
+app.get('/api/sayan/goods/search', async (req, res) => {
+    try {
+        const query = req.query.q || '';
+        const items = await sayanRemittanceService.searchSayanGoods(query);
+        res.json({ success: true, items });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, items: [] });
+    }
+});
+
+// Search Sayan Customers for Remittance
+app.get('/api/sayan/customers/search', async (req, res) => {
+    try {
+        const query = req.query.q || '';
+        const customers = await sayanRemittanceService.searchSayanCustomers(query);
+        res.json({ success: true, customers });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, customers: [] });
+    }
+});
+
+// Barcode scanner lookup
+app.post('/api/sayan/barcode/lookup', async (req, res) => {
+    try {
+        const { barcode, warehouseCode, fiscalYear } = req.body || {};
+        const result = await sayanRemittanceService.lookupBarcodeInSayan(barcode, { warehouseCode, fiscalYear });
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// Create & Register Sales Remittance in Sayan (OpCode 23)
+app.post('/api/sayan/sales-remittances/create', async (req, res) => {
+    try {
+        const data = req.body || {};
+        const currentUser = req.body.currentUser || req.user || { fullName: 'کاربر سیستم' };
+        const result = await sayanRemittanceService.registerSalesRemittanceInSayan(data, currentUser);
+        res.json(result);
+    } catch (err) {
+        console.error("Register Sayan Sales Remittance Error:", err);
+        res.status(500).json({ success: false, message: err.message, error: err.message });
+    }
+});
+
+// Get Sales Remittances Local Archive
+app.get('/api/sayan/sales-remittances/archive', async (req, res) => {
+    try {
+        const archive = sayanRemittanceService.getSalesRemittancesArchive();
+        res.json({ success: true, archive });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, archive: [] });
     }
 });
 

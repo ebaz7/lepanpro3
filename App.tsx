@@ -1605,7 +1605,7 @@ function App() {
           setActiveTab('manage-exit'); 
       }
     };
-  const [warehouseInitialTab, setWarehouseInitialTab] = useState<'dashboard' | 'approvals'>('dashboard');
+  const [warehouseInitialTab, setWarehouseInitialTab] = useState<any>('dashboard');
   const handleGoToWarehouseApprovals = () => { setWarehouseInitialTab('approvals'); setActiveTab('warehouse'); };
     const [purchaseInitialTab, setPurchaseInitialTab] = useState<'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE'>('REQUESTS');
   const handleGoToPurchaseApprovals = () => { setPurchaseInitialTab('REQUESTS'); setActiveTab('purchase'); };

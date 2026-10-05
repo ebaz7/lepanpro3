@@ -24,7 +24,8 @@ import {
   Scale,
   Sparkles,
   MessageSquare,
-  Loader2
+  Loader2,
+  Barcode
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { shareElementToChat } from '../services/chatShareService';
@@ -36,6 +37,7 @@ import {
 } from '../services/sayanExitService';
 import SayanSalesRemittanceDoc, { SayanRemittanceData } from './SayanSalesRemittanceDoc';
 import { AiSayanReportModal } from './AiSayanReportModal';
+import { SayanSalesRemittanceIssuer } from './SayanSalesRemittanceIssuer';
 import * as jalaali from 'jalaali-js';
 
 interface SayanRemittancesTabProps {
@@ -187,6 +189,7 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
   const [isSharingDoc, setIsSharingDoc] = useState<boolean>(false);
+  const [isIssuerOpen, setIsIssuerOpen] = useState<boolean>(false);
 
   const handleSendToChat = async () => {
     if (!selectedRemittance) return;
@@ -771,6 +774,15 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
               </button>
             )}
           </div>
+
+          <button
+            onClick={() => setIsIssuerOpen(true)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-lg text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+            title="صدور سریع حواله فروش با بارکدخوان و ثبت مستقیم در دیتابیس سایان"
+          >
+            <Barcode size={14} />
+            <span>صدور حواله با بارکدخوان (ثبت در سایان)</span>
+          </button>
 
           <button
             onClick={() => setIsAiModalOpen(true)}
@@ -1378,6 +1390,25 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
         dateRange={{ from: dateFrom, to: dateTo }}
         settings={settings}
       />
+
+      {/* Sayan Sales Remittance Issuer Full Modal */}
+      {isIssuerOpen && (
+        <div className="fixed inset-0 z-[99999999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 select-text animate-in fade-in duration-150">
+          <div className="w-full max-w-7xl h-[95vh] rounded-3xl overflow-hidden shadow-2xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex flex-col">
+            <SayanSalesRemittanceIssuer
+              currentUser={currentUser}
+              settings={settings}
+              onClose={() => {
+                setIsIssuerOpen(false);
+                loadRemittances();
+              }}
+              onSuccessRegistered={() => {
+                loadRemittances();
+              }}
+            />
+          </div>
+        </div>
+      )}
 
     </div>
   );
