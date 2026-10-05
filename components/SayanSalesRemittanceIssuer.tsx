@@ -200,9 +200,14 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
 
   // Form Headers
   const [warehouses, setWarehouses] = useState<WarehouseItem[]>([]);
-  const [fiscalYears, setFiscalYears] = useState<FiscalYearItem[]>([]);
+  const [fiscalYears, setFiscalYears] = useState<FiscalYearItem[]>([
+    { code: '4', title: '۱۴۰۵ (سال مالی جاری)', isDefault: true },
+    { code: '3', title: '۱۴۰۴', isDefault: false },
+    { code: '2', title: '۱۴۰۳', isDefault: false }
+  ]);
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>(initialWarehouseCode || '15'); // Default Tehran Store
-  const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('4'); // Default 1404
+  const [selectedDestinationWarehouse, setSelectedDestinationWarehouse] = useState<string>('11'); // Destination warehouse for transfers
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState<string>('4'); // Default 1405 (Code 4)
   const [remittanceDate, setRemittanceDate] = useState<string>(getTodayShamsi());
   const [subCode, setSubCode] = useState<string>('');
   const [headerNotes, setHeaderNotes] = useState<string>('');
@@ -218,11 +223,13 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
   const [docsSearchQuery, setDocsSearchQuery] = useState<string>('');
   const [docsOpFilter, setDocsOpFilter] = useState<string>('all');
 
-  // Customer Autocomplete
+  // Customer Auto-Extraction & Search
+  const [allCustomersList, setAllCustomersList] = useState<CustomerItem[]>([]);
   const [customerSearch, setCustomerSearch] = useState<string>('');
   const [customersList, setCustomersList] = useState<CustomerItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerItem | null>(null);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState<boolean>(false);
   const [isSearchingCustomer, setIsSearchingCustomer] = useState<boolean>(false);
 
   // Active Goods for quick manual picking
@@ -252,14 +259,28 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
   const [archiveSearch, setArchiveSearch] = useState<string>('');
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
 
-  // 1. Initial Data Fetch (Warehouses, Fiscal Years, Common Goods)
+  // Close customer dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
+        setIsCustomerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // 1. Initial Data Fetch: Warehouses, Fiscal Years, Automatic Customer Extraction
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [whRes, fyRes] = await Promise.all([
+        setIsLoadingCustomers(true);
+        const [whRes, fyRes, custRes] = await Promise.all([
           apiCall<{ success: boolean; warehouses: WarehouseItem[] }>('/sayan/warehouses', 'GET'),
-          apiCall<{ success: boolean; fiscalYears: FiscalYearItem[] }>('/sayan/fiscal-years', 'GET')
+          apiCall<{ success: boolean; fiscalYears: FiscalYearItem[] }>('/sayan/fiscal-years', 'GET'),
+          apiCall<{ success: boolean; customers: CustomerItem[]; count?: number }>('/sayan/customers', 'GET')
         ]);
 
         if (whRes?.success && Array.isArray(whRes.warehouses)) {
@@ -267,15 +288,36 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
           const tehran = whRes.warehouses.find(w => w.code === '15');
           if (tehran) setSelectedWarehouse('15');
           else if (whRes.warehouses.length > 0) setSelectedWarehouse(whRes.warehouses[0].code);
+
+          const factory = whRes.warehouses.find(w => w.code === '11');
+          if (factory) setSelectedDestinationWarehouse('11');
+          else if (whRes.warehouses.length > 1) setSelectedDestinationWarehouse(whRes.warehouses[1].code);
         }
 
-        if (fyRes?.success && Array.isArray(fyRes.fiscalYears)) {
+        if (fyRes?.success && Array.isArray(fyRes.fiscalYears) && fyRes.fiscalYears.length > 0) {
           setFiscalYears(fyRes.fiscalYears);
           const defYear = fyRes.fiscalYears.find(y => y.isDefault);
           if (defYear) setSelectedFiscalYear(defYear.code);
+          else setSelectedFiscalYear(fyRes.fiscalYears[0].code);
+        } else {
+          // Default to current year 1405 (Code 4)
+          setSelectedFiscalYear('4');
+        }
+
+        if (custRes?.success && Array.isArray(custRes.customers)) {
+          setAllCustomersList(custRes.customers);
+          setCustomersList(custRes.customers);
+          if (!selectedCustomer && custRes.customers.length > 0) {
+            // Pick default if available
+            const tehranOffice = custRes.customers.find(c => c.personCode === '2471' || c.name.includes('تهران'));
+            if (tehranOffice) setSelectedCustomer(tehranOffice);
+            else setSelectedCustomer(custRes.customers[0]);
+          }
         }
       } catch (err) {
-        console.error('Failed to load warehouses/fiscal years:', err);
+        console.error('Failed to load warehouses/fiscal years/customers:', err);
+      } finally {
+        setIsLoadingCustomers(false);
       }
     };
 
@@ -295,32 +337,45 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
       .catch(() => {});
   }, []);
 
-  // 3. Customer live debounced search
+  // 3. Customer live client-side + debounced server filtering
   useEffect(() => {
-    if (!customerSearch || customerSearch.trim().length < 2) {
-      setCustomersList([]);
+    if (!customerSearch.trim()) {
+      setCustomersList(allCustomersList);
       return;
     }
-    const timer = setTimeout(async () => {
-      setIsSearchingCustomer(true);
-      try {
-        const res = await apiCall<{ success: boolean; customers: CustomerItem[] }>(
-          `/sayan/customers/search?q=${encodeURIComponent(customerSearch.trim())}`,
-          'GET'
-        );
-        if (res?.success && Array.isArray(res.customers)) {
-          setCustomersList(res.customers);
-          setIsCustomerDropdownOpen(true);
-        }
-      } catch (e) {
-        console.error('Customer search error:', e);
-      } finally {
-        setIsSearchingCustomer(false);
-      }
-    }, 250);
 
-    return () => clearTimeout(timer);
-  }, [customerSearch]);
+    const q = customerSearch.trim().toLowerCase();
+    const jsNorm = q.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا');
+
+    const clientFiltered = allCustomersList.filter(c => {
+      const n = (c.name || '').toLowerCase().replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا');
+      return n.includes(jsNorm) || (c.personCode && c.personCode.includes(q)) || (c.tafsiliCode && c.tafsiliCode.includes(q));
+    });
+
+    setCustomersList(clientFiltered);
+
+    // If not found in preloaded list and query is longer than 2 chars, run server search
+    if (clientFiltered.length === 0 && customerSearch.trim().length >= 2) {
+      const timer = setTimeout(async () => {
+        setIsSearchingCustomer(true);
+        try {
+          const res = await apiCall<{ success: boolean; customers: CustomerItem[] }>(
+            `/sayan/customers/search?q=${encodeURIComponent(customerSearch.trim())}`,
+            'GET'
+          );
+          if (res?.success && Array.isArray(res.customers)) {
+            setCustomersList(res.customers);
+          }
+        } catch (e) {
+          console.error('Customer server search error:', e);
+        } finally {
+          setIsSearchingCustomer(false);
+        }
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [customerSearch, allCustomersList]);
 
   // Keep scanner input focused when continuous mode is active
   useEffect(() => {
@@ -757,79 +812,135 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
               </div>
 
               {/* 3. Customer / Destination Store Selection */}
-              <div className="relative">
+              <div className="relative" ref={customerDropdownRef}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-bold text-slate-600 dark:text-zinc-400">
-                    {operationType === '25' ? 'انبار مقصد / تحویل‌گیرنده *' : 'مشتری / خریدار *'}
+                    {operationType === '25' ? 'انبار مقصد (تحویل‌گیرنده) *' : 'مشتری / خریدار (انتخاب از سایان) *'}
                   </label>
-                  {operationType === '25' && (!selectedCustomer || selectedCustomer.personCode !== '2471') && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCustomer({
-                        personCode: '2471',
-                        name: 'دفتر تهران-لپان بافت',
-                        tafsiliCode: '112471',
-                        levelCode: '11'
-                      })}
-                      className="text-[10px] text-purple-600 hover:underline font-bold"
-                    >
-                      + دفتر تهران (۲۴۷۱)
-                    </button>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={selectedCustomer ? selectedCustomer.name : customerSearch}
-                    onChange={(e) => {
-                      setSelectedCustomer(null);
-                      setCustomerSearch(e.target.value);
-                    }}
-                    onFocus={() => {
-                      if (customersList.length > 0) setIsCustomerDropdownOpen(true);
-                    }}
-                    placeholder={operationType === '25' ? 'نام انبار مقصد یا کد تحویل‌گیرنده...' : 'جستجوی نام یا کد تفصیلی مشتری...'}
-                    className="w-full h-10 px-3 pr-9 pl-8 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-blue-500 transition-all"
-                  />
-                  <User className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
-                  {isSearchingCustomer && (
-                    <Loader2 className="w-4 h-4 text-blue-600 animate-spin absolute left-3 top-3" />
-                  )}
-                  {selectedCustomer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedCustomer(null);
-                        setCustomerSearch('');
-                      }}
-                      className="absolute left-2.5 top-2.5 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-400"
-                    >
-                      <X size={14} />
-                    </button>
+                  {operationType === '23' && allCustomersList.length > 0 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                      {allCustomersList.length} مشتری آماده
+                    </span>
                   )}
                 </div>
 
-                {/* Dropdown list */}
-                {isCustomerDropdownOpen && customersList.length > 0 && (
-                  <div className="absolute z-50 top-full mt-1 w-full max-h-56 overflow-y-auto bg-white dark:bg-zinc-800 rounded-xl shadow-2xl border border-slate-200 dark:border-zinc-700 p-1 divide-y divide-slate-100 dark:divide-zinc-700/60">
-                    {customersList.map((c) => (
+                {operationType === '25' ? (
+                  /* Destination Warehouse selector for inter-warehouse transfers */
+                  <div className="relative">
+                    <select
+                      value={selectedDestinationWarehouse}
+                      onChange={(e) => {
+                        const code = e.target.value;
+                        setSelectedDestinationWarehouse(code);
+                        const targetWh = warehouses.find(w => w.code === code);
+                        setSelectedCustomer({
+                          personCode: code === '15' ? '2471' : code,
+                          name: targetWh ? targetWh.name : `انبار کد ${code}`,
+                          tafsiliCode: code,
+                          levelCode: '11'
+                        });
+                      }}
+                      className="w-full h-10 px-3 pr-9 rounded-xl border border-purple-200 dark:border-purple-800/60 bg-purple-50/50 dark:bg-purple-950/30 text-xs font-bold text-slate-900 dark:text-white outline-none focus:border-purple-500 transition-all cursor-pointer"
+                    >
+                      {warehouses
+                        .filter(w => w.code !== selectedWarehouse)
+                        .map((w) => (
+                          <option key={w.code} value={w.code}>
+                            کد {w.code} - {w.name}
+                          </option>
+                        ))}
+                    </select>
+                    <Building2 className="w-4 h-4 text-purple-600 absolute right-3 top-3 pointer-events-none" />
+                  </div>
+                ) : (
+                  /* Live Customer Search & Select Combobox */
+                  <div className="relative">
+                    <div 
+                      onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                      className="w-full h-10 px-3 pr-9 pl-8 rounded-xl border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs font-bold text-slate-900 dark:text-white outline-none focus-within:border-blue-500 transition-all cursor-pointer flex items-center justify-between"
+                    >
+                      <span className={selectedCustomer ? "text-slate-900 dark:text-white font-bold truncate" : "text-slate-400"}>
+                        {selectedCustomer ? `${selectedCustomer.name} (${selectedCustomer.personCode})` : 'انتخاب مشتری از پایگاه سایان...'}
+                      </span>
+                      <ChevronDown size={15} className={`text-slate-400 transition-transform ${isCustomerDropdownOpen ? 'rotate-180' : ''}`} />
+                    </div>
+                    <User className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
+                    
+                    {selectedCustomer && (
                       <button
-                        key={c.personCode}
                         type="button"
-                        onClick={() => {
-                          setSelectedCustomer(c);
-                          setIsCustomerDropdownOpen(false);
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCustomer(null);
+                          setCustomerSearch('');
+                          setIsCustomerDropdownOpen(true);
                         }}
-                        className="w-full p-2 text-right hover:bg-blue-50 dark:hover:bg-zinc-700/80 rounded-lg flex items-center justify-between text-xs transition-colors"
+                        className="absolute left-7 top-2.5 p-0.5 rounded-full hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-400"
+                        title="پاک کردن انتخاب"
                       >
-                        <span className="font-bold text-slate-900 dark:text-white truncate">
-                          {c.name}
-                        </span>
-                        <span className="font-mono text-[11px] text-slate-500 bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded">
-                          {c.personCode}
-                        </span>
+                        <X size={14} />
                       </button>
-                    ))}
+                    )}
+
+                    {/* Rich Searchable Dropdown */}
+                    {isCustomerDropdownOpen && (
+                      <div className="absolute z-50 top-full mt-1 w-full max-h-72 bg-white dark:bg-zinc-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-700 p-2 flex flex-col gap-2">
+                        {/* Search Input inside dropdown */}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={customerSearch}
+                            onChange={(e) => setCustomerSearch(e.target.value)}
+                            placeholder="جستجوی نام یا کد تفصیلی مشتری..."
+                            className="w-full h-8 px-2.5 pr-8 rounded-lg bg-slate-100 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-xs text-slate-900 dark:text-white outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <Search size={13} className="text-slate-400 absolute right-2.5 top-2.5" />
+                          {isSearchingCustomer && (
+                            <Loader2 size={13} className="text-blue-500 animate-spin absolute left-2.5 top-2.5" />
+                          )}
+                        </div>
+
+                        {/* Customer Items List */}
+                        <div className="flex-1 overflow-y-auto max-h-52 divide-y divide-slate-100 dark:divide-zinc-700/60 custom-scrollbar">
+                          {customersList.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-slate-400">
+                              {isSearchingCustomer ? 'در حال جستجو در سایان...' : 'مشتری با این مشخصات یافت نشد.'}
+                            </div>
+                          ) : (
+                            customersList.map((c) => {
+                              const isSelected = selectedCustomer?.personCode === c.personCode;
+                              return (
+                                <button
+                                  key={c.personCode}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCustomer(c);
+                                    setIsCustomerDropdownOpen(false);
+                                    setCustomerSearch('');
+                                  }}
+                                  className={`w-full p-2 text-right rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${
+                                    isSelected 
+                                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-black'
+                                      : 'hover:bg-slate-100 dark:hover:bg-zinc-700/60 text-slate-800 dark:text-zinc-200'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 flex items-center justify-center text-[10px] shrink-0 font-bold">
+                                      {c.name.slice(0, 1)}
+                                    </div>
+                                    <span className="truncate">{c.name}</span>
+                                  </div>
+                                  <span className="font-mono text-[11px] text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded shrink-0">
+                                    کد {c.personCode}
+                                  </span>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

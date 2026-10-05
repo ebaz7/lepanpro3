@@ -5587,11 +5587,24 @@ app.get('/api/sayan/goods/search', async (req, res) => {
 });
 
 // Search Sayan Customers for Remittance
+app.get('/api/sayan/customers', async (req, res) => {
+    try {
+        const query = req.query.q || '';
+        const refresh = req.query.refresh === 'true';
+        const customers = query 
+            ? await sayanRemittanceService.searchSayanCustomers(query)
+            : await sayanRemittanceService.getAllSayanCustomers(refresh);
+        res.json({ success: true, customers, count: customers.length });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message, customers: [] });
+    }
+});
+
 app.get('/api/sayan/customers/search', async (req, res) => {
     try {
         const query = req.query.q || '';
         const customers = await sayanRemittanceService.searchSayanCustomers(query);
-        res.json({ success: true, customers });
+        res.json({ success: true, customers, count: customers.length });
     } catch (err) {
         res.status(500).json({ success: false, message: err.message, customers: [] });
     }

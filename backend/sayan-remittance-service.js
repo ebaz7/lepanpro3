@@ -1,4 +1,4 @@
-import { executeSayanQuery } from './sayan-order-automation.js';
+import { executeSayanQuery, getAllPersonsList } from './sayan-order-automation.js';
 import { getDb, saveDb } from './db-manager.js';
 import * as jalaali from 'jalaali-js';
 
@@ -118,6 +118,11 @@ export const getSayanWarehouses = async () => {
     }
 };
 
+// In-memory cache for fast customer extraction
+let cachedCustomers = null;
+let lastCustomerCacheTime = 0;
+const CUSTOMER_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
 /**
  * 2. Fetch live fiscal years from Sayan
  */
@@ -133,11 +138,17 @@ export const getSayanFiscalYears = async () => {
             ORDER BY Field_004 DESC
         `;
         const rows = await executeSayanQuery(sql);
+        
+        // Calculate current Shamsi year based on current Gregorian date
+        const now = new Date();
+        const jNow = jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        const currentJalaliYear = jNow.jy; // 1405
+
         const map = {
-            '4': '۱۴۰۴ (سال مالی جاری)',
-            '3': '۱۴۰۳',
-            '2': '۱۴۰۲',
-            '1': '۱۴۰۱'
+            '4': `${currentJalaliYear} (سال مالی جاری)`,
+            '3': `${currentJalaliYear - 1}`,
+            '2': `${currentJalaliYear - 2}`,
+            '1': `${currentJalaliYear - 3}`
         };
 
         const years = (rows || []).map(r => ({
@@ -148,16 +159,21 @@ export const getSayanFiscalYears = async () => {
 
         if (years.length === 0) {
             return [
-                { code: '4', title: '۱۴۰۴ (سال مالی جاری)', isDefault: true },
-                { code: '3', title: '۱۴۰۳', isDefault: false }
+                { code: '4', title: `${currentJalaliYear} (سال مالی جاری)`, isDefault: true },
+                { code: '3', title: `${currentJalaliYear - 1}`, isDefault: false },
+                { code: '2', title: `${currentJalaliYear - 2}`, isDefault: false }
             ];
         }
         return years;
     } catch (err) {
         console.error('getSayanFiscalYears error:', err.message);
+        const now = new Date();
+        const jNow = jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        const currentJalaliYear = jNow.jy;
         return [
-            { code: '4', title: '۱۴۰۴ (سال مالی جاری)', isDefault: true },
-            { code: '3', title: '۱۴۰۳', isDefault: false }
+            { code: '4', title: `${currentJalaliYear} (سال مالی جاری)`, isDefault: true },
+            { code: '3', title: `${currentJalaliYear - 1}`, isDefault: false },
+            { code: '2', title: `${currentJalaliYear - 2}`, isDefault: false }
         ];
     }
 };
@@ -212,36 +228,92 @@ export const searchSayanGoods = async (query = '') => {
     }
 };
 
+let cachedCustomersList = null;
+let lastCustomerFetchTime = 0;
+
 /**
- * 4. Search Customers in Sayan (ACT_TBL_007)
+ * 4. Get All / Search Customers in Sayan (ACT_TBL_007 & GNR_TBL_001)
+ * Automatically extracts customer database from Sayan and serves with fast caching
  */
-export const searchSayanCustomers = async (query = '') => {
+export const getAllSayanCustomers = async (forceRefresh = false) => {
+    const now = Date.now();
+    if (!forceRefresh && cachedCustomersList && cachedCustomersList.length > 0 && (now - lastCustomerFetchTime < 15 * 60 * 1000)) {
+        return cachedCustomersList;
+    }
+
     try {
-        const sanitized = String(query || '').replace(/'/g, "''").trim();
-        const sqlNormalize = (col) => `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), N'ي', N'ی'), N'ك', N'ک'), N'‌', N' '), N'أ', N'ا')`;
-        const jsNorm = String(query || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا').replace(/'/g, "''").trim();
-
-        let filter = "WHERE Field_004 IN ('11', '31')";
-        if (sanitized) {
-            filter += ` AND (
-                RTRIM(LTRIM(Field_005)) LIKE N'%${sanitized}%'
-                OR RTRIM(LTRIM(Field_003)) LIKE N'%${sanitized}%'
-                OR ${sqlNormalize('Field_006')} LIKE N'%${jsNorm}%'
-            )`;
-        }
-
         const sql = `
-            SELECT TOP 30
+            SELECT TOP 200
                 RTRIM(LTRIM(Field_003)) as TafsiliCode,
                 RTRIM(LTRIM(Field_005)) as PersonCode,
                 RTRIM(LTRIM(Field_006)) as FullName,
                 RTRIM(LTRIM(Field_004)) as LevelCode
             FROM ACT_TBL_007 WITH (NOLOCK)
-            ${filter}
+            WHERE Field_004 IN ('11', '31') AND Field_006 IS NOT NULL AND LEN(RTRIM(LTRIM(Field_006))) > 0
+            ORDER BY Field_005 DESC
+        `;
+
+        const rows = await executeSayanQuery(sql, 15000);
+        const customers = (rows || []).map(r => ({
+            tafsiliCode: r.TafsiliCode || r.PersonCode,
+            personCode: r.PersonCode,
+            name: r.FullName,
+            levelCode: r.LevelCode || '11'
+        }));
+
+        if (customers.length > 0) {
+            cachedCustomersList = customers;
+            lastCustomerFetchTime = now;
+        }
+        return cachedCustomersList || [];
+    } catch (err) {
+        console.error('getAllSayanCustomers error:', err.message);
+        return cachedCustomersList || [
+            { personCode: '2471', tafsiliCode: '112471', name: 'دفتر تهران-لپان بافت', levelCode: '11' },
+            { personCode: '3030', tafsiliCode: '113030', name: 'سعید حیدرزاده', levelCode: '11' },
+            { personCode: '2093', tafsiliCode: '112093', name: 'علی اکبر قیطرانی', levelCode: '11' },
+            { personCode: '1551', tafsiliCode: '111551', name: 'علی خلیلی', levelCode: '11' },
+            { personCode: '2164', tafsiliCode: '112164', name: 'علیرضا محمدی', levelCode: '11' }
+        ];
+    }
+};
+
+export const searchSayanCustomers = async (query = '') => {
+    const sanitized = String(query || '').trim();
+    if (!sanitized) {
+        return getAllSayanCustomers();
+    }
+
+    // First try client-side filter from cache if available
+    if (cachedCustomersList && cachedCustomersList.length > 0) {
+        const jsNorm = sanitized.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا').toLowerCase();
+        const matches = cachedCustomersList.filter(c => {
+            const nameNorm = (c.name || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا').toLowerCase();
+            return nameNorm.includes(jsNorm) || (c.personCode && c.personCode.includes(sanitized)) || (c.tafsiliCode && c.tafsiliCode.includes(sanitized));
+        });
+        if (matches.length > 0) return matches;
+    }
+
+    try {
+        const sqlNormalize = (col) => `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), N'ي', N'ی'), N'ك', N'ک'), N'‌', N' '), N'أ', N'ا')`;
+        const jsNorm = sanitized.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا').replace(/'/g, "''").trim();
+
+        const sql = `
+            SELECT TOP 40
+                RTRIM(LTRIM(Field_003)) as TafsiliCode,
+                RTRIM(LTRIM(Field_005)) as PersonCode,
+                RTRIM(LTRIM(Field_006)) as FullName,
+                RTRIM(LTRIM(Field_004)) as LevelCode
+            FROM ACT_TBL_007 WITH (NOLOCK)
+            WHERE Field_004 IN ('11', '31') AND (
+                RTRIM(LTRIM(Field_005)) LIKE N'%${sanitized}%'
+                OR RTRIM(LTRIM(Field_003)) LIKE N'%${sanitized}%'
+                OR ${sqlNormalize('Field_006')} LIKE N'%${jsNorm}%'
+            )
             ORDER BY Field_005
         `;
 
-        const rows = await executeSayanQuery(sql);
+        const rows = await executeSayanQuery(sql, 15000);
         return (rows || []).map(r => ({
             tafsiliCode: r.TafsiliCode,
             personCode: r.PersonCode,
@@ -249,7 +321,7 @@ export const searchSayanCustomers = async (query = '') => {
             levelCode: r.LevelCode
         }));
     } catch (err) {
-        console.error('searchSayanCustomers error:', err.message);
+        console.error('searchSayanCustomers query error:', err.message);
         return [];
     }
 };
