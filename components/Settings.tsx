@@ -112,7 +112,6 @@ import PrintTemplateDesigner from "./PrintTemplateDesigner";
 import { FiscalYearManager } from "./FiscalModule";
 import SecondExitGroupSettings from "./settings/SecondExitGroupSettings";
 import RolePermissionsEditor from "./settings/RolePermissionsEditor";
-import PurchaseWorkflowApproversSettings from "./settings/PurchaseWorkflowApproversSettings";
 import BackupManager from "./settings/BackupManager";
 import BotManager from "./settings/BotManager";
 import { WhatsAppDiagnosticTool } from "./settings/WhatsAppDiagnosticTool";
@@ -4247,14 +4246,6 @@ const Settings: React.FC<SettingsProps> = ({
                     ))}
                   </div>
                 </div>
-
-                <div className="pt-4 border-t border-gray-200">
-                  <PurchaseWorkflowApproversSettings
-                    settings={settings}
-                    onUpdateSettings={handleUpdateSettings}
-                    users={systemUsers}
-                  />
-                </div>
               </div>
             )}
 
@@ -6998,7 +6989,6 @@ const Settings: React.FC<SettingsProps> = ({
                 <RolePermissionsEditor
                   settings={settings}
                   onUpdateSettings={handleUpdateSettings}
-                  users={systemUsers}
                 />
               </div>
             )}
