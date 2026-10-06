@@ -3609,8 +3609,26 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                             <Sparkles size={14} className="text-yellow-300 animate-pulse" />
                                             <span>استعلام هوشمند با AI</span>
                                         </button>
-                                        {(isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING)) && hasPurchasePerm('canManageProformas') && (
-                                            <button onClick={() => { setPrefilledProformaData(null); setShowProformaModal(true); }} className="text-xs font-black bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2"><Plus size={14}/> ثبت پیش‌فاکتور</button>
+                                        {(
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || 
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || 
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) ||
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASE_OFFER) ||
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL) ||
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER)
+                                        ) && (
+                                            isAdmin || 
+                                            hasPurchasePerm('canManageProformas') || 
+                                            hasPurchasePerm('canManageZanjanPurchasing') || 
+                                            hasPurchasePerm('canExecuteBuyerZanjan') ||
+                                            hasPurchasePerm('canApproveFactory')
+                                        ) && (
+                                            <button 
+                                                onClick={() => { setPrefilledProformaData(null); setShowProformaModal(true); }} 
+                                                className="text-xs font-black bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2 transition-all cursor-pointer"
+                                            >
+                                                <Plus size={14}/> ثبت پیش‌فاکتور جدید
+                                            </button>
                                         )}
                                     </div>
                                 </div>
@@ -3623,13 +3641,18 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {request.proformas.map((p: PurchaseProforma) => (
-                                            <div key={p.id} className={`p-4 rounded-2xl border-2 transition-all ${p.isChosen ? 'border-green-500 bg-green-50/50 shadow-md' : 'border-gray-100 hover:border-indigo-100 bg-gray-50/30'}`}>
+                                            <div key={p.id} className={`p-4 rounded-2xl border-2 transition-all ${p.isChosen ? 'border-green-500 bg-green-50/50 shadow-md ring-2 ring-green-200 dark:ring-green-900/40' : 'border-gray-100 hover:border-indigo-100 bg-gray-50/30'}`}>
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
-                                                        <p className="text-xs font-black text-gray-800">{p.vendorName}</p>
+                                                        <p className="text-xs font-black text-gray-800 dark:text-gray-200">{p.vendorName}</p>
                                                         <p className="text-[10px] text-gray-500 font-bold">{p.number || 'بدون شماره'} | {formatDate(p.date)}</p>
                                                     </div>
-                                                    {p.isChosen && <span className="bg-green-600 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm">انتخاب شده</span>}
+                                                    {p.isChosen && (
+                                                        <span className="bg-green-600 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center gap-1">
+                                                            <CheckCircle2 size={10} />
+                                                            پیش‌فاکتور منتخب
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 {/* Proforma Attachments Preview */}
@@ -3654,9 +3677,9 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                     </div>
                                                 )}
 
-                                                <div className="flex justify-between items-center border-t border-gray-100 pt-3">
-                                                    <span className="text-sm font-black text-indigo-700">{formatCurrency(p.totalAmount)} <span className="text-[9px]">ریال</span></span>
-                                                    <div className="flex gap-1">
+                                                <div className="flex justify-between items-center border-t border-gray-100 dark:border-gray-800 pt-3">
+                                                    <span className="text-sm font-black text-indigo-700 dark:text-indigo-300">{formatCurrency(p.totalAmount)} <span className="text-[9px]">ریال</span></span>
+                                                    <div className="flex gap-1 items-center">
                                                         <button 
                                                             onClick={() => setViewingProformaDetails(p)}
                                                             className="p-2 border border-indigo-200 text-indigo-600 rounded-lg hover:bg-indigo-50" 
@@ -3664,7 +3687,13 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                         >
                                                             <Eye size={14}/>
                                                         </button>
-                                                        {((isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING)) && hasPurchasePerm('canManageProformas')) && (
+                                                        {(
+                                                            isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || 
+                                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || 
+                                                            isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) ||
+                                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASE_OFFER) ||
+                                                            isAdmin
+                                                        ) && (
                                                             <button 
                                                                 onClick={() => {
                                                                     setPrefilledProformaData(p);
@@ -3692,16 +3721,33 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                         >
                                                             <MessageSquare size={14}/>
                                                         </button>
-                                                        {(isAdmin || hasPurchasePerm('canSelectProforma')) && !p.isChosen && (
+                                                        {(
+                                                            isAdmin || 
+                                                            hasPurchasePerm('canSelectProforma') || 
+                                                            hasPurchasePerm('canApproveFactory') ||
+                                                            hasPurchasePerm('canApproveCommercialManager')
+                                                        ) && !p.isChosen && (
                                                             <button 
                                                                 onClick={() => {
-                                                                    if(confirm('آیا این پیش‌فاکتور را برای خرید تایید می‌کنید؟')) {
+                                                                    const isZanjanRoute = request.location === 'Factory' || request.location === 'Zanjan' || 
+                                                                        (typeof request.status === 'string' && (request.status.includes('FACTORY') || request.status.includes('ZANJAN')));
+                                                                    
+                                                                    if(confirm(`آیا پیش‌فاکتور «${p.vendorName}» را به عنوان گزینه منتخب تعیین می‌فرمایید؟`)) {
                                                                         const updated = request.proformas.map(x => ({ ...x, isChosen: x.id === p.id }));
-                                                                        handleAction(PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL, { proformas: updated }, 'تایید و انتخاب تامین‌کننده');
+                                                                        
+                                                                        // If currently in Factory manager review, update proformas directly
+                                                                        if (isZanjanRoute) {
+                                                                            handleAction(request.status, { proformas: updated }, `تایید و انتخاب پیش‌فاکتور منتخب (${p.vendorName}) توسط مدیر کارخانه`);
+                                                                        } else {
+                                                                            // Tehran flow
+                                                                            handleAction(request.status, { proformas: updated }, `تایید و انتخاب پیش‌فاکتور منتخب (${p.vendorName})`);
+                                                                        }
                                                                     }
                                                                 }}
-                                                                className="px-3 py-1.5 bg-green-600 text-white text-[10px] font-black rounded-lg shadow-sm"
+                                                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                                                                title="تایید و انتخاب این پیش‌فاکتور به عنوان گزینه نهایی"
                                                             >
+                                                                <Check size={12} />
                                                                 تایید و انتخاب
                                                             </button>
                                                         )}
@@ -3986,15 +4032,44 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         )}
 
                         {/* Zanjan Branch: Proposal & Purchasing */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) && (isAdmin || hasPurchasePerm('canManageZanjanPurchasing') || hasPurchasePerm('canManageProformas')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL, {}, 'ارسال پیشنهاد خرید کارخانه به مدیر')} className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg cursor-pointer hover:bg-teal-700 transition-all" disabled={actionLoading}>ارسال پیشنهاد خرید به مدیر کارخانه</button>
+                        {(isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) || isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASE_OFFER)) && (isAdmin || hasPurchasePerm('canManageZanjanPurchasing') || hasPurchasePerm('canManageProformas')) && (
+                            <button 
+                                onClick={() => {
+                                    const actionText = (request.proformas || []).length > 0 
+                                        ? `ارسال ${request.proformas.length} پیش‌فاکتور و پیشنهاد خرید به مدیر کارخانه` 
+                                        : 'ارسال پیشنهاد خرید به مدیر کارخانه';
+                                    handleAction(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL, {}, actionText);
+                                }} 
+                                className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-teal-500/20 cursor-pointer transition-all hover:scale-105 flex items-center gap-2" 
+                                disabled={actionLoading}
+                            >
+                                <Warehouse size={16} className="text-teal-200" />
+                                <span>ارسال استعلام و پیش‌فاکتورها به مدیر کارخانه</span>
+                            </button>
                         )}
 
-                        {/* Zanjan Branch: Factory Manager Approval */}
+                        {/* Zanjan Branch: Factory Manager Approval & Proforma Choice */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_BUYER_EXECUTION, {}, 'دستور خرید و صدور سفارش کارخانه')} className="bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 cursor-pointer hover:bg-teal-800 transition-all" disabled={actionLoading}>
-                                <Warehouse size={16} className="text-teal-200" />
-                                <span>دستور خرید و ارجاع به کارپرداز (مدیر کارخانه)</span>
+                            <button 
+                                onClick={() => {
+                                    const chosenProforma = request.proformas?.find((p: any) => p.isChosen);
+                                    if (!chosenProforma && (request.proformas || []).length > 1) {
+                                        alert('لطفاً ابتدا پیش‌فاکتور مورد نظر را با دکمه سبز «تایید و انتخاب» تعیین فرمایید، یا در صورت تایید پیش‌فرض ادامه دهید.');
+                                    }
+                                    const updatedProformas = (request.proformas || []).length === 1 && !chosenProforma 
+                                        ? [{ ...request.proformas[0], isChosen: true }] 
+                                        : request.proformas;
+                                    handleAction(
+                                        PurchaseRequestStatus.PENDING_BUYER_EXECUTION, 
+                                        { proformas: updatedProformas }, 
+                                        `تایید پیش‌فاکتور و صدور دستور خرید محلی توسط مدیر کارخانه${chosenProforma ? ` (${chosenProforma.vendorName})` : ''}`
+                                    );
+                                }} 
+                                className="bg-teal-700 hover:bg-teal-800 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-teal-700/30 ring-2 ring-teal-400 flex items-center gap-2 cursor-pointer transition-all hover:scale-105" 
+                                disabled={actionLoading}
+                            >
+                                <Warehouse size={18} className="text-amber-300" />
+                                <span>✅ تایید پیش‌فاکتور و صدور دستور خرید (مدیر کارخانه)</span>
                             </button>
                         )}
 

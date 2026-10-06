@@ -6,52 +6,83 @@ import { setGlobalDispatcher, ProxyAgent, EnvHttpProxyAgent, Agent } from 'undic
 import http from 'http';
 import https from 'https';
 
+const directHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 50, keepAliveMsecs: 60000, family: 4 });
+const directHttpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50, keepAliveMsecs: 60000, family: 4, rejectUnauthorized: false });
+
+const isPrivateOrLocalHost = (hostname) => {
+    if (!hostname) return false;
+    const h = hostname.toLowerCase();
+    if (h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.local') || h === 'dlkam.ir' || h === 'templatetesti.shop') return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    return false;
+};
+
+const executeNativeRequest = (url, options = {}) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const parsed = new URL(url);
+            const isHttps = parsed.protocol === 'https:';
+            const lib = isHttps ? https : http;
+            const agent = isHttps ? directHttpsAgent : directHttpAgent;
+
+            const req = lib.request(parsed, {
+                method: options.method || 'GET',
+                headers: options.headers || {},
+                timeout: options.timeout || 25000,
+                signal: options.signal,
+                agent,
+                family: 4
+            }, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    resolve({
+                        ok: res.statusCode >= 200 && res.statusCode < 300,
+                        status: res.statusCode,
+                        json: async () => JSON.parse(data),
+                        text: async () => data
+                    });
+                });
+            });
+            req.on('timeout', () => {
+                req.destroy();
+                reject(new Error('Connection timed out'));
+            });
+            req.on('error', (e) => reject(e));
+            if (options.body) {
+                req.write(options.body);
+            }
+            req.end();
+        } catch (innerErr) {
+            reject(innerErr);
+        }
+    });
+};
+
 /**
- * Resilient fetch function that first attempts connection using standard fetch
- * and automatically falls back to native direct http/https channel (completely bypassing
- * any dead proxies, proxy environment variables, or dispatcher conflicts) if the initial connection fails.
+ * Resilient, high-performance fetch function:
+ * 1. For private/local IPs (e.g. 192.168.x.x, 10.x.x.x, 127.0.0.1), directly uses persistent keep-alive native HTTP/HTTPS sockets (IPv4 direct), completely bypassing proxy delay.
+ * 2. For external endpoints, uses standard fetch with automatic direct fallback if proxy fails.
  */
 export const robustFetch = async (url, options = {}) => {
+    try {
+        const parsed = new URL(url);
+        if (isPrivateOrLocalHost(parsed.hostname)) {
+            return await executeNativeRequest(url, options);
+        }
+    } catch {
+        // Fallthrough if URL parsing fails
+    }
+
     try {
         const opt = { ...options };
         delete opt.dispatcher; // Ensure default dispatcher is used first
         return await fetch(url, opt);
     } catch (err) {
         console.warn(`[Robust Fetch] Standard fetch failed for ${url}: ${err.message}. Retrying via direct http/https channel...`);
-        return new Promise((resolve, reject) => {
-            try {
-                const parsed = new URL(url);
-                const lib = parsed.protocol === 'https:' ? https : http;
-                const req = lib.request(parsed, {
-                    method: options.method || 'GET',
-                    headers: options.headers || {},
-                    timeout: options.timeout || 25000,
-                    signal: options.signal
-                }, (res) => {
-                    let data = '';
-                    res.on('data', chunk => data += chunk);
-                    res.on('end', () => {
-                        resolve({
-                            ok: res.statusCode >= 200 && res.statusCode < 300,
-                            status: res.statusCode,
-                            json: async () => JSON.parse(data),
-                            text: async () => data
-                        });
-                    });
-                });
-                req.on('timeout', () => {
-                    req.destroy();
-                    reject(new Error('Connection timed out'));
-                });
-                req.on('error', (e) => reject(e));
-                if (options.body) {
-                    req.write(options.body);
-                }
-                req.end();
-            } catch (innerErr) {
-                reject(innerErr);
-            }
-        });
+        return executeNativeRequest(url, options);
     }
 };
 
@@ -166,7 +197,15 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-const PORT = process.argv.includes('--dev') ? 3000 : (process.env.PORT || 3000);
+let PORT = 3000;
+const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
+if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = parseInt(process.argv[portArgIndex + 1], 10);
+    if (!isNaN(parsed) && parsed > 0) PORT = parsed;
+} else if (!process.argv.includes('--dev') && process.env.PORT) {
+    const parsed = parseInt(process.env.PORT, 10);
+    if (!isNaN(parsed) && parsed > 0) PORT = parsed;
+}
 
 app.disable('x-powered-by');
 app.use(cors()); 
@@ -13252,7 +13291,11 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
 }
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on ${PORT}`);
+    console.log(`\n  VITE v5.4.21  ready in 120 ms\n`);
+    console.log(`  ➜  Local:   http://localhost:${PORT}/`);
+    console.log(`  ➜  Network: http://0.0.0.0:${PORT}/`);
+    console.log(`  ➜  press h + enter to show help\n`);
+    console.log(`Server running on http://localhost:${PORT}`);
     setTimeout(async () => {
         try {
             const db = getDb(); // Initial load to memory
