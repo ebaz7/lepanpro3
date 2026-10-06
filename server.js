@@ -2601,8 +2601,8 @@ const RAW_MATERIAL_GROUPS = [
 ];
 
 const calculateWarehouseLiveStatus = async (db, force = false, queryExcluded = null) => {
-    // Return memory cached data if queried within the last 3 minutes (180,000ms) and not forced
-    if (!force && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 180000)) {
+    // Return memory cached data if queried within the last 30 seconds and not forced
+    if (!force && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 30000)) {
         return warehouseLiveStatusCache.data;
     }
 
@@ -3037,10 +3037,15 @@ const triggerBackgroundWarehouseLiveSync = async (force = false) => {
     }
 };
 
-// Start gentle background syncing: 10s after startup + every 5 minutes (300,000ms)
-setTimeout(() => {
+// Start gentle background sync & Sayan cache priming
+setTimeout(async () => {
+    try {
+        await sayanChequeService.getAllSayanPersons(true);
+    } catch (e) {
+        // ignore silent
+    }
     triggerBackgroundWarehouseLiveSync(false);
-}, 10000);
+}, 5000);
 
 setInterval(() => {
     triggerBackgroundWarehouseLiveSync(false);

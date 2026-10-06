@@ -328,9 +328,53 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
 };
 
 /**
- * Search Sayan Tafsili / Persons by Name or Code from GNR_TBL_001
- * Supports Persian/Arabic character normalization and search by code, name, nationalId or mobile.
+ * Search Sayan Tafsili / Persons by Name or Code
+ * Direct query on ACT_TBL_007 with Level 11, 12, 13, 31 (Real Persons/Customers/Vendors)
  */
+let cachedSayanPersonsList = null;
+let lastSayanPersonsFetchTime = 0;
+
+export const getAllSayanPersons = async (forceRefresh = false) => {
+    const now = Date.now();
+    if (!forceRefresh && cachedSayanPersonsList && cachedSayanPersonsList.length > 0 && (now - lastSayanPersonsFetchTime < 10 * 60 * 1000)) {
+        return cachedSayanPersonsList;
+    }
+
+    try {
+        const sql = `
+            SELECT TOP 500
+                RTRIM(LTRIM(a.Field_005)) as PersonCode,
+                RTRIM(LTRIM(a.Field_006)) as FullName,
+                RTRIM(LTRIM(a.Field_004)) as LevelCode,
+                COALESCE(g.Field_009, '') as NationalId,
+                COALESCE(g.Field_015, '') as Mobile
+            FROM ACT_TBL_007 a WITH (NOLOCK)
+            LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
+            WHERE (a.Field_004 IN ('11', '12', '13', '31') OR a.Field_004 IS NULL)
+              AND a.Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+            ORDER BY a.Field_005 DESC
+        `;
+
+        const rows = await executeSayanQuery(sql, 15000);
+        if (rows && rows.length > 0) {
+            const list = rows.map(r => ({
+                personCode: (r.PersonCode || '').trim(),
+                fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
+                levelCode: (r.LevelCode || '').trim(),
+                nationalId: (r.NationalId || '').trim(),
+                mobile: (r.Mobile || '').trim()
+            }));
+            cachedSayanPersonsList = list;
+            lastSayanPersonsFetchTime = now;
+            return list;
+        }
+    } catch (err) {
+        console.warn('getAllSayanPersons error:', err.message);
+    }
+    return cachedSayanPersonsList || [];
+};
+
 export const searchSayanPersons = async (query = '', limit = 50) => {
     try {
         const rawQ = (query || '').trim();
@@ -338,39 +382,56 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
         const qPersian = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک');
         const qArabic = cleanQ.replace(/\u06CC/g, 'ي').replace(/\u06A9/g, 'ك');
 
-        let gnrFilter = '';
+        // Check in-memory cached list first for instant responsiveness
+        if (cachedSayanPersonsList && cachedSayanPersonsList.length > 0) {
+            if (!cleanQ) {
+                return cachedSayanPersonsList.slice(0, limit);
+            }
+            const normQ = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+            const memoryMatches = cachedSayanPersonsList.filter(p => {
+                const normName = (p.fullName || '').replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+                const code = p.personCode || '';
+                return normName.includes(normQ) || code.includes(cleanQ);
+            });
+            if (memoryMatches.length > 0) {
+                return memoryMatches.slice(0, limit);
+            }
+        }
+
+        let filterCondition = '';
         if (cleanQ) {
-            gnrFilter = ` AND (
-                g.Field_003 LIKE '%${cleanQ}%' OR 
+            filterCondition = ` AND (
+                a.Field_005 LIKE '%${cleanQ}%' OR 
+                a.Field_003 LIKE '%${cleanQ}%' OR 
+                a.Field_006 LIKE N'%${cleanQ}%' OR 
+                a.Field_006 LIKE N'%${qPersian}%' OR 
+                a.Field_006 LIKE N'%${qArabic}%' OR
                 g.Field_006 LIKE N'%${cleanQ}%' OR 
                 g.Field_007 LIKE N'%${cleanQ}%' OR 
                 g.Field_006 LIKE N'%${qPersian}%' OR 
                 g.Field_007 LIKE N'%${qPersian}%' OR 
                 g.Field_006 LIKE N'%${qArabic}%' OR 
-                g.Field_007 LIKE N'%${qArabic}%' OR
-                a.Field_006 LIKE N'%${cleanQ}%' OR
-                a.Field_006 LIKE N'%${qPersian}%' OR
-                a.Field_006 LIKE N'%${qArabic}%'
+                g.Field_007 LIKE N'%${qArabic}%'
             )`;
         }
 
-        // Primary search: JOIN GNR_TBL_001 (Real Persons/Companies Master) with ACT_TBL_007 (Tafsili Accounts)
-        // This strictly guarantees ONLY real persons/companies are returned, and strictly excludes parts/inventory items.
+        // Primary search: ACT_TBL_007 (Level 11, 12, 13, 31 - Real Persons/Customers/Vendors)
         const sql = `
             SELECT TOP ${limit}
                 RTRIM(LTRIM(a.Field_005)) as PersonCode,
-                RTRIM(LTRIM(COALESCE(NULLIF(a.Field_006, ''), CONCAT(COALESCE(g.Field_006, ''), ' ', COALESCE(g.Field_007, ''))))) as FullName,
+                RTRIM(LTRIM(a.Field_006)) as FullName,
                 COALESCE(g.Field_009, '') as NationalId,
                 COALESCE(g.Field_015, '') as Mobile
-            FROM GNR_TBL_001 g WITH (NOLOCK)
-            INNER JOIN ACT_TBL_007 a WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
-            WHERE (g.Field_018 = 1 OR g.Field_018 IS NULL)
-              AND (a.Field_004 IN ('11', '31') OR a.Field_004 IS NULL)
-              AND RTRIM(LTRIM(a.Field_006)) != '' ${gnrFilter}
+            FROM ACT_TBL_007 a WITH (NOLOCK)
+            LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
+            WHERE (a.Field_004 IN ('11', '12', '13', '31') OR a.Field_004 IS NULL)
+              AND a.Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+              ${filterCondition}
             ORDER BY a.Field_005 DESC
         `;
 
-        const rows = await executeSayanQuery(sql);
+        const rows = await executeSayanQuery(sql, 10000);
         if (rows && rows.length > 0) {
             return rows.map(r => ({
                 personCode: (r.PersonCode || '').trim(),
@@ -380,7 +441,44 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
             }));
         }
 
-        // Fallback search directly on GNR_TBL_001
+        // Fallback 1: Search all ACT_TBL_007 excluding warehouse items (01, 02, 03, 04, 05, 21, 22)
+        if (cleanQ) {
+            const broadSql = `
+                SELECT TOP ${limit}
+                    RTRIM(LTRIM(a.Field_005)) as PersonCode,
+                    RTRIM(LTRIM(a.Field_006)) as FullName,
+                    COALESCE(g.Field_009, '') as NationalId,
+                    COALESCE(g.Field_015, '') as Mobile
+                FROM ACT_TBL_007 a WITH (NOLOCK)
+                LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
+                WHERE a.Field_004 NOT IN ('01', '02', '03', '04', '05', '21', '22')
+                  AND a.Field_006 IS NOT NULL 
+                  AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+                  ${filterCondition}
+                ORDER BY a.Field_005 DESC
+            `;
+            const broadRows = await executeSayanQuery(broadSql, 10000);
+            if (broadRows && broadRows.length > 0) {
+                return broadRows.map(r => ({
+                    personCode: (r.PersonCode || '').trim(),
+                    fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
+                    nationalId: (r.NationalId || '').trim(),
+                    mobile: (r.Mobile || '').trim()
+                }));
+            }
+        }
+
+        // Fallback 2: Search directly on GNR_TBL_001 master table
+        const gnrFilter = cleanQ ? ` AND (
+            Field_003 LIKE '%${cleanQ}%' OR 
+            Field_006 LIKE N'%${cleanQ}%' OR 
+            Field_007 LIKE N'%${cleanQ}%' OR 
+            Field_006 LIKE N'%${qPersian}%' OR 
+            Field_007 LIKE N'%${qPersian}%' OR 
+            Field_006 LIKE N'%${qArabic}%' OR 
+            Field_007 LIKE N'%${qArabic}%'
+        )` : '';
+
         const gnrSql = `
             SELECT TOP ${limit}
                 RTRIM(LTRIM(Field_003)) as PersonCode,
@@ -388,11 +486,10 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
                 COALESCE(Field_009, '') as NationalId,
                 COALESCE(Field_015, '') as Mobile
             FROM GNR_TBL_001 WITH (NOLOCK)
-            WHERE (Field_018 = 1 OR Field_018 IS NULL)
-              AND RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) != '' ${gnrFilter.replace(/a\.Field_006|g\./g, '')}
+            WHERE RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) != '' ${gnrFilter}
             ORDER BY Field_003 DESC
         `;
-        const gnrRows = await executeSayanQuery(gnrSql);
+        const gnrRows = await executeSayanQuery(gnrSql, 10000);
         return (gnrRows || []).map(r => ({
             personCode: (r.PersonCode || '').trim(),
             fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
