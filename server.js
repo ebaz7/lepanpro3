@@ -2,99 +2,32 @@
 // --- SYSTEM RESTARTED TO RESOLVE DEPLOYMENT ERROR ---
 import 'dotenv/config'; 
 import { setGlobalDispatcher, ProxyAgent, EnvHttpProxyAgent, Agent } from 'undici';
-
 import http from 'http';
 import https from 'https';
+import dns from 'dns';
+import * as dbManager from './backend/db-manager.js';
 
-/**
- * Direct unproxied HTTP/HTTPS fetch for internal services, local network (192.168.*, 127.0.0.1)
- * and Sayan ERP. Guarantees that local and Sayan traffic is never routed through any system proxy,
- * VPN, or dispatcher conflicts, providing instant zero-latency responses (< 1ms on local network).
- */
-export const robustFetch = async (url, options = {}) => {
-    return new Promise((resolve, reject) => {
-        try {
-            const parsed = new URL(url);
-            const lib = parsed.protocol === 'https:' ? https : http;
-            const timeoutMs = options.timeout || 30000;
-            const headers = { ...options.headers };
-            
-            // Remove Content-Length if present to avoid header conflicts
-            for (const k of Object.keys(headers)) {
-                if (k.toLowerCase() === 'content-length') delete headers[k];
-            }
-            if (options.body) {
-                headers['Content-Length'] = Buffer.byteLength(options.body, 'utf8');
-            }
+// Ensure DNS lookups prefer IPv4 to prevent 2-5 second IPv6 (::1) lookup timeouts on Windows local networks
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (e) {}
 
-            const req = lib.request(parsed, {
-                method: options.method || 'GET',
-                headers,
-                timeout: timeoutMs,
-                agent: new lib.Agent({ keepAlive: true, timeout: timeoutMs }),
-                signal: options.signal
-            }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    resolve({
-                        ok: res.statusCode >= 200 && res.statusCode < 300,
-                        status: res.statusCode,
-                        headers: {
-                            get: (headerName) => {
-                                const val = res.headers[String(headerName).toLowerCase()];
-                                return Array.isArray(val) ? val.join(', ') : (val || '');
-                            },
-                            ...res.headers
-                        },
-                        json: async () => {
-                            try {
-                                return JSON.parse(data);
-                            } catch (parseErr) {
-                                return {};
-                            }
-                        },
-                        text: async () => data
-                    });
-                });
-            });
+// Use shared robustFetch from db-manager which has persistent KeepAlive pools, TCP_NODELAY, and proxy bypass
+export const robustFetch = dbManager.robustFetch;
 
-            req.on('timeout', () => {
-                req.destroy();
-                reject(new Error(`مهلت زمان برقراری ارتباط با وب‌سرویس (${timeoutMs / 1000} ثانیه) به پایان رسید.`));
-            });
-
-            req.on('error', (e) => reject(e));
-
-            if (options.body) {
-                req.write(options.body);
-            }
-            req.end();
-        } catch (innerErr) {
-            reject(innerErr);
-        }
-    });
-};
-
-// Configure NO_PROXY for private subnets and local services so they are NEVER routed through any proxy
+// Configure NO_PROXY for private subnets, localhost, and internal services so they are NEVER routed through any proxy
 const defaultNoProxy = '192.168.0.0/16,192.168.41.225,10.0.0.0/8,172.16.0.0/12,127.0.0.1,localhost,::1,80.210.31.176,templatetesti.shop,dlkam.ir';
 process.env.NO_PROXY = process.env.NO_PROXY ? `${process.env.NO_PROXY},${defaultNoProxy}` : defaultNoProxy;
 process.env.no_proxy = process.env.NO_PROXY;
 
-// Initialize global fetch proxy dispatcher using system / custom proxy settings
+// Initialize global fetch proxy dispatcher safely with EnvHttpProxyAgent
 const proxyUrl = process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 if (proxyUrl) {
-    console.log(`[Proxy Setup] Setting global fetch dispatcher proxy to: ${proxyUrl}`);
-    try {
-        setGlobalDispatcher(new ProxyAgent(proxyUrl));
-    } catch (err) {
-        console.error('[Proxy Setup] Failed to set global ProxyAgent:', err);
-    }
-} else {
+    console.log(`[Proxy Setup] Initializing proxy dispatcher for external APIs: ${proxyUrl}`);
     try {
         setGlobalDispatcher(new EnvHttpProxyAgent());
     } catch (err) {
-        console.error('[Proxy Setup] Failed to set global EnvHttpProxyAgent:', err);
+        console.error('[Proxy Setup] Failed to set EnvHttpProxyAgent:', err);
     }
 }
 
@@ -1868,7 +1801,7 @@ app.post('/api/sayan/test-connection', async (req, res) => {
         const cleanUrl = sanitizeSayanUrl(rawUrl);
         const startTime = Date.now();
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         const headers = {
             'Accept': 'application/json',
@@ -1879,38 +1812,50 @@ app.post('/api/sayan/test-connection', async (req, res) => {
             headers['x-api-key'] = apiKey;
         }
 
-        const response = await robustFetch(`${cleanUrl}/query`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ query: 'SELECT 1 AS ping' }),
-            signal: controller.signal
-        }).finally(() => clearTimeout(timeoutId));
+        try {
+            const response = await robustFetch(`${cleanUrl}/query`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ query: 'SELECT 1 AS ping' }),
+                signal: controller.signal
+            }).finally(() => clearTimeout(timeoutId));
 
-        const latency = Date.now() - startTime;
+            const latency = Date.now() - startTime;
 
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            const errMessage = errData.message || errData.error || `پاسخ وب‌سرویس با کد ${response.status} بازگشت داده شد.`;
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                const errMessage = errData.message || errData.error || `پاسخ وب‌سرویس با کد ${response.status} بازگشت داده شد.`;
+                return res.json({
+                    success: false,
+                    error: errMessage,
+                    status: response.status,
+                    latency,
+                    targetUrl: cleanUrl
+                });
+            }
+
+            const data = await response.json().catch(() => ({}));
+            return res.json({
+                success: true,
+                message: `اتصال به وب‌سرویس سایان با موفقیت برقرار شد.`,
+                latency,
+                targetUrl: cleanUrl,
+                data: data.data || []
+            });
+        } catch (fetchErr) {
+            const latency = Date.now() - startTime;
+            let errorMsg = fetchErr.name === 'AbortError' ? 'مهلت زمان برقراری ارتباط (Timeout) با وب‌سرویس سایان به پایان رسید.' : (fetchErr.message || 'خطا در ارتباط با وب‌سرویس سایان');
             return res.json({
                 success: false,
-                error: errMessage,
-                status: response.status,
-                latency
+                error: errorMsg,
+                latency,
+                targetUrl: cleanUrl
             });
         }
-
-        const data = await response.json().catch(() => ({}));
-        return res.json({
-            success: true,
-            message: `اتصال به وب‌سرویس سایان با موفقیت برقرار شد.`,
-            latency,
-            data: data.data || []
-        });
     } catch (e) {
-        let errorMsg = e.name === 'AbortError' ? 'مهلت زمان برقراری ارتباط (Timeout) با وب‌سرویس سایان به پایان رسید.' : (e.message || 'خطا در ارتباط با وب‌سرویس سایان');
         return res.json({
             success: false,
-            error: errorMsg
+            error: e.message || 'خطای غیرمنتظره در تست ارتباط'
         });
     }
 });

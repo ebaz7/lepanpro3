@@ -4,35 +4,69 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
 import https from 'https';
+import dns from 'dns';
+
+// Ensure DNS lookups prefer IPv4 to prevent 2-5 second IPv6 (::1) lookup timeouts on Windows local networks
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (e) {}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DB_FILE = path.join(__dirname, '..', 'database.json');
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 
+// Persistent HTTP and HTTPS Connection Pools with TCP Keep-Alive and NoDelay
+const localHttpAgent = new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 60000,
+    maxSockets: 200,
+    maxFreeSockets: 50,
+    timeout: 60000,
+    scheduling: 'fifo'
+});
+
+const localHttpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 60000,
+    maxSockets: 200,
+    maxFreeSockets: 50,
+    timeout: 60000,
+    scheduling: 'fifo'
+});
+
 /**
- * Direct unproxied HTTP/HTTPS fetch for internal services, local network (192.168.*, 127.0.0.1)
+ * Direct unproxied, high-performance HTTP/HTTPS fetch for internal services, local network (192.168.*, 127.0.0.1, localhost)
  * and Sayan ERP. Guarantees that local traffic is never routed through any system proxy,
- * VPN, or environment variables set by other bots.
+ * VPN, or environment variables, with persistent socket reuse and TCP_NODELAY enabled.
  */
 export const robustFetch = async (url, options = {}) => {
     return new Promise((resolve, reject) => {
         try {
             const parsed = new URL(url);
+            
+            // Map localhost directly to 127.0.0.1 to avoid Windows IPv6 resolution overhead
+            if (parsed.hostname === 'localhost') {
+                parsed.hostname = '127.0.0.1';
+            }
+
             const lib = parsed.protocol === 'https:' ? https : http;
+            const chosenAgent = parsed.protocol === 'https:' ? localHttpsAgent : localHttpAgent;
             const timeoutMs = options.timeout || 60000;
             const headers = { ...options.headers };
+
             for (const k of Object.keys(headers)) {
                 if (k.toLowerCase() === 'content-length') delete headers[k];
             }
             if (options.body) {
                 headers['Content-Length'] = Buffer.byteLength(options.body, 'utf8');
             }
+
             const req = lib.request(parsed, {
                 method: options.method || 'GET',
                 headers,
                 timeout: timeoutMs,
-                agent: new lib.Agent({ keepAlive: false })
+                agent: chosenAgent
             }, (res) => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
@@ -58,6 +92,13 @@ export const robustFetch = async (url, options = {}) => {
                     });
                 });
             });
+
+            // Enable TCP_NODELAY immediately to disable Nagle's algorithm for minimum round-trip latency
+            req.on('socket', (socket) => {
+                socket.setNoDelay(true);
+                socket.setKeepAlive(true, 1000);
+            });
+
             req.on('timeout', () => {
                 req.destroy();
                 reject(new Error(`مهلت زمان برقراری ارتباط با وب‌سرویس (${timeoutMs / 1000} ثانیه) به پایان رسید.`));
