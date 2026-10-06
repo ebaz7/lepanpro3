@@ -809,10 +809,10 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   useEffect(() => {
       fetchWarehouseAlert(false);
 
-      // Periodic background polling every 20 seconds so the widget stays 100% in sync with Sayan ERP
+      // Periodic background polling every 90 seconds to stay in sync without saturating Sayan API
       const intervalTimer = setInterval(() => {
           fetchWarehouseAlert(false);
-      }, 20000);
+      }, 90000);
 
       // Re-fetch immediately when window or tab becomes visible / focused
       const handleWindowFocus = () => {

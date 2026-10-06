@@ -2601,8 +2601,8 @@ const RAW_MATERIAL_GROUPS = [
 ];
 
 const calculateWarehouseLiveStatus = async (db, force = false, queryExcluded = null) => {
-    // Return memory cached data if queried within the last 30 seconds and not forced
-    if (!force && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 30000)) {
+    // Return memory cached data if queried within the last 3 minutes (180,000ms) and not forced
+    if (!force && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 180000)) {
         return warehouseLiveStatusCache.data;
     }
 
@@ -3024,12 +3024,12 @@ const calculateWarehouseLiveStatus = async (db, force = false, queryExcluded = n
 
 // Background live sync for warehouse overview with Sayan ERP
 let isWarehouseBackgroundSyncBusy = false;
-const triggerBackgroundWarehouseLiveSync = async () => {
+const triggerBackgroundWarehouseLiveSync = async (force = false) => {
     if (isWarehouseBackgroundSyncBusy) return;
     isWarehouseBackgroundSyncBusy = true;
     try {
         const db = getDb();
-        await calculateWarehouseLiveStatus(db, true);
+        await calculateWarehouseLiveStatus(db, force);
     } catch (e) {
         console.warn("[Warehouse Background Sync] error:", e.message);
     } finally {
@@ -3037,14 +3037,14 @@ const triggerBackgroundWarehouseLiveSync = async () => {
     }
 };
 
-// Start background syncing: immediately after server startup + every 45 seconds
+// Start gentle background syncing: 10s after startup + every 5 minutes (300,000ms)
 setTimeout(() => {
-    triggerBackgroundWarehouseLiveSync();
-}, 2000);
+    triggerBackgroundWarehouseLiveSync(false);
+}, 10000);
 
 setInterval(() => {
-    triggerBackgroundWarehouseLiveLiveStatus();
-}, 45000);
+    triggerBackgroundWarehouseLiveSync(false);
+}, 300000);
 
 const triggerBackgroundWarehouseLiveLiveStatus = triggerBackgroundWarehouseLiveSync;
 

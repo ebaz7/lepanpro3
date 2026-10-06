@@ -151,8 +151,9 @@ export const getAllPersonsList = async (forceRefresh = false) => {
             SELECT 
                 RTRIM(LTRIM(Field_005)) as PersonCode, 
                 RTRIM(LTRIM(Field_006)) as PersonName 
-            FROM ACT_TBL_007 
-            WHERE Field_005 IS NOT NULL 
+            FROM ACT_TBL_007 WITH (NOLOCK)
+            WHERE (Field_004 IN ('11', '31') OR Field_004 IS NULL)
+              AND Field_005 IS NOT NULL 
               AND Field_006 IS NOT NULL 
               AND LEN(Field_006) > 1
         `;

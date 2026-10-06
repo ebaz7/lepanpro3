@@ -355,7 +355,7 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
         }
 
         // Primary search: JOIN GNR_TBL_001 (Real Persons/Companies Master) with ACT_TBL_007 (Tafsili Accounts)
-        // This strictly guarantees ONLY real persons/companies are returned, and excludes parts/inventory items from ACT_TBL_007.
+        // This strictly guarantees ONLY real persons/companies are returned, and strictly excludes parts/inventory items.
         const sql = `
             SELECT TOP ${limit}
                 RTRIM(LTRIM(a.Field_005)) as PersonCode,
@@ -365,6 +365,7 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
             FROM GNR_TBL_001 g WITH (NOLOCK)
             INNER JOIN ACT_TBL_007 a WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
             WHERE (g.Field_018 = 1 OR g.Field_018 IS NULL)
+              AND (a.Field_004 IN ('11', '31') OR a.Field_004 IS NULL)
               AND RTRIM(LTRIM(a.Field_006)) != '' ${gnrFilter}
             ORDER BY a.Field_005 DESC
         `;
