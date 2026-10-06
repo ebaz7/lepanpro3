@@ -23,6 +23,13 @@ const ManageUsers: React.FC = () => {
     canManageParts: false,
     canManageArchiveAttachments: false,
     canManageProformas: false,
+    canSelectProforma: false,
+    canApproveCEO: false,
+    canApproveCommercialManager: false,
+    canCommercialFinalize: false,
+    canApproveFactoryDecision: false,
+    canApproveFactory: false,
+    canApproveFactoryFinal: false,
     canViewPricingAndInvoices: false,
     canManageZanjanPurchasing: false,
     canExecuteBuyerZanjan: false,
@@ -138,6 +145,13 @@ const ManageUsers: React.FC = () => {
           canManageParts: user.canManageParts || false,
           canManageArchiveAttachments: user.canManageArchiveAttachments || false,
           canManageProformas: user.canManageProformas || false,
+          canSelectProforma: user.canSelectProforma || false,
+          canApproveCEO: user.canApproveCEO || false,
+          canApproveCommercialManager: user.canApproveCommercialManager || false,
+          canCommercialFinalize: user.canCommercialFinalize || false,
+          canApproveFactoryDecision: user.canApproveFactoryDecision || false,
+          canApproveFactory: user.canApproveFactory || false,
+          canApproveFactoryFinal: user.canApproveFactoryFinal || false,
           canViewPricingAndInvoices: user.canViewPricingAndInvoices || false,
           canManageZanjanPurchasing: user.canManageZanjanPurchasing || false,
           canExecuteBuyerZanjan: user.canExecuteBuyerZanjan || false,
@@ -177,6 +191,13 @@ const ManageUsers: React.FC = () => {
           canManageParts: false,
           canManageArchiveAttachments: false,
           canManageProformas: false,
+          canSelectProforma: false,
+          canApproveCEO: false,
+          canApproveCommercialManager: false,
+          canCommercialFinalize: false,
+          canApproveFactoryDecision: false,
+          canApproveFactory: false,
+          canApproveFactoryFinal: false,
           canViewPricingAndInvoices: false,
           canManageZanjanPurchasing: false,
           canExecuteBuyerZanjan: false,
@@ -413,29 +434,77 @@ const ManageUsers: React.FC = () => {
                   <input type="checkbox" checked={formData.canManageArchiveAttachments} onChange={e => setFormData({...formData, canManageArchiveAttachments: e.target.checked})} className="w-4 h-4 text-indigo-600" />
                   <span>دسترسی افزودن و اتچ فایل به بایگانی اسناد</span>
               </label>
-              <label className="flex items-center gap-2 text-xs text-gray-700 bg-indigo-50 px-2 py-1.5 rounded cursor-pointer border border-indigo-200">
-                  <input type="checkbox" checked={formData.canManageProformas} onChange={e => setFormData({...formData, canManageProformas: e.target.checked})} className="w-4 h-4 text-indigo-600" />
-                  <span>ثبت پیش‌فاکتور (در ماژول درخواست خرید)</span>
-              </label>
+              {/* Purchase Module: Tehran Commercial Branch Permissions */}
+              <div className="p-3 bg-sky-50/70 dark:bg-sky-950/30 rounded-xl border border-sky-200 dark:border-sky-800 space-y-2 mt-1">
+                  <span className="text-xs font-bold text-sky-900 dark:text-sky-200 block border-b border-sky-200 dark:border-sky-700 pb-1 flex items-center gap-1.5">
+                      <span>🏢</span>
+                      <span>تاییدها و دسترسی‌های شعبه بازرگانی تهران:</span>
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 text-xs text-sky-950 dark:text-sky-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-sky-200 dark:border-sky-700 font-bold">
+                          <input type="checkbox" checked={formData.canApproveCEO} onChange={e => setFormData({...formData, canApproveCEO: e.target.checked})} className="w-4 h-4 text-sky-600" />
+                          <span>👑 تایید اولیه و مجوز استعلام (مدیرعامل تهران)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-purple-950 dark:text-purple-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-purple-200 dark:border-purple-700 font-bold">
+                          <input type="checkbox" checked={formData.canApproveCommercialManager} onChange={e => setFormData({...formData, canApproveCommercialManager: e.target.checked})} className="w-4 h-4 text-purple-600" />
+                          <span>👔 بررسی و تایید پیش‌فاکتورها (مدیر بازرگانی تهران)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-indigo-900 dark:text-indigo-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-indigo-200 dark:border-indigo-700">
+                          <input type="checkbox" checked={formData.canManageProformas} onChange={e => setFormData({...formData, canManageProformas: e.target.checked})} className="w-4 h-4 text-indigo-600" />
+                          <span>💼 ثبت پیش‌فاکتورها و استعلام (بازرگانی تهران)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-sky-900 dark:text-sky-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-sky-200 dark:border-sky-700">
+                          <input type="checkbox" checked={formData.canSelectProforma} onChange={e => setFormData({...formData, canSelectProforma: e.target.checked})} className="w-4 h-4 text-sky-600" />
+                          <span>🎯 تایید و انتخاب گزینه نهایی خرید تهران</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-indigo-900 dark:text-indigo-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-indigo-200 dark:border-indigo-700">
+                          <input type="checkbox" checked={formData.canCommercialFinalize} onChange={e => setFormData({...formData, canCommercialFinalize: e.target.checked})} className="w-4 h-4 text-indigo-600" />
+                          <span>📁 تایید نهایی و بایگانی اسناد بازرگانی تهران</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-gray-300 dark:border-gray-700">
+                          <input type="checkbox" checked={formData.scopeTehranOnly} onChange={e => setFormData({...formData, scopeTehranOnly: e.target.checked, scopeZanjanOnly: e.target.checked ? false : formData.scopeZanjanOnly})} className="w-4 h-4 text-sky-600" />
+                          <span>🏢 محدودیت حوزه: فقط خریدهای بازرگانی تهران</span>
+                      </label>
+                  </div>
+              </div>
+
+              {/* Purchase Module: Zanjan Factory Branch Permissions */}
+              <div className="p-3 bg-teal-50/70 dark:bg-teal-950/30 rounded-xl border border-teal-200 dark:border-teal-800 space-y-2 mt-1">
+                  <span className="text-xs font-bold text-teal-900 dark:text-teal-200 block border-b border-teal-200 dark:border-teal-700 pb-1 flex items-center gap-1.5">
+                      <span>🏭</span>
+                      <span>تاییدها و دسترسی‌های کارخانه زنجان (تامین محلی):</span>
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 text-xs text-teal-950 dark:text-teal-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-teal-200 dark:border-teal-700 font-bold">
+                          <input type="checkbox" checked={formData.canApproveFactoryDecision} onChange={e => setFormData({...formData, canApproveFactoryDecision: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                          <span>🏭 تعیین مسیر و تصمیم‌گیری خرید محلی (مدیر کارخانه)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-teal-950 dark:text-teal-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-teal-200 dark:border-teal-700 font-bold">
+                          <input type="checkbox" checked={formData.canApproveFactory} onChange={e => setFormData({...formData, canApproveFactory: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                          <span>✅ تایید و صدور دستور خرید محلی (مدیر کارخانه زنجان)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-teal-900 dark:text-teal-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-teal-200 dark:border-teal-700">
+                          <input type="checkbox" checked={formData.canManageZanjanPurchasing} onChange={e => setFormData({...formData, canManageZanjanPurchasing: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                          <span>📝 ثبت استعلام و پیشنهاد خرید محلی (زنجان)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-teal-900 dark:text-teal-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-teal-200 dark:border-teal-700">
+                          <input type="checkbox" checked={formData.canExecuteBuyerZanjan} onChange={e => setFormData({...formData, canExecuteBuyerZanjan: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                          <span>🛍️ ثبت خرید و فاکتور کارپرداز زنجان (کارخانه)</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-teal-900 dark:text-teal-200 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-teal-200 dark:border-teal-700">
+                          <input type="checkbox" checked={formData.canApproveFactoryFinal} onChange={e => setFormData({...formData, canApproveFactoryFinal: e.target.checked})} className="w-4 h-4 text-teal-600" />
+                          <span>🏁 تایید نهایی مدیر کارخانه زنجان</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 px-2 py-1.5 rounded cursor-pointer border border-gray-300 dark:border-gray-700">
+                          <input type="checkbox" checked={formData.scopeZanjanOnly} onChange={e => setFormData({...formData, scopeZanjanOnly: e.target.checked, scopeTehranOnly: e.target.checked ? false : formData.scopeTehranOnly})} className="w-4 h-4 text-teal-600" />
+                          <span>📍 محدودیت حوزه: فقط خریدهای محلی کارخانه (زنجان)</span>
+                      </label>
+                  </div>
+              </div>
+
               <label className="flex items-center gap-2 text-xs text-amber-900 bg-amber-50 px-2 py-1.5 rounded cursor-pointer border border-amber-300 font-bold">
                   <input type="checkbox" checked={formData.canViewPricingAndInvoices} onChange={e => setFormData({...formData, canViewPricingAndInvoices: e.target.checked})} className="w-4 h-4 text-amber-600" />
                   <span>🔒 مشاهده فی، مبالغ ریالی و پیش‌فاکتورها (محرمانه مالی)</span>
-              </label>
-              <label className="flex items-center gap-2 text-xs text-teal-900 bg-teal-50 px-2 py-1.5 rounded cursor-pointer border border-teal-300">
-                  <input type="checkbox" checked={formData.canManageZanjanPurchasing} onChange={e => setFormData({...formData, canManageZanjanPurchasing: e.target.checked})} className="w-4 h-4 text-teal-600" />
-                  <span>🏭 ثبت استعلام و فاکتور خرید محلی کارخانه (زنجان)</span>
-              </label>
-              <label className="flex items-center gap-2 text-xs text-teal-900 bg-teal-50 px-2 py-1.5 rounded cursor-pointer border border-teal-300">
-                  <input type="checkbox" checked={formData.canExecuteBuyerZanjan} onChange={e => setFormData({...formData, canExecuteBuyerZanjan: e.target.checked})} className="w-4 h-4 text-teal-600" />
-                  <span>🛍️ ثبت خرید و فاکتور کارپرداز زنجان (کارخانه)</span>
-              </label>
-              <label className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded cursor-pointer border border-gray-300">
-                  <input type="checkbox" checked={formData.scopeZanjanOnly} onChange={e => setFormData({...formData, scopeZanjanOnly: e.target.checked, scopeTehranOnly: e.target.checked ? false : formData.scopeTehranOnly})} className="w-4 h-4 text-teal-600" />
-                  <span>📍 محدودیت حوزه: فقط خریدهای محلی کارخانه (زنجان)</span>
-              </label>
-              <label className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 px-2 py-1.5 rounded cursor-pointer border border-gray-300">
-                  <input type="checkbox" checked={formData.scopeTehranOnly} onChange={e => setFormData({...formData, scopeTehranOnly: e.target.checked, scopeZanjanOnly: e.target.checked ? false : formData.scopeZanjanOnly})} className="w-4 h-4 text-sky-600" />
-                  <span>🏢 محدودیت حوزه: فقط خریدهای بازرگانی تهران</span>
               </label>
 
               {/* Sayan Specific Permissions Section */}

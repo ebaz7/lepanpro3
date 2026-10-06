@@ -143,9 +143,240 @@ export const canUserViewProformas = (
                 return true;
             }
         }
+
+        // Check if user is in Zanjan allowed or purchasing user IDs
+        if (
+            (settings?.purchaseZanjanAllowedUserIds || []).includes(user.id) ||
+            (settings?.purchaseZanjanPurchasingUserIds || []).includes(user.id) ||
+            (settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id) ||
+            (settings?.purchaseZanjanBuyerUserIds || []).includes(user.id)
+        ) {
+            return true;
+        }
+    }
+
+    // 4. Tehran Purchase condition:
+    const isTehranScope = !request || request.location === 'Tehran' || 
+        (typeof request.status === 'string' && (
+            request.status.includes('TEHRAN') || 
+            request.status.includes('CEO') || 
+            request.status.includes('COMMERCIAL')
+        ));
+
+    if (isTehranScope) {
+        if (
+            (settings?.purchaseTehranAllowedUserIds || []).includes(user.id) ||
+            (settings?.purchaseTehranProformaUserIds || []).includes(user.id) ||
+            (settings?.purchaseTehranCeoApproverUserIds || []).includes(user.id) ||
+            (settings?.purchaseTehranCommercialApproverUserIds || []).includes(user.id) ||
+            (settings?.purchaseTehranSelectionUserIds || []).includes(user.id)
+        ) {
+            return true;
+        }
     }
 
     // All others: strictly restricted
+    return false;
+};
+
+export const checkPurchasePermission = (
+    user: User,
+    permKey: keyof PurchaseRolePermissions | string,
+    settings?: SystemSettings | null,
+    request?: PurchaseRequest | null
+): boolean => {
+    if (!user) return false;
+
+    const isAdmin = user.role === UserRole.ADMIN || (user.roles && user.roles.includes(UserRole.ADMIN));
+    if (isAdmin) return true;
+
+    // Direct user-level boolean permission
+    if ((user as any)[permKey] === true) return true;
+
+    const rolesList: string[] = [];
+    if (user.role) rolesList.push(String(user.role).toLowerCase());
+    if (user.roles && Array.isArray(user.roles)) {
+        user.roles.forEach(r => {
+            if (r) {
+                const s = String(r).toLowerCase();
+                if (!rolesList.includes(s)) rolesList.push(s);
+            }
+        });
+    }
+
+    const checkRoleMatch = (snippet: string) => {
+        const target = snippet.toLowerCase();
+        return rolesList.some(r => r.includes(target));
+    };
+
+    // Specific permissions mapped to roles and designated users in settings
+    switch (permKey) {
+        // --- TEHRAN COMMERCIAL BRANCH ---
+        case 'canApproveCEO':
+            if (checkRoleMatch('ceo') || checkRoleMatch('مدیرعامل')) return true;
+            if ((settings?.purchaseTehranCeoApproverUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canApproveCommercialManager':
+            if (checkRoleMatch('commercial') || checkRoleMatch('بازرگانی') || checkRoleMatch('مدیر بازرگانی')) return true;
+            if ((settings?.purchaseTehranCommercialApproverUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canManageProformas':
+            if (checkRoleMatch('commercial') || checkRoleMatch('بازرگانی') || checkRoleMatch('مدیر بازرگانی') || checkRoleMatch('ceo') || checkRoleMatch('مدیرعامل')) return true;
+            if ((settings?.purchaseTehranProformaUserIds || []).includes(user.id)) return true;
+            if ((settings?.purchaseTehranAllowedUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canSelectProforma':
+            if (checkRoleMatch('ceo') || checkRoleMatch('مدیرعامل') || checkRoleMatch('commercial') || checkRoleMatch('مدیر بازرگانی')) return true;
+            if ((settings?.purchaseTehranSelectionUserIds || []).includes(user.id)) return true;
+            if ((settings?.purchaseTehranCeoApproverUserIds || []).includes(user.id)) return true;
+            if ((settings?.purchaseTehranCommercialApproverUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canCommercialFinalize':
+            if (checkRoleMatch('commercial') || checkRoleMatch('بازرگانی') || checkRoleMatch('مدیر بازرگانی')) return true;
+            if ((settings?.purchaseTehranFinalUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'scopeTehranOnly':
+            if (user.scopeTehranOnly || user.purchaseScope === 'TEHRAN_ONLY') return true;
+            break;
+
+        // --- ZANJAN FACTORY BRANCH ---
+        case 'canApproveFactoryDecision':
+            if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
+            if ((settings?.purchaseZanjanDecisionApproverUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canManageZanjanPurchasing':
+            if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه')) return true;
+            if ((settings?.purchaseZanjanPurchasingUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canApproveFactory':
+            if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
+            if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canExecuteBuyerZanjan':
+            if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه')) return true;
+            if ((settings?.purchaseZanjanBuyerUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'canApproveFactoryFinal':
+            if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
+            if ((settings?.purchaseZanjanFinalApproverUserIds || []).includes(user.id)) return true;
+            if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
+            break;
+
+        case 'scopeZanjanOnly':
+            if (user.scopeZanjanOnly || user.purchaseScope === 'ZANJAN_ONLY') return true;
+            break;
+
+        // --- COMMON STAGES ---
+        case 'canView':
+            if (user.canManagePurchase) return true;
+            break;
+
+        case 'canCreate':
+            if (user.canManagePurchase) return true;
+            break;
+
+        case 'canApproveTechnical':
+            if (checkRoleMatch('technical') || checkRoleMatch('فنی') || checkRoleMatch('نت')) return true;
+            break;
+
+        case 'canApproveShiftLeader':
+            if (checkRoleMatch('shift') || checkRoleMatch('سرشیفت')) return true;
+            break;
+
+        case 'canApproveWarehouseKeeper':
+            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
+            break;
+
+        case 'canRegisterEntry':
+            if (checkRoleMatch('security') || checkRoleMatch('نگهبان') || checkRoleMatch('انتظامات')) return true;
+            break;
+
+        case 'canCheckQC':
+            if (checkRoleMatch('qc') || checkRoleMatch('کنترل کیفی')) return true;
+            break;
+
+        case 'canWarehouseFinalize':
+            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
+            break;
+
+        case 'canManageParts':
+            if (user.canManageParts || checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
+            break;
+
+        case 'canViewPricingAndInvoices':
+            if (user.canViewPricingAndInvoices || checkRoleMatch('ceo') || checkRoleMatch('commercial') || checkRoleMatch('financial')) return true;
+            break;
+    }
+
+    // Role permissions from settings
+    for (const r of rolesList) {
+        const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
+        if (!!(rolePerms as any)[permKey]) return true;
+    }
+
+    return false;
+};
+
+export const canUserAccessTehranBranch = (user: User, settings?: SystemSettings | null): boolean => {
+    if (!user) return false;
+    const isAdmin = user.role === UserRole.ADMIN || (user.roles && user.roles.includes(UserRole.ADMIN));
+    if (isAdmin) return true;
+    if (user.scopeZanjanOnly || user.purchaseScope === 'ZANJAN_ONLY') return false;
+    if (user.scopeTehranOnly || user.purchaseScope === 'TEHRAN_ONLY') return true;
+
+    const rolesList: string[] = [];
+    if (user.role) rolesList.push(String(user.role).toLowerCase());
+    if (user.roles && Array.isArray(user.roles)) {
+        user.roles.forEach(r => r && rolesList.push(String(r).toLowerCase()));
+    }
+    const checkRoleMatch = (snippet: string) => rolesList.some(r => r.includes(snippet.toLowerCase()));
+
+    if (checkRoleMatch('ceo') || checkRoleMatch('مدیرعامل') || checkRoleMatch('commercial') || checkRoleMatch('بازرگانی') || checkRoleMatch('financial') || checkRoleMatch('مالی')) return true;
+    if ((settings?.purchaseTehranAllowedUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseTehranCeoApproverUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseTehranCommercialApproverUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseTehranProformaUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseTehranSelectionUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseTehranFinalUserIds || []).includes(user.id)) return true;
+
+    if (user.canApproveCEO || user.canApproveCommercialManager || user.canManageProformas || user.canSelectProforma || user.canCommercialFinalize) return true;
+
+    return false;
+};
+
+export const canUserAccessZanjanBranch = (user: User, settings?: SystemSettings | null): boolean => {
+    if (!user) return false;
+    const isAdmin = user.role === UserRole.ADMIN || (user.roles && user.roles.includes(UserRole.ADMIN));
+    if (isAdmin) return true;
+    if (user.scopeTehranOnly || user.purchaseScope === 'TEHRAN_ONLY') return false;
+    if (user.scopeZanjanOnly || user.purchaseScope === 'ZANJAN_ONLY') return true;
+
+    const rolesList: string[] = [];
+    if (user.role) rolesList.push(String(user.role).toLowerCase());
+    if (user.roles && Array.isArray(user.roles)) {
+        user.roles.forEach(r => r && rolesList.push(String(r).toLowerCase()));
+    }
+    const checkRoleMatch = (snippet: string) => rolesList.some(r => r.includes(snippet.toLowerCase()));
+
+    if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه') || checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید کارخانه') || checkRoleMatch('خرید زنجان')) return true;
+    if ((settings?.purchaseZanjanAllowedUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseZanjanDecisionApproverUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseZanjanPurchasingUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseZanjanBuyerUserIds || []).includes(user.id)) return true;
+    if ((settings?.purchaseZanjanFinalApproverUserIds || []).includes(user.id)) return true;
+
+    if (user.canApproveFactoryDecision || user.canManageZanjanPurchasing || user.canApproveFactory || user.canExecuteBuyerZanjan || user.canApproveFactoryFinal) return true;
+
     return false;
 };
 
@@ -272,8 +503,7 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
     };
 
     const hasPurchasePerm = (perm: string) => {
-        if (currentUser.role === UserRole.ADMIN) return true;
-        return !!(perms as any)[perm];
+        return checkPurchasePermission(currentUser, perm, settings);
     };
 
     // Components for each tab will go here
@@ -480,18 +710,7 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
     }, [currentUser, settings]);
 
     const hasPurchasePerm = (perm: string) => {
-        if (isAdmin) return true;
-        
-        let hasPerm = false;
-        const rolesList = currentUser.roles && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
-        for (const r of rolesList) {
-            if (r === UserRole.ADMIN) return true;
-            const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
-            if (!!(rolePerms as any)[perm]) {
-                hasPerm = true;
-            }
-        }
-        return hasPerm;
+        return checkPurchasePermission(currentUser, perm, settings);
     };
 
     const ceoCount = requests.filter((r: any) => 
@@ -506,8 +725,18 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
         r.status === PurchaseRequestStatus.PENDING_BUYER_EXECUTION
     ).length;
 
+    const tehranTotalCount = requests.filter((r: any) => 
+        r.location === 'Tehran' || (typeof r.status === 'string' && (r.status.includes('TEHRAN') || r.status.includes('CEO') || r.status.includes('COMMERCIAL')))
+    ).length;
+
+    const zanjanTotalCount = requests.filter((r: any) => 
+        r.location === 'Factory' || r.location === 'Zanjan' || (typeof r.status === 'string' && (r.status.includes('FACTORY') || r.status.includes('ZANJAN')))
+    ).length;
+
     const stats = [
         { label: 'کل درخواست‌ها', count: requests.length, color: 'indigo', icon: ShoppingCart, tab: 'REQUESTS', bg: 'border-indigo-100 bg-indigo-50/30' },
+        { label: '🏢 بازرگانی تهران', count: tehranTotalCount, color: 'sky', icon: Briefcase, tab: 'REQUESTS', bg: 'border-sky-300 bg-sky-50/70 text-sky-900', highlightIcon: 'bg-sky-500 text-white shadow-xs' },
+        { label: '🏭 کارخانه زنجان', count: zanjanTotalCount, color: 'teal', icon: Warehouse, tab: 'REQUESTS', bg: 'border-teal-300 bg-teal-50/70 text-teal-900', highlightIcon: 'bg-teal-600 text-white shadow-xs' },
         { label: 'منتظر تایید مدیرعامل', count: ceoCount, color: 'sky', icon: Crown, tab: 'REQUESTS', bg: 'border-sky-200 bg-sky-50/40 text-sky-800', highlightIcon: 'bg-sky-100 text-sky-600' },
         { label: 'منتظر بررسی بازرگانی', count: commercialCount, color: 'purple', icon: Briefcase, tab: 'REQUESTS', bg: 'border-purple-200 bg-purple-50/40 text-purple-800', highlightIcon: 'bg-purple-100 text-purple-600' },
         { label: 'ورود و کنترل کیفی', count: requests.filter((r: any) => r.status === PurchaseRequestStatus.PENDING_SECURITY_ENTRY || r.status === PurchaseRequestStatus.PENDING_QC).length, color: 'orange', icon: Truck, tab: 'REQUESTS', bg: 'border-orange-100 bg-orange-50/30 text-orange-800', highlightIcon: 'bg-orange-100 text-orange-600' },
@@ -529,17 +758,19 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
             
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING: 
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
+                return hasPurchasePerm('canManageProformas') && (r.location === 'Tehran' || !r.location);
+
             case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
-                return hasPurchasePerm('canManageProformas') && r.location === 'Tehran';
+                return (hasPurchasePerm('canApproveCommercialManager') || hasPurchasePerm('canCommercialFinalize')) && (r.location === 'Tehran' || !r.location);
             
             case PurchaseRequestStatus.PENDING_CEO_INITIAL:
             case PurchaseRequestStatus.PENDING_CEO_SELECTION:
-                return hasPurchasePerm('canApproveCEO');
+                return hasPurchasePerm('canApproveCEO') || hasPurchasePerm('canSelectProforma');
                 
             case PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING:
             case PurchaseRequestStatus.PENDING_FACTORY_PURCHASING:
             case PurchaseRequestStatus.PENDING_FACTORY_PROFORMA:
-                return hasPurchasePerm('canManageProformas') && (r.location === 'Factory' || r.location === 'Zanjan');
+                return hasPurchasePerm('canManageZanjanPurchasing') && (r.location === 'Factory' || r.location === 'Zanjan');
                 
             case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
             case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION:
@@ -549,7 +780,7 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
                 return hasPurchasePerm('canApproveFactory');
 
             case PurchaseRequestStatus.PENDING_BUYER_EXECUTION:
-                return hasPurchasePerm('canManageProformas');
+                return hasPurchasePerm('canExecuteBuyerZanjan') || hasPurchasePerm('canManageZanjanPurchasing');
 
             case PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL:
                 return hasPurchasePerm('canApproveTechnical');
@@ -721,25 +952,24 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
 const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, isArchive, settings }: any) => {
     const isAdmin = currentUser.role === UserRole.ADMIN || (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN));
     const [searchTerm, setSearchTerm] = useState('');
-    const [locationFilter, setLocationFilter] = useState<'ALL' | 'TEHRAN' | 'ZANJAN'>('ALL');
+    
+    const hasPurchasePerm = (perm: string) => {
+        return checkPurchasePermission(currentUser, perm, settings);
+    };
+
+    const isZanjanScopedUser = !isAdmin && (hasPurchasePerm('scopeZanjanOnly') || currentUser.purchaseScope === 'ZANJAN_ONLY' || (!canUserAccessTehranBranch(currentUser, settings) && canUserAccessZanjanBranch(currentUser, settings)));
+    const isTehranScopedUser = !isAdmin && (hasPurchasePerm('scopeTehranOnly') || currentUser.purchaseScope === 'TEHRAN_ONLY' || (canUserAccessTehranBranch(currentUser, settings) && !canUserAccessZanjanBranch(currentUser, settings)));
+
+    const [locationFilter, setLocationFilter] = useState<'ALL' | 'TEHRAN' | 'ZANJAN'>(() => {
+        if (isZanjanScopedUser) return 'ZANJAN';
+        if (isTehranScopedUser) return 'TEHRAN';
+        return 'ALL';
+    });
     const [showCreate, setShowCreate] = useState(false);
     const [viewingRequest, setViewingRequest] = useState<PurchaseRequest | null>(null);
 
-    const hasPurchasePerm = (perm: string) => {
-        if (isAdmin) return true;
-        const userDirect = (currentUser as any)[perm];
-        if (userDirect !== undefined && userDirect !== null) return !!userDirect;
-        const rolesList = currentUser.roles && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
-        for (const r of rolesList) {
-            if (r === UserRole.ADMIN) return true;
-            const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
-            if (!!(rolePerms as any)[perm]) return true;
-        }
-        return false;
-    };
-
-    const isZanjanScopedUser = hasPurchasePerm('scopeZanjanOnly') || currentUser.purchaseScope === 'ZANJAN_ONLY';
-    const isTehranScopedUser = hasPurchasePerm('scopeTehranOnly') || currentUser.purchaseScope === 'TEHRAN_ONLY';
+    const tehranCount = requests.filter((r: any) => r.location === 'Tehran' || (typeof r.status === 'string' && (r.status.includes('TEHRAN') || r.status.includes('CEO') || r.status.includes('COMMERCIAL')))).length;
+    const zanjanCount = requests.filter((r: any) => r.location === 'Factory' || r.location === 'Zanjan' || (typeof r.status === 'string' && (r.status.includes('FACTORY') || r.status.includes('ZANJAN')))).length;
 
     const filtered = requests.filter((r: PurchaseRequest) => {
         // Enforce user role hard scope restrictions
@@ -777,44 +1007,76 @@ const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, is
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col md:flex-row gap-2 items-center">
-                <div className="relative flex-1 w-full">
-                    <input className="w-full glass-panel border border-gray-200 rounded-xl p-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-indigo-100" placeholder="جستجوی در کالا، شماره درخواست یا درخواست‌کننده..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                    <Search className="absolute right-3 top-3.5 text-gray-400" size={18}/>
-                </div>
-
-                {/* Scope Location Filter Pills */}
-                {!isZanjanScopedUser && !isTehranScopedUser && (
-                    <div className="flex items-center p-1 bg-gray-100 dark:bg-gray-800 rounded-xl gap-1 shrink-0 border border-gray-200 dark:border-gray-700">
+            {/* Top Branch Selector Tabs & Search Bar */}
+            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+                {/* Branch Switcher (Tehran vs Zanjan vs All) */}
+                <div className="flex items-center p-1.5 bg-gray-200/70 dark:bg-gray-800 rounded-2xl gap-1.5 shrink-0 border border-gray-300 dark:border-gray-700 shadow-xs">
+                    {!isZanjanScopedUser && !isTehranScopedUser && (
                         <button
                             onClick={() => setLocationFilter('ALL')}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all ${locationFilter === 'ALL' ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${locationFilter === 'ALL' ? 'bg-white dark:bg-gray-700 text-indigo-700 dark:text-indigo-300 shadow-md font-black' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
                         >
-                            همه حوزه‌ها
+                            <span>همه شاخه‌ها</span>
+                            <span className="text-[10px] bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded-full font-bold">{requests.length}</span>
                         </button>
+                    )}
+                    {!isZanjanScopedUser && (
                         <button
                             onClick={() => setLocationFilter('TEHRAN')}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${locationFilter === 'TEHRAN' ? 'bg-white dark:bg-gray-700 text-sky-700 dark:text-sky-300 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${locationFilter === 'TEHRAN' ? 'bg-sky-600 text-white shadow-md shadow-sky-500/30' : 'text-gray-600 dark:text-gray-300 hover:bg-sky-50 hover:text-sky-700'}`}
+                            title="گردش کار و تاییدات بازرگانی تهران (مدیر بازرگانی و مدیرعامل)"
                         >
-                            <span>🏢</span>
-                            <span>بازرگانی تهران</span>
+                            <Briefcase size={14} />
+                            <span>🏢 بازرگانی تهران</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${locationFilter === 'TEHRAN' ? 'bg-white/20 text-white' : 'bg-sky-100 text-sky-800'}`}>{tehranCount}</span>
                         </button>
+                    )}
+                    {!isTehranScopedUser && (
                         <button
                             onClick={() => setLocationFilter('ZANJAN')}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${locationFilter === 'ZANJAN' ? 'bg-white dark:bg-gray-700 text-teal-700 dark:text-teal-300 shadow-xs' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-3.5 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${locationFilter === 'ZANJAN' ? 'bg-teal-600 text-white shadow-md shadow-teal-500/30' : 'text-gray-600 dark:text-gray-300 hover:bg-teal-50 hover:text-teal-700'}`}
+                            title="گردش کار و تاییدات کارخانه زنجان (مدیران زنجان و کارپرداز)"
                         >
-                            <span>🏭</span>
-                            <span>کارخانه (زنجان)</span>
+                            <Warehouse size={14} />
+                            <span>🏭 کارخانه زنجان</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${locationFilter === 'ZANJAN' ? 'bg-white/20 text-white' : 'bg-teal-100 text-teal-800'}`}>{zanjanCount}</span>
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
 
-                {canCreate && !isArchive && (
-                    <button onClick={() => setShowCreate(true)} className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 text-white p-3 px-6 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 font-bold text-sm transition-all cursor-pointer shrink-0">
-                        <Plus size={20}/> ثبت درخواست جدید
-                    </button>
-                )}
+                <div className="flex items-center gap-2 flex-1 w-full">
+                    <div className="relative flex-1 w-full">
+                        <input className="w-full glass-panel border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 pr-10 text-xs md:text-sm outline-none focus:ring-2 focus:ring-indigo-100" placeholder="جستجو در کالا، شماره درخواست یا متقاضی..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <Search className="absolute right-3 top-3 text-gray-400" size={16}/>
+                    </div>
+
+                    {canCreate && !isArchive && (
+                        <button onClick={() => setShowCreate(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 px-5 rounded-xl shadow-md shadow-indigo-100 dark:shadow-none flex items-center justify-center gap-1.5 font-bold text-xs md:text-sm transition-all cursor-pointer shrink-0">
+                            <Plus size={18}/> ثبت درخواست جدید
+                        </button>
+                    )}
+                </div>
             </div>
+
+            {/* Branch Context Info Banner */}
+            {locationFilter === 'TEHRAN' && (
+                <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 p-3 rounded-2xl flex items-center justify-between text-xs text-sky-900 dark:text-sky-200 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                        <Briefcase size={16} className="text-sky-600 shrink-0" />
+                        <span><strong>کارتابل بازرگانی تهران:</strong> بررسی و صدور پیش‌فاکتورها توسط بازرگانی تهران، تایید نهایی و انتخاب تامین‌کننده توسط مدیرعامل و مدیر بازرگانی تهران.</span>
+                    </div>
+                    <span className="text-[10px] bg-sky-200/60 dark:bg-sky-900/80 px-2 py-0.5 rounded-md font-bold shrink-0">{filtered.length} مورد</span>
+                </div>
+            )}
+            {locationFilter === 'ZANJAN' && (
+                <div className="bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800/60 p-3 rounded-2xl flex items-center justify-between text-xs text-teal-900 dark:text-teal-200 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                        <Warehouse size={16} className="text-teal-600 shrink-0" />
+                        <span><strong>کارتابل کارخانه زنجان:</strong> فرآیند خرید محلی، استعلام قیمت توسط تدارکات زنجان و صدور دستور خرید و تاییدات توسط مدیران کارخانه زنجان.</span>
+                    </div>
+                    <span className="text-[10px] bg-teal-200/60 dark:bg-teal-900/80 px-2 py-0.5 rounded-md font-bold shrink-0">{filtered.length} مورد</span>
+                </div>
+            )}
 
             {filtered.length === 0 ? (
                 <div className="glass-panel p-12 text-center border-2 border-dashed border-gray-200 rounded-[2.5rem]">
@@ -848,43 +1110,59 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
     const isAdmin = isRole(UserRole.ADMIN);
 
     const hasPurchasePerm = (perm: string) => {
-        if (isAdmin) return true;
-        
-        let hasPerm = false;
-        const rolesList = currentUser.roles && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
-        for (const r of rolesList) {
-            if (r === UserRole.ADMIN) return true;
-            const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
-            if (!!(rolePerms as any)[perm]) {
-                hasPerm = true;
-            }
-        }
-        return hasPerm;
+        return checkPurchasePermission(currentUser, perm, settings, req);
     };
 
     const isMyTurn = (r: PurchaseRequest) => {
         if (r.status === PurchaseRequestStatus.COMPLETED || r.status === PurchaseRequestStatus.REJECTED) return false;
         if (isAdmin) return true;
 
+        const isTehranReq = r.location === 'Tehran' || (typeof r.status === 'string' && (r.status.includes('TEHRAN') || r.status.includes('CEO') || r.status.includes('COMMERCIAL')));
+        const isZanjanReq = r.location === 'Factory' || r.location === 'Zanjan' || (typeof r.status === 'string' && (r.status.includes('FACTORY') || r.status.includes('ZANJAN')));
+
+        if (isTehranReq && !canUserAccessTehranBranch(currentUser, settings)) return false;
+        if (isZanjanReq && !canUserAccessZanjanBranch(currentUser, settings)) return false;
+
         switch (r.status) {
             case PurchaseRequestStatus.PENDING_TECHNICAL: return hasPurchasePerm('canApproveTechnical');
-            case PurchaseRequestStatus.PENDING_FACTORY: return hasPurchasePerm('canApproveFactory');
+            case PurchaseRequestStatus.PENDING_SHIFT_LEADER: return hasPurchasePerm('canApproveShiftLeader');
+            case PurchaseRequestStatus.PENDING_FACTORY:
+            case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
+                return hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canApproveFactory');
             case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
             case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
                 return hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory');
+            
+            // Tehran Commercial Branch Stages
+            case PurchaseRequestStatus.PENDING_CEO_INITIAL:
+                return hasPurchasePerm('canApproveCEO');
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING: 
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
-                return hasPurchasePerm('canManageProformas') && r.location === 'Tehran';
-            case PurchaseRequestStatus.PENDING_CEO_INITIAL:
+                return hasPurchasePerm('canManageProformas');
+            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
+                return hasPurchasePerm('canApproveCommercialManager') || hasPurchasePerm('canCommercialFinalize');
             case PurchaseRequestStatus.PENDING_CEO_SELECTION:
-                return hasPurchasePerm('canApproveCEO');
+                return hasPurchasePerm('canSelectProforma') || hasPurchasePerm('canApproveCEO');
+            
+            // Zanjan Factory Branch Stages
+            case PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING:
             case PurchaseRequestStatus.PENDING_FACTORY_PURCHASING:
             case PurchaseRequestStatus.PENDING_FACTORY_PROFORMA:
-                return hasPurchasePerm('canManageProformas') && r.location === 'Factory';
+                return hasPurchasePerm('canManageZanjanPurchasing') || hasPurchasePerm('canManageProformas');
+            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
             case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION:
+                return hasPurchasePerm('canApproveFactory');
+            case PurchaseRequestStatus.PENDING_BUYER_EXECUTION:
+                return hasPurchasePerm('canExecuteBuyerZanjan') || hasPurchasePerm('canManageProformas');
+            case PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL:
+                return hasPurchasePerm('canApproveTechnical');
+            case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
+                return hasPurchasePerm('canApproveFactory');
             case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
             case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
-                return hasPurchasePerm('canApproveFactory');
+                return hasPurchasePerm('canApproveFactoryFinal') || hasPurchasePerm('canApproveFactory');
+
+            // Common Stages
             case PurchaseRequestStatus.PENDING_SECURITY_ENTRY: return hasPurchasePerm('canRegisterEntry');
             case PurchaseRequestStatus.PENDING_QC: return hasPurchasePerm('canCheckQC');
             case PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT: return hasPurchasePerm('canWarehouseFinalize');
@@ -901,18 +1179,26 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
             case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
                 return { title: 'مدیر کارخانه (تعیین مسیر)', icon: Warehouse, cls: 'bg-amber-100 text-amber-800 border-amber-200' };
             case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
+                return { title: 'مدیر بازرگانی تهران', icon: Briefcase, cls: 'bg-purple-100 text-purple-800 border-purple-200' };
             case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
             case PurchaseRequestStatus.PENDING_TEHRAN_PURCHASING:
-                return { title: 'مدیر بازرگانی', icon: Briefcase, cls: 'bg-purple-100 text-purple-800 border-purple-200' };
+                return { title: 'تدارکات بازرگانی تهران', icon: ShoppingBag, cls: 'bg-sky-100 text-sky-800 border-sky-200' };
+            case PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING:
+            case PurchaseRequestStatus.PENDING_FACTORY_PURCHASING:
+                return { title: 'تدارکات زنجان', icon: ShoppingBag, cls: 'bg-teal-100 text-teal-800 border-teal-200' };
             case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
             case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_SELECTION:
             case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
             case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
             case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
-                return { title: 'مدیر کارخانه', icon: Warehouse, cls: 'bg-teal-100 text-teal-800 border-teal-200' };
+                return { title: 'مدیر کارخانه زنجان', icon: Warehouse, cls: 'bg-teal-100 text-teal-800 border-teal-200' };
+            case PurchaseRequestStatus.PENDING_BUYER_EXECUTION:
+                return { title: 'کارپرداز زنجان', icon: ShoppingBag, cls: 'bg-amber-100 text-amber-800 border-amber-200' };
             case PurchaseRequestStatus.PENDING_TECHNICAL:
             case PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL:
-                return { title: 'واحد نت', icon: Wrench, cls: 'bg-blue-100 text-blue-800 border-blue-200' };
+                return { title: 'واحد نت / فنی', icon: Wrench, cls: 'bg-blue-100 text-blue-800 border-blue-200' };
+            case PurchaseRequestStatus.PENDING_SHIFT_LEADER:
+                return { title: 'سرشیفت کارخانه', icon: Users, cls: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
             case PurchaseRequestStatus.PENDING_QC:
                 return { title: 'کنترل کیفیت QC', icon: ShieldCheck, cls: 'bg-green-100 text-green-800 border-green-200' };
             case PurchaseRequestStatus.PENDING_SECURITY_ENTRY:
@@ -994,7 +1280,19 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
                         {CardRoleIcon && <CardRoleIcon size={11} />}
                         اقدام: {roleBadge.title}
                     </span>
-                    <span className="text-[10px] text-gray-400">{req.location === 'Tehran' ? 'شعبه تهران' : 'کارخانه'}</span>
+                    {req.location === 'Tehran' || (typeof req.status === 'string' && (req.status.includes('TEHRAN') || req.status.includes('CEO') || req.status.includes('COMMERCIAL'))) ? (
+                        <span className="text-[9px] font-black text-sky-700 bg-sky-50 dark:bg-sky-950/40 dark:text-sky-300 border border-sky-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                            <Briefcase size={10} /> بازرگانی تهران
+                        </span>
+                    ) : req.location === 'Factory' || req.location === 'Zanjan' || (typeof req.status === 'string' && (req.status.includes('FACTORY') || req.status.includes('ZANJAN'))) ? (
+                        <span className="text-[9px] font-black text-teal-700 bg-teal-50 dark:bg-teal-950/40 dark:text-teal-300 border border-teal-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                            <Warehouse size={10} /> کارخانه زنجان
+                        </span>
+                    ) : (
+                        <span className="text-[9px] font-bold text-gray-400 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-100">
+                            در انتظار تعیین مسیر
+                        </span>
+                    )}
                 </div>
             )}
         </div>
@@ -1006,6 +1304,11 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
     const [loading, setLoading] = useState(false);
     const [requestingUnit, setRequestingUnit] = useState('واحد نت و فنی');
     const [urgency, setUrgency] = useState<'عادی' | 'فوری' | 'اضطراری'>('عادی');
+    const [targetBranch, setTargetBranch] = useState<'AUTO' | 'Tehran' | 'Factory'>(() => {
+        if (currentUser.scopeTehranOnly || currentUser.purchaseScope === 'TEHRAN_ONLY') return 'Tehran';
+        if (currentUser.scopeZanjanOnly || currentUser.purchaseScope === 'ZANJAN_ONLY') return 'Factory';
+        return 'AUTO';
+    });
     const [machinery, setMachinery] = useState('');
     const [installationLocation, setInstallationLocation] = useState('');
     const [breakdownDescription, setBreakdownDescription] = useState('');
@@ -1238,6 +1541,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                 requester: currentUser.fullName,
                 requestingUnit,
                 urgency,
+                location: targetBranch === 'Tehran' ? 'Tehran' : targetBranch === 'Factory' ? 'Factory' : undefined,
                 machinery,
                 installationLocation,
                 breakdownDescription,
@@ -1286,17 +1590,25 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                             </div>
                             <div>
                                 <h2 className="text-base sm:text-xl md:text-2xl font-black text-gray-800 dark:text-gray-100">ثبت فرم مهندسی درخواست خرید</h2>
-                                <p className="text-[10px] sm:text-xs text-gray-400 font-bold">ماژول خریدهای صنعتی، قطعات یدکی و ماشین‌آلات کارخانه</p>
+                                <p className="text-[10px] sm:text-xs text-gray-400 font-bold">ماژول خریدهای صنعتی، قطعات یدکی و ماشین‌آلات (تفکیک شعب بازرگانی تهران و کارخانه زنجان)</p>
                             </div>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-xl sm:rounded-2xl transition-all bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300"><X size={20} className="sm:hidden"/><X size={24} className="hidden sm:block"/></button>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 bg-indigo-50/60 dark:bg-indigo-950/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-4 bg-indigo-50/60 dark:bg-indigo-950/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
                             <div>
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">واحد درخواست‌کننده</label>
                                 <input className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={requestingUnit} onChange={e => setRequestingUnit(e.target.value)} required />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">شاخه تامین و فرآیند خرید</label>
+                                <select className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-black bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={targetBranch} onChange={e => setTargetBranch(e.target.value as any)}>
+                                    <option value="AUTO">⚖️ تعیین مسیر در مرحله ۳ (مدیر کارخانه)</option>
+                                    <option value="Tehran">🏢 بازرگانی تهران (دفتر مرکزی)</option>
+                                    <option value="Factory">🏭 کارخانه زنجان (خرید محلی)</option>
+                                </select>
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">درجه فوریت تامین</label>
@@ -2805,18 +3117,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     const canViewProformas = canUserViewProformas(currentUser, request, settings);
 
     const hasPurchasePerm = (perm: string) => {
-        if (isAdmin) return true;
-        
-        let hasPerm = false;
-        const rolesList = currentUser.roles && currentUser.roles.length > 0 ? currentUser.roles : [currentUser.role];
-        for (const r of rolesList) {
-            if (r === UserRole.ADMIN) return true;
-            const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
-            if (!!(rolePerms as any)[perm]) {
-                hasPerm = true;
-            }
-        }
-        return hasPerm;
+        return checkPurchasePermission(currentUser, perm, settings, request);
     };
 
     return createPortal(
@@ -3651,10 +3952,36 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         )}
 
                         {/* Tehran Branch: Commercial Manager Selection */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER) && (isAdmin || hasPurchasePerm('canCommercialFinalize')) && (
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER) && (isAdmin || hasPurchasePerm('canApproveCommercialManager') || hasPurchasePerm('canCommercialFinalize')) && (
                             <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-purple-500/30 ring-2 ring-purple-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" disabled={actionLoading}>
                                 <Briefcase size={18} className="text-amber-300 animate-pulse" />
-                                <span>💼 تایید مدیر بازرگانی و ارجاع به مدیرعامل</span>
+                                <span>💼 تایید مدیر بازرگانی و ارجاع به مدیرعامل (تهران)</span>
+                            </button>
+                        )}
+
+                        {/* Tehran Branch: CEO Final Selection & Approval */}
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_CEO_SELECTION) && (isAdmin || hasPurchasePerm('canSelectProforma') || hasPurchasePerm('canApproveCEO')) && (
+                            <button 
+                                onClick={() => {
+                                    const chosenProforma = request.proformas?.find((p: any) => p.isChosen);
+                                    if (!chosenProforma && (request.proformas || []).length > 1) {
+                                        alert('لطفاً ابتدا یکی از گزینه‌های پیش‌فاکتور را با زدن دکمه سبز رنگ «تایید و انتخاب» تعیین فرمایید.');
+                                        return;
+                                    }
+                                    const updatedProformas = (request.proformas || []).length === 1 && !chosenProforma 
+                                        ? [{ ...request.proformas[0], isChosen: true }] 
+                                        : request.proformas;
+                                    handleAction(
+                                        PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL, 
+                                        { proformas: updatedProformas }, 
+                                        `تایید و تصویب نهایی خرید توسط مدیرعامل${chosenProforma ? ` (${chosenProforma.vendorName})` : ''}`
+                                    );
+                                }} 
+                                className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-sky-500/30 ring-2 ring-sky-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" 
+                                disabled={actionLoading}
+                            >
+                                <Crown size={18} className="text-amber-300 animate-bounce" />
+                                <span>👑 تایید و تصویب نهایی خرید (مدیرعامل / مدیران مجاز تهران)</span>
                             </button>
                         )}
 

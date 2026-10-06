@@ -55,11 +55,18 @@ export interface User {
   _id?: string;
   canManageProformas?: boolean;
   canSelectProforma?: boolean;
+  canApproveCommercialManager?: boolean;
+  canApproveCEO?: boolean;
+  canApproveFactoryDecision?: boolean;
+  canApproveFactory?: boolean;
+  canApproveFactoryFinal?: boolean;
+  canCommercialFinalize?: boolean;
   canViewPricingAndInvoices?: boolean;
   canManageZanjanPurchasing?: boolean;
   canExecuteBuyerZanjan?: boolean;
   scopeZanjanOnly?: boolean;
   scopeTehranOnly?: boolean;
+  purchaseScope?: 'ALL' | 'TEHRAN_ONLY' | 'ZANJAN_ONLY';
   canViewSayan?: boolean;
   canViewSayanTraz?: boolean;
   canViewSayanSales?: boolean;
@@ -547,6 +554,22 @@ export interface SystemSettings {
   miniAppCarEstimatorUrl?: string;
   miniAppMobilePriceUrl?: string;
   purchaseRolePermissions?: Record<string, PurchaseRolePermissions>;
+  
+  // PURCHASE WORKFLOW - TEHRAN & ZANJAN APPROVERS & ACCESS SETTINGS
+  purchaseTehranAllowedUserIds?: string[]; // کاربران مجاز شعبه بازرگانی تهران
+  purchaseTehranCeoApproverUserIds?: string[]; // افراد خاص تایید مدیرعامل تهران (مجوز استعلام و تایید نهایی)
+  purchaseTehranCommercialApproverUserIds?: string[]; // افراد خاص تایید مدیر بازرگانی تهران (بررسی و تایید پیش‌فاکتورها)
+  purchaseTehranProformaUserIds?: string[]; // افراد خاص ثبت پیش‌فاکتورهای بازرگانی تهران
+  purchaseTehranSelectionUserIds?: string[]; // افراد خاص انتخاب گزینه نهایی خرید تهران
+  purchaseTehranFinalUserIds?: string[]; // افراد خاص تایید نهایی و بایگانی بازرگانی تهران
+
+  purchaseZanjanAllowedUserIds?: string[]; // کاربران مجاز خرید کارخانه زنجان
+  purchaseZanjanDecisionApproverUserIds?: string[]; // افراد خاص تعیین مسیر خرید محلی کارخانه زنجان
+  purchaseZanjanPurchasingUserIds?: string[]; // افراد خاص استعلام و پیشنهاد خرید محلی کارخانه زنجان
+  purchaseZanjanManagerApproverUserIds?: string[]; // افراد خاص تایید و صدور دستور خرید مدیر کارخانه زنجان
+  purchaseZanjanBuyerUserIds?: string[]; // افراد خاص اجرای خرید و تسویه فاکتور کارپرداز زنجان
+  purchaseZanjanFinalApproverUserIds?: string[]; // افراد خاص تایید نهایی مدیر کارخانه زنجان
+
   prodReturnsTelegramGroupId?: string;
   prodReturnsBaleGroupId?: string;
   prodReturnsWhatsappGroupId?: string;
@@ -561,6 +584,7 @@ export interface PurchaseRolePermissions {
   canApproveFactoryDecision?: boolean;
   canApproveFactory?: boolean;
   canApproveCEO?: boolean;
+  canApproveCommercialManager?: boolean;
   canManageProformas?: boolean;
   canSelectProforma?: boolean;
   canRegisterEntry?: boolean;
