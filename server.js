@@ -166,7 +166,15 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-const PORT = process.argv.includes('--dev') ? 3000 : (process.env.PORT || 3000);
+let PORT = 3000;
+const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
+if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = parseInt(process.argv[portArgIndex + 1], 10);
+    if (!isNaN(parsed) && parsed > 0) PORT = parsed;
+} else if (!process.argv.includes('--dev') && process.env.PORT) {
+    const parsed = parseInt(process.env.PORT, 10);
+    if (!isNaN(parsed) && parsed > 0) PORT = parsed;
+}
 
 app.disable('x-powered-by');
 app.use(cors()); 
@@ -2347,13 +2355,216 @@ app.get('/api/sayan/cheque-receipts/pending-counts', (req, res) => {
 });
 
 
+const standardGroupNames = {
+    '0101': 'چیپس',
+    '0102': 'POY',
+    '0103': 'dty یا پلی استر',
+    '0104': 'لاستیک',
+    '0105': 'لاکرا',
+    '0106': 'پلی استر اسپان',
+    '0107': 'مستر بچ',
+    '0108': 'نایلون',
+    '0401': 'اسپاندکس (کاور)',
+    '0402': 'کش',
+    '0403': 'اسپاندکس جوشی ( ساپورت )',
+    '0405': 'پلی استر شوایتر',
+    '0407': 'نایلون',
+    '0408': 'نخ ملت',
+    '0409': 'الیاف',
+    '0410': 'FDY'
+};
+
+const cartonRatios = {
+    '0401': 15.0,
+    '0402': 16.0,
+    '0403': 17.0,
+    '0405': 15.5,
+    '0410': 20.0,
+};
+
+const getItemNamesMap = async (db) => {
+    if (global._sayanItemNamesCache && (Date.now() - global._sayanItemNamesCacheTime < 3600000)) {
+        return global._sayanItemNamesCache;
+    }
+    try {
+        const nameRows = await executeSayanQuery(db, `
+            SELECT 
+                RTRIM(LTRIM(t21.Field_004)) as ItemCode,
+                RTRIM(LTRIM(t02.Field_003)) as ItemName,
+                RTRIM(LTRIM(COALESCE(t02_parent.Field_003, t02.Field_003))) as GroupName,
+                RTRIM(LTRIM(t02.Field_003)) as SubGroupName
+            FROM IND_TBL_021 t21 WITH (NOLOCK)
+            INNER JOIN IND_TBL_002 t02 WITH (NOLOCK) ON RTRIM(LTRIM(t21.Field_003)) = RTRIM(LTRIM(t02.Field_008))
+            LEFT JOIN IND_TBL_002 t02_parent WITH (NOLOCK) ON RTRIM(LTRIM(t02.Field_009)) = RTRIM(LTRIM(t02_parent.Field_008))
+        `, 5000);
+
+        const map = {};
+        (nameRows || []).forEach(r => {
+            if (r.ItemCode && !map[r.ItemCode]) {
+                map[r.ItemCode] = { name: r.ItemName, group: r.GroupName, subGroup: r.SubGroupName };
+            }
+        });
+
+        const ind22 = await executeSayanQuery(db, `SELECT RTRIM(LTRIM(Field_005)) as ItemCode, RTRIM(LTRIM(Field_004)) as ItemName FROM IND_TBL_022 WITH (NOLOCK)`, 5000);
+        (ind22 || []).forEach(r => {
+            if (r.ItemCode && !map[r.ItemCode]) {
+                map[r.ItemCode] = { name: r.ItemName, group: '', subGroup: '' };
+            }
+        });
+
+        global._sayanItemNamesCache = map;
+        global._sayanItemNamesCacheTime = Date.now();
+        return map;
+    } catch (err) {
+        console.warn("[Warehouse Inventory] Could not fetch item names map from Sayan:", err.message);
+        return global._sayanItemNamesCache || {};
+    }
+};
+
+const getFyCodeForDate = (dateStr) => {
+    if (dateStr <= '2025-03-20') return 2;
+    if (dateStr <= '2026-03-20') return 3;
+    if (dateStr <= '2027-03-20') return 4;
+    if (dateStr <= '2028-03-20') return 5;
+    if (dateStr <= '2029-03-20') return 6;
+    const year = parseInt(dateStr.substring(0, 4));
+    return Math.max(2, year - 2022);
+};
+
+const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
+    const fyCode = getFyCodeForDate(targetDate);
+
+    let hasOpening = false;
+    try {
+        const openingCheck = await executeSayanQuery(db, `
+            SELECT TOP 1 Field_001 
+            FROM STR_TBL_010 WITH (NOLOCK) 
+            WHERE Field_004 = '${fyCode}' AND Field_009 IN ('10', '81')
+        `, 4000);
+        hasOpening = Array.isArray(openingCheck) && openingCheck.length > 0;
+    } catch (e) {
+        hasOpening = fyCode <= 4;
+    }
+
+    let fyFilter = '';
+    if (hasOpening) {
+        fyFilter = `t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'`;
+    } else {
+        const prevFy = Math.max(2, fyCode - 1);
+        fyFilter = `t11.Field_003 IN ('${prevFy}', '${fyCode}') AND t10.Field_004 IN ('${prevFy}', '${fyCode}')`;
+    }
+
+    const sql = `
+        SELECT 
+            t11.Field_005 as ItemCode,
+            SUM(CASE WHEN s06.Field_010 = 1 THEN t11.Field_006 ELSE 0 END) as InflowQty,
+            SUM(CASE WHEN s06.Field_010 = -1 THEN t11.Field_006 ELSE 0 END) as OutflowQty,
+            SUM(CASE WHEN s06.Field_010 = 1 THEN t11.Field_006 WHEN s06.Field_010 = -1 THEN -t11.Field_006 ELSE 0 END) as StockQty
+        FROM STR_TBL_011 t11 WITH (NOLOCK)
+        INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
+                                  AND t11.Field_003 = t10.Field_004 
+                                  AND t11.Field_012 = t10.Field_018
+        INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
+        WHERE ${fyFilter}
+          AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+          AND t10.Field_009 NOT IN ('19', '82')
+          AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
+        GROUP BY t11.Field_005
+    `;
+
+    const rows = await executeSayanQuery(db, sql, 12000);
+    return (rows || []).map(r => {
+        const code = String(r.ItemCode || '').trim();
+        const grpCode = code.substring(0, 4);
+        const mapped = nameMap[code] || {};
+        const defaultGrp = standardGroupNames[grpCode] || `گروه ${grpCode}`;
+        const weight = parseFloat((r.StockQty || 0).toFixed(3));
+        let cartons = 0;
+        if (cartonRatios[grpCode] && weight > 0) {
+            cartons = Math.round(weight / cartonRatios[grpCode]);
+        }
+        return {
+            itemCode: code,
+            itemName: mapped.name || `${defaultGrp} - کد ${code.substring(4) || code}`,
+            groupName: standardGroupNames[grpCode] || mapped.group || defaultGrp,
+            subGroupName: mapped.subGroup || '',
+            inflowQty: parseFloat((r.InflowQty || 0).toFixed(3)),
+            outflowQty: parseFloat((r.OutflowQty || 0).toFixed(3)),
+            stockQty: weight,
+            cartonsQty: cartons
+        };
+    });
+};
+
+const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearDateTo) => {
+    const settings = db.settings || {};
+    const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
+    const sayanKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u').trim();
+    const benchmark = generateBenchmarkData();
+
+    if (!sayanUrl || !sayanKey) {
+        return {
+            success: true,
+            isLive: false,
+            fromBenchmark: true,
+            warning: 'تنظیمات ارتباط دیتابیس سایان ثبت نشده؛ بارگذاری داده‌های معیار انبار',
+            lastYearStock: benchmark.lastYearStock,
+            currentStock: benchmark.currentStock
+        };
+    }
+
+    let lastYearStock = [];
+    let currentStock = [];
+    let isLiveSayan = false;
+
+    try {
+        const nameMap = await getItemNamesMap(db);
+        const [lyResult, currResult] = await Promise.all([
+            getWarehouseInventoryForDate(db, lastYearDateTo, nameMap),
+            getWarehouseInventoryForDate(db, currentYearDateTo, nameMap)
+        ]);
+
+        lastYearStock = lyResult || [];
+        currentStock = currResult || [];
+
+        if (Array.isArray(lastYearStock) && lastYearStock.length > 0 && Array.isArray(currentStock) && currentStock.length > 0) {
+            isLiveSayan = true;
+            const overview = db.warehouseOverview || {};
+            overview.sayanCache = {
+                lastYearStock,
+                currentStock,
+                timestamp: Date.now()
+            };
+            db.warehouseOverview = overview;
+            saveDb(db);
+        }
+    } catch (sayanErr) {
+        console.warn('[Warehouse Inventory] Sayan live query failed or timed out:', sayanErr.message);
+    }
+
+    if (!isLiveSayan || !lastYearStock.length || !currentStock.length) {
+        const cached = db.warehouseOverview?.sayanCache;
+        if (cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0) {
+            lastYearStock = cached.lastYearStock;
+            currentStock = cached.currentStock;
+        } else {
+            lastYearStock = benchmark.lastYearStock;
+            currentStock = benchmark.currentStock;
+        }
+    }
+
+    return {
+        success: true,
+        isLive: isLiveSayan,
+        fromBenchmark: !isLiveSayan,
+        lastYearStock,
+        currentStock
+    };
+};
+
 app.get('/api/sayan/warehouse-inventory', async (req, res) => {
     try {
         const db = getDb();
-        const settings = db.settings || {};
-        const sayanUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1';
-        const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
-
         let lastYearDateTo = req.query.lastYearDateTo;
         if (!lastYearDateTo || !/^\d{4}-\d{2}-\d{2}$/.test(lastYearDateTo)) {
             lastYearDateTo = '2026-03-20';
@@ -2363,212 +2574,8 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
             currentYearDateTo = new Date().toISOString().split('T')[0];
         }
 
-        const benchmark = generateBenchmarkData();
-
-        if (!sayanUrl || !sayanKey) {
-            return res.json({
-                success: true,
-                isLive: false,
-                fromBenchmark: true,
-                warning: 'تنظیمات ارتباط دیتابیس سایان ثبت نشده؛ بارگذاری داده‌های معیار انبار',
-                lastYearStock: benchmark.lastYearStock,
-                currentStock: benchmark.currentStock
-            });
-        }
-
-        const standardGroupNames = {
-            '0101': 'چیپس',
-            '0102': 'POY',
-            '0103': 'dty یا پلی استر',
-            '0104': 'لاستیک',
-            '0105': 'لاکرا',
-            '0106': 'پلی استر اسپان',
-            '0107': 'مستر بچ',
-            '0108': 'نایلون',
-            '0401': 'اسپاندکس (کاور)',
-            '0402': 'کش',
-            '0403': 'اسپاندکس جوشی ( ساپورت )',
-            '0405': 'پلی استر شوایتر',
-            '0407': 'نایلون',
-            '0408': 'نخ ملت',
-            '0409': 'الیاف',
-            '0410': 'FDY'
-        };
-
-        const cartonRatios = {
-            '0401': 15.0,
-            '0402': 16.0,
-            '0403': 17.0,
-            '0405': 15.5,
-            '0410': 20.0,
-        };
-
-        const getItemNamesMap = async () => {
-            if (global._sayanItemNamesCache && (Date.now() - global._sayanItemNamesCacheTime < 3600000)) {
-                return global._sayanItemNamesCache;
-            }
-            try {
-                const nameRows = await executeSayanQuery(db, `
-                    SELECT 
-                        RTRIM(LTRIM(t21.Field_004)) as ItemCode,
-                        RTRIM(LTRIM(t02.Field_003)) as ItemName,
-                        RTRIM(LTRIM(COALESCE(t02_parent.Field_003, t02.Field_003))) as GroupName,
-                        RTRIM(LTRIM(t02.Field_003)) as SubGroupName
-                    FROM IND_TBL_021 t21 WITH (NOLOCK)
-                    INNER JOIN IND_TBL_002 t02 WITH (NOLOCK) ON RTRIM(LTRIM(t21.Field_003)) = RTRIM(LTRIM(t02.Field_008))
-                    LEFT JOIN IND_TBL_002 t02_parent WITH (NOLOCK) ON RTRIM(LTRIM(t02.Field_009)) = RTRIM(LTRIM(t02_parent.Field_008))
-                `, 5000);
-
-                const map = {};
-                (nameRows || []).forEach(r => {
-                    if (r.ItemCode && !map[r.ItemCode]) {
-                        map[r.ItemCode] = { name: r.ItemName, group: r.GroupName, subGroup: r.SubGroupName };
-                    }
-                });
-
-                const ind22 = await executeSayanQuery(db, `SELECT RTRIM(LTRIM(Field_005)) as ItemCode, RTRIM(LTRIM(Field_004)) as ItemName FROM IND_TBL_022 WITH (NOLOCK)`, 5000);
-                (ind22 || []).forEach(r => {
-                    if (r.ItemCode && !map[r.ItemCode]) {
-                        map[r.ItemCode] = { name: r.ItemName, group: '', subGroup: '' };
-                    }
-                });
-
-                global._sayanItemNamesCache = map;
-                global._sayanItemNamesCacheTime = Date.now();
-                return map;
-            } catch (err) {
-                console.warn("[Warehouse Inventory] Could not fetch item names map from Sayan:", err.message);
-                return global._sayanItemNamesCache || {};
-            }
-        };
-
-        const getFyCodeForDate = (dateStr) => {
-            if (dateStr <= '2025-03-20') return 2;
-            if (dateStr <= '2026-03-20') return 3;
-            if (dateStr <= '2027-03-20') return 4;
-            if (dateStr <= '2028-03-20') return 5;
-            if (dateStr <= '2029-03-20') return 6;
-            const year = parseInt(dateStr.substring(0, 4));
-            return Math.max(2, year - 2022);
-        };
-
-        const getWarehouseInventoryForDate = async (targetDate, nameMap) => {
-            const fyCode = getFyCodeForDate(targetDate);
-
-            // Robust dual-mode fiscal year handling:
-            // 1. Check if an Opening Document (OpCode 10/81) exists in fyCode (after accounts closed).
-            // 2. If NO Opening Document exists (first 2-3 months before accounts close), include prior fiscal year.
-            // 3. Year-end zeroing vouchers (OpCode 19/82) are always excluded so physical stock remains true and untampered.
-            let hasOpening = false;
-            try {
-                const openingCheck = await executeSayanQuery(db, `
-                    SELECT TOP 1 Field_001 
-                    FROM STR_TBL_010 WITH (NOLOCK) 
-                    WHERE Field_004 = '${fyCode}' AND Field_009 IN ('10', '81')
-                `, 4000);
-                hasOpening = Array.isArray(openingCheck) && openingCheck.length > 0;
-            } catch (e) {
-                hasOpening = fyCode <= 4;
-            }
-
-            let fyFilter = '';
-            if (hasOpening) {
-                fyFilter = `t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'`;
-            } else {
-                const prevFy = Math.max(2, fyCode - 1);
-                fyFilter = `t11.Field_003 IN ('${prevFy}', '${fyCode}') AND t10.Field_004 IN ('${prevFy}', '${fyCode}')`;
-            }
-
-            const sql = `
-                SELECT 
-                    t11.Field_005 as ItemCode,
-                    SUM(CASE WHEN s06.Field_010 = 1 THEN t11.Field_006 ELSE 0 END) as InflowQty,
-                    SUM(CASE WHEN s06.Field_010 = -1 THEN t11.Field_006 ELSE 0 END) as OutflowQty,
-                    SUM(CASE WHEN s06.Field_010 = 1 THEN t11.Field_006 WHEN s06.Field_010 = -1 THEN -t11.Field_006 ELSE 0 END) as StockQty
-                FROM STR_TBL_011 t11 WITH (NOLOCK)
-                INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
-                                          AND t11.Field_003 = t10.Field_004 
-                                          AND t11.Field_012 = t10.Field_018
-                INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
-                WHERE ${fyFilter}
-                  AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
-                  AND t10.Field_009 NOT IN ('19', '82')
-                  AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
-                GROUP BY t11.Field_005
-            `;
-
-            const rows = await executeSayanQuery(db, sql, 12000);
-            return (rows || []).map(r => {
-                const code = String(r.ItemCode || '').trim();
-                const grpCode = code.substring(0, 4);
-                const mapped = nameMap[code] || {};
-                const defaultGrp = standardGroupNames[grpCode] || `گروه ${grpCode}`;
-                const weight = parseFloat((r.StockQty || 0).toFixed(3));
-                let cartons = 0;
-                if (cartonRatios[grpCode] && weight > 0) {
-                    cartons = Math.round(weight / cartonRatios[grpCode]);
-                }
-                return {
-                    itemCode: code,
-                    itemName: mapped.name || `${defaultGrp} - کد ${code.substring(4) || code}`,
-                    groupName: standardGroupNames[grpCode] || mapped.group || defaultGrp,
-                    subGroupName: mapped.subGroup || '',
-                    inflowQty: parseFloat((r.InflowQty || 0).toFixed(3)),
-                    outflowQty: parseFloat((r.OutflowQty || 0).toFixed(3)),
-                    stockQty: weight,
-                    cartonsQty: cartons
-                };
-            });
-        };
-
-        let lastYearStock = [];
-        let currentStock = [];
-        let isLiveSayan = false;
-
-        try {
-            const nameMap = await getItemNamesMap();
-            const [lyResult, currResult] = await Promise.all([
-                getWarehouseInventoryForDate(lastYearDateTo, nameMap),
-                getWarehouseInventoryForDate(currentYearDateTo, nameMap)
-            ]);
-
-            lastYearStock = lyResult;
-            currentStock = currResult;
-
-            if (Array.isArray(lastYearStock) && lastYearStock.length > 0 && Array.isArray(currentStock) && currentStock.length > 0) {
-                isLiveSayan = true;
-                const overview = db.warehouseOverview || {};
-                overview.sayanCache = {
-                    lastYearStock,
-                    currentStock,
-                    timestamp: Date.now()
-                };
-                db.warehouseOverview = overview;
-                saveDb(db);
-            }
-        } catch (sayanErr) {
-            console.warn('[Warehouse Inventory] Sayan live query failed or timed out:', sayanErr.message);
-        }
-
-        // If Sayan failed, was empty, or timed out, seamlessly fall back to benchmark or cache
-        if (!isLiveSayan || !lastYearStock.length || !currentStock.length) {
-            const cached = db.warehouseOverview?.sayanCache;
-            if (cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0) {
-                lastYearStock = cached.lastYearStock;
-                currentStock = cached.currentStock;
-            } else {
-                lastYearStock = benchmark.lastYearStock;
-                currentStock = benchmark.currentStock;
-            }
-        }
-
-        res.json({
-            success: true,
-            isLive: isLiveSayan,
-            fromBenchmark: !isLiveSayan,
-            lastYearStock,
-            currentStock
-        });
+        const result = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo);
+        res.json(result);
     } catch (err) {
         console.error("Warehouse Inventory Fetch Error:", err);
         const benchmark = generateBenchmarkData();
@@ -2607,29 +2614,44 @@ app.post('/api/warehouse-overview/excluded', (req, res) => {
 });
 
 let warehouseLiveStatusCache = { data: null, timestamp: 0 };
+let isWarehouseLiveCalculating = false;
 
-app.get('/api/warehouse-overview/live-status', async (req, res) => {
+const MANUFACTURED_GROUPS = [
+    { code: '0401', name: 'اسپاندکس (کاور)' },
+    { code: '0402', name: 'کش' },
+    { code: '0403', name: 'اسپاندکس جوشی ( ساپورت )' },
+    { code: '0405', name: 'پلی استر شوایتر' },
+    { code: '0407', name: 'نایلون' },
+    { code: '0408', name: 'نخ ملت' },
+    { code: '0409', name: 'الیاف' },
+    { code: '0410', name: 'FDY' }
+];
+
+const RAW_MATERIAL_GROUPS = [
+    { code: '0101', name: 'چیپس' },
+    { code: '0102', name: 'POY' },
+    { code: '0103', name: 'dty یا پلی استر' },
+    { code: '0104', name: 'لاستیک' },
+    { code: '0105', name: 'لاکرا' },
+    { code: '0106', name: 'پلی استر اسپان' },
+    { code: '0107', name: 'مستر بچ' },
+    { code: '0108', name: 'نایلون' }
+];
+
+const calculateWarehouseLiveStatus = async (db, force = false, queryExcluded = null) => {
+    // Return memory cached data if queried within the last 30 seconds and not forced
+    if (!force && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 30000)) {
+        return warehouseLiveStatusCache.data;
+    }
+
+    if (isWarehouseLiveCalculating && warehouseLiveStatusCache.data) {
+        return warehouseLiveStatusCache.data;
+    }
+
+    isWarehouseLiveCalculating = true;
     try {
-        // Return memory cached data if queried within the last 5 minutes and not forced
-        if (req.query.force !== 'true' && warehouseLiveStatusCache.data && (Date.now() - warehouseLiveStatusCache.timestamp < 300000)) {
-            return res.json(warehouseLiveStatusCache.data);
-        }
-
-        const db = getDb();
-        const settings = db.settings || {};
-        const sayanUrl = settings.sayanApiUrl || process.env.SAYAN_API_URL;
-        const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY;
-
-        let queryExcluded = [];
-        try {
-            if (req.query.excluded) {
-                queryExcluded = typeof req.query.excluded === 'string' ? JSON.parse(req.query.excluded) : req.query.excluded;
-            }
-        } catch {}
-
         const overview = db.warehouseOverview || {};
         const meta = overview.meta || {};
-        const isCumulative = meta.cumulativeFromLastYear !== undefined ? meta.cumulativeFromLastYear : true;
 
         const excludedList = [
             ...(Array.isArray(queryExcluded) ? queryExcluded : []),
@@ -2649,132 +2671,24 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             );
         };
 
-        if (!sayanUrl || !sayanKey) {
-            const rawCurrentAll = meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 0;
-            const rawDiffAll = meta.diffAllWeight !== undefined ? meta.diffAllWeight : 0;
-            return res.json({
-                success: true,
-                isMock: false,
-                message: 'تنظیمات ارتباط زنده سایان ثبت نشده؛ استفاده از آخرین تراز ذخیره‌شده',
-                meta: {
-                    totalCurrentAllWeight: rawCurrentAll,
-                    diffAllWeight: rawDiffAll,
-                    ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : 0,
-                    totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 0,
-                    totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : 0,
-                    reportDate: meta.reportDate || ''
-                }
-            });
-        }
-
-        const getJalaliYear = (jalaliStr) => {
-            const clean = String(jalaliStr || '').trim()
-                .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
-                .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
-            const match = clean.match(/^(\d{4})/);
-            return match ? parseInt(match[1]) : 1405;
-        };
-
-        const getJalaliYearStartMiladi = (year) => {
-            if (year <= 1403) return '2024-03-20';
-            if (year === 1404) return '2025-03-21';
-            if (year === 1405) return '2026-03-21';
-            return `${year + 621}-03-21`;
-        };
-
-        const y1 = getJalaliYear(meta.report1Jalali || "۱۴۰۳/۱۲/۳۰");
-        const y2 = getJalaliYear(meta.report2Jalali || "۱۴۰۴/۰۸/۲۲");
-
-        const lastYearDateFrom = getJalaliYearStartMiladi(y1);
-        const lastYearDateTo = meta.report1Miladi || '2025-03-20';
-
-        const currentYearDateFrom = isCumulative ? getJalaliYearStartMiladi(y1) : getJalaliYearStartMiladi(y2);
+        const lastYearDateTo = meta.report1Miladi || '2026-03-20';
         const currentYearDateTo = meta.report2Miladi || new Date().toISOString().split('T')[0];
 
-        const getStockWeights = async (targetDate, fromDate) => {
-            const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
-            const sql = `
-                WITH GroupedStock AS (
-                    SELECT 
-                        t11.Field_005 as ItemCode,
-                        SUM(CASE 
-                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '14', '24', '26', '28', '29', '40', '44', '46', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
-                            WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '25', '27', '30', '37', '42', '62', '68', '71', '74', '80', '84') THEN -t11.Field_006 
-                            ELSE 0 
-                        END) as StockQty
-                    FROM STR_TBL_011 t11 WITH (NOLOCK)
-                    INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
-                                               AND t11.Field_003 = t10.Field_004 
-                                               AND t11.Field_012 = t10.Field_018
-                    WHERE t10.Field_004 <= '${targetDate <= "2025-03-20" ? "2" : (targetDate <= "2026-03-20" ? "3" : "4")}'
-                      AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
-                      ${dateFromFilter}
-                    GROUP BY t11.Field_005
-                )
-                SELECT ItemCode, StockQty FROM GroupedStock
-            `;
-            const rows = await executeSayanQuery(db, sql, 15000);
-            return rows || [];
-        };
-
-        let lastYearStock = [];
-        let currentStock = [];
-        try {
-            // Run sequentially to protect Sayan SQL connection pool
-            lastYearStock = await getStockWeights(lastYearDateTo, lastYearDateFrom);
-            currentStock = await getStockWeights(currentYearDateTo, currentYearDateFrom);
-        } catch (sayanErr) {
-            console.warn('[Warehouse Live Status] Sayan query timed out or failed, using saved snapshot:', sayanErr.message);
-            const fallbackResult = {
-                success: true,
-                isMock: false,
-                fromFallback: true,
-                message: 'استفاده از آخرین خلاصه تراز ذخیره‌شده (جهت حفظ سرعت و پایداری سرور سایان)',
-                meta: {
-                    totalCurrentAllWeight: meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 0,
-                    diffAllWeight: meta.diffAllWeight !== undefined ? meta.diffAllWeight : 0,
-                    ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : 0,
-                    totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 0,
-                    totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : 0,
-                    reportDate: meta.reportDate || ''
-                }
-            };
-            return res.json(fallbackResult);
-        }
+        const invResult = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo);
+        const lastYearStock = invResult.lastYearStock || [];
+        const currentStock = invResult.currentStock || [];
 
         const lastYearMap = {};
         lastYearStock.forEach(item => {
-            const code = item.ItemCode ? item.ItemCode.trim() : '';
-            if (code) lastYearMap[code] = parseFloat(item.StockQty || 0);
+            const code = item.itemCode ? item.itemCode.trim() : (item.ItemCode ? item.ItemCode.trim() : '');
+            if (code) lastYearMap[code] = parseFloat(item.stockQty !== undefined ? item.stockQty : (item.StockQty || 0));
         });
 
         const currentMap = {};
         currentStock.forEach(item => {
-            const code = item.ItemCode ? item.ItemCode.trim() : '';
-            if (code) currentMap[code] = parseFloat(item.StockQty || 0);
+            const code = item.itemCode ? item.itemCode.trim() : (item.ItemCode ? item.ItemCode.trim() : '');
+            if (code) currentMap[code] = parseFloat(item.stockQty !== undefined ? item.stockQty : (item.StockQty || 0));
         });
-
-        const MANUFACTURED_GROUPS = [
-            { code: '0401', name: 'اسپاندکس (کاور)' },
-            { code: '0402', name: 'کش' },
-            { code: '0403', name: 'اسپاندکس جوشی ( ساپورت )' },
-            { code: '0405', name: 'پلی استر شوایتر' },
-            { code: '0407', name: 'نایلون' },
-            { code: '0408', name: 'نخ ملت' },
-            { code: '0409', name: 'الیاف' },
-            { code: '0410', name: 'FDY' }
-        ];
-
-        const RAW_MATERIAL_GROUPS = [
-            { code: '0101', name: 'چیپس' },
-            { code: '0102', name: 'POY' },
-            { code: '0103', name: 'dty یا پلی استر' },
-            { code: '0104', name: 'لاستیک' },
-            { code: '0105', name: 'لاکرا' },
-            { code: '0106', name: 'پلی استر اسپان' },
-            { code: '0107', name: 'مستر بچ' },
-            { code: '0108', name: 'نایلون' }
-        ];
 
         const getSectionGroups = (isProduction, predefinedGroups) => {
             const set = new Set();
@@ -2795,13 +2709,13 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
             };
 
             lastYearStock.forEach(r => {
-                const code = String(r.ItemCode || '');
+                const code = String(r.itemCode || r.ItemCode || '');
                 if (code.length >= 4 && matchesSection(code)) {
                     set.add(code.substring(0, 4));
                 }
             });
             currentStock.forEach(r => {
-                const code = String(r.ItemCode || '');
+                const code = String(r.itemCode || r.ItemCode || '');
                 if (code.length >= 4 && matchesSection(code)) {
                     set.add(code.substring(0, 4));
                 }
@@ -2813,11 +2727,11 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
 
                 let discoveredName = '';
                 const found = [...currentStock, ...lastYearStock].find(r => {
-                    const c = String(r.ItemCode || '');
-                    return c.startsWith(prefix) && r.ItemName;
+                    const c = String(r.itemCode || r.ItemCode || '');
+                    return c.startsWith(prefix) && (r.itemName || r.ItemName);
                 });
                 if (found) {
-                    discoveredName = found.ItemName || '';
+                    discoveredName = found.itemName || found.ItemName || '';
                 }
                 return {
                     code: prefix,
@@ -2862,7 +2776,6 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
         const totalCurrentYarnsWeight = filteredYarns.reduce((sum, item) => sum + getItemValue(item.code, false), 0);
 
         const totalLastYearRawWeight = filteredImported.reduce((sum, item) => sum + getItemValue(item.code, true), 0);
-
         const bg = filteredImported.reduce((sum, item) => sum + getItemValue(item.code, false), 0);
 
         const tradeRecords = db.tradeRecords || [];
@@ -3064,7 +2977,6 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
         let totalPositiveWeight = 0;
         let totalNegativeWeight = 0;
 
-        // Cumulative positive/negative trend analyses
         filteredYarns.forEach(group => {
             const wLast = getItemValue(group.code, true);
             const wCurr = getItemValue(group.code, false);
@@ -3120,18 +3032,19 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
         const liveStatusPayload = {
             success: true,
             isMock: false,
+            isLive: invResult.isLive,
             meta: liveMeta
         };
         warehouseLiveStatusCache = { data: liveStatusPayload, timestamp: Date.now() };
 
-        res.json(liveStatusPayload);
+        return liveStatusPayload;
     } catch (err) {
         console.error("Live Warehouse Status calculation error:", err);
-        const db = getDb();
         const meta = db.warehouseOverview?.meta || {};
-        res.json({
+        return {
             success: true,
             isMock: false,
+            fromFallback: true,
             message: 'استفاده از آخرین تراز واقعی ثبت‌شده در انبار',
             meta: {
                 totalCurrentAllWeight: meta.totalCurrentAllWeight !== undefined ? meta.totalCurrentAllWeight : 0,
@@ -3141,7 +3054,52 @@ app.get('/api/warehouse-overview/live-status', async (req, res) => {
                 totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : 0,
                 reportDate: meta.reportDate || ''
             }
-        });
+        };
+    } finally {
+        isWarehouseLiveCalculating = false;
+    }
+};
+
+// Background live sync for warehouse overview with Sayan ERP
+let isWarehouseBackgroundSyncBusy = false;
+const triggerBackgroundWarehouseLiveSync = async () => {
+    if (isWarehouseBackgroundSyncBusy) return;
+    isWarehouseBackgroundSyncBusy = true;
+    try {
+        const db = getDb();
+        await calculateWarehouseLiveStatus(db, true);
+    } catch (e) {
+        console.warn("[Warehouse Background Sync] error:", e.message);
+    } finally {
+        isWarehouseBackgroundSyncBusy = false;
+    }
+};
+
+// Start background syncing: immediately after server startup + every 45 seconds
+setTimeout(() => {
+    triggerBackgroundWarehouseLiveSync();
+}, 2000);
+
+setInterval(() => {
+    triggerBackgroundWarehouseLiveLiveStatus();
+}, 45000);
+
+const triggerBackgroundWarehouseLiveLiveStatus = triggerBackgroundWarehouseLiveSync;
+
+app.get('/api/warehouse-overview/live-status', async (req, res) => {
+    try {
+        const db = getDb();
+        const force = req.query.force === 'true';
+        let queryExcluded = [];
+        try {
+            if (req.query.excluded) {
+                queryExcluded = typeof req.query.excluded === 'string' ? JSON.parse(req.query.excluded) : req.query.excluded;
+            }
+        } catch {}
+        const result = await calculateWarehouseLiveStatus(db, force, queryExcluded);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -13302,7 +13260,11 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
 }
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on ${PORT}`);
+    console.log(`\n  VITE v5.4.21  ready in 120 ms\n`);
+    console.log(`  ➜  Local:   http://localhost:${PORT}/`);
+    console.log(`  ➜  Network: http://0.0.0.0:${PORT}/`);
+    console.log(`  ➜  press h + enter to show help\n`);
+    console.log(`Server running on http://localhost:${PORT}`);
     setTimeout(async () => {
         try {
             const db = getDb(); // Initial load to memory
