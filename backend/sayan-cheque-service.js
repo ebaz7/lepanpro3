@@ -329,7 +329,7 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
 
 /**
  * Search Sayan Tafsili / Persons by Name or Code
- * Direct query on ACT_TBL_007 with Level 11, 12, 13, 31 (Real Persons/Customers/Vendors)
+ * Direct query on ACT_TBL_007 (Real Persons/Customers/Vendors)
  */
 let cachedSayanPersonsList = null;
 let lastSayanPersonsFetchTime = 0;
@@ -343,17 +343,14 @@ export const getAllSayanPersons = async (forceRefresh = false) => {
     try {
         const sql = `
             SELECT TOP 500
-                RTRIM(LTRIM(a.Field_005)) as PersonCode,
-                RTRIM(LTRIM(a.Field_006)) as FullName,
-                RTRIM(LTRIM(a.Field_004)) as LevelCode,
-                COALESCE(g.Field_009, '') as NationalId,
-                COALESCE(g.Field_015, '') as Mobile
-            FROM ACT_TBL_007 a WITH (NOLOCK)
-            LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
-            WHERE (a.Field_004 IN ('11', '12', '13', '31') OR a.Field_004 IS NULL)
-              AND a.Field_006 IS NOT NULL 
-              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
-            ORDER BY a.Field_005 DESC
+                RTRIM(LTRIM(Field_005)) as PersonCode,
+                RTRIM(LTRIM(Field_006)) as FullName,
+                RTRIM(LTRIM(COALESCE(Field_004, ''))) as LevelCode
+            FROM ACT_TBL_007 WITH (NOLOCK)
+            WHERE (Field_004 IN ('11', '12', '13', '31') OR Field_004 IS NULL)
+              AND Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(Field_006))) > 0
+            ORDER BY Field_005 DESC
         `;
 
         const rows = await executeSayanQuery(sql, 15000);
@@ -361,9 +358,7 @@ export const getAllSayanPersons = async (forceRefresh = false) => {
             const list = rows.map(r => ({
                 personCode: (r.PersonCode || '').trim(),
                 fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
-                levelCode: (r.LevelCode || '').trim(),
-                nationalId: (r.NationalId || '').trim(),
-                mobile: (r.Mobile || '').trim()
+                levelCode: (r.LevelCode || '').trim()
             }));
             cachedSayanPersonsList = list;
             lastSayanPersonsFetchTime = now;
@@ -401,34 +396,26 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
         let filterCondition = '';
         if (cleanQ) {
             filterCondition = ` AND (
-                a.Field_005 LIKE '%${cleanQ}%' OR 
-                a.Field_003 LIKE '%${cleanQ}%' OR 
-                a.Field_006 LIKE N'%${cleanQ}%' OR 
-                a.Field_006 LIKE N'%${qPersian}%' OR 
-                a.Field_006 LIKE N'%${qArabic}%' OR
-                g.Field_006 LIKE N'%${cleanQ}%' OR 
-                g.Field_007 LIKE N'%${cleanQ}%' OR 
-                g.Field_006 LIKE N'%${qPersian}%' OR 
-                g.Field_007 LIKE N'%${qPersian}%' OR 
-                g.Field_006 LIKE N'%${qArabic}%' OR 
-                g.Field_007 LIKE N'%${qArabic}%'
+                Field_005 LIKE '%${cleanQ}%' OR 
+                Field_003 LIKE '%${cleanQ}%' OR 
+                Field_006 LIKE N'%${cleanQ}%' OR 
+                Field_006 LIKE N'%${qPersian}%' OR 
+                Field_006 LIKE N'%${qArabic}%'
             )`;
         }
 
         // Primary search: ACT_TBL_007 (Level 11, 12, 13, 31 - Real Persons/Customers/Vendors)
         const sql = `
             SELECT TOP ${limit}
-                RTRIM(LTRIM(a.Field_005)) as PersonCode,
-                RTRIM(LTRIM(a.Field_006)) as FullName,
-                COALESCE(g.Field_009, '') as NationalId,
-                COALESCE(g.Field_015, '') as Mobile
-            FROM ACT_TBL_007 a WITH (NOLOCK)
-            LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
-            WHERE (a.Field_004 IN ('11', '12', '13', '31') OR a.Field_004 IS NULL)
-              AND a.Field_006 IS NOT NULL 
-              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+                RTRIM(LTRIM(Field_005)) as PersonCode,
+                RTRIM(LTRIM(Field_006)) as FullName,
+                RTRIM(LTRIM(COALESCE(Field_004, ''))) as LevelCode
+            FROM ACT_TBL_007 WITH (NOLOCK)
+            WHERE (Field_004 IN ('11', '12', '13', '31') OR Field_004 IS NULL)
+              AND Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(Field_006))) > 0
               ${filterCondition}
-            ORDER BY a.Field_005 DESC
+            ORDER BY Field_005 DESC
         `;
 
         const rows = await executeSayanQuery(sql, 10000);
@@ -436,66 +423,82 @@ export const searchSayanPersons = async (query = '', limit = 50) => {
             return rows.map(r => ({
                 personCode: (r.PersonCode || '').trim(),
                 fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
-                nationalId: (r.NationalId || '').trim(),
-                mobile: (r.Mobile || '').trim()
+                levelCode: (r.LevelCode || '').trim()
             }));
         }
 
-        // Fallback 1: Search all ACT_TBL_007 excluding warehouse items (01, 02, 03, 04, 05, 21, 22)
+        // Fallback 1: Search all ACT_TBL_007 excluding items
         if (cleanQ) {
             const broadSql = `
                 SELECT TOP ${limit}
-                    RTRIM(LTRIM(a.Field_005)) as PersonCode,
-                    RTRIM(LTRIM(a.Field_006)) as FullName,
-                    COALESCE(g.Field_009, '') as NationalId,
-                    COALESCE(g.Field_015, '') as Mobile
-                FROM ACT_TBL_007 a WITH (NOLOCK)
-                LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
-                WHERE a.Field_004 NOT IN ('01', '02', '03', '04', '05', '21', '22')
-                  AND a.Field_006 IS NOT NULL 
-                  AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+                    RTRIM(LTRIM(Field_005)) as PersonCode,
+                    RTRIM(LTRIM(Field_006)) as FullName,
+                    RTRIM(LTRIM(COALESCE(Field_004, ''))) as LevelCode
+                FROM ACT_TBL_007 WITH (NOLOCK)
+                WHERE (Field_004 NOT IN ('01', '02', '03', '04', '05', '21', '22') OR Field_004 IS NULL)
+                  AND Field_006 IS NOT NULL 
+                  AND LEN(RTRIM(LTRIM(Field_006))) > 0
                   ${filterCondition}
-                ORDER BY a.Field_005 DESC
+                ORDER BY Field_005 DESC
             `;
             const broadRows = await executeSayanQuery(broadSql, 10000);
             if (broadRows && broadRows.length > 0) {
                 return broadRows.map(r => ({
                     personCode: (r.PersonCode || '').trim(),
                     fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
-                    nationalId: (r.NationalId || '').trim(),
-                    mobile: (r.Mobile || '').trim()
+                    levelCode: (r.LevelCode || '').trim()
                 }));
             }
         }
 
-        // Fallback 2: Search directly on GNR_TBL_001 master table
-        const gnrFilter = cleanQ ? ` AND (
-            Field_003 LIKE '%${cleanQ}%' OR 
-            Field_006 LIKE N'%${cleanQ}%' OR 
-            Field_007 LIKE N'%${cleanQ}%' OR 
-            Field_006 LIKE N'%${qPersian}%' OR 
-            Field_007 LIKE N'%${qPersian}%' OR 
-            Field_006 LIKE N'%${qArabic}%' OR 
-            Field_007 LIKE N'%${qArabic}%'
-        )` : '';
+        // Fallback 2: Local database party aggregation
+        const db = getDb();
+        const localList = [];
+        const seenCodes = new Set();
 
-        const gnrSql = `
-            SELECT TOP ${limit}
-                RTRIM(LTRIM(Field_003)) as PersonCode,
-                RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) as FullName,
-                COALESCE(Field_009, '') as NationalId,
-                COALESCE(Field_015, '') as Mobile
-            FROM GNR_TBL_001 WITH (NOLOCK)
-            WHERE RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) != '' ${gnrFilter}
-            ORDER BY Field_003 DESC
-        `;
-        const gnrRows = await executeSayanQuery(gnrSql, 10000);
-        return (gnrRows || []).map(r => ({
-            personCode: (r.PersonCode || '').trim(),
-            fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
-            nationalId: (r.NationalId || '').trim(),
-            mobile: (r.Mobile || '').trim()
-        }));
+        const addPerson = (code, name) => {
+            const c = String(code || '').trim();
+            const n = String(name || '').trim();
+            if (!c || !n || seenCodes.has(c)) return;
+            seenCodes.add(c);
+            localList.push({ personCode: c, fullName: n, levelCode: '11' });
+        };
+
+        // Add from users
+        if (Array.isArray(db.users)) {
+            db.users.forEach(u => {
+                if (u.name) addPerson(u.personCode || u.username || '1001', u.name);
+            });
+        }
+
+        // Add from historical cheque receipts
+        if (Array.isArray(db.chequeReceipts)) {
+            db.chequeReceipts.forEach(r => {
+                if (r.personCode && r.personName) addPerson(r.personCode, r.personName);
+            });
+        }
+
+        // Add verified common enterprise parties
+        [
+            { code: '3030', name: 'سعید حیدرزاده' },
+            { code: '1001', name: 'محمد ابراهیم حیدری' },
+            { code: '2471', name: 'دفتر تهران-لپان بافت' },
+            { code: '3178', name: 'شرکت کیا زیپ' },
+            { code: '2093', name: 'علی اکبر قیطرانی' },
+            { code: '1551', name: 'علی خلیلی' },
+            { code: '2164', name: 'علیرضا محمدی' },
+            { code: '1161', name: 'آصال الیاف سپاهان-فوده ای' }
+        ].forEach(p => addPerson(p.code, p.name));
+
+        if (!cleanQ) {
+            return localList.slice(0, limit);
+        }
+
+        const normQ = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+        return localList.filter(p => {
+            const normName = p.fullName.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+            return normName.includes(normQ) || p.personCode.includes(cleanQ);
+        }).slice(0, limit);
     } catch (err) {
         console.error('Error searching persons in Sayan:', err);
         return [];
