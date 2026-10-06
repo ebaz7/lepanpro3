@@ -603,18 +603,17 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   const receiptContent = (
       <div 
         id={printAreaId} 
-        className="printable-content bg-white border-2 border-slate-900 rounded-lg relative text-slate-900 flex flex-col justify-between select-text" 
+        className="printable-content bg-white border-2 border-slate-900 rounded-xl relative text-slate-900 flex flex-col justify-between overflow-hidden select-text" 
         style={{ 
           direction: 'rtl', 
           width: '200mm', 
           height: '140mm', 
           maxHeight: '140mm', 
-          padding: '4mm 6mm', 
+          padding: '3.5mm 5mm', 
           boxSizing: 'border-box', 
           margin: '0 auto', 
           backgroundColor: '#ffffff',
-          color: '#0f172a',
-          fontFamily: "'Vazirmatn', 'Tahoma', 'Arial', sans-serif"
+          color: '#0f172a'
         }}
       >
         {currentOrder.status === OrderStatus.REJECTED && (
@@ -626,138 +625,126 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
         {isRevocationProcess && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-200/50 text-red-200/50 font-black text-5xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">در حال ابطال</div>
         )}
-        <div className="relative z-10 flex flex-col gap-2">
+        <div className="relative z-10 flex flex-col gap-1.5">
             {/* Header */}
-            <div className="border-b-2 border-slate-900 pb-2 flex justify-between items-center">
-                {/* Right: Company Info & Logo */}
-                <div className="flex items-center gap-3">
+            <div className="border-b-2 border-slate-900 pb-1.5 flex justify-between items-center">
+                <div className="flex items-center gap-2.5 w-7/12">
                     {company?.logo ? (
-                        <img src={company.logo} alt="Company Logo" className="h-11 w-11 object-contain mix-blend-multiply shrink-0" />
+                        <img src={company.logo} alt="Company Logo" className="h-10 w-10 object-contain mix-blend-multiply shrink-0" />
                     ) : (
-                        <div className="h-11 w-11 text-[9px] bg-slate-50 text-slate-600 flex items-center justify-center rounded-md border border-slate-300 font-bold shrink-0">بدون لوگو</div>
+                        <div className="h-10 w-10 text-[8px] bg-slate-100 text-slate-700 flex items-center justify-center rounded text-center border border-dashed border-slate-300 font-bold shrink-0">لوگو</div>
                     )}
-                    <div className="flex flex-col text-right">
-                        <h1 className="text-base font-black text-slate-900 leading-tight">{currentOrder.payingCompany || 'شرکت لپان بافت'}</h1>
-                        <p className="text-[10px] text-slate-600 font-bold mt-0.5">سامانه مدیریت مالی و پرداخت</p>
+                    <div className="flex flex-col">
+                        <h1 className="text-sm sm:text-base font-black text-slate-900 leading-tight">{currentOrder.payingCompany || 'شرکت بازرگانی'}</h1>
+                        <p className="text-[9px] text-slate-500 font-bold mt-0.5">سامانه مدیریت مالی و دستور پرداخت</p>
                     </div>
                 </div>
-
-                {/* Left: Voucher Title, Number, Date */}
-                <div className="text-left flex flex-col items-end gap-1">
-                    <h2 className="text-[12px] px-3 py-0.5 font-black bg-slate-100 border border-slate-400 text-slate-900 rounded-md mb-0.5 whitespace-nowrap">رسید پرداخت وجه</h2>
-                    <div className="flex items-center gap-1.5 text-[10.5px]">
-                        <span className="font-bold text-slate-600">شماره:</span>
-                        <span className="font-mono font-black text-[12px] text-slate-900">{currentOrder.trackingNumber || '-'}</span>
+                <div className="text-left flex flex-col items-end gap-0.5 w-5/12">
+                    <h2 className="text-[11px] px-2.5 py-0.5 font-black bg-slate-100 border border-slate-300 text-slate-900 rounded-md mb-0.5 whitespace-nowrap">رسید دستور پرداخت</h2>
+                    <div className="flex items-center gap-1.5 text-[9.5px]">
+                        <span className="font-bold text-slate-500">شماره سند:</span>
+                        <span className="font-mono font-black text-xs text-slate-900">{currentOrder.trackingNumber || '-'}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10.5px]">
-                        <span className="font-bold text-slate-600">تاریخ:</span>
-                        <span className="font-bold text-slate-900">{formatDate(currentOrder.date)}</span>
+                    <div className="flex items-center gap-1.5 text-[9.5px]">
+                        <span className="font-bold text-slate-500">تاریخ:</span>
+                        <span className="font-bold text-slate-800">{formatDate(currentOrder.date)}</span>
                     </div>
                 </div>
             </div>
 
-            {/* Info Cards Grid matching original receipt */}
-            <div className="grid grid-cols-12 gap-2">
-                {/* Right Box (Spans 8 cols): Payee and Description */}
-                <div className="col-span-8 flex flex-col gap-1.5">
-                    <div className="border border-slate-800 rounded-md p-1.5 px-2.5 bg-white">
-                        <span className="block text-slate-600 text-[9.5px] font-bold">در وجه (ذینفع):</span>
-                        <span className="font-black text-slate-900 text-sm block truncate mt-0.5">{currentOrder.payee || '-'}</span>
+            {/* Info Cards */}
+            <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-slate-50 border border-slate-700/80 p-1 px-2 rounded-lg">
+                        <span className="block text-slate-600 text-[8.5px] mb-0.5 font-bold">در وجه (ذینفع):</span>
+                        <span className="font-black text-slate-900 text-xs sm:text-[13px] block truncate">{currentOrder.payee || '-'}</span>
                     </div>
-                    <div className="border border-slate-800 rounded-md p-1.5 px-2.5 bg-white min-h-[34px]">
-                        <span className="block text-slate-600 text-[9.5px] font-bold">بابت (شرح پرداخت):</span>
-                        <p className="text-slate-900 text-justify font-medium leading-snug text-[10px] line-clamp-2 mt-0.5">{currentOrder.description || '-'}</p>
+                    <div className="bg-slate-50 border border-slate-700/80 p-1 px-2 rounded-lg">
+                        <span className="block text-slate-600 text-[8.5px] mb-0.5 font-bold">مبلغ کل پرداختی:</span>
+                        <span className="font-black text-slate-900 text-xs sm:text-[13px] font-mono block truncate">{formatCurrency(currentOrder.totalAmount)}</span>
                     </div>
                 </div>
-
-                {/* Left Box (Spans 4 cols): Total Amount */}
-                <div className="col-span-4 border border-slate-800 rounded-md p-2 px-3 bg-white flex flex-col justify-center items-center text-center">
-                    <span className="block text-slate-600 text-[10px] font-bold mb-1">مبلغ کل پرداختی:</span>
-                    <span className="font-black text-slate-900 text-base font-mono block leading-tight">{formatCurrency(currentOrder.totalAmount)}</span>
+                
+                <div className="bg-slate-50 border border-slate-700/80 p-1 px-2 rounded-lg min-h-[22px]">
+                    <span className="block text-slate-600 text-[8.5px] mb-0.5 font-bold">بابت (شرح پرداخت):</span>
+                    <p className="text-slate-800 text-justify font-medium leading-snug text-[9.5px] line-clamp-2">{currentOrder.description || '-'}</p>
                 </div>
-            </div>
 
-            {/* Payment Details Table */}
-            <div className="border border-slate-800 rounded-md overflow-hidden">
-                <table className="w-full text-right text-[9.5px] border-collapse">
-                    <thead className="bg-slate-100 border-b border-slate-800 font-black text-slate-900">
-                        <tr>
-                            <th className="p-1 px-1.5 border-l border-slate-300 w-7 text-center">#</th>
-                            <th className="p-1 px-2 border-l border-slate-300 w-28">نوع پرداخت</th>
-                            <th className="p-1 px-2 border-l border-slate-300 w-36">مبلغ (ریال)</th>
-                            <th className="p-1 px-2 border-l border-slate-300">بانک / چک / شبا</th>
-                            <th className="p-1 px-2">توضیحات</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-300">
-                        {currentOrder.paymentDetails.map((detail, idx) => (
-                            <tr key={detail.id} className="text-slate-900 font-medium">
-                                <td className="p-1 px-1.5 text-center font-bold text-slate-700 border-l border-slate-200">{idx + 1}</td>
-                                <td className="p-1 px-2 font-bold border-l border-slate-200">{detail.method}</td>
-                                <td className="p-1 px-2 font-mono font-bold border-l border-slate-200">{formatCurrency(detail.amount)}</td>
-                                <td className="p-1 px-2 border-l border-slate-200 truncate">
-                                    {detail.method === PaymentMethod.CHEQUE ? `چک: ${detail.chequeNumber}` : detail.method === PaymentMethod.SHEBA || detail.method === PaymentMethod.SATNA || detail.method === PaymentMethod.PAYA ? `شبا: IR-${detail.sheba}` : detail.method === PaymentMethod.INTERNAL_TRANSFER ? `حساب: ${detail.destinationAccount} (${detail.destinationOwner || ''})` : detail.method === PaymentMethod.TRANSFER ? `بانک: ${detail.bankName}` : '-'}
-                                </td>
-                                <td className="p-1 px-2 text-slate-700 truncate">{detail.description || '-'}</td>
+                {/* Table */}
+                <div className="border border-slate-700/80 rounded-lg overflow-hidden">
+                    <table className="w-full text-right text-[8.5px] sm:text-[9px]">
+                        <thead className="bg-slate-100 border-b border-slate-700/80">
+                            <tr>
+                                <th className="p-0.5 px-1 font-black text-slate-800 w-6 text-center">#</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800 w-24">نوع پرداخت</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800 w-32">مبلغ (ریال)</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800">بانک / چک / شبا</th>
+                                <th className="p-0.5 px-1.5 font-black text-slate-800">توضیحات</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                            {currentOrder.paymentDetails.map((detail, idx) => (
+                                <tr key={detail.id} className="hover:bg-slate-50/50">
+                                    <td className="p-0.5 px-1 text-center font-bold text-slate-500">{idx + 1}</td>
+                                    <td className="p-0.5 px-1.5 font-bold text-slate-900">{detail.method}</td>
+                                    <td className="p-0.5 px-1.5 font-mono font-bold text-slate-900">{formatCurrency(detail.amount)}</td>
+                                    <td className="p-0.5 px-1.5 text-slate-800 truncate">
+                                        {detail.method === PaymentMethod.CHEQUE ? `چک: ${detail.chequeNumber}` : detail.method === PaymentMethod.SHEBA || detail.method === PaymentMethod.SATNA || detail.method === PaymentMethod.PAYA ? `شبا: IR-${detail.sheba}` : detail.method === PaymentMethod.INTERNAL_TRANSFER ? `حساب: ${detail.destinationAccount} (${detail.destinationOwner || ''})` : detail.method === PaymentMethod.TRANSFER ? `بانک: ${detail.bankName}` : '-'}
+                                    </td>
+                                    <td className="p-0.5 px-1.5 text-slate-600 truncate">{detail.description || '-'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        {/* Footer 4-Box Signature Blocks matching image 2 */}
-        <div className="mt-2 pt-2 border-t-2 border-slate-900 relative z-10">
+        {/* Footer Signatures */}
+        <div className="mt-auto pt-1 border-t-2 border-slate-900 relative z-10">
             <div className="grid grid-cols-4 gap-2 text-center">
-                {/* Box 1: Requester */}
-                <div className="border border-slate-700 rounded-md p-1 flex flex-col justify-between h-[48px] bg-white">
-                    <div className="flex-1 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
                         <Stamp name={currentOrder.requester || 'درخواست کننده'} title="درخواست‌کننده" />
                     </div>
-                    <div className="border-t border-slate-300 pt-0.5">
-                        <span className="text-[8.5px] font-bold text-slate-800">درخواست کننده</span>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">درخواست کننده</span>
                     </div>
                 </div>
-
-                {/* Box 2: Finance Manager */}
-                <div className="border border-slate-700 rounded-md p-1 flex flex-col justify-between h-[48px] bg-white">
-                    <div className="flex-1 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
                         {(currentOrder.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverFinancial || 'تایید شده'} title="تایید مالی" />
                         ) : (
-                            <span className="text-slate-300 text-[8.5px]">امضا نشده</span>
+                            <span className="text-slate-300 text-[8px]">امضا نشده</span>
                         )}
                     </div>
-                    <div className="border-t border-slate-300 pt-0.5">
-                        <span className="text-[8.5px] font-bold text-slate-800">مدیر مالی</span>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">مدیر مالی</span>
                     </div>
                 </div>
-
-                {/* Box 3: Management */}
-                <div className="border border-slate-700 rounded-md p-1 flex flex-col justify-between h-[48px] bg-white">
-                    <div className="flex-1 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
                         {(currentOrder.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverManager || 'تایید شده'} title="تایید مدیریت" />
                         ) : (
-                            <span className="text-slate-300 text-[8.5px]">امضا نشده</span>
+                            <span className="text-slate-300 text-[8px]">امضا نشده</span>
                         )}
                     </div>
-                    <div className="border-t border-slate-300 pt-0.5">
-                        <span className="text-[8.5px] font-bold text-slate-800">مدیریت</span>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">مدیریت</span>
                     </div>
                 </div>
-
-                {/* Box 4: CEO */}
-                <div className="border border-slate-700 rounded-md p-1 flex flex-col justify-between h-[48px] bg-white">
-                    <div className="flex-1 flex items-center justify-center">
+                <div className="flex flex-col items-center justify-end min-h-[34px] max-h-[38px]">
+                    <div className="mb-0.5 flex items-center justify-center h-full">
                         {(currentOrder.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverCeo || 'تایید شده'} title="مدیر عامل" />
                         ) : (
-                            <span className="text-slate-300 text-[8.5px]">امضا نشده</span>
+                            <span className="text-slate-300 text-[8px]">امضا نشده</span>
                         )}
                     </div>
-                    <div className="border-t border-slate-300 pt-0.5">
-                        <span className="text-[8.5px] font-bold text-slate-800">مدیر عامل</span>
+                    <div className="w-full border-t border-slate-300 pt-0.5">
+                        <span className="text-[7.5px] font-bold text-slate-700">مدیر عامل</span>
                     </div>
                 </div>
             </div>

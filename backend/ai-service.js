@@ -3,15 +3,22 @@ import fs from 'fs';
 import path from 'path';
 import { getDb, saveDb } from './db-manager.js';
 import * as utils from './utils.js';
-import { setGlobalDispatcher, EnvHttpProxyAgent } from 'undici';
+import { setGlobalDispatcher, ProxyAgent, EnvHttpProxyAgent } from 'undici';
 
-// Initialize global fetch proxy dispatcher using system / custom proxy settings with NO_PROXY support
+// Initialize global fetch proxy dispatcher using system / custom proxy settings
 const proxyUrl = process.env.PROXY_URL || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 if (proxyUrl) {
+    console.log(`[Proxy Setup - AI Service] Setting global fetch dispatcher proxy to: ${proxyUrl}`);
+    try {
+        setGlobalDispatcher(new ProxyAgent(proxyUrl));
+    } catch (err) {
+        console.error('[Proxy Setup - AI Service] Failed to set global ProxyAgent:', err);
+    }
+} else {
     try {
         setGlobalDispatcher(new EnvHttpProxyAgent());
     } catch (err) {
-        console.error('[Proxy Setup - AI Service] Failed to set EnvHttpProxyAgent:', err);
+        console.error('[Proxy Setup - AI Service] Failed to set global EnvHttpProxyAgent:', err);
     }
 }
 

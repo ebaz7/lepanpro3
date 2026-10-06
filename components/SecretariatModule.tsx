@@ -268,7 +268,6 @@ import {
   Link as LinkIcon,
   Tag,
   PlusCircle,
-  Paintbrush,
   CheckCircle2,
   SlidersHorizontal,
   Table,
@@ -631,7 +630,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     sender: "",
     receiver: "",
     type: "internal" as "internal" | "incoming" | "outgoing",
-    referredTo: [] as string[],
     attachments: [] as SecretariatLetterAttachment[],
     hasAttachment: false,
     attachmentDescription: "",
@@ -649,30 +647,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     hideSalutationInLetter: true,
   };
   const [newLetterForm, setNewLetterForm] = useState(initialFormState);
-
-  // Format Painter (قلم‌موی استایل / کپی فرمت) state
-  const [copiedFormats, setCopiedFormats] = useState<any | null>(null);
-  const [isFormatPainterActive, setIsFormatPainterActive] = useState<boolean>(false);
-
-  // Live Page Estimate helper
-  const calculateEstimatedPages = (contentHtml: string, paperSize: string = "A4", orientation: string = "portrait") => {
-    if (!contentHtml) return 1;
-    const plainText = contentHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    const wordCount = plainText ? plainText.split(" ").length : 0;
-    const imageCount = (contentHtml.match(/<img /gi) || []).length;
-    const tableRowCount = (contentHtml.match(/<tr/gi) || []).length;
-    const paragraphCount = (contentHtml.match(/<p/gi) || []).length;
-    
-    const wordsPerPage = paperSize === "A5" 
-      ? (orientation === "landscape" ? 180 : 160) 
-      : (orientation === "landscape" ? 300 : 380);
-    const equivalentWordsFromImages = imageCount * 120;
-    const equivalentWordsFromTables = tableRowCount * 18;
-    const equivalentWordsFromParas = paragraphCount * 8;
-    
-    const totalEquivalentWords = wordCount + equivalentWordsFromImages + equivalentWordsFromTables + equivalentWordsFromParas;
-    return Math.max(1, Math.ceil(totalEquivalentWords / wordsPerPage));
-  };
 
   const resetForm = () => {
     const activeSettings = secSettings.find(
@@ -866,50 +840,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       }
     }
   };
-
-  const handleToggleFormatPainter = () => {
-    const quill = quillRef.current?.getEditor();
-    if (!quill) return;
-
-    if (isFormatPainterActive) {
-      setIsFormatPainterActive(false);
-      setCopiedFormats(null);
-      return;
-    }
-
-    const range = quill.getSelection();
-    let formats = {};
-    if (range && range.length > 0) {
-      formats = quill.getFormat(range);
-    } else if (range) {
-      formats = quill.getFormat(range.index);
-    } else {
-      formats = quill.getFormat();
-    }
-    setCopiedFormats(formats);
-    setIsFormatPainterActive(true);
-  };
-
-  useEffect(() => {
-    if (!isFormatPainterActive || !copiedFormats) return;
-    const quill = quillRef.current?.getEditor();
-    if (!quill) return;
-
-    const handleSelectionChange = (range: any) => {
-      if (range && range.length > 0 && isFormatPainterActive && copiedFormats) {
-        Object.keys(copiedFormats).forEach((formatKey) => {
-          quill.formatText(range.index, range.length, formatKey, copiedFormats[formatKey]);
-        });
-        setIsFormatPainterActive(false);
-        setCopiedFormats(null);
-      }
-    };
-
-    quill.on("selection-change", handleSelectionChange);
-    return () => {
-      quill.off("selection-change", handleSelectionChange);
-    };
-  }, [isFormatPainterActive, copiedFormats]);
 
   const applyCustomColor = (color: string) => {
     const quill = quillRef.current?.getEditor();
@@ -2408,28 +2338,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       stamps: getNormalizedStamps(baseSettings),
     };
   };
-  const canEditLetter = (l?: SecretariatLetter | null) => {
-    if (!l) return false;
-    if (isSuperUser) return true;
-    if (activeCompanySettings?.editAccessTokens?.includes(currentUser.id)) return true;
-    const isOwner =
-      l.createdBy === currentUser.id ||
-      l.createdById === currentUser.id ||
-      l.createdBy === currentUser.fullName ||
-      l.createdBy === currentUser.name ||
-      l.creatorName === currentUser.fullName ||
-      l.createdByName === currentUser.fullName;
-    const isAssigned =
-      l.referredTo?.includes(currentUser.id) ||
-      l.referredTo?.includes(currentUser.username) ||
-      l.referredTo?.includes(currentUser.fullName);
-    return isOwner || isAssigned;
-  };
-
   const canEditLetters =
     isSuperUser ||
-    activeCompanySettings?.editAccessTokens?.includes(currentUser.id) ||
-    canEditLetter(selectedLetterForView);
+    activeCompanySettings?.editAccessTokens?.includes(currentUser.id);
   const canDeleteLetters =
     isSuperUser ||
     activeCompanySettings?.deleteAccessTokens?.includes(currentUser.id);
@@ -2492,23 +2403,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     }
 
     // Privacy and Cartable Relevance filter
-    const isCreator =
-      letter.createdBy === currentUser.id ||
-      letter.createdById === currentUser.id ||
-      letter.createdBy === currentUser.fullName ||
-      letter.createdBy === currentUser.name ||
-      letter.creatorName === currentUser.fullName ||
-      letter.createdByName === currentUser.fullName;
-    const isReferred =
-      letter.referredTo?.includes(currentUser.id) ||
-      letter.referredTo?.includes(currentUser.username) ||
-      letter.referredTo?.includes(currentUser.fullName);
-    const isSigner = letter.signers?.some(
-      (s) =>
-        s.userId === currentUser.id ||
-        s.name === currentUser.fullName ||
-        s.name === currentUser.name,
-    );
+    const isCreator = letter.createdBy === currentUser.id;
+    const isReferred = letter.referredTo?.includes(currentUser.id);
+    const isSigner = letter.signers?.some((s) => s.userId === currentUser.id);
     const isRelevantToUser = isCreator || isReferred || isSigner;
 
     if (!isSuperUser) {
@@ -2516,7 +2413,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         return false; // Private letters only visible to relevant users and super users
       }
 
-      // In cartable (non-archive), show relevant letters to non-superusers so it doesn't clutter
+      // In cartable (non-archive), only show relevant letters to non-superusers so it doesn't clutter
       if (activeTab === "cartable" && !isRelevantToUser) {
         return false;
       }
@@ -2619,29 +2516,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     e?.preventDefault();
     if (!selectedCompany || !activeSection) return;
 
-    if (!editingLetterId) {
-      const hasDesignatedReceiver = 
-        (newLetterForm.referredTo && newLetterForm.referredTo.length > 0) ||
-        (selectedReferrals && selectedReferrals.length > 0) ||
-        (newLetterForm.signers && newLetterForm.signers.length > 0 && newLetterForm.signers.some((s) => s.userId || s.name));
-      
-      if (!hasDesignatedReceiver) {
-        alert("⚠️ هشدار: امکان صدور و ثبت نامه بدون تعیین شخص دریافت‌کننده در کارتابل جهت اقدام یا امضای نهایی وجود ندارد.\nلطفاً در بخش «امضا و ضمائم» یا ارجاع به کارتابل، شخص مورد نظر را تعیین فرمایید.");
-        setShowAdvancedOptionsModal(true);
-        return;
-      }
-    }
-
     if (editingLetterId) {
       const existingLetter = letters.find((l) => l.id === editingLetterId);
       if (!existingLetter) return;
-
-      const mergedReferrals = Array.from(new Set([
-        ...(existingLetter.referredTo || []),
-        ...(newLetterForm.referredTo || []),
-        ...selectedReferrals,
-        ...(newLetterForm.signers || []).map(s => s.userId).filter(Boolean) as string[],
-      ]));
 
       const updatedLetter: SecretariatLetter = {
         ...existingLetter,
@@ -2650,7 +2527,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         content: newLetterForm.content,
         sender: newLetterForm.sender,
         receiver: newLetterForm.receiver,
-        referredTo: mergedReferrals,
         type: newLetterForm.type,
         attachments: newLetterForm.attachments,
         hasAttachment: newLetterForm.hasAttachment ?? ((newLetterForm.attachments && newLetterForm.attachments.length > 0) || false),
@@ -2677,12 +2553,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       }
     } else {
       const autoNum = getNextLetterNumber(selectedCompany, activeSection);
-      const targetReferrals = Array.from(new Set([
-        ...(newLetterForm.referredTo || []),
-        ...selectedReferrals,
-        ...(newLetterForm.signers || []).map(s => s.userId).filter(Boolean) as string[],
-      ]));
-
       const newLetter: SecretariatLetter = {
         id: generateUUID(),
         companyId: selectedCompany.id,
@@ -2693,7 +2563,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         content: newLetterForm.content,
         sender: newLetterForm.sender,
         receiver: newLetterForm.receiver,
-        referredTo: targetReferrals,
         type: newLetterForm.type,
         status: SecretariatLetterStatus.PENDING,
         comments: [],
@@ -5353,41 +5222,34 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         </button>
                       </div>
 
-                      {/* Quick zoom controls & live page count on the left */}
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/40 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-lg text-xs font-bold" title="برآورد حجم و تعداد صفحات خروجی نامه">
-                          <FileText size={12} />
-                          <span>{calculateEstimatedPages(newLetterForm.content, newLetterForm.paperSize, newLetterForm.orientation)} صفحه ({newLetterForm.paperSize || 'A4'})</span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border dark:border-white/10 px-2 py-0.5 rounded-lg text-xs">
-                          <span className="text-[10px] text-slate-400 font-bold hidden lg:inline">
-                            بزرگنمایی:
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditorZoom((prev) => Math.max(80, prev - 10))
-                            }
-                            className="w-5 h-5 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-black text-sm"
-                            title="کوچک‌نمایی"
-                          >
-                            -
-                          </button>
-                          <span className="font-bold font-mono text-[10px] min-w-[30px] text-center dark:text-white">
-                            {editorZoom}%
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditorZoom((prev) => Math.min(200, prev + 10))
-                            }
-                            className="w-5 h-5 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-black text-sm"
-                            title="بزرگ‌نمایی"
-                          >
-                            +
-                          </button>
-                        </div>
+                      {/* Quick zoom controls on the left */}
+                      <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border dark:border-white/10 px-2 py-0.5 rounded-lg text-xs">
+                        <span className="text-[10px] text-slate-400 font-bold hidden lg:inline">
+                          بزرگنمایی:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditorZoom((prev) => Math.max(80, prev - 10))
+                          }
+                          className="w-5 h-5 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-black text-sm"
+                          title="کوچک‌نمایی"
+                        >
+                          -
+                        </button>
+                        <span className="font-bold font-mono text-[10px] min-w-[30px] text-center dark:text-white">
+                          {editorZoom}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditorZoom((prev) => Math.min(200, prev + 10))
+                          }
+                          className="w-5 h-5 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-black text-sm"
+                          title="بزرگ‌نمایی"
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -5450,7 +5312,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     id="letter-custom-quill-toolbar"
                     className="ql-toolbar ql-snow bg-slate-100 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5 shrink-0 select-none z-30 shadow-xs"
                   >
-                    {/* Section 1: Undo / Redo & Format Painter */}
+                    {/* Section 1: Undo / Redo & History */}
                     <div className="flex items-center gap-0.5 border-l dark:border-slate-700 pl-2">
                       <button
                         type="button"
@@ -5467,25 +5329,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         title="تکرار مجدد - Redo (Ctrl+Y)"
                       >
                         <Redo size={15} />
-                      </button>
-
-                      {/* Format Painter Tool (قلم‌موی استایل / فرمت‌پینتر) */}
-                      <button
-                        type="button"
-                        onClick={handleToggleFormatPainter}
-                        className={`px-2 py-1 rounded-lg border text-xs font-bold transition-all flex items-center gap-1 cursor-pointer select-none ${
-                          isFormatPainterActive
-                            ? "bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-200 border-amber-500 ring-2 ring-amber-400/50 shadow-sm animate-pulse"
-                            : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-slate-50"
-                        }`}
-                        title={
-                          isFormatPainterActive
-                            ? "فرمت‌پینتر فعال است! روی متن مورد نظر کلیک یا درگ کنید تا استایل اعمال شود (برای لغو دوباره کلیک کنید)"
-                            : "فرمت‌پینتر (Format Painter) - کپی و اعمال دقیق استایل، رنگ، فونت و اندازه یک متن روی متن دیگر"
-                        }
-                      >
-                        <Paintbrush size={13} className={isFormatPainterActive ? "text-amber-600 dark:text-amber-400 animate-bounce" : "text-slate-600 dark:text-slate-400"} />
-                        <span className="text-[10px]">فرمت‌پینتر</span>
                       </button>
                     </div>
 

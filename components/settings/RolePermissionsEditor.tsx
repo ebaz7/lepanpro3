@@ -1,60 +1,41 @@
 
 import React, { useState } from 'react';
-import { SystemSettings, UserRole, RolePermissions, CustomRole, User } from '../../types';
-import { ShieldCheck, Truck, Warehouse, Lock, ChevronDown, ChevronUp, Landmark, Trash2, CheckSquare, Square, Info, ClipboardList, ShoppingCart, Pencil, Check, FileText, Briefcase, Building2, Sliders } from 'lucide-react';
-import PurchaseWorkflowApproversSettings from './PurchaseWorkflowApproversSettings';
+import { SystemSettings, UserRole, RolePermissions, CustomRole } from '../../types';
+import { ShieldCheck, Truck, Warehouse, Lock, ChevronDown, ChevronUp, Landmark, Trash2, CheckSquare, Square, Info, ClipboardList, ShoppingCart, Pencil, Check, FileText } from 'lucide-react';
 
 interface Props {
     settings: SystemSettings;
     onUpdateSettings: (newSettings: SystemSettings) => void;
-    users?: User[];
 }
 
 const PERMISSION_GROUPS = [
     { 
-        id: 'purchase_tehran', 
-        title: 'درخواست خرید - شعبه بازرگانی تهران (فرآیند و تایید مدیران تهران)', 
-        icon: Briefcase, 
-        color: 'sky', 
-        items: [
-            { id: 'canApproveCEO', label: '👑 تایید اولیه و صدور مجوز استعلام (مدیرعامل تهران)' },
-            { id: 'canManageProformas', label: '💼 ثبت پیش‌فاکتورها و استعلام قیمت (بازرگانی تهران)' },
-            { id: 'canApproveCommercialManager', label: '👔 بررسی و تایید پیش‌فاکتورها (مدیر بازرگانی تهران)' },
-            { id: 'canSelectProforma', label: '🎯 تایید و انتخاب گزینه نهایی خرید تهران (مدیرعامل / بازرگانی)' },
-            { id: 'canCommercialFinalize', label: '📁 تایید نهایی و بایگانی اسناد بازرگانی تهران' },
-            { id: 'scopeTehranOnly', label: '🏢 محدودیت حوزه: فقط دسترسی و مشاهده خریدهای بازرگانی تهران' },
-        ] 
-    },
-    { 
-        id: 'purchase_zanjan', 
-        title: 'درخواست خرید - کارخانه زنجان (فرآیند و تایید مدیران زنجان)', 
-        icon: Warehouse, 
-        color: 'teal', 
-        items: [
-            { id: 'canApproveFactoryDecision', label: '🏭 تعیین مسیر و تصمیم‌گیری خرید محلی (مدیر کارخانه زنجان)' },
-            { id: 'canManageZanjanPurchasing', label: '📝 ثبت استعلام و پیشنهاد خرید محلی کارخانه (زنجان)' },
-            { id: 'canApproveFactory', label: '✅ تایید و صدور دستور خرید محلی (مدیر کارخانه زنجان)' },
-            { id: 'canExecuteBuyerZanjan', label: '🛍️ ثبت خرید، تسویه و صدور فاکتور توسط کارپرداز زنجان (کارخانه)' },
-            { id: 'canApproveFactoryFinal', label: '🏁 تایید نهایی مدیر کارخانه زنجان (بعد از ورود و انبارداری)' },
-            { id: 'scopeZanjanOnly', label: '📍 محدودیت حوزه: فقط دسترسی و مشاهده خریدهای محلی کارخانه (زنجان)' },
-        ] 
-    },
-    { 
-        id: 'purchase_common', 
-        title: 'درخواست خرید - مراحل عمومی و مشترک (فنی، انبار، انتظامات، QC)', 
+        id: 'purchase', 
+        title: 'ماژول خرید', 
         icon: ShoppingCart, 
         color: 'amber', 
         items: [
-            { id: 'canView', label: '👁️ مشاهده کلی ماژول درخواست خرید (کارتابل)' },
-            { id: 'canCreate', label: '➕ ثبت درخواست خرید اولیه (واحد فنی / پرسنل)' },
-            { id: 'canApproveTechnical', label: '🔧 بررسی و تایید فنی نت (مرحله اول)' },
-            { id: 'canApproveShiftLeader', label: '👷 تایید سرشیفت کارخانه (مرحله دوم)' },
-            { id: 'canApproveWarehouseKeeper', label: '📦 بررسی موجودی توسط انباردار کارخانه (مرحله سوم)' },
-            { id: 'canRegisterEntry', label: '🚪 ثبت ورود فیزیکی کالا (انتظامات)' },
-            { id: 'canCheckQC', label: '🔬 تایید کنترل کیفیت (QC)' },
-            { id: 'canWarehouseFinalize', label: '📑 صدور رسید انبار نهایی' },
-            { id: 'canManageParts', label: '🏷️ تعریف و کدینگ کالا (ثبت، ویرایش و اکسل کالا)' },
+            { id: 'canView', label: 'مشاهده ماژول درخواست خرید (کارتابل)' },
+            { id: 'canCreate', label: 'ثبت درخواست خرید جدید (واحد فنی)' },
+            { id: 'canApproveTechnical', label: 'بررسی و تایید فنی نت (مرحله اول)' },
+            { id: 'canApproveShiftLeader', label: 'تایید سرشیفت (مرحله دوم)' },
+            { id: 'canApproveWarehouseKeeper', label: 'بررسی موجودی توسط انباردار کارخانه (مرحله سوم)' },
+            { id: 'canApproveFactoryDecision', label: 'تایید و تعیین مسیر خرید توسط مدیر کارخانه (مرحله چهارم)' },
+            { id: 'canApproveFactory', label: 'تایید مدیر کارخانه (مراحل ثانویه)' },
+            { id: 'canApproveCEO', label: 'تایید مدیرعامل / مدیر واحد (تهران)' },
+            { id: 'canManageProformas', label: 'ثبت پیش‌فاکتورها و استعلام (بازرگانی)' },
+            { id: 'canSelectProforma', label: 'انتخاب بهترین گزینه خرید' },
+            { id: 'canRegisterEntry', label: 'ثبت ورود فیزیکی کالا (انتظامات)' },
+            { id: 'canCheckQC', label: 'تایید کنترل کیفیت (QC)' },
+            { id: 'canApproveFactoryFinal', label: 'تایید نهایی مدیر کارخانه (بعد از ورود)' },
+            { id: 'canWarehouseFinalize', label: 'صدور رسید انبار نهایی' },
+            { id: 'canCommercialFinalize', label: 'تایید نهایی و بایگانی بازرگانی' },
+            { id: 'canManageParts', label: 'تعریف و کدینگ کالا (ثبت، ویرایش و اکسل کالا)' },
             { id: 'canViewPricingAndInvoices', label: '🔒 مشاهده فی، مبالغ ریالی و پیش‌فاکتورها (محرمانه مالی)' },
+            { id: 'canManageZanjanPurchasing', label: '🏭 ثبت استعلام و فاکتور خرید محلی کارخانه (زنجان)' },
+            { id: 'canExecuteBuyerZanjan', label: '🛍️ ثبت خرید و فاکتور نهایی توسط کارپرداز زنجان (کارخانه)' },
+            { id: 'scopeZanjanOnly', label: '📍 محدودیت حوزه: فقط مشاهده خریدهای محلی کارخانه (زنجان)' },
+            { id: 'scopeTehranOnly', label: '🏢 محدودیت حوزه: فقط مشاهده خریدهای بازرگانی تهران' },
         ] 
     },
     { 
@@ -226,9 +207,7 @@ const DEFAULT_ROLES = [
     { id: UserRole.ADMIN, label: 'مدیر سیستم' },
 ];
 
-const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, users }) => {
-    // State to track editor tab
-    const [editorTab, setEditorTab] = useState<'PURCHASE_WORKFLOW' | 'ROLES'>('PURCHASE_WORKFLOW');
+const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings }) => {
     // State to track which role accordion is open
     const [expandedRole, setExpandedRole] = useState<string | null>(null);
     const [newRoleName, setNewRoleName] = useState('');
@@ -259,7 +238,7 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
 
     // --- CORE PERMISSION UPDATE LOGIC ---
     const handlePermissionChange = (roleId: string, groupId: string, permKey: string, value: boolean) => {
-        const isPurchase = groupId === 'purchase' || groupId.startsWith('purchase_');
+        const isPurchase = groupId === 'purchase';
         const currentStore = isPurchase ? (settings.purchaseRolePermissions || {}) : (settings.rolePermissions || {});
         const currentRolePerms = currentStore[roleId] || {};
         
@@ -282,7 +261,7 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
     };
 
     const toggleGroup = (roleId: string, groupId: string, groupItems: {id: string}[], isChecked: boolean) => {
-        const isPurchase = groupId === 'purchase' || groupId.startsWith('purchase_');
+        const isPurchase = groupId === 'purchase';
         const currentStore = isPurchase ? (settings.purchaseRolePermissions || {}) : (settings.rolePermissions || {});
         const currentRolePerms = currentStore[roleId] || {};
         
@@ -332,52 +311,13 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
 
     return (
         <div className="space-y-6">
-            {/* Top Navigation Switch: Workflow Approvers vs Role Matrix */}
-            <div className="flex flex-wrap gap-2 p-1.5 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-                <button
-                    type="button"
-                    onClick={() => setEditorTab('PURCHASE_WORKFLOW')}
-                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-black transition-all cursor-pointer ${
-                        editorTab === 'PURCHASE_WORKFLOW'
-                            ? 'bg-gradient-to-r from-sky-600 to-indigo-600 text-white shadow-md shadow-sky-500/20'
-                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-700'
-                    }`}
-                >
-                    <Building2 size={16} />
-                    <span>تاییدهای خرید: تفکیک تهران و زنجان</span>
-                    <span className="text-[10px] bg-white/20 px-1.5 py-0.2 rounded-full font-bold">ویژه</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setEditorTab('ROLES')}
-                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-black transition-all cursor-pointer ${
-                        editorTab === 'ROLES'
-                            ? 'bg-white dark:bg-gray-700 text-purple-700 dark:text-purple-300 shadow-md'
-                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-700'
-                    }`}
-                >
-                    <Sliders size={16} />
-                    <span>ماتریس دسترسی نقش‌ها (Role Permissions)</span>
-                </button>
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3">
+                <Info className="text-blue-600 shrink-0 mt-1" size={20}/>
+                <div className="text-sm text-blue-800">
+                    <p className="font-bold mb-1">راهنمای سطح دسترسی:</p>
+                    <p>در این بخش می‌توانید مشخص کنید هر نقش کاربری دقیقاً به چه امکاناتی دسترسی داشته باشد. برای مثال، برای فعال شدن دکمه تایید خروج برای مدیر کارخانه، حتماً باید تیک <strong>«تایید خروج (مدیر کارخانه)»</strong> برای نقش <strong>Factory Manager</strong> روشن باشد.</p>
+                </div>
             </div>
-
-            {editorTab === 'PURCHASE_WORKFLOW' && (
-                <PurchaseWorkflowApproversSettings
-                    settings={settings}
-                    onUpdateSettings={onUpdateSettings}
-                    users={users}
-                />
-            )}
-
-            {editorTab === 'ROLES' && (
-                <div className="space-y-6 animate-fade-in">
-                    <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start gap-3">
-                        <Info className="text-blue-600 shrink-0 mt-1" size={20}/>
-                        <div className="text-sm text-blue-800">
-                            <p className="font-bold mb-1">راهنمای سطح دسترسی نقش‌ها:</p>
-                            <p>در این بخش می‌توانید مشخص کنید هر نقش کاربری دقیقاً به چه امکاناتی دسترسی داشته باشد. برای مثال، برای فعال شدن دکمه تایید خروج برای مدیر کارخانه، حتماً باید تیک <strong>«تایید خروج (مدیر کارخانه)»</strong> برای نقش <strong>Factory Manager</strong> روشن باشد.</p>
-                        </div>
-                    </div>
 
             {/* Custom Role Input */}
             <div className="glass-panel p-4 rounded-xl border border-gray-200/50 dark:border-white/10 flex flex-col md:flex-row gap-4 items-end shadow-sm">
@@ -460,7 +400,7 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
                                              {PERMISSION_GROUPS.map(group => {
                                              const GroupIcon = group.icon;
                                              // Check if ALL items in this group are checked
-                                             const isPurchase = group.id === 'purchase' || group.id.startsWith('purchase_');
+                                             const isPurchase = group.id === 'purchase';
                                              const currentStore = isPurchase ? (settings.purchaseRolePermissions || {}) : (settings.rolePermissions || {});
                                              const rolePerms = currentStore[role.id] || {};
                                              // @ts-ignore
@@ -514,8 +454,6 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
                     </div>
                 ))}
             </div>
-                </div>
-            )}
         </div>
     );
 };

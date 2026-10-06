@@ -1,4 +1,4 @@
-import { getDb, saveDb, robustFetch, sanitizeSayanUrl } from './db-manager.js';
+import { getDb, saveDb, robustFetch } from './db-manager.js';
 
 /**
  * Enterprise Sayan Order Automation Module
@@ -70,44 +70,53 @@ export const addAutomationLog = (db, logEntry) => {
 export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     const db = getDb();
     const settings = db.settings || {};
-    let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
+    let serverSayanBaseUrl = (settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1').trim();
+    if (serverSayanBaseUrl.includes('lep.templatetesti.shop')) {
+        serverSayanBaseUrl = 'http://80.210.31.176:5000/api/external/v1';
+    }
+    if (serverSayanBaseUrl.replace(/\/$/, '').endsWith('/api/v1')) {
+        serverSayanBaseUrl = serverSayanBaseUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '/api/external/v1');
+    }
     const serverSayanApiKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u').trim();
 
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
         throw new Error('تنظیمات آدرس وب‌سرویس و کلید امنیتی سایان در بخش تنظیمات وارد نشده است. لطفاً ابتدا در بخش تنظیمات، آدرس API و توکن سایان را وارد نمایید.');
     }
 
-    const cleanBase = serverSayanBaseUrl.replace(/\/$/, '');
-    const finalUrl = `${cleanBase}/query`;
-    const response = await robustFetch(finalUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${serverSayanApiKey}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ query: queryStr }),
-        timeout: timeoutMs
-    });
+    const finalUrl = `${serverSayanBaseUrl.replace(/\/$/, '')}/query`;
+    try {
+        const response = await robustFetch(finalUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${serverSayanApiKey}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: queryStr }),
+            timeout: timeoutMs
+        });
 
-    const contentType = (response.headers && typeof response.headers.get === 'function' ? response.headers.get('content-type') : (response.headers?.['content-type'] || '')) || '';
-    const isJson = contentType.includes('application/json');
+        const contentType = (response.headers && typeof response.headers.get === 'function' ? response.headers.get('content-type') : (response.headers?.['content-type'] || '')) || '';
+        const isJson = contentType.includes('application/json');
 
-    if (!response.ok) {
-        if (!isJson) {
-            const rawText = await response.text().catch(() => '');
-            console.error(`Sayan API Error (${response.status}): Non-JSON response:`, rawText.slice(0, 150));
-            throw new Error(`خطا در برقراری ارتباط با وب‌سرویس سایان (${cleanBase}): کد وضعیت ${response.status}`);
+        if (!response.ok) {
+            if (!isJson) {
+                const rawText = await response.text().catch(() => '');
+                console.error(`Sayan API Error (${response.status}): Non-JSON response:`, rawText.slice(0, 150));
+                throw new Error(`خطا در برقراری ارتباط با وب‌سرویس سایان (${serverSayanBaseUrl}): کد وضعیت ${response.status}`);
+            }
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || err.message || `خطا در ارتباط با وب‌سرویس سایان: کد وضعیت ${response.status}`);
         }
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || err.message || `خطا در ارتباط با وب‌سرویس سایان: کد وضعیت ${response.status}`);
-    }
 
-    const data = await response.json();
-    if (data.success === false) {
-        throw new Error(data.error || data.message || 'خطای سرور سایان');
+        const data = await response.json();
+        if (data.success === false) {
+            throw new Error(data.error || data.message || 'خطای سرور سایان');
+        }
+        return data.data || [];
+    } catch (err) {
+        throw new Error(`خطا در برقراری ارتباط با آدرس سایان (${serverSayanBaseUrl}): ${err.message}`);
     }
-    return data.data || [];
 };
 
 /**

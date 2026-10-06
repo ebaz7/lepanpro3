@@ -19,12 +19,11 @@ import { saveBlobAndOpenFile } from '../services/fileService';
 
 import { isInFinancialYear } from '../utils/dateUtils';
 import { IranianPlateInput, IranianPlateDisplay } from './IranianPlate';
-import { SayanSalesRemittanceIssuer } from './SayanSalesRemittanceIssuer';
 
 interface Props { 
     currentUser: User; 
     settings?: SystemSettings; 
-    initialTab?: 'dashboard' | 'items' | 'entry' | 'exit' | 'reports' | 'stock_report' | 'archive' | 'entry_archive' | 'approvals' | 'dispatch_report' | 'stocktake' | 'sayan_remittance' | 'sayan_warehouses';
+    initialTab?: 'dashboard' | 'items' | 'entry' | 'exit' | 'reports' | 'stock_report' | 'archive' | 'entry_archive' | 'approvals' | 'dispatch_report' | 'stocktake';
     financialYear?: string;
 }
 
@@ -1373,9 +1372,7 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
                     { id: 'reports', label: 'کاردکس', color: 'purple' },
                     { id: 'stocktake', label: 'انبارگردانی', color: 'indigo' },
                     { id: 'dispatch_report', label: 'گزارش بیجک‌ها', color: 'red' },
-                    { id: 'stock_report', label: 'موجودی', color: 'orange' },
-                    { id: 'sayan_remittance', label: 'صدور حواله فروش سایان (بارکدخوان)', color: 'blue' },
-                    { id: 'sayan_warehouses', label: 'انبارها و موجودی زنده سایان', color: 'indigo' }
+                    { id: 'stock_report', label: 'موجودی', color: 'orange' }
                 ].map(tab => (
                     <button 
                         key={tab.id}
@@ -2528,28 +2525,6 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
                                 </div>
                             </div>
                         )}
-                    </div>
-                )}
-
-                {/* SAYAN SALES REMITTANCE (BARCODE ISSUER) TAB */}
-                {activeTab === 'sayan_remittance' && (
-                    <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xs">
-                        <SayanSalesRemittanceIssuer 
-                            currentUser={currentUser} 
-                            settings={settings} 
-                            initialSubTab="issuer"
-                        />
-                    </div>
-                )}
-
-                {/* SAYAN LIVE WAREHOUSES & METRICS TAB */}
-                {activeTab === 'sayan_warehouses' && (
-                    <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-200 dark:border-white/10 overflow-hidden shadow-xs">
-                        <SayanSalesRemittanceIssuer 
-                            currentUser={currentUser} 
-                            settings={settings} 
-                            initialSubTab="warehouses"
-                        />
                     </div>
                 )}
 
