@@ -84,17 +84,37 @@ const PrintWarehouseReceipt: React.FC<Props> = ({ request }) => {
             <style dangerouslySetInnerHTML={{__html: `
                 @media print {
                     @page { size: A5 landscape; margin: 0; }
-                    body { visibility: hidden !important; margin: 0 !important; }
-                    .print-only-section {
+                    html, body, #root, #root *, [class*="theme-"], [class*="bg-"], [class*="text-"], .dark, .dark * {
+                        background-color: #ffffff !important;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                        border-color: #000000 !important;
+                        box-shadow: none !important;
+                        filter: none !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    body > *:not(.printing-modal) {
+                        display: none !important;
+                    }
+                    .print-only-section, .print-only-section * {
                         visibility: visible !important;
+                    }
+                    .print-only-section {
                         position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        width: 100% !important;
-                        height: 100% !important;
+                        left: 5mm !important;
+                        top: 6mm !important;
+                        width: 200mm !important;
+                        height: 136mm !important;
+                        max-height: 136mm !important;
                         margin: 0 !important;
-                        padding: 10mm !important;
-                        background: white !important;
+                        padding: 4mm 6mm !important;
+                        background: #ffffff !important;
+                        border: 2px solid #000000 !important;
+                        box-sizing: border-box !important;
+                        overflow: hidden !important;
+                        page-break-inside: avoid !important;
+                        page-break-after: avoid !important;
                     }
                 }
             `}} />

@@ -206,18 +206,36 @@ export default function PrintExitPermit({ permit, onClose, onApprove, onReject, 
           style.innerHTML = `
             @page { size: A4 portrait; margin: 0; }
             @media print {
-                body * { visibility: hidden; }
-                #${containerId}, #${containerId} * { visibility: visible; }
+                html, body, #root, #root *, [class*="theme-"], [class*="bg-"], [class*="text-"], .dark, .dark * {
+                    background-color: #ffffff !important;
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    border-color: #000000 !important;
+                    box-shadow: none !important;
+                    filter: none !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                body > *:not(.printing-modal) {
+                    display: none !important;
+                }
+                #${containerId}, #${containerId} * {
+                    visibility: visible !important;
+                }
                 #${containerId} { 
-                    position: absolute; 
-                    left: 0; 
-                    top: 0; 
+                    position: absolute !important; 
+                    left: 0 !important; 
+                    top: 0 !important; 
                     width: 210mm !important; 
-                    height: 296mm !important;
+                    height: 297mm !important;
+                    max-height: 297mm !important;
                     margin: 0 !important;
                     padding: 10mm !important;
                     border: none !important;
                     box-shadow: none !important;
+                    overflow: hidden !important;
+                    page-break-inside: avoid !important;
+                    page-break-after: avoid !important;
                 }
                 .no-print { display: none !important; }
             }

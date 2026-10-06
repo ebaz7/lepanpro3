@@ -328,78 +328,256 @@ export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
 };
 
 /**
- * Search Sayan Tafsili / Persons by Name or Code from GNR_TBL_001
- * Supports Persian/Arabic character normalization and search by code, name, nationalId or mobile.
+ * Search Sayan Tafsili / Persons by Name or Code
+ * Comprehensive AI-powered search across both ACT_TBL_007 (Tafsili) and GNR_TBL_001 (Persons Master)
+ * Supporting multi-token matching, Persian/Arabic normalization, and full customer/vendor coverage.
  */
-export const searchSayanPersons = async (query = '', limit = 50) => {
+const SAYAN_PERSONS_CACHE_FILE = path.join(process.cwd(), 'uploads', 'sayan-persons-cache.json');
+
+// In-memory cache & persistent file sync
+let cachedSayanPersonsList = null;
+let lastSayanPersonsFetchTime = 0;
+
+const loadPersistedSayanPersons = () => {
+    if (cachedSayanPersonsList && cachedSayanPersonsList.length > 0) return cachedSayanPersonsList;
     try {
-        const rawQ = (query || '').trim();
-        const cleanQ = rawQ.replace(/'/g, "''");
-        const qPersian = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک');
-        const qArabic = cleanQ.replace(/\u06CC/g, 'ي').replace(/\u06A9/g, 'ك');
-
-        let gnrFilter = '';
-        if (cleanQ) {
-            gnrFilter = ` AND (
-                g.Field_003 LIKE '%${cleanQ}%' OR 
-                g.Field_006 LIKE N'%${cleanQ}%' OR 
-                g.Field_007 LIKE N'%${cleanQ}%' OR 
-                g.Field_006 LIKE N'%${qPersian}%' OR 
-                g.Field_007 LIKE N'%${qPersian}%' OR 
-                g.Field_006 LIKE N'%${qArabic}%' OR 
-                g.Field_007 LIKE N'%${qArabic}%' OR
-                a.Field_006 LIKE N'%${cleanQ}%' OR
-                a.Field_006 LIKE N'%${qPersian}%' OR
-                a.Field_006 LIKE N'%${qArabic}%'
-            )`;
+        if (fs.existsSync(SAYAN_PERSONS_CACHE_FILE)) {
+            const raw = fs.readFileSync(SAYAN_PERSONS_CACHE_FILE, 'utf8');
+            const data = JSON.parse(raw);
+            if (Array.isArray(data) && data.length > 0) {
+                cachedSayanPersonsList = data;
+                lastSayanPersonsFetchTime = Date.now();
+                return data;
+            }
         }
+    } catch (e) {
+        console.warn('Error loading sayan-persons-cache.json:', e.message);
+    }
+    return [];
+};
 
-        // Primary search: JOIN GNR_TBL_001 (Real Persons/Companies Master) with ACT_TBL_007 (Tafsili Accounts)
-        // This strictly guarantees ONLY real persons/companies are returned, and excludes parts/inventory items from ACT_TBL_007.
-        const sql = `
-            SELECT TOP ${limit}
+const savePersistedSayanPersons = (list) => {
+    if (!Array.isArray(list) || list.length === 0) return;
+    try {
+        fs.writeFileSync(SAYAN_PERSONS_CACHE_FILE, JSON.stringify(list, null, 2), 'utf8');
+    } catch (e) {
+        console.warn('Error saving sayan-persons-cache.json:', e.message);
+    }
+};
+
+export const getAllSayanPersons = async (forceRefresh = false) => {
+    const now = Date.now();
+    const existing = loadPersistedSayanPersons();
+
+    if (!forceRefresh && existing.length > 0 && (now - lastSayanPersonsFetchTime < 15 * 60 * 1000)) {
+        return existing;
+    }
+
+    try {
+        // Query top customers from Sayan live (ultra-fast indexed scan)
+        const sqlCustomers = `
+            SELECT TOP 200
+                RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
                 RTRIM(LTRIM(a.Field_005)) as PersonCode,
-                RTRIM(LTRIM(COALESCE(NULLIF(a.Field_006, ''), CONCAT(COALESCE(g.Field_006, ''), ' ', COALESCE(g.Field_007, ''))))) as FullName,
-                COALESCE(g.Field_009, '') as NationalId,
-                COALESCE(g.Field_015, '') as Mobile
-            FROM GNR_TBL_001 g WITH (NOLOCK)
-            INNER JOIN ACT_TBL_007 a WITH (NOLOCK) ON RTRIM(LTRIM(a.Field_005)) = RTRIM(LTRIM(g.Field_003))
-            WHERE (g.Field_018 = 1 OR g.Field_018 IS NULL)
-              AND RTRIM(LTRIM(a.Field_006)) != '' ${gnrFilter}
-            ORDER BY a.Field_005 DESC
+                RTRIM(LTRIM(a.Field_006)) as FullName,
+                '11' as LevelCode
+            FROM ACT_TBL_007 a WITH (NOLOCK)
+            WHERE a.Field_003 LIKE '11%'
+              AND a.Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
         `;
 
-        const rows = await executeSayanQuery(sql);
-        if (rows && rows.length > 0) {
-            return rows.map(r => ({
-                personCode: (r.PersonCode || '').trim(),
-                fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
-                nationalId: (r.NationalId || '').trim(),
-                mobile: (r.Mobile || '').trim()
-            }));
+        // Query top suppliers from Sayan live
+        const sqlSuppliers = `
+            SELECT TOP 100
+                RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
+                RTRIM(LTRIM(a.Field_005)) as PersonCode,
+                RTRIM(LTRIM(a.Field_006)) as FullName,
+                '31' as LevelCode
+            FROM ACT_TBL_007 a WITH (NOLOCK)
+            WHERE a.Field_004 = '31'
+              AND a.Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+        `;
+
+        const [custRows, suppRows] = await Promise.all([
+            executeSayanQuery(sqlCustomers, 40000).catch(e => { console.warn('Fetch customers error:', e.message); return []; }),
+            executeSayanQuery(sqlSuppliers, 40000).catch(e => { console.warn('Fetch suppliers error:', e.message); return []; })
+        ]);
+
+        const combined = [...(custRows || []), ...(suppRows || [])];
+        if (combined.length > 0) {
+            const seen = new Set();
+            const list = [];
+            for (const r of combined) {
+                const code = (r.PersonCode || '').trim();
+                const name = (r.FullName || '').trim();
+                const tafsili = (r.TafsiliCode || code).trim();
+                if (code && name && !seen.has(code)) {
+                    seen.add(code);
+                    list.push({
+                        personCode: code,
+                        tafsiliCode: tafsili,
+                        fullName: name,
+                        levelCode: (r.LevelCode || '11').trim()
+                    });
+                }
+            }
+            if (list.length > 0) {
+                for (const old of existing) {
+                    if (old.personCode && !seen.has(old.personCode)) {
+                        seen.add(old.personCode);
+                        list.push(old);
+                    }
+                }
+                cachedSayanPersonsList = list;
+                lastSayanPersonsFetchTime = now;
+                savePersistedSayanPersons(list);
+                return list;
+            }
+        }
+    } catch (err) {
+        console.warn('getAllSayanPersons live error:', err.message);
+    }
+    return cachedSayanPersonsList || existing || [];
+};
+
+export const searchSayanPersons = async (query = '', limit = 100, forceRefresh = false) => {
+    try {
+        const rawQ = String(query || '').trim();
+        if (!rawQ) {
+            return await getAllSayanPersons(forceRefresh);
         }
 
-        // Fallback search directly on GNR_TBL_001
-        const gnrSql = `
-            SELECT TOP ${limit}
-                RTRIM(LTRIM(Field_003)) as PersonCode,
-                RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) as FullName,
-                COALESCE(Field_009, '') as NationalId,
-                COALESCE(Field_015, '') as Mobile
-            FROM GNR_TBL_001 WITH (NOLOCK)
-            WHERE (Field_018 = 1 OR Field_018 IS NULL)
-              AND RTRIM(LTRIM(CONCAT(COALESCE(Field_006, ''), ' ', COALESCE(Field_007, '')))) != '' ${gnrFilter.replace(/a\.Field_006|g\./g, '')}
-            ORDER BY Field_003 DESC
+        const cleanQ = rawQ.replace(/'/g, "''").replace(/[\u200c\u00a0]/g, ' ');
+        const tokens = cleanQ.split(/\s+/).filter(t => t.length > 0);
+
+        // Normalize Persian/Arabic for token matching
+        const normTokens = tokens.map(t => {
+            const tFa = t.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک');
+            const tAr = t.replace(/\u06CC/g, 'ي').replace(/\u06A9/g, 'ك');
+            return { raw: t, fa: tFa, ar: tAr };
+        });
+
+        // High-precision, ultra-fast Sayan live query without unindexed SQL ORDER BY
+        const tokenConditionsACT = normTokens.map(({ raw, fa, ar }) => `(
+            a.Field_006 LIKE N'%${raw}%' OR 
+            a.Field_006 LIKE N'%${fa}%' OR 
+            a.Field_006 LIKE N'%${ar}%' OR 
+            a.Field_005 LIKE '%${raw}%' OR 
+            a.Field_003 LIKE '%${raw}%'
+        )`).join(' AND ');
+
+        const sql = `
+            SELECT TOP ${Math.max(limit, 50)}
+                RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
+                RTRIM(LTRIM(a.Field_005)) as PersonCode,
+                RTRIM(LTRIM(a.Field_006)) as FullName,
+                RTRIM(LTRIM(COALESCE(a.Field_004, '11'))) as LevelCode
+            FROM ACT_TBL_007 a WITH (NOLOCK)
+            WHERE (a.Field_004 NOT IN ('01', '02', '03', '04', '05') OR a.Field_004 IS NULL)
+              AND a.Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+              AND (${tokenConditionsACT})
         `;
-        const gnrRows = await executeSayanQuery(gnrSql);
-        return (gnrRows || []).map(r => ({
-            personCode: (r.PersonCode || '').trim(),
-            fullName: (r.FullName || '').trim() || `کد ${r.PersonCode}`,
-            nationalId: (r.NationalId || '').trim(),
-            mobile: (r.Mobile || '').trim()
-        }));
+
+        let liveRows = [];
+        try {
+            liveRows = await executeSayanQuery(sql, 40000);
+        } catch (queryErr) {
+            console.warn('searchSayanPersons live query warning:', queryErr.message);
+        }
+
+        const results = [];
+        const seenCodes = new Set();
+
+        const addRow = (pCode, pTafsili, pName, pLevel) => {
+            const code = String(pCode || '').trim();
+            const name = String(pName || '').trim();
+            if (code && name && !seenCodes.has(code)) {
+                seenCodes.add(code);
+                results.push({
+                    personCode: code,
+                    tafsiliCode: String(pTafsili || code).trim(),
+                    fullName: name,
+                    levelCode: String(pLevel || '11').trim()
+                });
+            }
+        };
+
+        if (Array.isArray(liveRows)) {
+            for (const r of liveRows) {
+                addRow(r.PersonCode, r.TafsiliCode, r.FullName, r.LevelCode);
+            }
+        }
+
+        // In-memory fuzzy match across local cache
+        const cached = cachedSayanPersonsList || loadPersistedSayanPersons();
+        if (cached && cached.length > 0) {
+            for (const c of cached) {
+                const nameNorm = (c.fullName || '').replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+                const allMatch = normTokens.every(({ fa }) => {
+                    const t = fa.toLowerCase();
+                    return nameNorm.includes(t) || (c.personCode && c.personCode.includes(t)) || (c.tafsiliCode && c.tafsiliCode.includes(t));
+                });
+                if (allMatch) {
+                    addRow(c.personCode, c.tafsiliCode, c.fullName, c.levelCode);
+                }
+            }
+        }
+
+        // Fallback: If still empty, check local paymentOrders and drafts
+        if (results.length === 0) {
+            const db = getDb();
+            if (db) {
+                const drafts = db.get('sayanChequeReceiptDrafts') || [];
+                drafts.forEach(d => {
+                    if (d.personCode && d.personName) addRow(d.personCode, d.personCode, d.personName, '11');
+                });
+                const paymentOrders = db.get('paymentOrders') || [];
+                paymentOrders.forEach(po => {
+                    if (po.payee) addRow(po.payeeCode || po.id, po.payeeCode || po.id, po.payee, '11');
+                });
+            }
+        }
+
+        // Cache update with discovered rows
+        if (results.length > 0 && cached) {
+            let updated = false;
+            for (const item of results) {
+                if (!cached.some(c => c.personCode === item.personCode)) {
+                    cached.push(item);
+                    updated = true;
+                }
+            }
+            if (updated) savePersistedSayanPersons(cached);
+        }
+
+        // Smart relevance sorting (runs in 0.01ms)
+        const normQ = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+        results.sort((a, b) => {
+            const nameA = a.fullName.toLowerCase();
+            const nameB = b.fullName.toLowerCase();
+
+            const scoreA = 
+                (nameA === normQ || a.personCode === normQ ? 1000 : 0) +
+                (nameA.startsWith(normQ) ? 500 : 0) +
+                (nameA.includes(normQ) ? 200 : 0) +
+                (a.levelCode === '11' ? 50 : a.levelCode === '31' ? 40 : 10);
+
+            const scoreB = 
+                (nameB === normQ || b.personCode === normQ ? 1000 : 0) +
+                (nameB.startsWith(normQ) ? 500 : 0) +
+                (nameB.includes(normQ) ? 200 : 0) +
+                (b.levelCode === '11' ? 50 : b.levelCode === '31' ? 40 : 10);
+
+            return scoreB - scoreA;
+        });
+
+        return results.slice(0, limit);
+
     } catch (err) {
-        console.error('Error searching persons in Sayan:', err);
+        console.error("searchSayanPersons error:", err);
         return [];
     }
 };

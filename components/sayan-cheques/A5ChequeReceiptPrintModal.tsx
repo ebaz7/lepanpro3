@@ -321,7 +321,7 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
         <style>
             @page {
                 size: A5 landscape;
-                margin: 2mm 3mm;
+                margin: 0;
             }
             * {
                 box-sizing: border-box;
@@ -339,14 +339,15 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
                 text-align: right;
             }
             .print-page {
-                width: 100%;
-                height: 142mm;
-                max-height: 144mm;
-                padding: 3mm 4mm;
+                width: 200mm;
+                height: 136mm;
+                max-height: 136mm;
+                margin: 6mm auto;
+                padding: 3.5mm 5mm;
                 background-color: #ffffff !important;
                 background: #ffffff !important;
                 color: #000000 !important;
-                border: 1.5px solid #000000;
+                border: 2px solid #000000;
                 box-sizing: border-box;
                 display: flex;
                 flex-direction: column;
@@ -356,14 +357,20 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
                 overflow: hidden;
             }
             @media print {
-                html, body {
+                html, body, #root, #root *, [class*="theme-"], [class*="bg-"], [class*="text-"], .dark, .dark * {
                     background: #ffffff !important;
                     background-color: #ffffff !important;
+                    color: #000000 !important;
+                    border-color: #000000 !important;
+                    box-shadow: none !important;
+                    filter: none !important;
                 }
                 .print-page {
                     page-break-inside: avoid;
                     break-inside: avoid;
                     border: 1.5px solid #000000 !important;
+                    background: #ffffff !important;
+                    color: #000000 !important;
                 }
             }
         </style>

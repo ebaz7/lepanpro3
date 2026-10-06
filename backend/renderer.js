@@ -2131,6 +2131,28 @@ export const generateSecretariatLetterPDF = async (
       effectivePdfLetterheadUrl &&
       effectivePdfLetterheadUrl.toLowerCase().endsWith(".pdf");
 
+    const topMargin = noLetterhead
+      ? "25mm"
+      : companySettings?.marginTop !== undefined
+        ? `${companySettings.marginTop}mm`
+        : companySettings?.letterheadUrl || isPdfLetterhead
+          ? "38mm"
+          : "30mm";
+
+    const bottomMargin = companySettings?.marginBottom !== undefined
+      ? `${companySettings.marginBottom}mm`
+      : companySettings?.letterheadUrl || isPdfLetterhead
+        ? "30mm"
+        : "25mm";
+
+    const leftMargin = companySettings?.marginLeft !== undefined
+      ? `${companySettings.marginLeft}mm`
+      : "22mm";
+
+    const rightMargin = companySettings?.marginRight !== undefined
+      ? `${companySettings.marginRight}mm`
+      : "22mm";
+
     let letterheadHtml = "";
     if (noLetterhead) {
       letterheadHtml = `
@@ -2202,10 +2224,10 @@ export const generateSecretariatLetterPDF = async (
                           }
                         }
                         return `
-                            <div style="display: flex; flex-direction: column; align-items: center; min-w: 100px;">
-                                <div style="font-weight: bold; font-size: 14px;">${s.name}</div>
-                                <div style="font-weight: bold; font-size: 12px; color: #555; margin-bottom: 5px;">${s.title}</div>
-                                ${signerSigUrl ? `<img src="${signerSigUrl}" style="height: 60px; object-fit: contain; mix-blend-mode: multiply; margin-top: 5px;" />` : ""}
+                            <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px;">
+                                <div style="font-weight: bold; font-size: 13px; color: #1e293b;">${s.name}</div>
+                                <div style="font-weight: bold; font-size: 11px; color: #64748b; margin-top: 2px; margin-bottom: 5px;">${s.title}</div>
+                                ${signerSigUrl ? `<img src="${signerSigUrl}" style="height: 55px; object-fit: contain; mix-blend-mode: multiply; margin-top: 4px;" />` : ""}
                             </div>
                         `;
                       })
@@ -2238,9 +2260,18 @@ export const generateSecretariatLetterPDF = async (
       }
     }
 
+    const hasSignOffInContent = letter.content && (
+      letter.content.includes("با تشکر") ||
+      letter.content.includes("با احترام") ||
+      letter.content.includes("سپاسگزارم") ||
+      letter.content.includes("ارادتمند")
+    );
+
+    const showSignOff = !hasSignOffInContent;
+
     signaturesHtml = `
             <div class="signatures" style="${sigStyle}">
-                <div class="sign-off-text" style="white-space: pre-wrap;">${letter.signOffText || "با تشکر"}</div>
+                ${showSignOff ? `<div class="sign-off-text" style="white-space: pre-wrap;">${letter.signOffText || "با احترام"}</div>` : ""}
                 ${signersHtml}
                 <div class="stamp-container">
                     ${stampHtml}
@@ -2261,24 +2292,33 @@ export const generateSecretariatLetterPDF = async (
                 @import url('https://cdn.jsdelivr.net/gh/rastikerdar/tanha-font@v0.1.3/dist/font-face.css');
                 @import url('https://cdn.jsdelivr.net/gh/rastikerdar/tahoma-font@v1.0.0/tahoma.css');
                 
+                @page {
+                    size: ${format} ${landscape ? "landscape" : "portrait"};
+                    margin: 0;
+                }
+
                 html, body {
                     margin: 0; padding: 0;
-                    font-family: '${fontFamily}', 'Tahoma', 'Arial', sans-serif;
+                    font-family: '${fontFamily}', 'Vazirmatn', 'Tahoma', 'Arial', sans-serif;
                     direction: rtl;
-                    height: 100%;
                     box-sizing: border-box;
+                    background: transparent;
+                    -webkit-font-smoothing: antialiased;
                 }
                 
                 .page-container {
                     position: relative;
                     width: 100%;
-                    min-height: 100vh;
-                    overflow: hidden;
+                    height: 100vh;
+                    max-height: ${isA5 ? (landscape ? "148mm" : "210mm") : (landscape ? "210mm" : "297mm")};
                     box-sizing: border-box;
-                    padding-top: ${noLetterhead ? "25mm" : (companySettings?.marginTop !== undefined ? `${companySettings.marginTop}mm` : (companySettings?.letterheadUrl || isPdfLetterhead ? "40mm" : "30px"))};
-                    padding-bottom: ${companySettings?.marginBottom !== undefined ? `${companySettings.marginBottom}mm` : "25mm"};
-                    padding-left: ${companySettings?.marginLeft !== undefined ? `${companySettings.marginLeft}mm` : "20mm"};
-                    padding-right: ${companySettings?.marginRight !== undefined ? `${companySettings.marginRight}mm` : "20mm"};
+                    padding-top: ${topMargin};
+                    padding-bottom: ${bottomMargin};
+                    padding-left: ${leftMargin};
+                    padding-right: ${rightMargin};
+                    overflow: hidden;
+                    page-break-after: avoid;
+                    page-break-inside: avoid;
                 }
                 
                 .letterhead-bg {
@@ -2299,6 +2339,7 @@ export const generateSecretariatLetterPDF = async (
                     text-align: right !important;
                     direction: rtl !important;
                     white-space: nowrap !important;
+                    z-index: 50;
                 }
                 
                 .lh-left-custom {
@@ -2317,8 +2358,7 @@ export const generateSecretariatLetterPDF = async (
                 
                 .default-letterhead {
                     display: flex; justify-content: space-between; align-items: flex-start;
-                    border-bottom: 3px double #333; padding-bottom: 20px; margin-bottom: 40px;
-                    padding-left: 30px; padding-right: 30px;
+                    border-bottom: 2px solid #334155; padding-bottom: 15px; margin-bottom: 30px;
                 }
                 .default-letterhead .lh-right {
                     font-size: 11px;
@@ -2329,32 +2369,84 @@ export const generateSecretariatLetterPDF = async (
                     font-weight: ${metadataFontWeight} !important;
                 }
                 .default-letterhead .lh-center { text-align: center; width: 34%; }
-                .default-letterhead .lh-center h2 { margin: 0 0 5px 0; font-size: 20px; }
-                .default-letterhead .lh-center p { margin: 0; font-size: 12px; color: #555; }
+                .default-letterhead .lh-center h2 { margin: 0 0 5px 0; font-size: 18px; color: #0f172a; }
+                .default-letterhead .lh-center p { margin: 0; font-size: 12px; color: #475569; }
                 .default-letterhead .lh-left { width: 33%; }
                 
                 .letter-content-wrapper {
-                    padding: 0 40px;
+                    padding: 0;
                     z-index: 10;
                     position: relative;
+                    direction: rtl;
                 }
                 
-                .salutation { margin-bottom: 25px; font-weight: bold; font-size: 14px; line-height: 1.8; }
-                .letter-body { font-size: 14px; line-height: 2; text-align: justify; margin-bottom: 50px; }
+                .salutation { 
+                    margin-bottom: 20px; 
+                    font-weight: bold; 
+                    font-size: 14px; 
+                    line-height: 1.9; 
+                    color: #0f172a;
+                    text-align: right;
+                }
+                .letter-body { 
+                    font-size: 14px; 
+                    line-height: 1.9; 
+                    text-align: justify; 
+                    text-justify: inter-word;
+                    margin-bottom: 18px; 
+                    color: #0f172a;
+                    direction: rtl;
+                }
+                .letter-body p {
+                    margin-top: 0;
+                    margin-bottom: 8px;
+                    line-height: 1.9;
+                    text-align: justify;
+                    text-justify: inter-word;
+                }
                 
-                .signatures { width: 250px; }
-                .sign-off-text { font-weight: bold; font-size: 14px; margin-bottom: 15px; }
-                .company-name { font-weight: bold; font-size: 14px; }
-                .sender-name { font-weight: bold; font-size: 14px; margin-bottom: 10px; }
+                .signatures { 
+                    width: 260px; 
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
+                    margin-top: 15px;
+                }
+                .sign-off-text { 
+                    font-weight: bold; 
+                    font-size: 14px; 
+                    margin-bottom: 12px; 
+                    color: #0f172a;
+                }
+                .company-name { font-weight: bold; font-size: 14px; color: #0f172a; }
+                .sender-name { font-weight: bold; font-size: 14px; margin-bottom: 10px; color: #0f172a; }
                 
-                .stamp-container { position: relative; min-height: ${stampSize}px; display: flex; align-items: center; justify-content: center; margin-top: 10px; }
-                .company-stamp { position: absolute; max-width: ${stampSize}px; max-height: ${stampSize}px; opacity: ${stampOpacity}; mix-blend-multiply: multiply; z-index: -1; }
+                .stamp-container { 
+                    position: relative; 
+                    min-height: ${stampSize ? Math.min(stampSize, 100) : 80}px; 
+                    display: flex; 
+                    align-items: center; 
+                    justify-content: center; 
+                    margin-top: 8px; 
+                }
+                .company-stamp { 
+                    position: absolute; 
+                    max-width: ${stampSize}px; 
+                    max-height: ${stampSize}px; 
+                    opacity: ${stampOpacity}; 
+                    mix-blend-mode: multiply; 
+                    z-index: 0; 
+                }
                 
                 .footer {
-                    position: absolute; bottom: 20px; left: 30px; right: 30px;
-                    border-top: 1px solid #ccc; padding-top: 10px;
-                    display: flex; justify-content: space-between;
-                    font-size: 10px; color: #666;
+                    margin-top: 30px;
+                    border-top: 1px solid #cbd5e1; 
+                    padding-top: 8px;
+                    display: flex; 
+                    justify-content: space-between;
+                    font-size: 10px; 
+                    color: #64748b;
+                    page-break-inside: avoid;
+                    break-inside: avoid;
                 }
             </style>
         </head><body>
@@ -2363,7 +2455,7 @@ export const generateSecretariatLetterPDF = async (
                 
                 <div class="letter-content-wrapper">
                     <div class="salutation">
-                        ${letter.hideSubjectInLetter ? "" : `<div>موضوع: ${letter.subject}</div>`}
+                        ${letter.hideSubjectInLetter ? "" : `<div style="margin-bottom: 8px;"><b>موضوع:</b> ${letter.subject}</div>`}
                         ${letter.hideSalutationInLetter ? "" : `<div>با سلام و احترام،</div>`}
                     </div>
                     
@@ -2375,8 +2467,7 @@ export const generateSecretariatLetterPDF = async (
                 </div>
                 
                 ${
-                  !companySettings?.hideAutoFooter ||
-                  !companySettings?.letterheadUrl
+                  !companySettings?.letterheadUrl && !isPdfLetterhead && !companySettings?.hideAutoFooter
                     ? `
                 <div class="footer">
                     <span>نشانی: ${companySettings?.address || "ثبت نشده"}</span>

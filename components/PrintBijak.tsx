@@ -242,18 +242,36 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
           style.innerHTML = `
             @page { size: A5 portrait; margin: 0; }
             @media print {
-                body * { visibility: hidden; }
-                #${containerId}, #${containerId} * { visibility: visible; }
+                html, body, #root, #root *, [class*="theme-"], [class*="bg-"], [class*="text-"], .dark, .dark * {
+                    background-color: #ffffff !important;
+                    background: #ffffff !important;
+                    color: #000000 !important;
+                    border-color: #000000 !important;
+                    box-shadow: none !important;
+                    filter: none !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
+                body > *:not(.printing-modal) {
+                    display: none !important;
+                }
+                #${containerId}, #${containerId} * {
+                    visibility: visible !important;
+                }
                 #${containerId} { 
-                    position: absolute; 
-                    left: 0; 
-                    top: 0; 
+                    position: absolute !important; 
+                    left: 0 !important; 
+                    top: 0 !important; 
                     width: 148mm !important; 
-                    height: 209mm !important;
+                    height: 210mm !important;
+                    max-height: 210mm !important;
                     margin: 0 !important;
-                    padding: 8mm !important;
+                    padding: 6mm !important;
                     border: none !important;
                     box-shadow: none !important;
+                    overflow: hidden !important;
+                    page-break-inside: avoid !important;
+                    page-break-after: avoid !important;
                 }
                 .no-print { display: none !important; }
             }

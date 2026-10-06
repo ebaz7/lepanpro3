@@ -809,6 +809,18 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
   useEffect(() => {
       fetchWarehouseAlert(false);
 
+      // Periodic background polling every 90 seconds to stay in sync without saturating Sayan API
+      const intervalTimer = setInterval(() => {
+          fetchWarehouseAlert(false);
+      }, 90000);
+
+      // Re-fetch immediately when window or tab becomes visible / focused
+      const handleWindowFocus = () => {
+          if (!document.hidden) {
+              fetchWarehouseAlert(false);
+          }
+      };
+
       const handleLiveWarehouseUpdate = (e: any) => {
           if (e.detail?.meta) {
               setWarehouseOverviewData((prev: any) => ({
@@ -836,10 +848,15 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
 
       window.addEventListener('warehouse_overview_updated', handleLiveWarehouseUpdate);
       window.addEventListener('storage', handleStorageUpdate);
+      window.addEventListener('focus', handleWindowFocus);
+      document.addEventListener('visibilitychange', handleWindowFocus);
 
       return () => {
+          clearInterval(intervalTimer);
           window.removeEventListener('warehouse_overview_updated', handleLiveWarehouseUpdate);
           window.removeEventListener('storage', handleStorageUpdate);
+          window.removeEventListener('focus', handleWindowFocus);
+          document.removeEventListener('visibilitychange', handleWindowFocus);
       };
   }, []);
 

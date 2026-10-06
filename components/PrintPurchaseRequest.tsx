@@ -163,22 +163,37 @@ const PrintPurchaseRequest: React.FC<Props> = ({ request }) => {
             
             <style dangerouslySetInnerHTML={{__html: `
                 @media print {
-                    @page { size: A4 portrait; margin: 10mm; }
-                    body {
-                        visibility: hidden !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
+                    @page { size: A4 portrait; margin: 0; }
+                    html, body, #root, #root *, [class*="theme-"], [class*="bg-"], [class*="text-"], .dark, .dark * {
+                        background-color: #ffffff !important;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                        border-color: #000000 !important;
+                        box-shadow: none !important;
+                        filter: none !important;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    body > *:not(.printing-modal) {
+                        display: none !important;
+                    }
+                    .print-only-section, .print-only-section * {
+                        visibility: visible !important;
                     }
                     .print-only-section {
-                        visibility: visible !important;
                         position: absolute !important;
                         left: 0 !important;
                         top: 0 !important;
-                        width: 100% !important;
-                        height: 100% !important;
+                        width: 210mm !important;
+                        height: 297mm !important;
+                        max-height: 297mm !important;
                         margin: 0 !important;
                         padding: 10mm !important;
-                        background: white !important;
+                        background: #ffffff !important;
+                        box-sizing: border-box !important;
+                        overflow: hidden !important;
+                        page-break-inside: avoid !important;
+                        page-break-after: avoid !important;
                     }
                 }
             `}} />
