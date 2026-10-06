@@ -181,7 +181,7 @@ export const canUserViewProformas = (
 
 export const checkPurchasePermission = (
     user: User,
-    permKey: keyof PurchaseRolePermissions | string,
+    permKey: keyof RolePermissions | string,
     settings?: SystemSettings | null,
     request?: PurchaseRequest | null
 ): boolean => {
@@ -3613,7 +3613,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                             isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || 
                                             isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || 
                                             isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) ||
-                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASE_OFFER) ||
+                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASING) ||
                                             isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL) ||
                                             isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER)
                                         ) && (
@@ -3649,7 +3649,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                     </div>
                                                     {p.isChosen && (
                                                         <span className="bg-green-600 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center gap-1">
-                                                            <CheckCircle2 size={10} />
+                                                            <CheckCircle size={10} />
                                                             پیش‌فاکتور منتخب
                                                         </span>
                                                     )}
@@ -3691,7 +3691,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                                             isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) || 
                                                             isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PROFORMA) || 
                                                             isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) ||
-                                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASE_OFFER) ||
+                                                            isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASING) ||
                                                             isAdmin
                                                         ) && (
                                                             <button 
@@ -4032,7 +4032,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         )}
 
                         {/* Zanjan Branch: Proposal & Purchasing */}
-                        {(isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) || isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASE_OFFER)) && (isAdmin || hasPurchasePerm('canManageZanjanPurchasing') || hasPurchasePerm('canManageProformas')) && (
+                        {(isCurrentStep(PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING) || isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_PURCHASING)) && (isAdmin || hasPurchasePerm('canManageZanjanPurchasing') || hasPurchasePerm('canManageProformas')) && (
                             <button 
                                 onClick={() => {
                                     const actionText = (request.proformas || []).length > 0 

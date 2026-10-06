@@ -42,7 +42,6 @@ import cron from 'node-cron';
 import archiver from 'archiver';
 import AdmZip from 'adm-zip';
 import webpush from 'web-push';
-import * as dbManager from './backend/db-manager.js';
 import * as utils from './backend/utils.js';
 import { notifyExitPermitStep, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport, notifyDriverPayment } from './backend/bot-core.js';
 import * as telegram from './backend/telegram.js';
@@ -120,13 +119,10 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-let PORT = 3000;
+let PORT = parseInt(process.env.PORT, 10) || 3000;
 const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
 if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
     const parsed = parseInt(process.argv[portArgIndex + 1], 10);
-    if (!isNaN(parsed) && parsed > 0) PORT = parsed;
-} else if (!process.argv.includes('--dev') && process.env.PORT) {
-    const parsed = parseInt(process.env.PORT, 10);
     if (!isNaN(parsed) && parsed > 0) PORT = parsed;
 }
 
