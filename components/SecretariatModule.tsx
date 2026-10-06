@@ -182,6 +182,7 @@ if (typeof window !== "undefined" && ReactQuill) {
 }
 
 import { motion, AnimatePresence } from "motion/react";
+import { executeCrossPlatformPrint } from "../utils/mobilePrintService";
 import {
   Building,
   Building2,
@@ -8657,61 +8658,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     <button
                       onClick={() => {
-                        const style = document.createElement("style");
-                        style.id = "secretariat-print-style";
-                        style.innerHTML = `
-                          @media print {
-                            @page { 
-                              size: ${isPrintMode.paperSize || "A4"} ${isPrintMode.orientation || "portrait"}; 
-                              margin: 0 !important; 
-                            }
-                            html, body, #root, #root *, [class*="theme-"], [class*="bg-"], [class*="text-"], .dark, .dark * {
-                              background-color: #ffffff !important;
-                              background: #ffffff !important;
-                              color: #000000 !important;
-                              box-shadow: none !important;
-                              text-shadow: none !important;
-                              filter: none !important;
-                              -webkit-print-color-adjust: exact !important;
-                              print-color-adjust: exact !important;
-                            }
-                            body > *:not(.printing-modal):not(#secretariat-print-overlay) {
-                              display: none !important;
-                            }
-                            #print-content-section, #print-content-section * {
-                              visibility: visible !important;
-                              display: block;
-                            }
-                            #print-content-section {
-                              position: absolute !important;
-                              left: 0 !important;
-                              top: 0 !important;
-                              width: ${paperWidth} !important;
-                              height: ${paperHeight} !important;
-                              max-height: ${paperHeight} !important;
-                              background: white !important;
-                              color: black !important;
-                              padding: 0 !important;
-                              margin: 0 !important;
-                              border: none !important;
-                              box-shadow: none !important;
-                              border-radius: 0 !important;
-                              overflow: hidden !important;
-                              page-break-inside: avoid !important;
-                              page-break-after: avoid !important;
-                              break-inside: avoid !important;
-                            }
-                            .print\\:hidden {
-                              display: none !important;
-                            }
-                          }
-                        `;
-                        document.head.appendChild(style);
-                        window.print();
-                        setTimeout(() => {
-                          const s = document.getElementById("secretariat-print-style");
-                          if (s) s.remove();
-                        }, 500);
+                        const printElem = document.getElementById("print-content-section");
+                        if (printElem) {
+                          executeCrossPlatformPrint(printElem, {
+                            title: `نامه اداری ${isPrintMode.letterNumber || ''}`,
+                            orientation: isPrintMode.orientation === "landscape" ? "landscape" : "portrait",
+                            fileName: `Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.pdf`
+                          });
+                        }
                       }}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                     >

@@ -155,6 +155,17 @@ export const formatToShamsiDateTime = (dateVal) => {
     }
 };
 
+export const normalizeFiscalYear = (fyInput) => {
+    if (!fyInput) return '4';
+    const clean = String(fyInput).trim().replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]).replace(/[^\d]/g, '');
+    if (clean === '1405' || clean === '14050' || clean === '14051') return '4';
+    if (clean === '1404') return '3';
+    if (clean === '1406') return '5';
+    if (clean === '1403') return '2';
+    if (clean.length > 0 && clean.length <= 2) return clean;
+    return '4';
+};
+
 export const extractValidReceiptSequence = (val) => {
     if (val === null || val === undefined) return null;
     const s = String(val).trim();
@@ -202,7 +213,7 @@ export const getNextAppReceiptNumber = (fiscalYear = '4') => {
  */
 export const getNextChequeReceiptNumbers = async (fiscalYear = '4') => {
     try {
-        const fy = String(fiscalYear || '4');
+        const fy = normalizeFiscalYear(fiscalYear);
         const db = getDb();
         const settings = db?.settings || {};
 
@@ -623,16 +634,16 @@ export const getSayanCashboxes = async () => {
  */
 export const getChequeReceiptsHistory = async (fiscalYear = '4', search = '') => {
     const db = getDb();
-    if (!db.sayan_cheque_receipts) {
-        db.sayan_cheque_receipts = [];
-    }
+    if (!db.sayan_cheque_receipts) db.sayan_cheque_receipts = db.chequeReceipts || [];
+    if (!db.chequeReceipts) db.chequeReceipts = db.sayan_cheque_receipts;
 
-    const fy = String(fiscalYear || '4');
+    const fy = normalizeFiscalYear(fiscalYear);
+    const rawFyStr = String(fiscalYear || '').trim();
 
-    // 1. Get Live Sayan Registered Receipts (OpCode 11)
+    // 1. Get Live Sayan Registered Receipts (OpCode 11 - Treasury Receipt)
     let sayanLiveReceipts = [];
     try {
-        const sql = `
+        const headersSql = `
             SELECT TOP 100
                 h.Field_001 as HeaderId,
                 h.Field_004 as FiscalYear,
@@ -642,76 +653,111 @@ export const getChequeReceiptsHistory = async (fiscalYear = '4', search = '') =>
                 h.Field_010 as PersonCode,
                 h.Field_025 as TotalAmount,
                 h.Field_028 as Description,
-                RTRIM(LTRIM(CONCAT(COALESCE(g.Field_006, ''), ' ', COALESCE(g.Field_007, '')))) as PersonName,
-                r.Field_001 as RowId,
-                r.Field_006 as RowAmount,
-                r.Field_007 as ChequeId,
-                r.Field_008 as RowNote,
-                r.Field_025 as RowSeq,
-                c.Field_005 as ChequeNumber,
-                c.Field_006 as DueDate,
-                c.Field_009 as BankName,
-                c.Field_011 as InNameOf,
-                c.Field_016 as PoshtNomreh
-            FROM BUR_TBL_008 h
-            LEFT JOIN GNR_TBL_001 g ON RTRIM(LTRIM(g.Field_003)) = RTRIM(LTRIM(h.Field_010))
-            INNER JOIN BUR_TBL_009 r ON r.Field_004 = h.Field_005 AND r.Field_003 = h.Field_004
-            LEFT JOIN BUR_TBL_012 c ON c.Field_001 = r.Field_007
-            WHERE h.Field_004 = '${fy}' AND h.Field_009 = '11'
-            ORDER BY CAST(h.Field_005 as bigint) DESC, CAST(r.Field_025 as int) ASC
+                RTRIM(LTRIM(CONCAT(COALESCE(g.Field_006, ''), ' ', COALESCE(g.Field_007, '')))) as PersonName
+            FROM BUR_TBL_008 h WITH (NOLOCK)
+            LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(g.Field_003)) = RTRIM(LTRIM(h.Field_010))
+            WHERE h.Field_009 = '11'
+            ORDER BY CAST(h.Field_001 as bigint) DESC
         `;
-        const flatRows = await executeSayanQuery(sql);
+        const headers = await executeSayanQuery(headersSql);
 
-        // Group rows by ArchiveCode / HeaderId
-        const groupMap = new Map();
-        for (const row of flatRows) {
-            const docKey = `${row.FiscalYear}_${row.ArchiveCode}`;
-            if (!groupMap.has(docKey)) {
-                groupMap.set(docKey, {
-                    id: `SAYAN_${row.HeaderId}`,
+        if (Array.isArray(headers) && headers.length > 0) {
+            const archList = headers.map(h => `'${h.ArchiveCode}'`).filter(Boolean).join(',');
+            let detailRowsMap = new Map();
+            
+            if (archList) {
+                try {
+                    const rowsSql = `
+                        SELECT 
+                            r.Field_001 as RowId,
+                            r.Field_003 as FiscalYear,
+                            r.Field_004 as ArchiveCode,
+                            r.Field_006 as RowAmount,
+                            r.Field_007 as ChequeId,
+                            r.Field_008 as RowNote,
+                            r.Field_025 as RowSeq,
+                            c.Field_005 as ChequeNumber,
+                            c.Field_006 as DueDate,
+                            c.Field_009 as BankName,
+                            c.Field_011 as InNameOf,
+                            c.Field_016 as PoshtNomreh
+                        FROM BUR_TBL_009 r WITH (NOLOCK)
+                        LEFT JOIN BUR_TBL_012 c WITH (NOLOCK) ON c.Field_001 = r.Field_007
+                        WHERE r.Field_004 IN (${archList})
+                        ORDER BY CAST(r.Field_025 as int) ASC
+                    `;
+                    const detailRows = await executeSayanQuery(rowsSql);
+                    if (Array.isArray(detailRows)) {
+                        for (const row of detailRows) {
+                            const arch = String(row.ArchiveCode);
+                            if (!detailRowsMap.has(arch)) detailRowsMap.set(arch, []);
+                            detailRowsMap.get(arch).push(row);
+                        }
+                    }
+                } catch (rowErr) {
+                    console.warn('[Sayan Cheque Service] Error fetching detail rows:', rowErr.message);
+                }
+            }
+
+            for (const h of headers) {
+                const arch = String(h.ArchiveCode);
+                const rows = detailRowsMap.get(arch) || [];
+                let poshtNomreh = '';
+                const cheques = [];
+
+                for (const row of rows) {
+                    if (!poshtNomreh && row.PoshtNomreh) poshtNomreh = row.PoshtNomreh;
+                    if (row.ChequeId || row.ChequeNumber) {
+                        cheques.push({
+                            chequeId: row.ChequeId,
+                            rowId: row.RowId,
+                            chequeNumber: row.ChequeNumber || '',
+                            amount: Number(row.RowAmount) || 0,
+                            dueDate: row.DueDate || '',
+                            bankName: row.BankName || '',
+                            inNameOf: row.InNameOf || '',
+                            poshtNomreh: row.PoshtNomreh || poshtNomreh || '',
+                            rowSeq: row.RowSeq
+                        });
+                    }
+                }
+
+                sayanLiveReceipts.push({
+                    id: `SAYAN_${h.HeaderId}`,
                     source: 'SAYAN_DB',
                     status: 'REGISTERED_IN_SAYAN',
-                    fiscalYear: row.FiscalYear,
-                    archiveCode: row.ArchiveCode,
-                    docNo: row.DocNo,
-                    docDate: row.DocDate,
-                    personCode: row.PersonCode,
-                    personName: row.PersonName || `شخص ${row.PersonCode}`,
-                    totalAmount: Number(row.TotalAmount) || 0,
-                    description: row.Description || '',
-                    poshtNomreh: row.PoshtNomreh || '',
-                    cheques: [],
-                    createdAt: row.DocDate,
-                    registeredAt: row.DocDate
-                });
-            }
-            const doc = groupMap.get(docKey);
-            if (!doc.poshtNomreh && row.PoshtNomreh) {
-                doc.poshtNomreh = row.PoshtNomreh;
-            }
-            if (row.ChequeId || row.ChequeNumber) {
-                doc.cheques.push({
-                    chequeId: row.ChequeId,
-                    rowId: row.RowId,
-                    chequeNumber: row.ChequeNumber || '',
-                    amount: Number(row.RowAmount) || 0,
-                    dueDate: row.DueDate || '',
-                    bankName: row.BankName || '',
-                    inNameOf: row.InNameOf || '',
-                    poshtNomreh: row.PoshtNomreh || doc.poshtNomreh || '',
-                    rowSeq: row.RowSeq
+                    fiscalYear: h.FiscalYear,
+                    archiveCode: h.ArchiveCode,
+                    docNo: h.DocNo,
+                    docDate: h.DocDate,
+                    personCode: h.PersonCode,
+                    personName: h.PersonName || `شخص ${h.PersonCode}`,
+                    totalAmount: Number(h.TotalAmount) || 0,
+                    description: h.Description || '',
+                    poshtNomreh: poshtNomreh || String(h.ArchiveCode),
+                    cheques,
+                    createdAt: h.DocDate,
+                    registeredAt: h.DocDate
                 });
             }
         }
-        sayanLiveReceipts = Array.from(groupMap.values());
     } catch (err) {
         console.error('Error querying live Sayan cheque receipts:', err);
     }
 
     // 2. Local drafts & approval workflow items
-    const localReceipts = (db.sayan_cheque_receipts || []).filter(item => {
-        if (item.fiscalYear && String(item.fiscalYear) !== fy) return false;
-        return true;
+    const rawLocal = [...(db.sayan_cheque_receipts || []), ...(db.chequeReceipts || [])];
+    const uniqueMap = new Map();
+    rawLocal.forEach(item => {
+        if (item && item.id && !uniqueMap.has(item.id)) {
+            uniqueMap.set(item.id, item);
+        }
+    });
+
+    const localReceipts = Array.from(uniqueMap.values()).filter(item => {
+        if (!item.fiscalYear) return true;
+        const itemFy = normalizeFiscalYear(item.fiscalYear);
+        return itemFy === fy || String(item.fiscalYear) === rawFyStr || true; // Show all local items across years
     });
 
     // Merge: If a local draft was registered into Sayan and matches ArchiveCode, attach local metadata (e.g. PDF preview)
@@ -1355,7 +1401,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
         throw new Error(`خطای اعتبارسنجی رسید: ${validation.errors.join(' | ')}`);
     }
 
-    const fiscalYear = String(record.fiscalYear || '4');
+    const fiscalYear = normalizeFiscalYear(record.fiscalYear || '4');
     const personCode = String(record.personCode).trim();
     const cheques = record.cheques;
     const totalAmount = cheques.reduce((s, c) => s + (Number(c.amount) || 0), 0);
@@ -1536,7 +1582,7 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
  * appear accurately in customer statements (صورتحساب اشخاص) with zero duplicates.
  */
 export const syncMissingReceiptAccountingDocs = async (fiscalYear = '4') => {
-    const fy = String(fiscalYear || '4').trim();
+    const fy = normalizeFiscalYear(fiscalYear);
 
     // 1. Find all BUR_TBL_008 OpCode 11 receipts in this fiscal year that lack ACT_TBL_009 (Moein 101)
     const missingQuery = `
@@ -1697,7 +1743,7 @@ export const syncMissingReceiptAccountingDocs = async (fiscalYear = '4') => {
 export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4') => {
     try {
         // Sanitize digits (convert Persian digits to English)
-        const cleanFy = String(fiscalYear || '4').replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]).trim();
+        const cleanFy = normalizeFiscalYear(fiscalYear);
         const cleanArch = String(archiveCode || '').replace(/[۰-۹]/g, d => '0123456789'['۰۱۲۳۴۵۶۷۸۹'.indexOf(d)]).trim();
         
         // 1. Header (BUR_TBL_008) - Use RegDate alias instead of CreatedDate to prevent Sayan WAF "CREATE" keyword block
