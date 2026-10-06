@@ -1338,8 +1338,20 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
                             {/* 1. Person Search Autocomplete */}
                             <div ref={personContainerRef} className="relative">
-                                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                                    طرف حساب (انتخاب اجباری از سایان) *
+                                <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                                    <span className="flex items-center gap-1">
+                                        <span>طرف حساب (انتخاب اجباری از سایان)</span>
+                                        <span className="text-red-500">*</span>
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => fetchPersons(personQuery.trim())}
+                                        className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                        title="استعلام زنده از سرور سایان"
+                                    >
+                                        <RefreshCw className={`w-3 h-3 ${searchingPersons ? 'animate-spin' : ''}`} />
+                                        <span>استعلام زنده سایان</span>
+                                    </button>
                                 </label>
                                 <div className="relative">
                                     <input
@@ -1376,7 +1388,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                 }
                                             }
                                         }}
-                                        placeholder="نام یا کد تفصیلی (جستجو در سایان)..."
+                                        placeholder="نام یا کد تفصیلی (جستجوی زنده در کل پایگاه سایان)..."
                                         className={`w-full border rounded-xl px-3 py-2.5 text-xs outline-none transition-colors ${
                                             selectedPerson
                                                 ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 text-emerald-900 dark:text-emerald-100 font-bold'
@@ -1395,7 +1407,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                     </div>
                                 ) : (
                                     <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
-                                        * انتخاب از میان طرف‌های حساب سایان الزامی است
+                                        * انتخاب از میان طرف‌های حساب زنده سایان الزامی است
                                     </div>
                                 )}
 
@@ -1403,9 +1415,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 {personDropdownOpen && (
                                     <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-40 max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
                                         {personSearchResults.length > 0 ? (
-                                            personSearchResults.map(p => (
+                                            personSearchResults.map((p, pIdx) => (
                                                 <button
-                                                    key={p.personCode}
+                                                    key={`${p.personCode}-${pIdx}`}
                                                     type="button"
                                                     onClick={() => {
                                                         setSelectedPerson(p);
@@ -1415,7 +1427,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                         setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: p.fullName })));
                                                         document.getElementById('input-receipt-no')?.focus();
                                                     }}
-                                                    className="w-full text-right p-2.5 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between group"
+                                                    className="w-full text-right p-2.5 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between group cursor-pointer"
                                                 >
                                                     <div>
                                                         <div className="font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-400">{p.fullName}</div>
