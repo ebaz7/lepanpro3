@@ -208,6 +208,14 @@ import {
   ArrowRight,
   CornerDownLeft,
   CheckCircle,
+  CheckCircle2,
+  Clock,
+  GitBranch,
+  Activity,
+  Send,
+  Edit3,
+  ArrowLeft,
+  ArrowUpRight,
   Image as ImageIcon,
   ChevronLeft,
   Loader2,
@@ -583,6 +591,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const [isEditorFullscreen, setIsEditorFullscreen] = useState(false);
   const [editingLetterId, setEditingLetterId] = useState<string | null>(null);
   const [selectedLetterForView, setSelectedLetterForView] =
+    useState<SecretariatLetter | null>(null);
+  const [viewingWorkflowLetter, setViewingWorkflowLetter] =
     useState<SecretariatLetter | null>(null);
   const [letterViewZoom, setLetterViewZoom] = useState<number>(100);
   const [letterViewFullscreen, setLetterViewFullscreen] = useState(false);
@@ -2409,21 +2419,45 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       stamps: getNormalizedStamps(baseSettings),
     };
   };
+  const isLetterSigned = (l?: SecretariatLetter | null) => {
+    if (!l) return false;
+    return (
+      (l.approvedBy && l.approvedBy.length > 0) ||
+      (l.signatureImageUrls && l.signatureImageUrls.length > 0) ||
+      l.status === SecretariatLetterStatus.APPROVED
+    );
+  };
+
   const canEditLetter = (l?: SecretariatLetter | null) => {
     if (!l) return false;
     if (isSuperUser) return true;
+
+    // Check if letter is already legally signed
+    const signed = isLetterSigned(l);
+    if (signed) {
+      // If already signed, regular users cannot modify to protect legal validity
+      return false;
+    }
+
+    // Before signature: Creator, Secretariat access users, or assigned users can edit
     if (activeCompanySettings?.editAccessTokens?.includes(currentUser.id)) return true;
+    if (currentUser.canAccessSecretariat || currentUser.role === 'admin' || currentUser.roles?.includes('admin')) return true;
+
     const isOwner =
       l.createdBy === currentUser.id ||
       l.createdById === currentUser.id ||
       l.createdBy === currentUser.fullName ||
       l.createdBy === currentUser.name ||
       l.creatorName === currentUser.fullName ||
-      l.createdByName === currentUser.fullName;
+      l.createdByName === currentUser.fullName ||
+      l.sender === currentUser.fullName ||
+      l.sender === currentUser.name;
+
     const isAssigned =
       l.referredTo?.includes(currentUser.id) ||
       l.referredTo?.includes(currentUser.username) ||
       l.referredTo?.includes(currentUser.fullName);
+
     return isOwner || isAssigned;
   };
 
@@ -3924,14 +3958,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       </div>
                     </div>
 
-                    <div className="border-t mt-4 pt-3 flex items-center justify-between text-[10px] text-slate-400">
+                    <div className="border-t mt-3 pt-2 flex items-center justify-between text-[10px] text-slate-400">
                       <div className="flex items-center gap-2">
                         <span className="flex items-center gap-0.5">
                           <Calendar size={12} /> {letter.date}
                         </span>
                         {letter.attachments?.length > 0 && (
                           <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                            پیوست: {letter.attachments.length}
+                            <Paperclip size={10} /> {letter.attachments.length}
                           </span>
                         )}
                         {letter.approvedBy?.length > 0 && (
@@ -3939,26 +3973,111 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                             className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-bold"
                             title="امضا شده"
                           >
-                            امضا: {letter.approvedBy.length}
+                            <CheckCircle size={10} /> {letter.approvedBy.length} امضا
                           </span>
                         )}
                       </div>
 
-                      <div className="flex gap-4 items-center">
-                        <button
-                          onClick={() => setIsPrintMode(letter)}
-                          className="text-emerald-600 hover:text-emerald-800 font-bold hover:underline flex items-center gap-0.5"
-                        >
-                          مشاهده نامه <FileText size={12} />
-                        </button>
-                        <button
-                          onClick={() => setSelectedLetterForView(letter)}
-                          className="text-purple-600 hover:text-purple-800 font-bold hover:underline flex items-center gap-0.5"
-                        >
-                          جزئیات و اقدام <ChevronLeft size={12} />
-                        </button>
-                      </div>
+                      {letter.isPrivate && (
+                        <span className="text-[9px] text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+                          <Lock size={9} /> محرمانه
+                        </span>
+                      )}
                     </div>
+
+                    {/* Integrated Workflow & Action Controls */}
+                    {(() => {
+                      const totalSigners = letter.signers?.length || 0;
+                      const signedCount = letter.approvedBy?.length || 0;
+                      const isSigned = isLetterSigned(letter);
+                      const isEditableBeforeSign = !isSigned && canEditLetter(letter);
+
+                      let stageLabel = "ثبت اولیه و پیش‌نویس";
+                      let stageColor = "bg-slate-50 text-slate-700 dark:bg-slate-800/80 dark:text-slate-300 border-slate-200 dark:border-slate-700";
+                      let stageIcon = <Clock size={12} className="text-slate-500 shrink-0" />;
+
+                      if (letter.status === SecretariatLetterStatus.ARCHIVED) {
+                        stageLabel = "بایگانی شده";
+                        stageColor = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300";
+                        stageIcon = <Archive size={12} className="text-slate-500 shrink-0" />;
+                      } else if (totalSigners > 0 && signedCount >= totalSigners) {
+                        stageLabel = "امضاها تکمیل شد (تایید نهایی) ✅";
+                        stageColor = "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50";
+                        stageIcon = <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />;
+                      } else if (totalSigners > 0 && signedCount > 0) {
+                        stageLabel = `در حال اخذ امضا (${toPersianDigits(signedCount)} از ${toPersianDigits(totalSigners)})`;
+                        stageColor = "bg-blue-50 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800/50";
+                        stageIcon = <Activity size={12} className="text-blue-600 shrink-0 animate-pulse" />;
+                      } else if (totalSigners > 0) {
+                        stageLabel = `در انتظار امضا (${toPersianDigits(totalSigners)} مسئول)`;
+                        stageColor = "bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800/50";
+                        stageIcon = <Clock size={12} className="text-amber-600 shrink-0" />;
+                      } else if (letter.referredTo && letter.referredTo.length > 0) {
+                        stageLabel = `در دست اقدام و ارجاع (${toPersianDigits(letter.referredTo.length)} نفر)`;
+                        stageColor = "bg-purple-50 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800/50";
+                        stageIcon = <GitBranch size={12} className="text-purple-600 shrink-0" />;
+                      }
+
+                      return (
+                        <div className="mt-2.5 pt-2 border-t border-slate-150 dark:border-slate-800 space-y-2">
+                          {/* Workflow Stage Tracker Bar */}
+                          <div className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl border text-[11px] font-bold ${stageColor}`}>
+                            <div className="flex items-center gap-1.5 truncate">
+                              {stageIcon}
+                              <span className="truncate">روال: {stageLabel}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setViewingWorkflowLetter(letter)}
+                              className="text-[10px] text-purple-700 hover:text-purple-900 dark:text-purple-300 font-black flex items-center gap-0.5 shrink-0 hover:underline cursor-pointer mr-1"
+                              title="مشاهده نمودار گردش کار و مراحل نامه"
+                            >
+                              مشاهده روال <ArrowLeft size={10} />
+                            </button>
+                          </div>
+
+                          {/* Card Action Buttons */}
+                          <div className="flex items-center justify-between gap-1.5 pt-0.5 text-[11px]">
+                            <div className="flex items-center gap-1">
+                              {/* Print & PDF Button */}
+                              <button
+                                type="button"
+                                onClick={() => setIsPrintMode(letter)}
+                                className="p-1.5 px-2.5 text-emerald-700 hover:text-emerald-900 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 rounded-xl font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                title="پیش‌نمایش و چاپ نامه با سربرگ و کیفیت ۳۰۰ DPI"
+                              >
+                                <Printer size={12} />
+                                <span>چاپ و PDF</span>
+                              </button>
+
+                              {/* Edit Button (Enabled Before Signatures) */}
+                              {isEditableBeforeSign && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditLetterClick(letter)}
+                                  className="p-1.5 px-2 text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 rounded-xl font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                  title="ویرایش نامه قبل از امضا"
+                                >
+                                  <Edit3 size={12} />
+                                  <span>ویرایش</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Details & Actions Button */}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLetterForView(letter)}
+                              className="p-1.5 px-2.5 text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/50 dark:text-purple-300 border border-purple-200 dark:border-purple-800/40 rounded-xl font-bold flex items-center gap-1 transition-colors cursor-pointer mr-auto"
+                              title="مشاهده جزئیات، اقدامات و ثبت نظر"
+                            >
+                              <span>جزئیات و اقدام</span>
+                              <ChevronLeft size={12} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </motion.div>
                 );
               })}
