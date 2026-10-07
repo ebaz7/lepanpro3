@@ -420,13 +420,16 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
     };
 
     // Export to Excel (Full Detailed Cheque List)
-    const handleExportExcel = () => {
-        if (filteredCheques.length === 0) {
+    const handleExportExcel = (customList?: SayanPersonCheque[], categoryName?: string) => {
+        const listToExport = customList || filteredCheques;
+        if (listToExport.length === 0) {
             alert('چکی برای خروجی اکسل وجود ندارد.');
             return;
         }
 
-        const dataRows = filteredCheques.map((c, idx) => ({
+        const sumAmt = listToExport.reduce((s, x) => s + (x.amount || 0), 0);
+
+        const dataRows = listToExport.map((c, idx) => ({
             'ردیف': idx + 1,
             'نوع سند': c.chequeType === 'received' ? 'دریافتی از مشتری' : (c.chequeType === 'spent' ? 'خرج‌شده / واگذار به غیر' : 'صادره / پرداختی'),
             'شماره چک / صیادی': c.chequeNo,
@@ -449,9 +452,9 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
         dataRows.push({
             'ردیف': '-' as any,
             'نوع سند': 'مجموع کل',
-            'شماره چک / صیادی': `${filteredCheques.length} فقره چک`,
-            'مبلغ (ریال)': stats.totalSum,
-            'مبلغ (تومان)': Math.round(stats.totalSum / 10),
+            'شماره چک / صیادی': `${listToExport.length} فقره چک`,
+            'مبلغ (ریال)': sumAmt,
+            'مبلغ (تومان)': Math.round(sumAmt / 10),
             'تاریخ دریافت / ثبت': '-',
             'تاریخ سررسید': '-',
             'نام بانک': '-',
@@ -467,9 +470,10 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
 
         const ws = XLSX.utils.json_to_sheet(dataRows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'ریز چک‌ها');
+        XLSX.utils.book_append_sheet(wb, ws, categoryName || 'ریز چک‌ها');
 
-        const fileName = `Cheques_${selectedCode || 'All'}_${selectedName || 'Customer'}_${dateToShamsi(new Date()).replace(/\//g, '-')}.xlsx`;
+        const catTag = categoryName ? `_${categoryName.replace(/\s+/g, '_')}` : '';
+        const fileName = `Cheques${catTag}_${selectedCode || 'All'}_${dateToShamsi(new Date()).replace(/\//g, '-')}.xlsx`;
         XLSX.writeFile(wb, fileName);
     };
 
@@ -640,7 +644,17 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                 {/* KPI STATS CARDS RIBBON */}
                 <div className="bg-slate-50 dark:bg-zinc-950/60 border-b border-slate-200 dark:border-zinc-800 p-3 sm:px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 shrink-0">
                     {/* Card 1: Received */}
-                    <div className="bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
+                    <div 
+                        onClick={() => {
+                            setFilterChequeType('received');
+                            setFilterStatus('all');
+                        }}
+                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                            filterChequeType === 'received' && filterStatus === 'all'
+                                ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-50/20'
+                                : 'border-emerald-500/30 hover:border-emerald-500'
+                        }`}
+                    >
                         <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
                             <span>چک‌های دریافتی (از مشتری)</span>
                             <span className="bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
@@ -658,7 +672,17 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 2: Spent / Endorsed */}
-                    <div className="bg-white dark:bg-zinc-900 border border-blue-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
+                    <div 
+                        onClick={() => {
+                            setFilterChequeType('spent');
+                            setFilterStatus('all');
+                        }}
+                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                            filterChequeType === 'spent' && filterStatus === 'all'
+                                ? 'border-blue-500 ring-2 ring-blue-500/30 bg-blue-50/20'
+                                : 'border-blue-500/30 hover:border-blue-500'
+                        }`}
+                    >
                         <div className="flex items-center justify-between text-[11px] text-blue-600 dark:text-blue-400 font-bold">
                             <span>چک‌های خرج‌شده (واگذار به این شخص)</span>
                             <span className="bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
@@ -676,7 +700,17 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 3: In Hand */}
-                    <div className="bg-white dark:bg-zinc-900 border border-amber-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
+                    <div 
+                        onClick={() => {
+                            setFilterChequeType('all');
+                            setFilterStatus('in_hand');
+                        }}
+                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                            filterStatus === 'in_hand'
+                                ? 'border-amber-500 ring-2 ring-amber-500/30 bg-amber-50/20'
+                                : 'border-amber-500/30 hover:border-amber-500'
+                        }`}
+                    >
                         <div className="flex items-center justify-between text-[11px] text-amber-600 dark:text-amber-400 font-bold">
                             <span>نزد صندوق / در جریان وصول</span>
                             <Clock size={13} />
@@ -692,7 +726,17 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 4: Cleared */}
-                    <div className="bg-white dark:bg-zinc-900 border border-teal-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
+                    <div 
+                        onClick={() => {
+                            setFilterChequeType('all');
+                            setFilterStatus('cleared');
+                        }}
+                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                            filterStatus === 'cleared'
+                                ? 'border-teal-500 ring-2 ring-teal-500/30 bg-teal-50/20'
+                                : 'border-teal-500/30 hover:border-teal-500'
+                        }`}
+                    >
                         <div className="flex items-center justify-between text-[11px] text-teal-600 dark:text-teal-400 font-bold">
                             <span>وصول‌شده / پاس‌شده</span>
                             <CheckCircle2 size={13} />
@@ -708,7 +752,17 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 5: Returned */}
-                    <div className="bg-white dark:bg-zinc-900 border border-rose-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1">
+                    <div 
+                        onClick={() => {
+                            setFilterChequeType('all');
+                            setFilterStatus('returned');
+                        }}
+                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1 cursor-pointer transition-all hover:scale-[1.02] ${
+                            filterStatus === 'returned'
+                                ? 'border-rose-500 ring-2 ring-rose-500/30 bg-rose-50/20'
+                                : 'border-rose-500/30 hover:border-rose-500'
+                        }`}
+                    >
                         <div className="flex items-center justify-between text-[11px] text-rose-600 dark:text-rose-400 font-bold">
                             <span>چک‌های برگشتی</span>
                             <AlertCircle size={13} />
@@ -780,9 +834,10 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 type="button"
                                 onClick={() => {
                                     setFilterChequeType('received');
+                                    setFilterStatus('all');
                                 }}
                                 className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                                    filterChequeType === 'received'
+                                    filterChequeType === 'received' && filterStatus === 'all'
                                         ? 'bg-emerald-600 text-white shadow-xs'
                                         : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
                                 }`}
@@ -794,14 +849,45 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 type="button"
                                 onClick={() => {
                                     setFilterChequeType('spent');
+                                    setFilterStatus('all');
                                 }}
                                 className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                                    filterChequeType === 'spent'
+                                    filterChequeType === 'spent' && filterStatus === 'all'
                                         ? 'bg-blue-600 text-white shadow-xs'
                                         : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
                                 }`}
                             >
                                 فقط خرج‌شده ({stats.countSpent})
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFilterChequeType('all');
+                                    setFilterStatus('returned');
+                                }}
+                                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                                    filterStatus === 'returned'
+                                        ? 'bg-rose-600 text-white shadow-xs'
+                                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
+                                }`}
+                            >
+                                🔴 فقط برگشتی‌ها
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setFilterChequeType('all');
+                                    setFilterStatus('cleared');
+                                }}
+                                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                                    filterStatus === 'cleared'
+                                        ? 'bg-teal-600 text-white shadow-xs'
+                                        : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100'
+                                }`}
+                            >
+                                🟢 پاس‌شده / وصولی
                             </button>
 
                             <button
@@ -967,6 +1053,64 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     ) : activeTab === 'list' ? (
                         /* ================= TAB 1: CHEQUE LIST TABLE ================= */
                         <div className="space-y-4">
+                            {/* Category Specific Banner */}
+                            {filterStatus === 'returned' && (
+                                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-rose-900 dark:text-rose-200 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                                        <div>
+                                            <span className="font-black text-xs block">⚠️ گزارش اختصاصی چک‌های برگشتی ({filteredCheques.length} فقره)</span>
+                                            <span className="text-[11px] text-rose-700 dark:text-rose-300">مجموع ارزش چک‌های برگشتی: <b>{formatMoney(filteredCheques.reduce((s, x) => s + x.amount, 0))} ریال</b> ({formatToman(filteredCheques.reduce((s, x) => s + x.amount, 0))} تومان)</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleExportExcel(filteredCheques, 'چک‌های_برگشتی')}
+                                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                    >
+                                        <FileSpreadsheet size={15} />
+                                        <span>دانلود اکسل چک‌های برگشتی</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {filterChequeType === 'spent' && (
+                                <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-blue-900 dark:text-blue-200 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <Coins className="w-5 h-5 text-blue-600 shrink-0" />
+                                        <div>
+                                            <span className="font-black text-xs block">🔵 گزارش اختصاصی چک‌های خرج‌شده / واگذار به غیر ({filteredCheques.length} فقره)</span>
+                                            <span className="text-[11px] text-blue-700 dark:text-blue-300">مجموع ارزش چک‌های واگذارشده به این شخص: <b>{formatMoney(filteredCheques.reduce((s, x) => s + x.amount, 0))} ریال</b> ({formatToman(filteredCheques.reduce((s, x) => s + x.amount, 0))} تومان)</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleExportExcel(filteredCheques, 'چک‌های_خرج‌شده')}
+                                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                    >
+                                        <FileSpreadsheet size={15} />
+                                        <span>دانلود اکسل چک‌های خرج‌شده</span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {filterChequeType === 'received' && filterStatus === 'all' && (
+                                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-emerald-900 dark:text-emerald-200 animate-fadeIn">
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard className="w-5 h-5 text-emerald-600 shrink-0" />
+                                        <div>
+                                            <span className="font-black text-xs block">🟢 گزارش اختصاصی چک‌های دریافتی از مشتری ({filteredCheques.length} فقره)</span>
+                                            <span className="text-[11px] text-emerald-700 dark:text-emerald-300">مجموع ارزش چک‌های دریافتی: <b>{formatMoney(filteredCheques.reduce((s, x) => s + x.amount, 0))} ریال</b> ({formatToman(filteredCheques.reduce((s, x) => s + x.amount, 0))} تومان)</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleExportExcel(filteredCheques, 'چک‌های_دریافتی')}
+                                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                    >
+                                        <FileSpreadsheet size={15} />
+                                        <span>دانلود اکسل چک‌های دریافتی</span>
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                                 <div className="flex items-center gap-2">
                                     <button

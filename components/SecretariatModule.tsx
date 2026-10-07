@@ -3437,9 +3437,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   return (
     <div className="space-y-6 animate-fade-in relative min-h-screen">
       <style>{`
-        /* Load additional Persian fonts from CDN */
-        @import url('https://cdn.jsdelivr.net/gh/rastikerdar/samim-font@v4.0.5/dist/font-face.css');
-        @import url('https://cdn.jsdelivr.net/gh/rastikerdar/tanha-font@v0.9.0/dist/font-face.css');
+        /* System/Local Font Fallbacks for Offline Intranet */
+        .ql-font-Samim { font-family: Samim, 'Vazirmatn', Tahoma, sans-serif !important; }
+        .ql-font-Tanha { font-family: Tanha, 'Vazirmatn', Tahoma, sans-serif !important; }
 
         /* Clear any overlaps and make pickers spacious */
         .ql-snow .ql-picker.ql-font {

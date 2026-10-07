@@ -1318,10 +1318,9 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
                       <html dir="rtl">
                         <head>
                           <title>حواله فروش ${selectedRemittance.remittanceNumber || selectedRemittance.docNo}</title>
-                          <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
                           <style>
                             @page { size: A4; margin: 8mm; }
-                            body { font-family: Vazirmatn, Tahoma, sans-serif; margin: 0; padding: 0; background: #fff; }
+                            body { font-family: 'Vazirmatn', Vazir, Sahel, Samim, Tahoma, Arial, sans-serif; margin: 0; padding: 0; background: #fff; }
                           </style>
                         </head>
                         <body>
