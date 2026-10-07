@@ -16,6 +16,7 @@ import {
 import { FileViewerModal } from './FileViewerModal';
 import { StickerPicker } from './chat/StickerPicker';
 import { StickerItem } from './chat/stickerData';
+import { MediaAttachmentModal } from './chat/MediaAttachmentModal';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem } from '@capacitor/filesystem';
 import { sendNotification, clearAllActiveNotifications } from '../services/notificationService';
@@ -479,6 +480,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const taskTitleInputRef = useRef<HTMLInputElement>(null);
 
     // --- Modals ---
+    const [pendingAttachmentModalFiles, setPendingAttachmentModalFiles] = useState<File[] | null>(null);
     const [showGroupModal, setShowGroupModal] = useState<string | false>(false);
     const [mutedChannels, setMutedChannels] = useState<Set<string>>(new Set());
     const [newGroupName, setNewGroupName] = useState('');
@@ -1467,54 +1469,87 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         }
     };
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList | null, value: string } }) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const handleOpenAttachmentModal = (files: FileList | File[] | null) => {
+        if (!files || files.length === 0) return;
+        setPendingAttachmentModalFiles(Array.from(files));
+    };
 
-        const safeName = file.name || `unknown_${Date.now()}`;
-        const newMsgId = generateUUID();
-
-        const pendingMsg: ChatMessage = {
-            id: newMsgId,
-            sender: currentUser.fullName,
-            senderUsername: currentUser.username,
-            role: currentUser.role,
-            message: '',
-            timestamp: Date.now(),
-            recipient: activeChannel?.type === 'private' ? activeChannel.id! : undefined,
-            groupId: activeChannel?.type === 'group' ? activeChannel.id! : undefined,
-            attachment: { fileName: safeName, url: '' }, // empty URL while pending
-            readBy: [],
-            isPending: true,
-            uploadProgress: 0
-        };
-
-        setPendingMessages(prev => [...prev, pendingMsg]);
-        setTimeout(scrollToBottom, 50);
-
-        try {
-            const result = await uploadFileChunked(file, (progress) => {
-                setPendingMessages(prev => prev.map(m => m.id === newMsgId ? { ...m, uploadProgress: progress } : m));
-            });
-            
-            const finalMsg: ChatMessage = {
-                ...pendingMsg,
-                attachment: { fileName: result.fileName, url: result.url },
-                isPending: false,
-                uploadProgress: undefined
-            };
-            
-            await sendMessage(finalMsg);
-            onRefresh();
-        } catch (error: any) { 
-            console.error("Upload Error:", error);
-            alert(`خطا در ارسال فایل: ${error.message || 'خطای شبکه'}`); 
-            setPendingMessages(prev => prev.filter(m => m.id !== newMsgId));
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement> | { target: { files: FileList | null, value: string } }) => {
+        const files = e.target.files;
+        if (files && files.length > 0) {
+            handleOpenAttachmentModal(files);
         }
-
         try {
             if (e.target) e.target.value = '';
-        } catch(e){}
+        } catch(err){}
+    };
+
+    const handleSendFromAttachmentModal = async (items: { file: File; caption: string }[]) => {
+        if (!currentUser || !items || items.length === 0) return;
+
+        for (const item of items) {
+            const safeName = item.file.name || `unknown_${Date.now()}`;
+            const newMsgId = generateUUID();
+
+            const pendingMsg: ChatMessage = {
+                id: newMsgId,
+                sender: currentUser.fullName,
+                senderUsername: currentUser.username,
+                role: currentUser.role,
+                message: item.caption || '',
+                timestamp: Date.now(),
+                recipient: activeChannel?.type === 'private' ? activeChannel.id! : undefined,
+                groupId: activeChannel?.type === 'group' ? activeChannel.id! : undefined,
+                attachment: { fileName: safeName, url: '' }, // empty URL while pending
+                readBy: [],
+                isPending: true,
+                uploadProgress: 0
+            };
+
+            setPendingMessages(prev => [...prev, pendingMsg]);
+            setTimeout(scrollToBottom, 50);
+
+            try {
+                const result = await uploadFileChunked(item.file, (progress) => {
+                    setPendingMessages(prev => prev.map(m => m.id === newMsgId ? { ...m, uploadProgress: progress } : m));
+                });
+                
+                const finalMsg: ChatMessage = {
+                    ...pendingMsg,
+                    message: item.caption || '',
+                    attachment: { fileName: result.fileName, url: result.url },
+                    isPending: false,
+                    uploadProgress: undefined
+                };
+                
+                await sendMessage(finalMsg);
+                onRefresh();
+            } catch (error: any) { 
+                console.error("Upload Error:", error);
+                alert(`خطا در ارسال فایل: ${error.message || 'خطای شبکه'}`); 
+                setPendingMessages(prev => prev.filter(m => m.id !== newMsgId));
+            }
+        }
+    };
+
+    const handlePaste = (e: React.ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const pastedFiles: File[] = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const file = items[i].getAsFile();
+                if (file) {
+                    pastedFiles.push(file);
+                }
+            }
+        }
+
+        if (pastedFiles.length > 0) {
+            e.preventDefault();
+            handleOpenAttachmentModal(pastedFiles);
+        }
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -1527,7 +1562,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         e.stopPropagation();
         const files = e.dataTransfer.files;
         if (files && files.length > 0) {
-            handleFileUpload({ target: { files, value: '' } });
+            handleOpenAttachmentModal(files);
         }
     };
 
@@ -2305,6 +2340,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                     className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative bg-white dark:bg-black"
                                     onDragOver={handleDragOver}
                                     onDrop={handleDrop}
+                                    onPaste={handlePaste}
                                 >
                             {groupedMessagesByDay.map((group) => {
                                 return (
@@ -2418,6 +2454,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                     )}
                                                 </div>
                                             ) : msg.attachment ? (
+                                                <>
                                                 <div className="mb-1">
                                                     {msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
                                                         <div className="relative group/img overflow-hidden rounded-xl inline-block max-w-full">
@@ -2538,6 +2575,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                         </div>
                                                     )}
                                                 </div>
+                                                {/* Caption beneath attachment if message text exists */}
+                                                {msg.attachment && msg.message && (
+                                                    <div 
+                                                        className="whitespace-pre-wrap leading-relaxed message-content cursor-pointer mt-1.5 pt-1 text-xs sm:text-sm text-zinc-800 dark:text-zinc-100 select-text"
+                                                        onClick={(e) => { e.stopPropagation(); handleCopyMessage(msg); }}
+                                                        title="برای کپی کلیک کنید"
+                                                    >
+                                                        {renderMessageWithMentions(msg.message)}
+                                                    </div>
+                                                )}
+                                                </>
                                              ) : msg.audioUrl ? (
                                                 <div className="flex items-center gap-2 min-w-[200px] py-1">
                                                     <AudioPlayer url={msg.audioUrl} isMe={isMe} duration={msg.audioDuration} />
@@ -2730,6 +2778,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         <textarea 
                                             ref={inputAreaRef}
                                             value={inputText}
+                                            onPaste={handlePaste}
                                             onChange={e => {
                                                 setInputText(e.target.value);
                                                 e.target.style.height = 'auto';
@@ -3655,6 +3704,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     </div>
                 </div>
             )}
+            {/* Media Attachment & Drawing Modal (WhatsApp Web Style) */}
+            <MediaAttachmentModal 
+                isOpen={!!pendingAttachmentModalFiles && pendingAttachmentModalFiles.length > 0}
+                initialFiles={pendingAttachmentModalFiles || []}
+                targetName={activeChannel?.name || 'گفتگو'}
+                onClose={() => setPendingAttachmentModalFiles(null)}
+                onSend={handleSendFromAttachmentModal}
+            />
         </div>
     </div>
     );

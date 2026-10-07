@@ -63,7 +63,8 @@ import {
     UserMinus,
     Clock,
     CalendarClock,
-    Info
+    Info,
+    CreditCard
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { 
@@ -87,6 +88,7 @@ import { AiSalesAdvisorModal } from './AiSalesAdvisorModal';
 import { AiSayanReportModal } from './AiSayanReportModal';
 import { SendToChatModal } from './SendToChatModal';
 import { ReportShareToChatModal, TrazScope } from './ReportShareToChatModal';
+import { PersonChequeLedgerModal } from './sayan-cheques/PersonChequeLedgerModal';
 import { generatePdfFromHtml } from '../utils/pdfGenerator';
 import { UserRole } from '../types';
 import { getServerHost, getAuthToken } from '../services/apiService';
@@ -220,6 +222,11 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
     const [modalTafsiliCode, setModalTafsiliCode] = useState('');
     const [modalTafsiliName, setModalTafsiliName] = useState('');
+
+    // --- PERSON CHEQUES & ADVANCED RAS MODAL STATE ---
+    const [isPersonChequesModalOpen, setIsPersonChequesModalOpen] = useState(false);
+    const [personChequesModalCode, setPersonChequesModalCode] = useState('');
+    const [personChequesModalName, setPersonChequesModalName] = useState('');
 
     useEffect(() => {
         if (isStatementModalOpen || selectedAgingParty || isExcludeManagerOpen) {
@@ -5434,6 +5441,19 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                 </button>
                                 <button 
                                     type="button"
+                                    onClick={() => {
+                                        setPersonChequesModalCode('');
+                                        setPersonChequesModalName('');
+                                        setIsPersonChequesModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                    title="مشاهده چک‌های دریافتی، خرج‌شده و راس‌گیری پیشرفته سایان"
+                                >
+                                    <CreditCard className="w-3.5 h-3.5" /> چک‌ها و راس‌گیری
+                                </button>
+
+                                <button 
+                                    type="button"
                                     onClick={() => handleExportTrazExcel('both')} 
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
                                     title="خروجی اکسل کامل کل تراز (بدهکار و بستانکار)"
@@ -5740,6 +5760,20 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
+                                                                    setPersonChequesModalCode(row.code);
+                                                                    setPersonChequesModalName(row.name);
+                                                                    setIsPersonChequesModalOpen(true);
+                                                                }}
+                                                                className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-750 font-bold rounded-md border border-emerald-200 text-[10px] flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                                                title="مشاهده چک‌های دریافتی، خرج‌شده و راس‌گیری پیشرفته این شخص"
+                                                            >
+                                                                <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                                                چک‌ها و راس
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
                                                                     setSelectedTafsili(row.code);
                                                                     setModalTafsiliCode(row.code);
                                                                     setModalTafsiliName(row.name);
@@ -5911,7 +5945,20 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                                     )}
                                                 </div>
 
-                                                <div className="grid grid-cols-3 gap-1.5 pt-1">
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPersonChequesModalCode(row.code);
+                                                            setPersonChequesModalName(row.name);
+                                                            setIsPersonChequesModalOpen(true);
+                                                        }}
+                                                        className="py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-750 font-bold rounded-lg border border-emerald-200 text-[11px] flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-xs"
+                                                    >
+                                                        <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                                                        چک‌ها و راس
+                                                    </button>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -9484,6 +9531,15 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 </div>,
                 document.body
             )}
+            {/* Sayan Cheques & Advanced Ras Modal */}
+            <PersonChequeLedgerModal
+                isOpen={isPersonChequesModalOpen}
+                onClose={() => setIsPersonChequesModalOpen(false)}
+                personCode={personChequesModalCode}
+                personName={personChequesModalName}
+                currentUser={currentUser}
+                allPersonsList={tafsilis.map(t => ({ code: t.Code, name: t.Name }))}
+            />
         </div>
     );
 }

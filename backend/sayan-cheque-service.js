@@ -1913,3 +1913,219 @@ export const getSayanRealDocumentDetails = async (archiveCode, fiscalYear = '4')
     }
 };
 
+/**
+ * Fetch All Cheques for a Specific Person / Customer (Received, Endorsed/Spent, Issued)
+ * with complete treasury operations, dates, statuses, and counterparty details.
+ */
+export const getPersonChequesAndRas = async (personCode, personName = '', options = {}) => {
+    try {
+        const cleanCode = String(personCode || '').trim();
+        const cleanName = String(personName || '').trim().replace(/'/g, "''");
+        const nameFa = cleanName.replace(/ي/g, 'ی').replace(/ك/g, 'ک');
+        const nameAr = cleanName.replace(/ی/g, 'ي').replace(/ک/g, 'ك');
+        
+        let cheques = [];
+
+        // Build Sayan SQL Query
+        let whereClause = "1=1";
+        if (cleanCode && cleanName) {
+            whereClause = `(
+                t12.Field_012 = '${cleanCode}' 
+                OR t12.Field_012 LIKE '%${cleanCode}%'
+                OR t12.Field_011 LIKE N'%${cleanName}%'
+                OR t12.Field_011 LIKE N'%${nameFa}%'
+                OR t12.Field_011 LIKE N'%${nameAr}%'
+                OR t_op.TargetAccount = '${cleanCode}'
+                OR t_op.SourceAccount = '${cleanCode}'
+                OR t_op.TargetPersonName LIKE N'%${cleanName}%'
+                OR t_op.TargetPersonName LIKE N'%${nameFa}%'
+                OR t_op.TargetPersonName LIKE N'%${nameAr}%'
+                OR p_drawer.Field_006 LIKE N'%${cleanName}%'
+                OR p_drawer.Field_006 LIKE N'%${nameFa}%'
+                OR p_drawer.Field_006 LIKE N'%${nameAr}%'
+            )`;
+        } else if (cleanCode) {
+            whereClause = `(
+                t12.Field_012 = '${cleanCode}' 
+                OR t12.Field_012 LIKE '%${cleanCode}%'
+                OR t_op.TargetAccount = '${cleanCode}'
+                OR t_op.SourceAccount = '${cleanCode}'
+            )`;
+        } else if (cleanName) {
+            whereClause = `(
+                t12.Field_011 LIKE N'%${cleanName}%' 
+                OR t12.Field_011 LIKE N'%${nameFa}%' 
+                OR t12.Field_011 LIKE N'%${nameAr}%' 
+                OR t_op.TargetPersonName LIKE N'%${cleanName}%'
+                OR t_op.TargetPersonName LIKE N'%${nameFa}%'
+                OR t_op.TargetPersonName LIKE N'%${nameAr}%'
+                OR p_drawer.Field_006 LIKE N'%${cleanName}%'
+                OR p_drawer.Field_006 LIKE N'%${nameFa}%'
+                OR p_drawer.Field_006 LIKE N'%${nameAr}%'
+            )`;
+        }
+
+        const chequesSql = `
+            SELECT 
+                t12.Field_001 as Id,
+                t12.Field_004 as StatusType,
+                t12.Field_005 as ChequeNo,
+                t12.Field_006 as DueDate,
+                t12.Field_007 as ReceiveDate,
+                t12.Field_008 as IsActive,
+                t12.Field_009 as BankName,
+                t12.Field_010 as Branch,
+                t12.Field_011 as DrawerName,
+                t12.Field_012 as PersonCode,
+                t12.Field_013 as Amount,
+                t12.Field_015 as StatusDesc,
+                t12.Field_016 as StatusCode,
+                t_op.OpDate as LastOpDate,
+                t_op.OpCode as LastOpCode,
+                t_op.OpTypeDesc as OpTypeDesc,
+                t_op.TargetAccount as TargetAccount,
+                t_op.SourceAccount as SourceAccount,
+                t_op.DocDesc as DocDesc,
+                t_op.ArchiveCode as ArchiveCode,
+                t_op.TargetPersonName as TargetPersonName,
+                p_drawer.Field_006 as MasterDrawerName
+            FROM BUR_TBL_012 t12 WITH (NOLOCK)
+            LEFT JOIN ACT_TBL_007 p_drawer ON t12.Field_012 = p_drawer.Field_003
+            LEFT JOIN (
+                SELECT 
+                    t09.Field_007 as ChequeId,
+                    t09.Field_003 as FiscalYear,
+                    t09.Field_004 as ArchiveCode,
+                    t09.Field_023 as OpCode,
+                    t09.Field_012 as TargetAccount,
+                    t09.Field_011 as SourceAccount,
+                    t09.Field_024 as DocDesc,
+                    t09.Field_020 as OpDate,
+                    p_target.Field_006 as TargetPersonName,
+                    CASE 
+                        WHEN t09.Field_023 = '11' THEN N'دریافت چک'
+                        WHEN t09.Field_023 = '12' THEN N'واگذاری به بانک'
+                        WHEN t09.Field_023 = '13' THEN N'وصول چک'
+                        WHEN t09.Field_023 = '14' THEN N'استرداد چک'
+                        WHEN t09.Field_023 = '15' THEN N'واگذاری به غیر (خرج چک)'
+                        WHEN t09.Field_023 = '16' THEN N'برگشت چک'
+                        ELSE N'عملیات خزانه‌داری'
+                    END as OpTypeDesc
+                FROM BUR_TBL_009 t09 WITH (NOLOCK)
+                LEFT JOIN ACT_TBL_007 p_target ON t09.Field_012 = p_target.Field_003
+                INNER JOIN (
+                    SELECT Field_007 as ChequeId, MAX(CAST(Field_001 AS INT)) as MaxOpId
+                    FROM BUR_TBL_009 WITH (NOLOCK)
+                    WHERE Field_007 IS NOT NULL AND RTRIM(LTRIM(Field_007)) <> ''
+                    GROUP BY Field_007
+                ) t_max ON t09.Field_007 = t_max.ChequeId AND CAST(t09.Field_001 AS INT) = t_max.MaxOpId
+            ) t_op ON CAST(t12.Field_001 AS VARCHAR(50)) = CAST(t_op.ChequeId AS VARCHAR(50))
+            WHERE ${whereClause}
+            ORDER BY t12.Field_006 ASC
+        `;
+
+        try {
+            const rows = await executeSayanQuery(chequesSql);
+            if (Array.isArray(rows)) {
+                cheques = rows.map(r => {
+                    const dueStr = normalizeSayanDate(r.DueDate);
+                    const receiveStr = normalizeSayanDate(r.ReceiveDate || r.LastOpDate);
+                    const opCode = String(r.LastOpCode || '').trim();
+                    const targetAcc = String(r.TargetAccount || '').trim();
+                    const sourceAcc = String(r.SourceAccount || r.PersonCode || '').trim();
+                    
+                    // Determine cheque type
+                    let chequeType = 'received'; // default
+                    if (opCode === '15' || targetAcc === cleanCode) {
+                        chequeType = 'spent'; // Endorsed / spent to this person
+                    } else if (String(r.StatusType) === '2' || String(r.StatusCode) === '2') {
+                        chequeType = 'issued'; // Issued by company
+                    }
+
+                    // Determine Status Group
+                    let statusGroup = 'in_hand';
+                    const rawDesc = String(r.StatusDesc || r.OpTypeDesc || '').trim();
+                    if (rawDesc.includes('وصول') || opCode === '13') {
+                        statusGroup = 'cleared';
+                    } else if (rawDesc.includes('برگشت') || opCode === '16') {
+                        statusGroup = 'returned';
+                    } else if (rawDesc.includes('خرج') || rawDesc.includes('واگذار به غیر') || opCode === '15') {
+                        statusGroup = 'spent';
+                    } else if (rawDesc.includes('بانک') || opCode === '12') {
+                        statusGroup = 'at_bank';
+                    }
+
+                    return {
+                        id: String(r.Id),
+                        chequeNo: String(r.ChequeNo || '-').trim(),
+                        amount: parseFloat(r.Amount || 0),
+                        dueDate: dueStr,
+                        receiveDate: receiveStr || dueStr,
+                        bankName: String(r.BankName || 'نامشخص').trim(),
+                        branch: String(r.Branch || '').trim(),
+                        drawerName: String(r.DrawerName || cleanName || 'نامشخص').trim(),
+                        personCode: sourceAcc || cleanCode,
+                        personName: cleanName,
+                        targetPersonCode: targetAcc,
+                        targetPersonName: r.TargetPersonName || (targetAcc === cleanCode ? cleanName : ''),
+                        statusDesc: rawDesc || (statusGroup === 'cleared' ? 'وصول شده' : (statusGroup === 'returned' ? 'برگشتی' : 'نزد صندوق')),
+                        statusGroup,
+                        chequeType,
+                        docNo: String(r.ArchiveCode || '').trim(),
+                        docDesc: String(r.DocDesc || '').trim(),
+                        isActive: r.IsActive !== 0 && r.IsActive !== '0'
+                    };
+                });
+            }
+        } catch (dbErr) {
+            console.error("Error running Sayan query for person cheques:", dbErr.message);
+        }
+
+        // Also merge local drafts from memory DB for this person
+        const db = getDb();
+        if (Array.isArray(db.sayan_cheque_receipts)) {
+            db.sayan_cheque_receipts.forEach(receipt => {
+                if (cleanCode && String(receipt.personCode).trim() !== cleanCode) return;
+                if (Array.isArray(receipt.cheques)) {
+                    receipt.cheques.forEach((ch, idx) => {
+                        const existing = cheques.find(c => c.chequeNo === ch.chequeNumber && c.amount === parseFloat(ch.amount || 0));
+                        if (!existing) {
+                            cheques.push({
+                                id: `draft_${receipt.id}_${idx}`,
+                                chequeNo: String(ch.chequeNumber || '-').trim(),
+                                amount: parseFloat(ch.amount || 0),
+                                dueDate: normalizeSayanDate(ch.dueDate),
+                                receiveDate: normalizeSayanDate(receipt.docDate || ch.receiveDate),
+                                bankName: String(ch.bankName || 'نامشخص').trim(),
+                                branch: String(ch.branchName || '').trim(),
+                                drawerName: String(ch.inNameOf || receipt.personName || cleanName).trim(),
+                                personCode: receipt.personCode || cleanCode,
+                                personName: receipt.personName || cleanName,
+                                statusDesc: receipt.syncStatus === 'synced' ? 'ثبت شده در سایان' : 'پیش‌نویس محلی رسید چک',
+                                statusGroup: 'in_hand',
+                                chequeType: 'received',
+                                docNo: receipt.archiveCode || 'پیش‌نویس',
+                                docDesc: ch.note || receipt.explanation || '',
+                                isActive: true,
+                                isDraft: true
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        return {
+            success: true,
+            personCode: cleanCode,
+            personName: cleanName,
+            cheques,
+            count: cheques.length
+        };
+    } catch (err) {
+        console.error('Error in getPersonChequesAndRas:', err);
+        return { success: false, error: err.message, cheques: [] };
+    }
+};
+
+

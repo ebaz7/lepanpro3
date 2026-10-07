@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import * as XLSX from 'xlsx';
-import { Upload, Download, Search, FileSpreadsheet, UserCheck, Trash2, Wallet, Plus, Loader2, Landmark, TrendingDown, TrendingUp, AlertCircle, RefreshCw, MessageSquare } from 'lucide-react';
+import { Upload, Download, Search, FileSpreadsheet, UserCheck, Trash2, Wallet, Plus, Loader2, Landmark, TrendingDown, TrendingUp, AlertCircle, RefreshCw, MessageSquare, CreditCard, Sparkles } from 'lucide-react';
 import { downloadAndOpenFile } from '../services/fileService';
 import { apiCall } from '../services/apiService';
 import { openSendToChat } from '../services/chatShareService';
+import { PersonChequeLedgerModal } from './sayan-cheques/PersonChequeLedgerModal';
 
 interface CustomerBalance {
   id: string;
@@ -78,6 +79,11 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
   // Statement Upload Modals
   const [stmtModalCode, setStmtModalCode] = useState<string | null>(null);
   const [stmtUploadLoading, setStmtUploadLoading] = useState(false);
+
+  // Sayan Cheques & Ras Modal
+  const [isChequeModalOpen, setIsChequeModalOpen] = useState(false);
+  const [chequeModalPersonCode, setChequeModalPersonCode] = useState('');
+  const [chequeModalPersonName, setChequeModalPersonName] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -437,8 +443,21 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
         </div>
         
         <div className="flex gap-2">
-          <button onClick={fetchData} className="p-2 border border-gray-100 dark:border-zinc-800 rounded-xl hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 transition-all">
+          <button onClick={fetchData} className="p-2 border border-gray-100 dark:border-zinc-800 rounded-xl hover:bg-gray-50 dark:hover:bg-zinc-800 text-gray-600 dark:text-gray-300 transition-all cursor-pointer">
             <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
+          <button
+            onClick={() => {
+              setChequeModalPersonCode('');
+              setChequeModalPersonName('');
+              setIsChequeModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-3.5 py-2 rounded-xl transition-all font-bold text-xs cursor-pointer shadow-md"
+            title="مشاهده چک‌های دریافتی، خرج‌شده و راس‌گیری پیشرفته سایان"
+          >
+            <CreditCard className="w-4 h-4" />
+            <span>چک‌ها و راس‌گیری پیشرفته</span>
           </button>
           
           {currentUser?.rolePermissions?.canImportCustomerBalances !== false && (
@@ -802,13 +821,28 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-center border-l border-zinc-200 dark:border-zinc-800">
-                          <button
-                            onClick={() => setStmtModalCode(item.accountCode)}
-                            className="inline-flex items-center gap-1 bg-sky-50 dark:bg-sky-950/30 hover:bg-sky-100 text-sky-850 dark:text-sky-400 border border-sky-200 dark:border-sky-900/40 px-3 py-1.5 rounded-xl transition-all font-black text-[10px]"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5" />
-                            <span>{statements.filter(s => s.accountCode === item.accountCode).length} صورتحساب</span>
-                          </button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setChequeModalPersonCode(item.accountCode);
+                                setChequeModalPersonName(item.name);
+                                setIsChequeModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/50 px-2.5 py-1.5 rounded-xl transition-all font-black text-[10px] cursor-pointer shadow-2xs"
+                              title="مشاهده چک‌های دریافتی/خرج‌شده و راس‌گیری این شخص"
+                            >
+                              <CreditCard className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>چک‌ها و راس</span>
+                            </button>
+
+                            <button
+                              onClick={() => setStmtModalCode(item.accountCode)}
+                              className="inline-flex items-center gap-1 bg-sky-50 dark:bg-sky-950/30 hover:bg-sky-100 text-sky-850 dark:text-sky-400 border border-sky-200 dark:border-sky-900/40 px-2.5 py-1.5 rounded-xl transition-all font-black text-[10px] cursor-pointer"
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
+                              <span>{statements.filter(s => s.accountCode === item.accountCode).length} صورتحساب</span>
+                            </button>
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 text-center text-gray-500 dark:text-zinc-400 font-mono font-bold">
                           {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString('fa-IR') : '-'}
@@ -891,13 +925,28 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
                             </span>
                         </div>
                         
-                        <button
-                          onClick={() => setStmtModalCode(item.accountCode)}
-                          className="bg-zinc-900 dark:bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-zinc-900/10 active:opacity-80 animate-all"
-                        >
-                          <FileSpreadsheet size={16} />
-                          صورتحساب
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setChequeModalPersonCode(item.accountCode);
+                              setChequeModalPersonName(item.name);
+                              setIsChequeModalOpen(true);
+                            }}
+                            className="bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1 shadow-md cursor-pointer"
+                            title="چک‌ها و راس‌گیری"
+                          >
+                            <CreditCard size={14} />
+                            چک‌ها و راس
+                          </button>
+
+                          <button
+                            onClick={() => setStmtModalCode(item.accountCode)}
+                            className="bg-zinc-900 dark:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1 shadow-lg shadow-zinc-900/10 active:opacity-80 animate-all cursor-pointer"
+                          >
+                            <FileSpreadsheet size={14} />
+                            صورتحساب
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1163,6 +1212,15 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
           </div>
         </div>
       )}
+      {/* Sayan Cheques & Advanced Ras Modal */}
+      <PersonChequeLedgerModal
+        isOpen={isChequeModalOpen}
+        onClose={() => setIsChequeModalOpen(false)}
+        personCode={chequeModalPersonCode}
+        personName={chequeModalPersonName}
+        currentUser={currentUser}
+        allPersonsList={balances.map(b => ({ code: b.accountCode, name: b.name }))}
+      />
     </div>
   );
 };

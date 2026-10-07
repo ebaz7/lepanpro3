@@ -2077,6 +2077,19 @@ app.get(['/api/sayan/cheque-receipts', '/api/sayan/cheque-receipts/history'], as
     }
 });
 
+// 3.5. Fetch Person / Customer Cheques & Ras Data
+app.get(['/api/sayan/person-cheques', '/api/sayan/person-cheques/:personCode'], async (req, res) => {
+    try {
+        const personCode = req.params.personCode || req.query.personCode || req.query.code || '';
+        const personName = req.query.personName || req.query.name || '';
+        const result = await sayanChequeService.getPersonChequesAndRas(personCode, personName, req.query);
+        res.json(result);
+    } catch (err) {
+        console.error("Error fetching person cheques:", err);
+        res.status(500).json({ success: false, error: err.message, cheques: [] });
+    }
+});
+
 // 4. Save or create Cheque Receipt Draft
 app.post(['/api/sayan/cheque-receipts', '/api/sayan/cheque-receipts/draft'], async (req, res) => {
     try {
