@@ -591,6 +591,10 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
       );
   };
 
+  const rowCount = currentOrder.paymentDetails?.length || 0;
+  const isCompact = rowCount >= 4;
+  const isUltraCompact = rowCount >= 6;
+
   const receiptContent = (
       <div 
         id={printAreaId} 
@@ -600,7 +604,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
           width: '200mm', 
           height: '136mm', 
           maxHeight: '136mm', 
-          padding: '4mm 6mm', 
+          padding: isUltraCompact ? '2.5mm 4mm' : isCompact ? '3mm 5mm' : '4mm 6mm', 
           boxSizing: 'border-box', 
           margin: '0 auto', 
           backgroundColor: '#ffffff',
@@ -619,30 +623,30 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
         {isRevocationProcess && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-200/50 text-red-200/50 font-black text-5xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">در حال ابطال</div>
         )}
-        <div className="relative z-10 flex flex-col gap-2">
+        <div className={`relative z-10 flex flex-col ${isUltraCompact ? 'gap-1' : isCompact ? 'gap-1.5' : 'gap-2'}`}>
             {/* Header */}
-            <div className="border-b-2 border-black pb-2 flex justify-between items-center">
+            <div className={`border-b-2 border-black flex justify-between items-center ${isUltraCompact ? 'pb-1' : 'pb-1.5'}`}>
                 {/* Right: Company Info & Logo */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5">
                     {company?.logo ? (
-                        <img src={company.logo} alt="Company Logo" className="h-11 w-11 object-contain mix-blend-multiply shrink-0" />
+                        <img src={company.logo} alt="Company Logo" className={`${isUltraCompact ? 'h-8 w-8' : 'h-10 w-10'} object-contain mix-blend-multiply shrink-0`} />
                     ) : (
-                        <div className="h-11 w-11 text-[9px] bg-slate-50 text-slate-600 flex items-center justify-center rounded-none border border-black font-bold shrink-0">بدون لوگو</div>
+                        <div className={`${isUltraCompact ? 'h-8 w-8 text-[8px]' : 'h-10 w-10 text-[9px]'} bg-slate-50 text-slate-600 flex items-center justify-center rounded-none border border-black font-bold shrink-0`}>بدون لوگو</div>
                     )}
                     <div className="flex flex-col text-right">
-                        <h1 className="text-base font-black text-black leading-tight">{currentOrder.payingCompany || 'شرکت لپان بافت'}</h1>
-                        <p className="text-[10px] text-slate-700 font-bold mt-0.5">سیستم مدیریت مالی و پرداخت</p>
+                        <h1 className={`${isUltraCompact ? 'text-sm' : 'text-base'} font-black text-black leading-tight`}>{currentOrder.payingCompany || 'شرکت لپان بافت'}</h1>
+                        <p className="text-[9.5px] text-slate-700 font-bold mt-0.5">سیستم مدیریت مالی و پرداخت</p>
                     </div>
                 </div>
 
                 {/* Left: Voucher Title, Number, Date */}
-                <div className="text-left flex flex-col items-end gap-1">
-                    <h2 className="text-[12px] px-3 py-0.5 font-black bg-slate-100 border border-black text-black rounded-none mb-0.5 whitespace-nowrap">رسید پرداخت وجه</h2>
-                    <div className="flex items-center gap-1.5 text-[10.5px]">
+                <div className="text-left flex flex-col items-end gap-0.5">
+                    <h2 className="text-[11.5px] px-2.5 py-0.5 font-black bg-slate-100 border border-black text-black rounded-none mb-0.5 whitespace-nowrap">رسید پرداخت وجه</h2>
+                    <div className="flex items-center gap-1 text-[10px]">
                         <span className="font-bold text-slate-700">شماره:</span>
-                        <span className="font-mono font-black text-[12px] text-black">{currentOrder.trackingNumber || '-'}</span>
+                        <span className="font-mono font-black text-[11.5px] text-black">{currentOrder.trackingNumber || '-'}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10.5px]">
+                    <div className="flex items-center gap-1 text-[10px]">
                         <span className="font-bold text-slate-700">تاریخ:</span>
                         <span className="font-bold text-black">{formatDate(currentOrder.date)}</span>
                     </div>
@@ -650,48 +654,48 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
             </div>
 
             {/* Info Cards Grid matching physical yellow voucher image3 */}
-            <div className="grid grid-cols-12 gap-2">
+            <div className={`grid grid-cols-12 ${isUltraCompact ? 'gap-1' : 'gap-1.5'}`}>
                 {/* Right Box (Spans 8 cols): Payee and Description */}
-                <div className="col-span-8 flex flex-col gap-1.5">
-                    <div className="border border-black rounded-none p-1.5 px-2.5 bg-white">
-                        <span className="block text-slate-700 text-[9.5px] font-bold">در وجه (ذینفع):</span>
-                        <span className="font-black text-black text-sm block truncate mt-0.5">{currentOrder.payee || '-'}</span>
+                <div className={`col-span-8 flex flex-col ${isUltraCompact ? 'gap-1' : 'gap-1.5'}`}>
+                    <div className={`border border-black rounded-none bg-white ${isUltraCompact ? 'p-1 px-2' : 'p-1.5 px-2.5'}`}>
+                        <span className="block text-slate-700 text-[9px] font-bold">در وجه (ذینفع):</span>
+                        <span className="font-black text-black text-xs block truncate mt-0.5">{currentOrder.payee || '-'}</span>
                     </div>
-                    <div className="border border-black rounded-none p-1.5 px-2.5 bg-white min-h-[34px]">
-                        <span className="block text-slate-700 text-[9.5px] font-bold">بابت (شرح پرداخت):</span>
-                        <p className="text-black text-justify font-medium leading-snug text-[10px] line-clamp-2 mt-0.5">{currentOrder.description || '-'}</p>
+                    <div className={`border border-black rounded-none bg-white ${isUltraCompact ? 'p-1 px-2 min-h-[26px]' : 'p-1.5 px-2.5 min-h-[30px]'}`}>
+                        <span className="block text-slate-700 text-[9px] font-bold">بابت (شرح پرداخت):</span>
+                        <p className="text-black text-justify font-medium leading-snug text-[9.5px] line-clamp-2 mt-0.5">{currentOrder.description || '-'}</p>
                     </div>
                 </div>
 
                 {/* Left Box (Spans 4 cols): Total Amount */}
-                <div className="col-span-4 border border-black rounded-none p-2 px-3 bg-white flex flex-col justify-center items-center text-center">
-                    <span className="block text-slate-700 text-[10px] font-bold mb-1">مبلغ کل پرداختی:</span>
-                    <span className="font-black text-black text-base font-mono block leading-tight">{formatCurrency(currentOrder.totalAmount)}</span>
+                <div className={`col-span-4 border border-black rounded-none bg-white flex flex-col justify-center items-center text-center ${isUltraCompact ? 'p-1 px-2' : 'p-2 px-3'}`}>
+                    <span className="block text-slate-700 text-[9.5px] font-bold mb-0.5">مبلغ کل پرداختی:</span>
+                    <span className="font-black text-black text-sm font-mono block leading-tight">{formatCurrency(currentOrder.totalAmount)}</span>
                 </div>
             </div>
 
             {/* Payment Details Table */}
             <div className="border border-black rounded-none overflow-hidden">
-                <table className="w-full text-right text-[9.5px] border-collapse">
+                <table className={`w-full text-right border-collapse ${isUltraCompact ? 'text-[8px]' : isCompact ? 'text-[8.5px]' : 'text-[9.5px]'}`}>
                     <thead className="bg-slate-100 border-b border-black font-black text-black">
                         <tr>
-                            <th className="p-1 px-1.5 border-l border-black w-7 text-center">#</th>
-                            <th className="p-1 px-2 border-l border-black w-28">نوع پرداخت</th>
-                            <th className="p-1 px-2 border-l border-black w-36">مبلغ (ریال)</th>
-                            <th className="p-1 px-2 border-l border-black">بانک / چک / شبا</th>
-                            <th className="p-1 px-2">توضیحات</th>
+                            <th className={`${isUltraCompact ? 'py-0.5 px-1' : 'py-1 px-1.5'} border-l border-black w-6 text-center`}>#</th>
+                            <th className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-1 px-2'} border-l border-black w-24`}>نوع پرداخت</th>
+                            <th className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-1 px-2'} border-l border-black w-32`}>مبلغ (ریال)</th>
+                            <th className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-1 px-2'} border-l border-black`}>بانک / چک / شبا</th>
+                            <th className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-1 px-2'}`}>توضیحات</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-black">
                         {currentOrder.paymentDetails.map((detail, idx) => (
                             <tr key={detail.id} className="text-black font-medium">
-                                <td className="p-1 px-1.5 text-center font-bold text-black border-l border-black">{idx + 1}</td>
-                                <td className="p-1 px-2 font-bold border-l border-black">{detail.method}</td>
-                                <td className="p-1 px-2 font-mono font-bold border-l border-black">{formatCurrency(detail.amount)}</td>
-                                <td className="p-1 px-2 border-l border-black truncate">
+                                <td className={`${isUltraCompact ? 'py-0.5 px-1' : 'py-0.5 px-1.5'} text-center font-bold text-black border-l border-black`}>{idx + 1}</td>
+                                <td className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-0.5 px-2'} font-bold border-l border-black`}>{detail.method}</td>
+                                <td className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-0.5 px-2'} font-mono font-bold border-l border-black`}>{formatCurrency(detail.amount)}</td>
+                                <td className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-0.5 px-2'} border-l border-black truncate`}>
                                     {detail.method === PaymentMethod.CHEQUE ? `چک: ${detail.chequeNumber}` : detail.method === PaymentMethod.SHEBA || detail.method === PaymentMethod.SATNA || detail.method === PaymentMethod.PAYA ? `شبا: IR-${detail.sheba}` : detail.method === PaymentMethod.INTERNAL_TRANSFER ? `حساب: ${detail.destinationAccount} (${detail.destinationOwner || ''})` : detail.method === PaymentMethod.TRANSFER ? `بانک: ${detail.bankName}` : '-'}
                                 </td>
-                                <td className="p-1 px-2 text-black truncate">{detail.description || '-'}</td>
+                                <td className={`${isUltraCompact ? 'py-0.5 px-1.5' : 'py-0.5 px-2'} text-black truncate`}>{detail.description || '-'}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -699,58 +703,58 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
             </div>
         </div>
 
-        {/* Footer 4-Box Signature Blocks matching image 3 */}
-        <div className="mt-2 pt-2 border-t-2 border-black relative z-10">
+        {/* Footer 4-Box Signature Blocks matching image 3 (Always 100% visible inside 136mm) */}
+        <div className={`border-t-2 border-black relative z-10 ${isUltraCompact ? 'mt-1 pt-1' : 'mt-1.5 pt-1.5'}`}>
             <div className="grid grid-cols-4 gap-2 text-center">
                 {/* Box 1: Requester */}
-                <div className="border border-black rounded-none p-1 flex flex-col justify-between h-[48px] bg-white">
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         <Stamp name={currentOrder.requester || 'درخواست کننده'} title="درخواست‌کننده" />
                     </div>
                     <div className="border-t border-black pt-0.5">
-                        <span className="text-[8.5px] font-bold text-black">درخواست کننده</span>
+                        <span className="text-[8px] font-bold text-black">درخواست کننده</span>
                     </div>
                 </div>
 
                 {/* Box 2: Finance Manager */}
-                <div className="border border-black rounded-none p-1 flex flex-col justify-between h-[48px] bg-white">
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         {(currentOrder.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverFinancial || 'تایید شده'} title="تایید مالی" />
                         ) : (
-                            <span className="text-slate-400 text-[8.5px]">امضا نشده</span>
+                            <span className="text-slate-400 text-[8px]">امضا نشده</span>
                         )}
                     </div>
                     <div className="border-t border-black pt-0.5">
-                        <span className="text-[8.5px] font-bold text-black">مدیر مالی</span>
+                        <span className="text-[8px] font-bold text-black">مدیر مالی</span>
                     </div>
                 </div>
 
                 {/* Box 3: Management */}
-                <div className="border border-black rounded-none p-1 flex flex-col justify-between h-[48px] bg-white">
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         {(currentOrder.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverManager || 'تایید شده'} title="تایید مدیریت" />
                         ) : (
-                            <span className="text-slate-400 text-[8.5px]">امضا نشده</span>
+                            <span className="text-slate-400 text-[8px]">امضا نشده</span>
                         )}
                     </div>
                     <div className="border-t border-black pt-0.5">
-                        <span className="text-[8.5px] font-bold text-black">مدیریت</span>
+                        <span className="text-[8px] font-bold text-black">مدیریت</span>
                     </div>
                 </div>
 
                 {/* Box 4: CEO */}
-                <div className="border border-black rounded-none p-1 flex flex-col justify-between h-[48px] bg-white">
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         {(currentOrder.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverCeo || 'تایید شده'} title="مدیر عامل" />
                         ) : (
-                            <span className="text-slate-400 text-[8.5px]">امضا نشده</span>
+                            <span className="text-slate-400 text-[8px]">امضا نشده</span>
                         )}
                     </div>
                     <div className="border-t border-black pt-0.5">
-                        <span className="text-[8.5px] font-bold text-black">مدیر عامل</span>
+                        <span className="text-[8px] font-bold text-black">مدیر عامل</span>
                     </div>
                 </div>
             </div>
