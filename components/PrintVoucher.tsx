@@ -592,7 +592,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   };
 
   const rowCount = currentOrder.paymentDetails?.length || 0;
-  const isCompact = rowCount >= 4;
+  const isTableCompact = rowCount >= 4;
   const isUltraCompact = rowCount >= 6;
 
   const receiptContent = (
@@ -604,7 +604,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
           width: '200mm', 
           height: '136mm', 
           maxHeight: '136mm', 
-          padding: isUltraCompact ? '2.5mm 4mm' : isCompact ? '3mm 5mm' : '4mm 6mm', 
+          padding: isUltraCompact ? '2.5mm 4mm' : isTableCompact ? '3mm 5mm' : '4mm 6mm', 
           boxSizing: 'border-box', 
           margin: '0 auto', 
           backgroundColor: '#ffffff',
@@ -623,7 +623,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
         {isRevocationProcess && (
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-8 border-red-200/50 text-red-200/50 font-black text-5xl rotate-[-25deg] p-4 rounded-3xl select-none z-0 pointer-events-none whitespace-nowrap">در حال ابطال</div>
         )}
-        <div className={`relative z-10 flex flex-col ${isUltraCompact ? 'gap-1' : isCompact ? 'gap-1.5' : 'gap-2'}`}>
+        <div className={`relative z-10 flex flex-col ${isUltraCompact ? 'gap-1' : isTableCompact ? 'gap-1.5' : 'gap-2'}`}>
             {/* Header */}
             <div className={`border-b-2 border-black flex justify-between items-center ${isUltraCompact ? 'pb-1' : 'pb-1.5'}`}>
                 {/* Right: Company Info & Logo */}
@@ -676,7 +676,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
 
             {/* Payment Details Table */}
             <div className="border border-black rounded-none overflow-hidden">
-                <table className={`w-full text-right border-collapse ${isUltraCompact ? 'text-[8px]' : isCompact ? 'text-[8.5px]' : 'text-[9.5px]'}`}>
+                <table className={`w-full text-right border-collapse ${isUltraCompact ? 'text-[8px]' : isTableCompact ? 'text-[8.5px]' : 'text-[9.5px]'}`}>
                     <thead className="bg-slate-100 border-b border-black font-black text-black">
                         <tr>
                             <th className={`${isUltraCompact ? 'py-0.5 px-1' : 'py-1 px-1.5'} border-l border-black w-6 text-center`}>#</th>
@@ -707,7 +707,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
         <div className={`border-t-2 border-black relative z-10 ${isUltraCompact ? 'mt-1 pt-1' : 'mt-1.5 pt-1.5'}`}>
             <div className="grid grid-cols-4 gap-2 text-center">
                 {/* Box 1: Requester */}
-                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isTableCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         <Stamp name={currentOrder.requester || 'درخواست کننده'} title="درخواست‌کننده" />
                     </div>
@@ -717,7 +717,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                 </div>
 
                 {/* Box 2: Finance Manager */}
-                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isTableCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         {(currentOrder.approverFinancial || [OrderStatus.APPROVED_FINANCE, OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverFinancial || 'تایید شده'} title="تایید مالی" />
@@ -731,7 +731,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                 </div>
 
                 {/* Box 3: Management */}
-                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isTableCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         {(currentOrder.approverManager || [OrderStatus.APPROVED_MANAGER, OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverManager || 'تایید شده'} title="تایید مدیریت" />
@@ -745,7 +745,7 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                 </div>
 
                 {/* Box 4: CEO */}
-                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isCompact ? 'h-[40px]' : 'h-[46px]'}`}>
+                <div className={`border border-black rounded-none p-0.5 flex flex-col justify-between bg-white ${isUltraCompact ? 'h-[36px]' : isTableCompact ? 'h-[40px]' : 'h-[46px]'}`}>
                     <div className="flex-1 flex items-center justify-center">
                         {(currentOrder.approverCeo || [OrderStatus.APPROVED_CEO, OrderStatus.PAID].includes(currentOrder.status)) ? (
                             <Stamp name={currentOrder.approverCeo || 'تایید شده'} title="مدیر عامل" />
