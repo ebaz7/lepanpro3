@@ -133,178 +133,38 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
         setSelectedName(initialPersonName);
     }, [initialPersonCode, initialPersonName]);
 
-    // Fetch Cheques from Backend (with automatic fallback)
+    // Fetch Cheques from Backend
     const fetchCheques = async () => {
         setIsLoading(true);
         setError(null);
         try {
             const host = getServerHost();
             const token = getAuthToken();
-            const cleanCode = String(selectedCode || '').trim();
-            const cleanName = String(selectedName || '').trim();
-
             const queryParams = new URLSearchParams({
-                personCode: cleanCode,
-                personName: cleanName
+                personCode: selectedCode || '',
+                personName: selectedName || ''
             });
 
-            let loadedCheques: SayanPersonCheque[] = [];
-
-            try {
-                const url = `${host || ''}/api/sayan/person-cheques?${queryParams.toString()}`;
-                const res = await fetch(url, {
-                    headers: {
-                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                    }
-                });
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.success && Array.isArray(data.cheques) && data.cheques.length > 0) {
-                        loadedCheques = data.cheques;
-                    }
+            const url = `${host || ''}/api/sayan/person-cheques?${queryParams.toString()}`;
+            const res = await fetch(url, {
+                headers: {
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
                 }
-            } catch (err) {
-                console.warn("[PersonChequeLedgerModal] /api/sayan/person-cheques failed, trying direct proxy:", err);
+            });
+
+            if (!res.ok) {
+                throw new Error(`خطا در دریافت لیست چک‌ها (کد وضعیت ${res.status})`);
             }
 
-            // If loadedCheques is still empty, execute direct Sayan query via /api/sayan-proxy as a solid fallback
-            if (loadedCheques.length === 0) {
-                try {
-                    const safeName = cleanName.replace(/'/g, "''");
-                    const sql = `
-                        SELECT TOP 3000
-                            t12.Field_001 as Id,
-                            t12.Field_004 as StatusType,
-                            t12.Field_005 as ChequeNo,
-                            t12.Field_006 as DueDate,
-                            t12.Field_007 as ReceiveDate,
-                            t12.Field_008 as IsActive,
-                            t12.Field_009 as BankName,
-                            t12.Field_010 as Branch,
-                            t12.Field_011 as DrawerName,
-                            t12.Field_012 as PersonCode,
-                            t12.Field_013 as Amount,
-                            t12.Field_015 as StatusDesc,
-                            t12.Field_016 as StatusCode,
-                            t_last_op.LastOpCode,
-                            t_last_op.LastOpSubCode,
-                            t_last_op.LastOpAccount,
-                            t_last_op.LastOpAccountName,
-                            p_drawer.Field_006 as MasterDrawerName
-                        FROM BUR_TBL_012 t12 WITH (NOLOCK)
-                        LEFT JOIN ACT_TBL_007 p_drawer WITH (NOLOCK) ON RTRIM(LTRIM(t12.Field_012)) = RTRIM(LTRIM(p_drawer.Field_003))
-                        LEFT JOIN (
-                            SELECT 
-                                t09.Field_007 as ChequeId,
-                                t09.Field_023 as LastOpCode,
-                                t09.Field_005 as LastOpSubCode,
-                                t09.Field_012 as LastOpAccount,
-                                t09.Field_020 as LastOpAccountName
-                            FROM BUR_TBL_009 t09 WITH (NOLOCK)
-                            INNER JOIN (
-                                SELECT Field_007 as ChequeId, MAX(CAST(Field_001 AS INT)) as MaxOpId
-                                FROM BUR_TBL_009 WITH (NOLOCK)
-                                WHERE Field_007 IS NOT NULL AND RTRIM(LTRIM(Field_007)) <> '' AND ISNUMERIC(Field_001) = 1
-                                GROUP BY Field_007
-                            ) t_max ON t09.Field_007 = t_max.ChequeId AND CAST(t09.Field_001 AS INT) = t_max.MaxOpId
-                        ) t_last_op ON CAST(t12.Field_001 AS VARCHAR(50)) = CAST(t_last_op.ChequeId AS VARCHAR(50))
-                        ${cleanCode ? `WHERE (RTRIM(LTRIM(t12.Field_012)) = '${cleanCode}' OR RTRIM(LTRIM(t_last_op.LastOpAccount)) = '${cleanCode}' OR t12.Field_011 LIKE N'%${safeName}%' OR p_drawer.Field_006 LIKE N'%${safeName}%')` : (safeName ? `WHERE (t12.Field_011 LIKE N'%${safeName}%' OR p_drawer.Field_006 LIKE N'%${safeName}%')` : '')}
-                        ORDER BY t12.Field_006 ASC
-                    `;
-
-                    const proxyRes = await fetch(`${host || ''}/api/sayan-proxy`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                        },
-                        body: JSON.stringify({
-                            path: '/query',
-                            method: 'POST',
-                            body: { query: sql }
-                        })
-                    });
-
-                    if (proxyRes.ok) {
-                        const proxyData = await proxyRes.json();
-                        const rows = proxyData.data || [];
-                        if (Array.isArray(rows) && rows.length > 0) {
-                            loadedCheques = rows.map((r: any) => {
-                                const opCode = String(r.LastOpCode || '').trim();
-                                const subOp = String(r.LastOpSubCode || '').trim();
-                                const statusType = String(r.StatusType || '').trim();
-                                const statusCode = String(r.StatusCode || '').trim();
-                                const rawDesc = String(r.StatusDesc || '').trim();
-                                const cleanDesc = rawDesc
-                                    .replace(/[\u200B-\u200D\uFEFF]/g, ' ')
-                                    .replace(/ي/g, 'ی')
-                                    .replace(/ك/g, 'ک')
-                                    .toLowerCase();
-
-                                const isReturned = opCode === '15' || opCode === '16' || (opCode === '18' && subOp === '30') || 
-                                                   statusType === '4' || statusCode === '4' || 
-                                                   cleanDesc.includes('برگشت') || cleanDesc.includes('واخواست');
-
-                                const isSpent = !isReturned && (
-                                    opCode === '18' || String(r.LastOpAccount || '').trim() === cleanCode || cleanDesc.includes('خرج')
-                                );
-
-                                const isCleared = !isReturned && !isSpent && (
-                                    opCode === '14' || opCode === '17' || 
-                                    statusType === '3' || statusType === '5' || statusCode === '3' || statusCode === '5' ||
-                                    cleanDesc.includes('وصول') || cleanDesc.includes('پاس')
-                                );
-
-                                const isAtBank = !isReturned && !isSpent && !isCleared && (
-                                    opCode === '12' || opCode === '13' || statusType === '2' || statusCode === '2' ||
-                                    cleanDesc.includes('بانک') || cleanDesc.includes('در جریان')
-                                );
-
-                                let statusGroup: any = 'in_hand';
-                                if (isReturned) statusGroup = 'returned';
-                                else if (isSpent) statusGroup = 'spent';
-                                else if (isCleared) statusGroup = 'cleared';
-                                else if (isAtBank) statusGroup = 'at_bank';
-
-                                let chequeType: any = 'received';
-                                if (isSpent || opCode === '18' || String(r.LastOpAccount || '').trim() === cleanCode) {
-                                    chequeType = 'spent';
-                                } else if (statusType === '2' || statusCode === '2') {
-                                    chequeType = 'issued';
-                                }
-
-                                return {
-                                    id: String(r.Id),
-                                    chequeNo: String(r.ChequeNo || '-').trim(),
-                                    amount: parseFloat(r.Amount || 0),
-                                    dueDate: String(r.DueDate || '').trim(),
-                                    receiveDate: String(r.ReceiveDate || r.DueDate || '').trim(),
-                                    bankName: String(r.BankName || 'نامشخص').trim(),
-                                    branch: String(r.Branch || '').trim(),
-                                    drawerName: String(r.DrawerName || r.MasterDrawerName || cleanName || 'نامشخص').trim(),
-                                    personCode: String(r.PersonCode || cleanCode).trim(),
-                                    personName: r.MasterDrawerName || cleanName,
-                                    targetPersonCode: String(r.LastOpAccount || '').trim(),
-                                    targetPersonName: String(r.LastOpAccountName || '').trim(),
-                                    statusDesc: isReturned ? 'برگشتی' : (isCleared ? 'وصول شده' : (isSpent ? 'خرج شده' : (isAtBank ? 'در جریان وصول (بانک)' : 'نزد صندوق'))),
-                                    statusGroup,
-                                    chequeType,
-                                    docNo: String(r.Id || '').trim(),
-                                    docDesc: String(r.StatusDesc || '').trim(),
-                                    isActive: r.IsActive !== 0 && r.IsActive !== '0'
-                                };
-                            });
-                        }
-                    }
-                } catch (proxyErr) {
-                    console.warn("[PersonChequeLedgerModal] Sayan proxy fallback error:", proxyErr);
-                }
+            const data = await res.json();
+            if (data.success && Array.isArray(data.cheques)) {
+                setCheques(data.cheques);
+                // Pre-select all
+                const allIds = new Set<string>(data.cheques.map((c: SayanPersonCheque) => c.id));
+                setSelectedChequeIds(allIds);
+            } else {
+                setCheques([]);
             }
-
-            setCheques(loadedCheques);
-            const allIds = new Set<string>(loadedCheques.map(c => c.id));
-            setSelectedChequeIds(allIds);
         } catch (err: any) {
             console.error("Fetch person cheques error:", err);
             setError(err.message || 'خطا در ارتباط با سرور سایان');
@@ -559,65 +419,39 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
         setSelectedChequeIds(next);
     };
 
-    // Export to Excel (Specialized by Scope)
-    const handleExportExcel = (scope: 'all' | 'received' | 'spent' | 'returned' = 'all') => {
-        let listToExport = filteredCheques;
-        let titleDesc = 'تمام چک‌ها';
-        let sheetName = 'ریز چک‌ها';
-        let filePrefix = 'Cheques_All';
-
-        if (scope === 'received') {
-            listToExport = cheques.filter(c => c.chequeType === 'received');
-            titleDesc = 'چک‌های دریافتی از مشتری';
-            sheetName = 'چک‌های دریافتی';
-            filePrefix = 'Received_Cheques';
-        } else if (scope === 'spent') {
-            listToExport = cheques.filter(c => c.chequeType === 'spent');
-            titleDesc = 'چک‌های خرج‌شده و واگذار به غیر';
-            sheetName = 'چک‌های خرج‌شده';
-            filePrefix = 'Spent_Cheques';
-        } else if (scope === 'returned') {
-            listToExport = cheques.filter(c => c.statusGroup === 'returned');
-            titleDesc = 'چک‌های برگشتی و نکول‌شده';
-            sheetName = 'چک‌های برگشتی';
-            filePrefix = 'Returned_Cheques';
-        }
-
-        if (listToExport.length === 0) {
-            alert(`هیچ چکی در دسته «${titleDesc}» برای خروجی اکسل یافت نشد.`);
+    // Export to Excel (Full Detailed Cheque List)
+    const handleExportExcel = () => {
+        if (filteredCheques.length === 0) {
+            alert('چکی برای خروجی اکسل وجود ندارد.');
             return;
         }
 
-        let sumRial = 0;
-        const dataRows = listToExport.map((c, idx) => {
-            sumRial += c.amount || 0;
-            return {
-                'ردیف': idx + 1,
-                'نوع سند': c.chequeType === 'received' ? 'دریافتی از مشتری' : (c.chequeType === 'spent' ? 'خرج‌شده / واگذار به غیر' : 'صادره / پرداختی'),
-                'شماره چک / صیادی': c.chequeNo,
-                'مبلغ (ریال)': c.amount,
-                'مبلغ (تومان)': Math.round(c.amount / 10),
-                'تاریخ دریافت / ثبت': c.receiveDate || '-',
-                'تاریخ سررسید': c.dueDate,
-                'نام بانک': c.bankName,
-                'شعبه / حساب': c.branch || '-',
-                'صاحب حساب / صادرکننده': c.drawerName,
-                'کد طرف‌حساب': c.personCode,
-                'نام طرف‌حساب': c.personName || selectedName,
-                'مقصد خرج / واگذاری': c.targetPersonName || '-',
-                'وضعیت در خزانه‌داری': c.statusDesc,
-                'شماره سند / عطف': c.docNo || '-',
-                'شرح سند': c.docDesc || '-'
-            };
-        });
+        const dataRows = filteredCheques.map((c, idx) => ({
+            'ردیف': idx + 1,
+            'نوع سند': c.chequeType === 'received' ? 'دریافتی از مشتری' : (c.chequeType === 'spent' ? 'خرج‌شده / واگذار به غیر' : 'صادره / پرداختی'),
+            'شماره چک / صیادی': c.chequeNo,
+            'مبلغ (ریال)': c.amount,
+            'مبلغ (تومان)': Math.round(c.amount / 10),
+            'تاریخ دریافت / ثبت': c.receiveDate || '-',
+            'تاریخ سررسید': c.dueDate,
+            'نام بانک': c.bankName,
+            'شعبه / حساب': c.branch || '-',
+            'صاحب حساب / صادرکننده': c.drawerName,
+            'کد طرف‌حساب': c.personCode,
+            'نام طرف‌حساب': c.personName || selectedName,
+            'مقصد خرج / واگذاری': c.targetPersonName || '-',
+            'وضعیت در خزانه‌داری': c.statusDesc,
+            'شماره سند / عطف': c.docNo || '-',
+            'شرح سند': c.docDesc || '-'
+        }));
 
         // Add Summary Row
         dataRows.push({
             'ردیف': '-' as any,
-            'نوع سند': `مجموع ${titleDesc}`,
-            'شماره چک / صیادی': `${listToExport.length} فقره چک`,
-            'مبلغ (ریال)': sumRial,
-            'مبلغ (تومان)': Math.round(sumRial / 10),
+            'نوع سند': 'مجموع کل',
+            'شماره چک / صیادی': `${filteredCheques.length} فقره چک`,
+            'مبلغ (ریال)': stats.totalSum,
+            'مبلغ (تومان)': Math.round(stats.totalSum / 10),
             'تاریخ دریافت / ثبت': '-',
             'تاریخ سررسید': '-',
             'نام بانک': '-',
@@ -633,9 +467,9 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
 
         const ws = XLSX.utils.json_to_sheet(dataRows);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        XLSX.utils.book_append_sheet(wb, ws, 'ریز چک‌ها');
 
-        const fileName = `${filePrefix}_${selectedCode || 'All'}_${(selectedName || 'Party').replace(/[\s\/\\:]/g, '_')}_${dateToShamsi(new Date()).replace(/\//g, '-')}.xlsx`;
+        const fileName = `Cheques_${selectedCode || 'All'}_${selectedName || 'Customer'}_${dateToShamsi(new Date()).replace(/\//g, '-')}.xlsx`;
         XLSX.writeFile(wb, fileName);
     };
 
@@ -806,19 +640,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                 {/* KPI STATS CARDS RIBBON */}
                 <div className="bg-slate-50 dark:bg-zinc-950/60 border-b border-slate-200 dark:border-zinc-800 p-3 sm:px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 shrink-0">
                     {/* Card 1: Received */}
-                    <div 
-                        onClick={() => {
-                            setActiveTab('list');
-                            setFilterChequeType('received');
-                            setFilterStatus('all');
-                        }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md ${
-                            filterChequeType === 'received' && filterStatus === 'all'
-                                ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-50/20 dark:bg-emerald-950/20'
-                                : 'border-emerald-500/30'
-                        }`}
-                        title="کلیک برای نمایش و فیلتر فقط چک‌های دریافتی از مشتری"
-                    >
+                    <div className="bg-white dark:bg-zinc-900 border border-emerald-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
                         <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
                             <span>چک‌های دریافتی (از مشتری)</span>
                             <span className="bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
@@ -836,19 +658,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 2: Spent / Endorsed */}
-                    <div 
-                        onClick={() => {
-                            setActiveTab('list');
-                            setFilterChequeType('spent');
-                            setFilterStatus('all');
-                        }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md ${
-                            filterChequeType === 'spent' && filterStatus === 'all'
-                                ? 'border-blue-500 ring-2 ring-blue-500/30 bg-blue-50/20 dark:bg-blue-950/20'
-                                : 'border-blue-500/30'
-                        }`}
-                        title="کلیک برای نمایش و فیلتر فقط چک‌های خرج‌شده و واگذار به این شخص"
-                    >
+                    <div className="bg-white dark:bg-zinc-900 border border-blue-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
                         <div className="flex items-center justify-between text-[11px] text-blue-600 dark:text-blue-400 font-bold">
                             <span>چک‌های خرج‌شده (واگذار به این شخص)</span>
                             <span className="bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
@@ -866,19 +676,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 3: In Hand */}
-                    <div 
-                        onClick={() => {
-                            setActiveTab('list');
-                            setFilterChequeType('all');
-                            setFilterStatus('in_hand');
-                        }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md ${
-                            filterStatus === 'in_hand'
-                                ? 'border-amber-500 ring-2 ring-amber-500/30 bg-amber-50/20 dark:bg-amber-950/20'
-                                : 'border-amber-500/30'
-                        }`}
-                        title="کلیک برای نمایش چک‌های نزد صندوق"
-                    >
+                    <div className="bg-white dark:bg-zinc-900 border border-amber-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
                         <div className="flex items-center justify-between text-[11px] text-amber-600 dark:text-amber-400 font-bold">
                             <span>نزد صندوق / در جریان وصول</span>
                             <Clock size={13} />
@@ -894,19 +692,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 4: Cleared */}
-                    <div 
-                        onClick={() => {
-                            setActiveTab('list');
-                            setFilterChequeType('all');
-                            setFilterStatus('cleared');
-                        }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md ${
-                            filterStatus === 'cleared'
-                                ? 'border-teal-500 ring-2 ring-teal-500/30 bg-teal-50/20 dark:bg-teal-950/20'
-                                : 'border-teal-500/30'
-                        }`}
-                        title="کلیک برای نمایش چک‌های وصول‌شده و پاس‌شده"
-                    >
+                    <div className="bg-white dark:bg-zinc-900 border border-teal-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between">
                         <div className="flex items-center justify-between text-[11px] text-teal-600 dark:text-teal-400 font-bold">
                             <span>وصول‌شده / پاس‌شده</span>
                             <CheckCircle2 size={13} />
@@ -922,19 +708,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Card 5: Returned */}
-                    <div 
-                        onClick={() => {
-                            setActiveTab('list');
-                            setFilterChequeType('all');
-                            setFilterStatus('returned');
-                        }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1 cursor-pointer transition-all hover:scale-[1.02] hover:shadow-md ${
-                            filterStatus === 'returned'
-                                ? 'border-rose-500 ring-2 ring-rose-500/40 bg-rose-50/30 dark:bg-rose-950/30'
-                                : 'border-rose-500/30'
-                        }`}
-                        title="کلیک برای نمایش و تفکیک فقط چک‌های برگشتی"
-                    >
+                    <div className="bg-white dark:bg-zinc-900 border border-rose-500/30 rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1">
                         <div className="flex items-center justify-between text-[11px] text-rose-600 dark:text-rose-400 font-bold">
                             <span>چک‌های برگشتی</span>
                             <AlertCircle size={13} />

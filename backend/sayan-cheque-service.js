@@ -1923,53 +1923,50 @@ export const getPersonChequesAndRas = async (personCode, personName = '', option
         const cleanName = String(personName || '').trim().replace(/'/g, "''");
         const nameFa = cleanName.replace(/ي/g, 'ی').replace(/ك/g, 'ک');
         const nameAr = cleanName.replace(/ی/g, 'ي').replace(/ک/g, 'ك');
-
-        // Extract significant keywords (length >= 3) to allow matching root name e.g. "اکبرزاد" from "امیر اکبرزاد" or "اکبرزاد- نقدی"
-        const rawKeywords = [cleanName, nameFa, nameAr].flatMap(n => n.split(/[\s\-_\/]+/)).filter(w => w && w.length >= 3);
-        const keywords = Array.from(new Set(rawKeywords));
         
         let cheques = [];
 
         // Build Sayan SQL Query
         let whereClause = "1=1";
-        if (cleanCode && keywords.length > 0) {
-            const kwClauses = keywords.map(k => `
-                t12.Field_011 LIKE N'%${k}%'
-                OR p_drawer.Field_006 LIKE N'%${k}%'
-                OR t_op.TargetPersonName LIKE N'%${k}%'
-                OR t_op.DocDesc LIKE N'%${k}%'
-                OR t12.Field_012 IN (SELECT Field_003 FROM ACT_TBL_007 WITH (NOLOCK) WHERE Field_006 LIKE N'%${k}%')
-                OR t_op.TargetAccount IN (SELECT Field_003 FROM ACT_TBL_007 WITH (NOLOCK) WHERE Field_006 LIKE N'%${k}%')
-            `).join(' OR ');
-
+        if (cleanCode && cleanName) {
             whereClause = `(
-                RTRIM(LTRIM(t12.Field_012)) = '${cleanCode}' 
+                t12.Field_012 = '${cleanCode}' 
                 OR t12.Field_012 LIKE '%${cleanCode}%'
-                OR RTRIM(LTRIM(t_op.TargetAccount)) = '${cleanCode}'
-                OR RTRIM(LTRIM(t_op.SourceAccount)) = '${cleanCode}'
-                OR ${kwClauses}
+                OR t12.Field_011 LIKE N'%${cleanName}%'
+                OR t12.Field_011 LIKE N'%${nameFa}%'
+                OR t12.Field_011 LIKE N'%${nameAr}%'
+                OR t_op.TargetAccount = '${cleanCode}'
+                OR t_op.SourceAccount = '${cleanCode}'
+                OR t_op.TargetPersonName LIKE N'%${cleanName}%'
+                OR t_op.TargetPersonName LIKE N'%${nameFa}%'
+                OR t_op.TargetPersonName LIKE N'%${nameAr}%'
+                OR p_drawer.Field_006 LIKE N'%${cleanName}%'
+                OR p_drawer.Field_006 LIKE N'%${nameFa}%'
+                OR p_drawer.Field_006 LIKE N'%${nameAr}%'
             )`;
         } else if (cleanCode) {
             whereClause = `(
-                RTRIM(LTRIM(t12.Field_012)) = '${cleanCode}' 
+                t12.Field_012 = '${cleanCode}' 
                 OR t12.Field_012 LIKE '%${cleanCode}%'
-                OR RTRIM(LTRIM(t_op.TargetAccount)) = '${cleanCode}'
-                OR RTRIM(LTRIM(t_op.SourceAccount)) = '${cleanCode}'
+                OR t_op.TargetAccount = '${cleanCode}'
+                OR t_op.SourceAccount = '${cleanCode}'
             )`;
-        } else if (keywords.length > 0) {
-            const kwClauses = keywords.map(k => `
-                t12.Field_011 LIKE N'%${k}%'
-                OR p_drawer.Field_006 LIKE N'%${k}%'
-                OR t_op.TargetPersonName LIKE N'%${k}%'
-                OR t_op.DocDesc LIKE N'%${k}%'
-                OR t12.Field_012 IN (SELECT Field_003 FROM ACT_TBL_007 WITH (NOLOCK) WHERE Field_006 LIKE N'%${k}%')
-                OR t_op.TargetAccount IN (SELECT Field_003 FROM ACT_TBL_007 WITH (NOLOCK) WHERE Field_006 LIKE N'%${k}%')
-            `).join(' OR ');
-            whereClause = `(${kwClauses})`;
+        } else if (cleanName) {
+            whereClause = `(
+                t12.Field_011 LIKE N'%${cleanName}%' 
+                OR t12.Field_011 LIKE N'%${nameFa}%' 
+                OR t12.Field_011 LIKE N'%${nameAr}%' 
+                OR t_op.TargetPersonName LIKE N'%${cleanName}%'
+                OR t_op.TargetPersonName LIKE N'%${nameFa}%'
+                OR t_op.TargetPersonName LIKE N'%${nameAr}%'
+                OR p_drawer.Field_006 LIKE N'%${cleanName}%'
+                OR p_drawer.Field_006 LIKE N'%${nameFa}%'
+                OR p_drawer.Field_006 LIKE N'%${nameAr}%'
+            )`;
         }
 
         const chequesSql = `
-            SELECT TOP 3000
+            SELECT 
                 t12.Field_001 as Id,
                 t12.Field_004 as StatusType,
                 t12.Field_005 as ChequeNo,
@@ -1985,7 +1982,6 @@ export const getPersonChequesAndRas = async (personCode, personName = '', option
                 t12.Field_016 as StatusCode,
                 t_op.OpDate as LastOpDate,
                 t_op.OpCode as LastOpCode,
-                t_op.OpSubCode as LastOpSubCode,
                 t_op.OpTypeDesc as OpTypeDesc,
                 t_op.TargetAccount as TargetAccount,
                 t_op.SourceAccount as SourceAccount,
@@ -1994,14 +1990,13 @@ export const getPersonChequesAndRas = async (personCode, personName = '', option
                 t_op.TargetPersonName as TargetPersonName,
                 p_drawer.Field_006 as MasterDrawerName
             FROM BUR_TBL_012 t12 WITH (NOLOCK)
-            LEFT JOIN ACT_TBL_007 p_drawer WITH (NOLOCK) ON RTRIM(LTRIM(t12.Field_012)) = RTRIM(LTRIM(p_drawer.Field_003))
+            LEFT JOIN ACT_TBL_007 p_drawer ON t12.Field_012 = p_drawer.Field_003
             LEFT JOIN (
                 SELECT 
                     t09.Field_007 as ChequeId,
                     t09.Field_003 as FiscalYear,
                     t09.Field_004 as ArchiveCode,
                     t09.Field_023 as OpCode,
-                    t09.Field_005 as OpSubCode,
                     t09.Field_012 as TargetAccount,
                     t09.Field_011 as SourceAccount,
                     t09.Field_024 as DocDesc,
@@ -2009,140 +2004,79 @@ export const getPersonChequesAndRas = async (personCode, personName = '', option
                     p_target.Field_006 as TargetPersonName,
                     CASE 
                         WHEN t09.Field_023 = '11' THEN N'دریافت چک'
-                        WHEN t09.Field_023 IN ('12', '13') THEN N'واگذاری به بانک'
-                        WHEN t09.Field_023 IN ('14', '17') THEN N'وصول چک'
-                        WHEN t09.Field_023 IN ('15', '16') THEN N'برگشت چک'
-                        WHEN t09.Field_023 = '18' THEN N'واگذاری به غیر (خرج چک)'
-                        WHEN t09.Field_023 = '20' THEN N'برگشت به صندوق'
-                        WHEN t09.Field_023 = '21' THEN N'استرداد چک'
+                        WHEN t09.Field_023 = '12' THEN N'واگذاری به بانک'
+                        WHEN t09.Field_023 = '13' THEN N'وصول چک'
+                        WHEN t09.Field_023 = '14' THEN N'استرداد چک'
+                        WHEN t09.Field_023 = '15' THEN N'واگذاری به غیر (خرج چک)'
+                        WHEN t09.Field_023 = '16' THEN N'برگشت چک'
                         ELSE N'عملیات خزانه‌داری'
                     END as OpTypeDesc
                 FROM BUR_TBL_009 t09 WITH (NOLOCK)
-                LEFT JOIN ACT_TBL_007 p_target WITH (NOLOCK) ON RTRIM(LTRIM(t09.Field_012)) = RTRIM(LTRIM(p_target.Field_003))
+                LEFT JOIN ACT_TBL_007 p_target ON t09.Field_012 = p_target.Field_003
                 INNER JOIN (
                     SELECT Field_007 as ChequeId, MAX(CAST(Field_001 AS INT)) as MaxOpId
                     FROM BUR_TBL_009 WITH (NOLOCK)
-                    WHERE Field_007 IS NOT NULL AND RTRIM(LTRIM(Field_007)) <> '' AND ISNUMERIC(Field_001) = 1
+                    WHERE Field_007 IS NOT NULL AND RTRIM(LTRIM(Field_007)) <> ''
                     GROUP BY Field_007
                 ) t_max ON t09.Field_007 = t_max.ChequeId AND CAST(t09.Field_001 AS INT) = t_max.MaxOpId
-            ) t_op ON RTRIM(LTRIM(CAST(t12.Field_001 AS VARCHAR(50)))) = RTRIM(LTRIM(CAST(t_op.ChequeId AS VARCHAR(50))))
+            ) t_op ON CAST(t12.Field_001 AS VARCHAR(50)) = CAST(t_op.ChequeId AS VARCHAR(50))
             WHERE ${whereClause}
-            ORDER BY t12.Field_006 ASC, t12.Field_001 ASC
+            ORDER BY t12.Field_006 ASC
         `;
 
-        let rows = [];
         try {
-            rows = await executeSayanQuery(chequesSql);
-        } catch (queryErr) {
-            console.warn("[Sayan Cheque Service] Primary query failed, attempting simplified query:", queryErr.message);
-            // Fallback simplified query
-            const fallbackSql = `
-                SELECT TOP 2000
-                    t12.Field_001 as Id,
-                    t12.Field_004 as StatusType,
-                    t12.Field_005 as ChequeNo,
-                    t12.Field_006 as DueDate,
-                    t12.Field_007 as ReceiveDate,
-                    t12.Field_008 as IsActive,
-                    t12.Field_009 as BankName,
-                    t12.Field_010 as Branch,
-                    t12.Field_011 as DrawerName,
-                    t12.Field_012 as PersonCode,
-                    t12.Field_013 as Amount,
-                    t12.Field_015 as StatusDesc,
-                    t12.Field_016 as StatusCode,
-                    p_drawer.Field_006 as MasterDrawerName
-                FROM BUR_TBL_012 t12 WITH (NOLOCK)
-                LEFT JOIN ACT_TBL_007 p_drawer WITH (NOLOCK) ON RTRIM(LTRIM(t12.Field_012)) = RTRIM(LTRIM(p_drawer.Field_003))
-                ${cleanCode ? `WHERE RTRIM(LTRIM(t12.Field_012)) = '${cleanCode}' OR t12.Field_011 LIKE N'%${cleanName}%' OR p_drawer.Field_006 LIKE N'%${cleanName}%'` : ''}
-                ORDER BY t12.Field_006 ASC
-            `;
-            rows = await executeSayanQuery(fallbackSql).catch(() => []);
-        }
+            const rows = await executeSayanQuery(chequesSql);
+            if (Array.isArray(rows)) {
+                cheques = rows.map(r => {
+                    const dueStr = normalizeSayanDate(r.DueDate);
+                    const receiveStr = normalizeSayanDate(r.ReceiveDate || r.LastOpDate);
+                    const opCode = String(r.LastOpCode || '').trim();
+                    const targetAcc = String(r.TargetAccount || '').trim();
+                    const sourceAcc = String(r.SourceAccount || r.PersonCode || '').trim();
+                    
+                    // Determine cheque type
+                    let chequeType = 'received'; // default
+                    if (opCode === '15' || targetAcc === cleanCode) {
+                        chequeType = 'spent'; // Endorsed / spent to this person
+                    } else if (String(r.StatusType) === '2' || String(r.StatusCode) === '2') {
+                        chequeType = 'issued'; // Issued by company
+                    }
 
-        if (Array.isArray(rows)) {
-            cheques = rows.map(r => {
-                const dueStr = normalizeSayanDate(r.DueDate);
-                const receiveStr = normalizeSayanDate(r.ReceiveDate || r.LastOpDate);
-                const opCode = String(r.LastOpCode || '').trim();
-                const subOp = String(r.LastOpSubCode || '').trim();
-                const targetAcc = String(r.TargetAccount || '').trim();
-                const sourceAcc = String(r.SourceAccount || r.PersonCode || '').trim();
-                const statusType = String(r.StatusType || '').trim();
-                const statusCode = String(r.StatusCode || '').trim();
-                const rawDesc = String(r.StatusDesc || r.OpTypeDesc || '').trim();
-                const cleanDesc = rawDesc
-                    .replace(/[\u200B-\u200D\uFEFF]/g, ' ')
-                    .replace(/ي/g, 'ی')
-                    .replace(/ك/g, 'ک')
-                    .toLowerCase();
+                    // Determine Status Group
+                    let statusGroup = 'in_hand';
+                    const rawDesc = String(r.StatusDesc || r.OpTypeDesc || '').trim();
+                    if (rawDesc.includes('وصول') || opCode === '13') {
+                        statusGroup = 'cleared';
+                    } else if (rawDesc.includes('برگشت') || opCode === '16') {
+                        statusGroup = 'returned';
+                    } else if (rawDesc.includes('خرج') || rawDesc.includes('واگذار به غیر') || opCode === '15') {
+                        statusGroup = 'spent';
+                    } else if (rawDesc.includes('بانک') || opCode === '12') {
+                        statusGroup = 'at_bank';
+                    }
 
-                // Determine Status Group
-                let statusGroup = 'in_hand';
-                const isReturned = opCode === '15' || opCode === '16' || (opCode === '18' && subOp === '30') || 
-                                   statusType === '4' || statusCode === '4' || 
-                                   cleanDesc.includes('برگشت') || cleanDesc.includes('واخواست') || cleanDesc.includes('عدم پرداخت');
-
-                const isSpent = !isReturned && (
-                    opCode === '18' || targetAcc === cleanCode || cleanDesc.includes('خرج') || cleanDesc.includes('واگذار به غیر')
-                );
-
-                const isCleared = !isReturned && !isSpent && (
-                    opCode === '14' || opCode === '17' || 
-                    statusType === '3' || statusType === '5' || statusCode === '3' || statusCode === '5' ||
-                    (cleanDesc.includes('وصول') && !cleanDesc.includes('وصول نشد') && !cleanDesc.includes('عدم وصول') && !cleanDesc.includes('در جریان')) ||
-                    cleanDesc.includes('پاس') || cleanDesc.includes('تسویه')
-                );
-
-                const isAtBank = !isReturned && !isSpent && !isCleared && (
-                    opCode === '12' || opCode === '13' || statusType === '2' || statusCode === '2' ||
-                    cleanDesc.includes('بانک') || cleanDesc.includes('در جریان') || cleanDesc.includes('واگذار به بانک')
-                );
-
-                if (isReturned) {
-                    statusGroup = 'returned';
-                } else if (isSpent) {
-                    statusGroup = 'spent';
-                } else if (isCleared) {
-                    statusGroup = 'cleared';
-                } else if (isAtBank) {
-                    statusGroup = 'at_bank';
-                } else {
-                    statusGroup = 'in_hand';
-                }
-
-                // Determine Cheque Type (received from person vs spent/endorsed to person vs company issued)
-                let chequeType = 'received';
-                if (isSpent || opCode === '18' || targetAcc === cleanCode) {
-                    chequeType = 'spent'; // Endorsed / spent to this person
-                } else if (statusType === '2' || statusCode === '2') {
-                    chequeType = 'issued'; // Issued by company
-                } else {
-                    chequeType = 'received'; // Received from customer
-                }
-
-                return {
-                    id: String(r.Id),
-                    chequeNo: String(r.ChequeNo || '-').trim(),
-                    amount: parseFloat(r.Amount || 0),
-                    dueDate: dueStr,
-                    receiveDate: receiveStr || dueStr,
-                    bankName: String(r.BankName || 'نامشخص').trim(),
-                    branch: String(r.Branch || '').trim(),
-                    drawerName: String(r.DrawerName || r.MasterDrawerName || cleanName || 'نامشخص').trim(),
-                    personCode: sourceAcc || cleanCode,
-                    personName: r.MasterDrawerName || cleanName,
-                    targetPersonCode: targetAcc,
-                    targetPersonName: r.TargetPersonName || (targetAcc === cleanCode ? cleanName : ''),
-                    statusDesc: isReturned ? 'برگشتی' : (isCleared ? 'وصول شده' : (isSpent ? 'خرج شده' : (isAtBank ? 'در جریان وصول (بانک)' : 'نزد صندوق'))),
-                    statusGroup,
-                    chequeType,
-                    docNo: String(r.ArchiveCode || '').trim(),
-                    docDesc: String(r.DocDesc || '').trim(),
-                    isActive: r.IsActive !== 0 && r.IsActive !== '0'
-                };
-            });
-        }
+                    return {
+                        id: String(r.Id),
+                        chequeNo: String(r.ChequeNo || '-').trim(),
+                        amount: parseFloat(r.Amount || 0),
+                        dueDate: dueStr,
+                        receiveDate: receiveStr || dueStr,
+                        bankName: String(r.BankName || 'نامشخص').trim(),
+                        branch: String(r.Branch || '').trim(),
+                        drawerName: String(r.DrawerName || cleanName || 'نامشخص').trim(),
+                        personCode: sourceAcc || cleanCode,
+                        personName: cleanName,
+                        targetPersonCode: targetAcc,
+                        targetPersonName: r.TargetPersonName || (targetAcc === cleanCode ? cleanName : ''),
+                        statusDesc: rawDesc || (statusGroup === 'cleared' ? 'وصول شده' : (statusGroup === 'returned' ? 'برگشتی' : 'نزد صندوق')),
+                        statusGroup,
+                        chequeType,
+                        docNo: String(r.ArchiveCode || '').trim(),
+                        docDesc: String(r.DocDesc || '').trim(),
+                        isActive: r.IsActive !== 0 && r.IsActive !== '0'
+                    };
+                });
+            }
         } catch (dbErr) {
             console.error("Error running Sayan query for person cheques:", dbErr.message);
         }
