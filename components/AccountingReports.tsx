@@ -499,14 +499,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         const today = new Date();
         const jToday = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
         
-        const currentYear = jToday.jy; // 1405
+        const activeYear = getActiveFiscalYearLabel();
         
         const savedFrom = localStorage.getItem('sayan_default_date_from');
         const savedTo = localStorage.getItem('sayan_default_date_to');
         
-        // Default to current year 1405 start if savedFrom is missing or from an old year
-        const initialFrom = (savedFrom && !savedFrom.startsWith('1403') && !savedFrom.startsWith('1404')) ? savedFrom : `${currentYear}/01/01`;
-        const initialTo = savedTo || `${currentYear}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
+        // Default to active fiscal year if savedFrom is missing
+        const initialFrom = savedFrom || `${activeYear}/01/01`;
+        const initialTo = savedTo || `${activeYear}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
         
         setDateFrom(initialFrom);
         setDateTo(initialTo);
@@ -2000,7 +2000,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             const gregTo = jalaliToGregorianStr(dateTo);
             
             const dateFilter = gregFrom && gregTo 
-                ? `AND t10.Field_008 >= '${gregFrom}T00:00:00.000Z' AND t10.Field_008 <= '${gregTo}T23:59:59.000Z'` 
+                ? `AND LEFT(t10.Field_008, 10) >= '${gregFrom}' AND LEFT(t10.Field_008, 10) <= '${gregTo}'` 
                 : '';
 
             // Fetch Period A
@@ -2117,7 +2117,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 const gregToB = jalaliToGregorianStr(salesDateToB);
                 
                 const dateFilterB = gregFromB && gregToB 
-                    ? `AND t10.Field_008 >= '${gregFromB}T00:00:00.000Z' AND t10.Field_008 <= '${gregToB}T23:59:59.000Z'` 
+                    ? `AND LEFT(t10.Field_008, 10) >= '${gregFromB}' AND LEFT(t10.Field_008, 10) <= '${gregToB}'` 
                     : '';
 
                 const sqlB = `

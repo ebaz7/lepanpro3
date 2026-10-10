@@ -3027,12 +3027,43 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
               <p className="text-xs text-slate-600 font-bold">در حال دریافت و تحلیل آماری داده‌های بازه دوم از سیستم سایان ERP...</p>
             </div>
           ) : !compareDataB || compareDataB.length === 0 ? (
-            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl">
-              <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-              <h4 className="text-sm font-extrabold text-slate-800">هیچ تراکنشی در بازه دوم یافت نشد</h4>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
-                تراکنشی در تاریخ‌های مشخص شده برای بازه دوم در سیستم ERP یافت نشد. می‌توانید با دکمه‌های میانبر (مثلا همسان سال قبل) بازه دیگری انتخاب کنید.
-              </p>
+            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+              <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-800">هیچ تراکنشی در بازه دوم (دوره B) یافت نشد</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                  تراکنشی در تاریخ‌های مشخص شده (<span className="font-mono font-bold text-amber-700">{salesDateFromB} تا {salesDateToB}</span>) در دیتابیس سایان ERP یافت نشد. جهت مشاهده مقایسه، از میانبرهای زیر بازه دوم را به سال مالی دارای تراکنش تغییر دهید:
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => applyPreset('prev_year')}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs px-4 py-2 font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  همسان سال قبل (پارسال)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onDateRangeChange) onDateRangeChange('1404/01/01', '1404/12/29');
+                    if (onCompareDateRangeChange) onCompareDateRangeChange('1403/01/01', '1403/12/29');
+                    if (onToggleCompareMode) onToggleCompareMode(true);
+                  }}
+                  className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs px-4 py-2 font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  تنظیم دوره A به ۱۴۰۴ و دوره B به ۱۴۰۳
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onCompareDateRangeChange) onCompareDateRangeChange('1403/01/01', '1403/12/29');
+                  }}
+                  className="bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs px-4 py-2 font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  انتخاب کل سال ۱۴۰۳ برای دوره B
+                </button>
+              </div>
             </div>
           ) : (
             <>

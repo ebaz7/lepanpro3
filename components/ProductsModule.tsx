@@ -415,7 +415,7 @@ const ProductsModule: React.FC = () => {
                         </div>
                         <form onSubmit={handleSave} className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">نام کالا * / پلاک</label>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">نام کالا *</label>
                                 <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-gray-50 border-2 border-gray-200 focus:glass-panel focus:border-blue-500 rounded-xl outline-none transition-all font-bold" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
