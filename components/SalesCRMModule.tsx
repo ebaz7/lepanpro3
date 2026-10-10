@@ -1,22 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Upload, Download, Gift, Save, X, FileText, UserPlus, GitMerge, Database, Link2, Sparkles, RefreshCw, CheckCircle2, Search } from 'lucide-react';
+import { Plus, Trash2, Edit2, Upload, Download, Gift, Save, X, FileText, UserPlus, GitMerge, Database, Link2, Sparkles, RefreshCw, CheckCircle2, Search, Users } from 'lucide-react';
 import { SalesContact, BirthdayGreetingTemplate } from '../types';
 import { apiCall } from '../services/apiService';
 import { getSettings, saveSettings } from '../services/storageService';
 import * as XLSX from 'xlsx';
 import { saveBlobAndOpenFile } from '../services/fileService';
 import { searchSayanPersons, SayanPersonResult } from '../services/sayanExitService';
+import { GoogleContactsImportModal } from './GoogleContactsImportModal';
 
 export default function SalesCRMModule() {
     const [contacts, setContacts] = useState<SalesContact[]>([]);
     const [botSubscribers, setBotSubscribers] = useState<any[]>([]);
-    const [activeTab, setActiveTab] = useState<'contacts' | 'bot_leads'>('contacts');
+    const [activeTab, setActiveTab] = useState<'contacts' | 'broadcast' | 'birthday' | 'bot_leads'>('contacts');
     const [template, setTemplate] = useState<BirthdayGreetingTemplate>({ text: 'تولدت مبارک عزیز!', isActive: true });
 
     // Lead Merge States
     const [mergingLead, setMergingLead] = useState<any | null>(null);
     const [mergeMode, setMergeMode] = useState<'new' | 'existing'>('new');
     const [selectedContactId, setSelectedContactId] = useState<string>('');
+    const [isGoogleImportOpen, setIsGoogleImportOpen] = useState(false);
     const [mergeForm, setMergeForm] = useState<{
         name: string;
         mobile: string;
@@ -25,6 +27,43 @@ export default function SalesCRMModule() {
         birthday: string;
         accountCode: string;
     }>({ name: '', mobile: '', telegramId: '', baleId: '', birthday: '', accountCode: '' });
+
+    const handleGoogleImportSuccess = async (importedList: SalesContact[], mode: 'skip' | 'update' | 'all') => {
+        let current = [...contacts];
+        let updatedCount = 0;
+        let addedCount = 0;
+
+        for (const imported of importedList) {
+            const cleanImportedMob = (imported.mobile || '').replace(/^0/, '').trim();
+            const existingIndex = current.findIndex(c => {
+                const exMob = (c.mobile || '').replace(/^0/, '').trim();
+                if (cleanImportedMob && exMob && (cleanImportedMob.endsWith(exMob) || exMob.endsWith(cleanImportedMob))) return true;
+                if (c.name.trim().toLowerCase() === imported.name.trim().toLowerCase()) return true;
+                return false;
+            });
+
+            if (existingIndex > -1) {
+                if (mode === 'update') {
+                    current[existingIndex] = {
+                        ...current[existingIndex],
+                        name: imported.name || current[existingIndex].name,
+                        mobile: imported.mobile || current[existingIndex].mobile,
+                        birthday: imported.birthday || current[existingIndex].birthday
+                    };
+                    updatedCount++;
+                } else if (mode === 'all') {
+                    current.push(imported);
+                    addedCount++;
+                }
+            } else {
+                current.push(imported);
+                addedCount++;
+            }
+        }
+
+        await updateContacts(current);
+        alert(`عملیات با موفقیت انجام شد:\n${addedCount} مخاطب جدید اضافه گردید${updatedCount > 0 ? ` و ${updatedCount} مخاطب موجود بروزرسانی شد.` : '.'}\n\nپیشنهاد: اکنون می‌توانید با کلیک روی دکمه «اتصال خودکار به سایان»، کدهای حسابداری و مشتریان را تطبیق دهید.`);
+    };
 
     useEffect(() => {
         const handleGlobalClose = () => {
@@ -173,8 +212,18 @@ export default function SalesCRMModule() {
 
                 const newContacts = [...contacts];
                 data.forEach((row: any) => {
-                    const mobile = String(row['موبایل'] || row['Mobile'] || '').trim();
-                    const name = String(row['نام'] || row['Name'] || '').trim();
+                    let mobile = String(row['موبایل'] || row['Mobile'] || row['Phone 1 - Value'] || row['Phone 1'] || row['Mobile Phone'] || row['Phone'] || '').trim();
+                    if (mobile) {
+                        const firstPart = mobile.split(':::')[0] || mobile;
+                        mobile = firstPart.replace(/[\s\-\(\)\.]/g, '');
+                        if (mobile.startsWith('+98')) mobile = '0' + mobile.slice(3);
+                        else if (mobile.startsWith('0098')) mobile = '0' + mobile.slice(4);
+                        else if (mobile.startsWith('98') && mobile.length >= 11) mobile = '0' + mobile.slice(2);
+                    }
+                    let name = String(row['نام'] || row['Name'] || '').trim();
+                    if (!name && (row['Given Name'] || row['Family Name'] || row['First Name'] || row['Last Name'])) {
+                        name = `${row['Given Name'] || row['First Name'] || ''} ${row['Family Name'] || row['Last Name'] || ''}`.trim();
+                    }
                     const accountCode = String(row['کد تفصیلی'] || row['کد حساب'] || row['کد حسابداری'] || row['AccountCode'] || row['کد'] || '').trim();
                     if (mobile && name) {
                         newContacts.push({
@@ -386,84 +435,236 @@ export default function SalesCRMModule() {
         }
     };
 
+    const stats = React.useMemo(() => {
+        const total = contacts.length;
+        const linkedToSayan = contacts.filter(c => (c as any).isSayan || c.sayanPersonCode || c.sayanTafsiliCode).length;
+        const withMobile = contacts.filter(c => c.mobile && c.mobile.trim()).length;
+        const botLeads = botSubscribers.length;
+        return { total, linkedToSayan, withMobile, botLeads };
+    }, [contacts, botSubscribers]);
+
     return (
-        <div className="p-6 space-y-6">
-            <h2 className="text-2xl font-black text-gray-800">مدیریت مخاطبین فروش</h2>
-            
-            {/* Tabs for Navigation */}
-            <div className="flex flex-wrap border-b border-gray-200/50 dark:border-white/10">
+        <div className="space-y-5 animate-fade-in text-right dir-rtl p-2 md:p-4" dir="rtl">
+            {/* Executive Hero Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl border border-indigo-500/20">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-600/30 text-indigo-300 rounded-2xl border border-indigo-400/30">
+                        <Database size={26} />
+                    </div>
+                    <div>
+                        <h1 className="text-xl md:text-2xl font-black tracking-tight">مدیریت ارتباط با مشتریان و مخاطبین (CRM)</h1>
+                        <p className="text-xs text-indigo-200/80 mt-0.5 font-medium">
+                            بانک اطلاعات مشتریان، اتصال به کدهای تفصیلی سایان ERP، ارسال پیام همگانی و مدیریت لیدهای ربات
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                    <button 
+                        onClick={handleAutoMatchAllSayan} 
+                        disabled={isAutoMatchingSayan} 
+                        className="flex items-center gap-2 text-xs font-black bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-900/30 transition-all hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50"
+                        title="اتصال خودکار نام‌ها و شماره‌ها به حساب‌های سایان"
+                    >
+                        <Sparkles size={15} className={isAutoMatchingSayan ? 'animate-spin' : ''}/>
+                        <span>{isAutoMatchingSayan ? 'در حال تطبیق...' : 'اتصال خودکار به سایان'}</span>
+                    </button>
+
+                    <button 
+                        onClick={() => setIsGoogleImportOpen(true)}
+                        className="flex items-center gap-2 text-xs font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-900/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                        title="ورود مستقیم مخاطبین از خروجی Google CSV یا vCard گوگل کانتکت"
+                    >
+                        <Users size={15}/>
+                        <span>ایمپورت از Google Contacts</span>
+                    </button>
+
+                    <label className="flex items-center gap-2 text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl border border-white/15 transition-all shadow-sm active:scale-95 cursor-pointer">
+                        <Upload size={15}/>
+                        <span>ایمپورت اکسل / CSV</span>
+                        <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} />
+                    </label>
+
+                    <button 
+                        onClick={downloadSample}
+                        className="flex items-center gap-2 text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3.5 py-2.5 rounded-xl border border-white/15 transition-all shadow-sm active:scale-95 cursor-pointer"
+                        title="دانلود فایل نمونه اکسل جهت بارگذاری"
+                    >
+                        <FileText size={15}/>
+                        <span>نمونه اکسل</span>
+                    </button>
+
+                    <button 
+                        onClick={() => {
+                            setEditingContact(null);
+                            setFormData({ name: '', mobile: '', telegramId: '', baleId: '', birthday: '', accountCode: '', sayanPersonCode: '', sayanTafsiliCode: '', sayanPersonName: '', sendBirthdayGreeting: true });
+                            setIsModalOpen(true);
+                        }}
+                        className="flex items-center gap-2 text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-900/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                    >
+                        <UserPlus size={16}/>
+                        <span>مخاطب جدید</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* KPI Cards Row */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">کل مخاطبین و مشتریان</span>
+                        <span className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.total} نفر</span>
+                    </div>
+                    <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                        <Database size={20} />
+                    </div>
+                </div>
+
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">متصل به حساب سایان ERP</span>
+                        <span className="text-xl font-black text-purple-600 dark:text-purple-400">{stats.linkedToSayan} نفر</span>
+                    </div>
+                    <div className="p-3 bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 rounded-xl">
+                        <Link2 size={20} />
+                    </div>
+                </div>
+
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">دارای شماره همراه معتبر</span>
+                        <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">{stats.withMobile} مخاطب</span>
+                    </div>
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                        <CheckCircle2 size={20} />
+                    </div>
+                </div>
+
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">لیدهای پیام‌رسان (ربات)</span>
+                        <span className="text-xl font-black text-sky-600 dark:text-sky-400">{stats.botLeads} عضو</span>
+                    </div>
+                    <div className="p-3 bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 rounded-xl">
+                        <Sparkles size={20} />
+                    </div>
+                </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex flex-wrap p-1.5 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-gray-200/70 dark:border-gray-700 gap-1.5">
                 <button 
                     onClick={() => setActiveTab('contacts')}
-                    className={`px-6 py-3 font-bold text-sm transition-all border-b-2 ${activeTab === 'contacts' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                        activeTab === 'contacts' 
+                            ? 'bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-md' 
+                            : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    }`}
                 >
-                    👥 لیست مخاطبین فروش
+                    <span>👥 لیست مخاطبین و مشتریان</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 font-mono">
+                        {stats.total}
+                    </span>
+                </button>
+                <button 
+                    onClick={() => setActiveTab('broadcast')}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all whitespace-nowrap ${
+                        activeTab === 'broadcast' 
+                            ? 'bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 shadow-md' 
+                            : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    }`}
+                >
+                    📢 ارسال پیام همگانی
+                </button>
+                <button 
+                    onClick={() => setActiveTab('birthday')}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all whitespace-nowrap ${
+                        activeTab === 'birthday' 
+                            ? 'bg-white dark:bg-gray-900 text-pink-700 dark:text-pink-300 shadow-md' 
+                            : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    }`}
+                >
+                    🎂 تبریک تولد خودکار
                 </button>
                 <button 
                     onClick={() => setActiveTab('bot_leads')}
-                    className={`px-6 py-3 font-bold text-sm transition-all border-b-2 ${activeTab === 'bot_leads' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400'}`}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                        activeTab === 'bot_leads' 
+                            ? 'bg-white dark:bg-gray-900 text-sky-700 dark:text-sky-300 shadow-md' 
+                            : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                    }`}
                 >
-                    🤖 لیدهای جمع‌آوری شده از ربات
+                    <span>🤖 لیدهای جمع‌آوری شده ربات</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200 font-mono">
+                        {stats.botLeads}
+                    </span>
                 </button>
             </div>
 
-            {activeTab === 'contacts' ? (
-                <>
-                    {/* Bulk Messaging */}
-                    <div className="glass-panel p-6 rounded-2xl border border-gray-200 shadow-sm">
-                        <h3 className="font-bold text-lg mb-4">ارسال پیام همگانی به مشتریان</h3>
-                        <div className="space-y-4">
-                            <div className="flex gap-4 mb-2">
-                                <label className="flex items-center gap-2 text-sm cursor-pointer border p-2 rounded-xl bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-200 flex-1 justify-center">
-                                    <input type="radio" checked={broadcastTarget === 'all_subscribers'} onChange={() => setBroadcastTarget('all_subscribers')} />
-                                    <span>همه اعضای ربات</span>
-                                </label>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer border p-2 rounded-xl bg-gray-50 flex-1 justify-center">
-                                    <input type="radio" checked={broadcastTarget === 'users'} onChange={() => setBroadcastTarget('users')} />
-                                    <span>فقط کارکنان</span>
-                                </label>
-                                <label className="flex items-center gap-2 text-sm cursor-pointer border p-2 rounded-xl bg-gray-50 flex-1 justify-center">
-                                    <input type="radio" checked={broadcastTarget === 'contacts'} onChange={() => setBroadcastTarget('contacts')} />
-                                    <span>فقط لیست مشتریان</span>
-                                </label>
-                            </div>
-                            <textarea 
-                                className="w-full p-3 border rounded-xl"
-                                rows={3}
-                                placeholder="متن پیام همگانی..."
-                                value={broadcastMessage}
-                                onChange={e => setBroadcastMessage(e.target.value)}
-                                disabled={isBroadcasting}
-                            />
-                            <button disabled={isBroadcasting} onClick={handleBroadcast} className={`flex items-center gap-2 text-white px-4 py-2 rounded-xl font-bold transition-colors ${isBroadcasting ? 'bg-purple-400' : 'bg-purple-600 hover:bg-purple-700'}`}>
-                                <Save size={18}/> {isBroadcasting ? 'در حال ارسال...' : 'ارسال به همه بر اساس فیلتر'}
-                            </button>
-                            <p className="text-[10px] text-gray-400">نکته: پیام همگانی به پلتفرم‌هایی که کاربر در آن عضو است (تلگرام/بله) ارسال می‌شود.</p>
-                        </div>
-                    </div>
-
-                    {/* Birthday Template Settings */}
-                    <div className="glass-panel p-6 rounded-2xl border border-gray-200 shadow-sm">
-                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Gift className="text-pink-500"/> تنظیمات تبریک تولد</h3>
-                        <div className="space-y-4">
-                            <textarea 
-                                value={template.text}
-                                onChange={e => setTemplate({...template, text: e.target.value})}
-                                className="w-full p-3 border rounded-xl"
-                                rows={3}
-                                placeholder="متن تبریک..."
-                            />
-                            <label className="flex items-center gap-2 text-sm">
-                                <input type="checkbox" checked={template.isActive} onChange={e => setTemplate({...template, isActive: e.target.checked})} />
-                                فعال‌سازی ارسال خودکار تبریک
+            {/* TAB CONTENT: BROADCAST */}
+            {activeTab === 'broadcast' && (
+                <div className="glass-panel p-6 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 shadow-sm animate-fade-in">
+                    <h3 className="font-bold text-lg mb-4 text-gray-900 dark:text-gray-100">ارسال پیام همگانی به مشتریان و اعضا</h3>
+                    <div className="space-y-4">
+                        <div className="flex gap-4 mb-2 flex-wrap sm:flex-nowrap">
+                            <label className="flex items-center gap-2 text-sm cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 flex-1 justify-center">
+                                <input type="radio" checked={broadcastTarget === 'all_subscribers'} onChange={() => setBroadcastTarget('all_subscribers')} />
+                                <span>همه اعضای ربات</span>
                             </label>
-                            <button onClick={handleSaveTemplate} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700">
-                                <Save size={18}/> ذخیره متن
-                            </button>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 flex-1 justify-center">
+                                <input type="radio" checked={broadcastTarget === 'users'} onChange={() => setBroadcastTarget('users')} />
+                                <span>فقط کارکنان</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-sm cursor-pointer border border-gray-200 dark:border-gray-700 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 text-gray-800 dark:text-gray-200 flex-1 justify-center">
+                                <input type="radio" checked={broadcastTarget === 'contacts'} onChange={() => setBroadcastTarget('contacts')} />
+                                <span>فقط لیست مشتریان</span>
+                            </label>
                         </div>
+                        <textarea 
+                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:border-purple-500"
+                            rows={4}
+                            placeholder="متن پیام همگانی را اینجا وارد کنید..."
+                            value={broadcastMessage}
+                            onChange={e => setBroadcastMessage(e.target.value)}
+                            disabled={isBroadcasting}
+                        />
+                        <button disabled={isBroadcasting} onClick={handleBroadcast} className={`flex items-center gap-2 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-md ${isBroadcasting ? 'bg-purple-400' : 'bg-purple-600 hover:bg-purple-700 active:scale-95'}`}>
+                            <Save size={18}/> {isBroadcasting ? 'در حال ارسال...' : 'ارسال به مخاطبین بر اساس فیلتر'}
+                        </button>
+                        <p className="text-xs text-gray-400">نکته: پیام همگانی به پلتفرم‌هایی که مخاطب در آن عضو است (تلگرام/بله) ارسال می‌شود.</p>
                     </div>
+                </div>
+            )}
 
+            {/* TAB CONTENT: BIRTHDAY */}
+            {activeTab === 'birthday' && (
+                <div className="glass-panel p-6 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 shadow-sm animate-fade-in">
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
+                        <Gift className="text-pink-500"/> تنظیمات تبریک خودکار تولد
+                    </h3>
+                    <div className="space-y-4">
+                        <textarea 
+                            value={template.text}
+                            onChange={e => setTemplate({...template, text: e.target.value})}
+                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 outline-none focus:border-pink-500"
+                            rows={4}
+                            placeholder="متن تبریک خودکار تولد..."
+                        />
+                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 font-bold cursor-pointer">
+                            <input type="checkbox" checked={template.isActive} onChange={e => setTemplate({...template, isActive: e.target.checked})} />
+                            فعال‌سازی ارسال خودکار تبریک روز تولد به مشتریان
+                        </label>
+                        <button onClick={handleSaveTemplate} className="flex items-center gap-2 bg-pink-600 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-pink-700 active:scale-95 transition-all shadow-md">
+                            <Save size={18}/> ذخیره تنظیمات تبریک
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'contacts' && (
+                <>
                     {/* Contacts Table / Cards */}
-                    <div className="glass-panel p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm">
+                    <div className="glass-panel p-4 md:p-6 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 shadow-sm">
                             <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
                                 <button 
                                     onClick={handleAutoMatchAllSayan} 
@@ -611,8 +812,10 @@ export default function SalesCRMModule() {
                         </div>
                     </div>
                 </>
-            ) : (
-                <div className="glass-panel p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm animate-fade-in">
+            )}
+
+            {activeTab === 'bot_leads' && (
+                <div className="glass-panel p-4 md:p-6 rounded-2xl border border-gray-200/80 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 shadow-sm animate-fade-in">
                     <h3 className="font-bold text-lg mb-6">لیست لیدهای ربات (اعضای جدید)</h3>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-right">
@@ -1159,6 +1362,16 @@ export default function SalesCRMModule() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Google Contacts Import Modal */}
+            {isGoogleImportOpen && (
+                <GoogleContactsImportModal
+                    isOpen={isGoogleImportOpen}
+                    onClose={() => setIsGoogleImportOpen(false)}
+                    existingContacts={contacts}
+                    onImportSuccess={handleGoogleImportSuccess}
+                />
             )}
         </div>
     );

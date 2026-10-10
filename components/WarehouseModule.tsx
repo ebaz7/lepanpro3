@@ -1363,27 +1363,27 @@ const WarehouseModule: React.FC<Props> = ({ currentUser, settings, initialTab = 
                     </button>
                 )}
                 {[
-                    { id: 'dashboard', label: 'داشبورد', color: 'blue' },
-                    { id: 'items', label: 'تعریف کالا', color: 'blue' },
-                    { id: 'entry', label: 'ورود کالا', color: 'green' },
-                    { id: 'entry_archive', label: 'رسیدها', color: 'emerald' },
-                    { id: 'exit', label: 'خروج کالا', color: 'red' },
-                    { id: 'archive', label: 'بیجک‌ها', color: 'gray' },
-                    { id: 'approvals', label: 'تاییدیه', color: 'orange' },
-                    { id: 'reports', label: 'کاردکس', color: 'purple' },
-                    { id: 'stocktake', label: 'انبارگردانی', color: 'indigo' },
-                    { id: 'dispatch_report', label: 'گزارش بیجک‌ها', color: 'red' },
-                    { id: 'stock_report', label: 'موجودی', color: 'orange' },
-                    { id: 'sayan_remittance', label: 'صدور حواله فروش سایان (بارکدخوان)', color: 'blue' },
-                    { id: 'sayan_warehouses', label: 'انبارها و موجودی زنده سایان', color: 'indigo' }
+                    { id: 'dashboard', label: 'داشبورد' },
+                    { id: 'items', label: 'تعریف کالا' },
+                    { id: 'entry', label: 'ورود کالا' },
+                    { id: 'entry_archive', label: 'رسیدها' },
+                    { id: 'exit', label: 'خروج کالا' },
+                    { id: 'archive', label: 'بیجک‌ها' },
+                    { id: 'approvals', label: 'تاییدیه' },
+                    { id: 'reports', label: 'کاردکس' },
+                    { id: 'stocktake', label: 'انبارگردانی' },
+                    { id: 'dispatch_report', label: 'گزارش بیجک‌ها' },
+                    { id: 'stock_report', label: 'موجودی' },
+                    { id: 'sayan_remittance', label: 'صدور حواله فروش سایان (بارکدخوان)' },
+                    { id: 'sayan_warehouses', label: 'انبارها و موجودی زنده سایان' }
                 ].map(tab => (
                     <button 
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)} 
-                        className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg md:rounded-xl text-[10px] md:text-xs font-black whitespace-nowrap transition-all duration-200 ${
+                        className={`px-3 py-2 rounded-xl text-[11px] md:text-xs font-black whitespace-nowrap transition-all duration-200 cursor-pointer ${
                             activeTab === tab.id 
-                            ? `bg-${tab.color}-600 text-white shadow-lg shadow-${tab.color}-600/20 scale-105 active-tab-pulse` 
-                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-white/5'
+                            ? 'bg-amber-500 text-white shadow-md shadow-amber-900/20 scale-105' 
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200/60 dark:border-gray-700'
                         }`}
                     >
                         {tab.label}

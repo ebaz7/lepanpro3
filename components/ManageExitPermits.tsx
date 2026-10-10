@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ExitPermit, ExitPermitStatus, User, UserRole, SystemSettings } from '../types';
 import { getExitPermits, updateExitPermitStatus, deleteExitPermit, editExitPermit, getPreviousExitPermitStatusForReject } from '../services/storageService';
 import { exitPermitQueueService } from '../services/exitPermitQueueService';
@@ -730,30 +730,121 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         );
     };
 
+    // Statistics for Executive KPI cards
+    const stats = useMemo(() => {
+        const total = permits.length;
+        const myCartable = myCartablePermits.length;
+        const exited = permits.filter(p => p.status === ExitPermitStatus.EXITED).length;
+        const inProgress = permits.filter(p => p.status !== ExitPermitStatus.EXITED && p.status !== ExitPermitStatus.REJECTED && p.status !== ExitPermitStatus.CANCELED).length;
+        return { total, myCartable, exited, inProgress };
+    }, [permits, myCartablePermits]);
+
     return (
-        <div className="space-y-6 pb-20 animate-fade-in">
+        <div className="space-y-5 pb-20 animate-fade-in text-right dir-rtl" dir="rtl">
+            {/* Executive Hero Header */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl border border-teal-500/20">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-teal-600/30 text-teal-300 rounded-2xl border border-teal-400/30">
+                        {mode === 'INVOICE' ? <FileText size={26} /> : <Truck size={26} />}
+                    </div>
+                    <div>
+                        <h1 className="text-xl md:text-2xl font-black tracking-tight">
+                            {mode === 'INVOICE' ? 'مدیریت و کارتابل فاکتورها' : 'مدیریت و کارتابل حواله‌های خروج کارخانه'}
+                        </h1>
+                        <p className="text-xs text-teal-200/80 mt-0.5 font-medium">
+                            {mode === 'INVOICE' 
+                                ? 'کنترل و نظارت بر پیش‌فاکتورها، فاکتورهای رسمی و تاییدات مربوطه' 
+                                : 'گردش تاییدات فروش، مدیرعامل، مدیر کارخانه، انبارداری، باسکول و ثبت خروج انتظامات'}
+                        </p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                    <button 
+                        onClick={() => loadData(true)} 
+                        className="flex items-center gap-2 text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl border border-white/15 transition-all shadow-sm active:scale-95 cursor-pointer"
+                        title="بروزرسانی اطلاعات از سرور"
+                    >
+                        <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+                        <span>بروزرسانی</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* KPI Cards Row */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">کل حواله‌ها / فاکتورها</span>
+                        <span className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.total} فقره</span>
+                    </div>
+                    <div className="p-3 bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 rounded-xl">
+                        <Truck size={20} />
+                    </div>
+                </div>
+
+                <div className={`glass-panel p-4 rounded-2xl border transition-all flex items-center justify-between shadow-2xs ${
+                    stats.myCartable > 0 
+                        ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/40 dark:bg-amber-950/30 ring-1 ring-amber-300' 
+                        : 'border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80'
+                }`}>
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">در انتظار اقدام شما</span>
+                        <span className={`text-xl font-black ${stats.myCartable > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                            {stats.myCartable} مورد
+                        </span>
+                    </div>
+                    <div className="p-3 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 rounded-xl">
+                        <Bell size={20} className={stats.myCartable > 0 ? 'animate-bounce text-amber-600' : ''} />
+                    </div>
+                </div>
+
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">در جریان فرآیند</span>
+                        <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{stats.inProgress} فقره</span>
+                    </div>
+                    <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                        <RefreshCw size={20} />
+                    </div>
+                </div>
+
+                <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+                    <div>
+                        <span className="text-[11px] font-bold text-gray-500 block">خروج موفق از کارخانه</span>
+                        <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">{stats.exited} فقره</span>
+                    </div>
+                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                        <CheckCircle size={20} />
+                    </div>
+                </div>
+            </div>
+
             {/* Header / Tabs */}
             <div className="flex flex-col gap-4">
-                <div className="flex justify-between items-center glass-panel p-4 rounded-2xl shadow-sm border border-gray-200">
-                    <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
-                        {mode === 'INVOICE' ? <FileText className="text-blue-600"/> : <Truck className="text-teal-600"/>} 
-                        {mode === 'INVOICE' ? 'مدیریت فاکتورها' : 'مدیریت حواله خروج کارخانه'}
-                    </h1>
-                    <button onClick={() => loadData(true)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><RefreshCw size={18} className={loading ? 'animate-spin' : ''}/></button>
-                </div>
-                
-                <div className="flex flex-wrap md:flex-nowrap p-1 bg-gray-200 rounded-xl gap-1 md:gap-0">
+                <div className="flex flex-wrap md:flex-nowrap p-1.5 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-gray-200/70 dark:border-gray-700 gap-1.5">
                     <button 
                         onClick={() => setActiveTab('CARTABLE')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 whitespace-nowrap ${activeTab === 'CARTABLE' ? 'glass-panel text-blue-700 shadow-md' : 'text-gray-500'}`}
+                        className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+                            activeTab === 'CARTABLE' 
+                                ? 'bg-white dark:bg-gray-900 text-teal-700 dark:text-teal-300 shadow-md' 
+                                : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                        }`}
                     >
                         <Bell size={16} className={myCartablePermits.length > 0 ? "animate-pulse text-red-500" : ""}/>
-                        {mode === 'INVOICE' ? 'کارتابل فاکتورها' : 'کارتابل حواله خروج'} ({myCartablePermits.length})
+                        <span>{mode === 'INVOICE' ? 'کارتابل فاکتورها' : 'کارتابل حواله خروج'}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-teal-100 dark:bg-teal-950/60 text-teal-800 dark:text-teal-200 font-mono">
+                            {myCartablePermits.length}
+                        </span>
                     </button>
                     {mode === 'INVOICE' ? (
                         <button 
                             onClick={() => { setActiveTab('PROFORMA_ARCHIVE'); setViewMode('PROFORMA'); }} 
-                            className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'PROFORMA_ARCHIVE' ? 'glass-panel text-blue-800 shadow-md' : 'text-gray-500'}`}
+                            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all whitespace-nowrap ${
+                                activeTab === 'PROFORMA_ARCHIVE' 
+                                    ? 'bg-white dark:bg-gray-900 text-blue-800 dark:text-blue-300 shadow-md' 
+                                    : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                            }`}
                         >
                             بایگانی فاکتورها
                         </button>
@@ -762,14 +853,22 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                             {canSeeProforma && (
                                 <button 
                                     onClick={() => { setActiveTab('PROFORMA_ARCHIVE'); setViewMode('PROFORMA'); }} 
-                                    className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'PROFORMA_ARCHIVE' ? 'glass-panel text-blue-800 shadow-md' : 'text-gray-500'}`}
+                                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all whitespace-nowrap ${
+                                        activeTab === 'PROFORMA_ARCHIVE' 
+                                            ? 'bg-white dark:bg-gray-900 text-blue-800 dark:text-blue-300 shadow-md' 
+                                            : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                                    }`}
                                 >
                                     بایگانی موقت حواله خروج
                                 </button>
                             )}
                             <button 
                                 onClick={() => { setActiveTab('EXIT_ARCHIVE'); setViewMode('EXIT'); }} 
-                                className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'EXIT_ARCHIVE' ? 'glass-panel text-green-800 shadow-md' : 'text-gray-500'}`}
+                                className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-black transition-all whitespace-nowrap ${
+                                    activeTab === 'EXIT_ARCHIVE' 
+                                        ? 'bg-white dark:bg-gray-900 text-emerald-800 dark:text-emerald-300 shadow-md' 
+                                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                                    }`}
                             >
                                 بایگانی حواله خروج کارخانه
                             </button>
@@ -778,7 +877,12 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                 </div>
 
                 <div className="relative">
-                    <input className="w-full glass-panel border border-gray-200 rounded-xl p-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-100" placeholder="جستجو در لیست..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    <input 
+                        className="w-full glass-panel border border-gray-200/80 dark:border-gray-700 rounded-xl p-3 pr-10 text-xs sm:text-sm outline-none focus:ring-2 focus:ring-teal-500/40 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-all" 
+                        placeholder="جستجو در لیست بر اساس شماره حواله، نام گیرنده، نام کالا، راننده..." 
+                        value={searchTerm} 
+                        onChange={e => setSearchTerm(e.target.value)} 
+                    />
                     <Search className="absolute right-3 top-3.5 text-gray-400" size={18}/>
                 </div>
             </div>

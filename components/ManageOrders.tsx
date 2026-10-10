@@ -4,7 +4,7 @@ import { PaymentOrder, OrderStatus, User, UserRole, SystemSettings, PaymentMetho
 import { updateOrderStatus, deleteOrder } from '../services/storageService';
 import { getRolePermissions } from '../services/authService';
 import { formatCurrency, formatDate, getStatusLabel, jalaliToGregorian, formatNumberString, deformatNumberString, parseSafeDate } from '../constants';
-import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle, Sparkles, Scan } from 'lucide-react';
+import { Eye, Trash2, Search, Filter, FileSpreadsheet, Paperclip, ListChecks, Archive, X, Building2, Calculator, AlertTriangle, RefreshCcw, Loader2, ShieldAlert, XCircle, Sparkles, Scan, CreditCard } from 'lucide-react';
 import PrintVoucher from './PrintVoucher';
 import { OrderArchiveModal } from './OrderArchiveModal';
 import EditOrderModal from './EditOrderModal';
@@ -420,31 +420,169 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       return getStatusLabel(filter);
   };
 
+  // Orders statistics for Executive KPI cards
+  const stats = React.useMemo(() => {
+    const all = safeOrders;
+    const totalCount = all.length;
+    const totalAmount = all.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const myCartableCount = all.filter(o => canApprove(o)).length;
+    const completedCount = all.filter(o => o.status === OrderStatus.APPROVED_CEO).length;
+    const inProgressCount = all.filter(o => o.status !== OrderStatus.APPROVED_CEO && o.status !== OrderStatus.REJECTED && o.status !== OrderStatus.REVOKED).length;
+    return { totalCount, totalAmount, myCartableCount, completedCount, inProgressCount };
+  }, [safeOrders, currentUser, permissions]);
+
   return (
-    <>
-      <div className="glass-panel rounded-2xl shadow-sm border border-gray-200/50 dark:border-white/10 overflow-hidden animate-fade-in">
-        <div className="p-4 md:p-6 border-b border-gray-100 flex flex-col gap-4">
-            {/* Search and Tabs - Stacked on Mobile */}
+    <div className="space-y-5 animate-fade-in text-right dir-rtl" dir="rtl">
+      {/* Executive Hero Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-6 rounded-3xl shadow-xl border border-blue-500/20">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-600/30 text-blue-300 rounded-2xl border border-blue-400/30">
+            <CreditCard size={26} />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-black tracking-tight">مدیریت و کارتابل دستورات پرداخت</h1>
+            <p className="text-xs text-blue-200/80 mt-0.5 font-medium">
+              پیگیری تاییدات چندمرحله‌ای، کنترل سقف مبالغ، صدور چک و حواله، تسویه بانکی و بایگانی اسناد
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowAiScanner(true)}
+            className="flex items-center gap-2 text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-900/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title="اسکن هوشمند اسناد با هوش مصنوعی"
+          >
+            <Sparkles size={15} className="text-amber-300 animate-pulse" />
+            <span>کم‌اسکنر هوشمند</span>
+          </button>
+          
+          {canExport && (
+            <button
+              onClick={handleExportCSV}
+              className="flex items-center gap-2 text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl border border-white/15 transition-all shadow-sm active:scale-95 cursor-pointer"
+              title="دریافت فایل اکسل دستورات پرداخت"
+            >
+              <FileSpreadsheet size={15} />
+              <span>خروجی اکسل</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-1.5 text-xs font-bold px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer ${
+              showFilters 
+                ? 'bg-blue-600 text-white border-blue-400 shadow-md' 
+                : 'bg-white/10 hover:bg-white/20 text-white border-white/15'
+            }`}
+          >
+            <Filter size={15} />
+            <span>فیلترها</span>
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+          <div>
+            <span className="text-[11px] font-bold text-gray-500 block">کل دستورات پرداخت</span>
+            <span className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.totalCount} فقره</span>
+          </div>
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-xl">
+            <CreditCard size={20} />
+          </div>
+        </div>
+
+        <div className={`glass-panel p-4 rounded-2xl border transition-all flex items-center justify-between shadow-2xs ${
+          stats.myCartableCount > 0 
+            ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/40 dark:bg-amber-950/30 ring-1 ring-amber-300' 
+            : 'border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80'
+        }`}>
+          <div>
+            <span className="text-[11px] font-bold text-gray-500 block">در انتظار اقدام شما</span>
+            <span className={`text-xl font-black ${stats.myCartableCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-200'}`}>
+              {stats.myCartableCount} مورد
+            </span>
+          </div>
+          <div className="p-3 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-300 rounded-xl">
+            <ListChecks size={20} />
+          </div>
+        </div>
+
+        <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+          <div>
+            <span className="text-[11px] font-bold text-gray-500 block">دستورات جاری در گردش</span>
+            <span className="text-xl font-black text-indigo-600 dark:text-indigo-400">{stats.inProgressCount} فقره</span>
+          </div>
+          <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <RefreshCcw size={20} />
+          </div>
+        </div>
+
+        <div className="glass-panel p-4 rounded-2xl border border-gray-200/70 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 flex items-center justify-between shadow-2xs">
+          <div>
+            <span className="text-[11px] font-bold text-gray-500 block">تایید نهایی / بایگانی</span>
+            <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">{stats.completedCount} فقره</span>
+          </div>
+          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 rounded-xl">
+            <Archive size={20} />
+          </div>
+        </div>
+      </div>
+
+      <div className="glass-panel rounded-2xl shadow-sm border border-gray-200/70 dark:border-gray-800 overflow-hidden bg-white/90 dark:bg-gray-900/90">
+        <div className="p-4 md:p-6 border-b border-gray-100 dark:border-gray-800 flex flex-col gap-4">
+            {/* Search and Tabs */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                <div className="flex bg-gray-100 dark:bg-gray-800/40 text-gray-800 dark:text-gray-200 p-1 rounded-lg w-full lg:w-auto">
-                    <button onClick={() => { setActiveTab('current'); setCurrentStatusFilter(null); }} className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'current' ? 'glass-panel shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}><ListChecks size={18} /> کارتابل جاری</button>
-                    <button onClick={() => { setActiveTab('archive'); setCurrentStatusFilter(null); }} className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'archive' ? 'glass-panel shadow text-green-600' : 'text-gray-500 hover:text-gray-700'}`}><Archive size={18} /> بایگانی نهایی</button>
+                <div className="flex bg-gray-100 dark:bg-gray-800 p-1.5 rounded-2xl border border-gray-200/70 dark:border-gray-700 w-full lg:w-auto">
+                    <button 
+                      onClick={() => { setActiveTab('current'); setCurrentStatusFilter(null); }} 
+                      className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+                        activeTab === 'current' 
+                          ? 'bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400 shadow-md' 
+                          : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                      }`}
+                    >
+                      <ListChecks size={18} />
+                      <span>کارتابل جاری</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-mono">
+                        {stats.inProgressCount}
+                      </span>
+                    </button>
+                    <button 
+                      onClick={() => { setActiveTab('archive'); setCurrentStatusFilter(null); }} 
+                      className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all ${
+                        activeTab === 'archive' 
+                          ? 'bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-400 shadow-md' 
+                          : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'
+                      }`}
+                    >
+                      <Archive size={18} />
+                      <span>بایگانی نهایی</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-mono">
+                        {stats.completedCount}
+                      </span>
+                    </button>
                 </div>
+
                 <div className="flex flex-col md:flex-row items-center gap-3 w-full lg:w-auto">
-                    {currentStatusFilter && <div className="bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-xs flex items-center justify-between w-full md:w-auto gap-2"><span>فیلتر: {getFilterLabel(currentStatusFilter)}</span><button onClick={() => setCurrentStatusFilter(null)}><X size={14}/></button></div>}
-                    <div className="relative w-full md:w-64"><Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="جستجو..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-4 pr-10 py-2.5 border rounded-xl text-sm outline-none"/></div>
-                    <div className="flex gap-2 w-full md:w-auto">
-                        <button
-                            type="button"
-                            onClick={() => setShowAiScanner(true)}
-                            className="flex-1 md:flex-none px-3.5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl shadow-xs flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95"
-                            title="اسکن، خواندن متون و تبدیل هوشمند به کم‌اسکنر"
-                        >
-                            <Sparkles size={16} className="text-amber-300 animate-pulse" />
-                            <span>کم‌اسکنر هوشمند</span>
-                        </button>
-                        <button onClick={() => setShowFilters(!showFilters)} className={`flex-1 md:flex-none p-2.5 rounded-xl border flex items-center justify-center ${showFilters ? 'bg-blue-50 text-blue-600' : 'glass-panel'}`} title="فیلترها"><Filter size={20}/></button>
-                        {canExport && <button onClick={handleExportCSV} className="flex-1 md:flex-none bg-green-600 text-white p-2.5 rounded-xl flex items-center justify-center" title="خروجی اکسل"><FileSpreadsheet size={20}/></button>}
+                    {currentStatusFilter && (
+                      <div className="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 px-3 py-2 rounded-xl text-xs flex items-center justify-between w-full md:w-auto gap-2 border border-amber-300 dark:border-amber-700">
+                        <span>فیلتر: {getFilterLabel(currentStatusFilter)}</span>
+                        <button onClick={() => setCurrentStatusFilter(null)} className="hover:scale-110 transition-transform"><X size={14}/></button>
+                      </div>
+                    )}
+                    <div className="relative w-full md:w-72">
+                      <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+                      <input 
+                        type="text" 
+                        placeholder="جستجو بر اساس شماره، گیرنده، شرح..." 
+                        value={searchTerm} 
+                        onChange={(e) => setSearchTerm(e.target.value)} 
+                        className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-xs sm:text-sm outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:border-blue-500 transition-colors"
+                      />
                     </div>
                 </div>
             </div>
@@ -478,19 +616,19 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
         </div>
 
         {/* Summary Bar */}
-        <div className="bg-blue-50 border-b border-blue-100 p-3 flex flex-wrap justify-between items-center text-sm px-6">
-            <div className="flex items-center gap-2 text-blue-800 font-bold">
-                <Calculator size={18}/>
+        <div className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700/60 p-3.5 flex flex-wrap justify-between items-center text-xs sm:text-sm px-6 gap-3">
+            <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-black">
+                <Calculator size={18} className="text-blue-600 dark:text-blue-400" />
                 <span>خلاصه گزارش فیلتر شده:</span>
             </div>
-            <div className="flex gap-6">
-                <div className="glass-panel px-3 py-1 rounded-lg border border-blue-200">
+            <div className="flex gap-4 sm:gap-6 items-center">
+                <div className="glass-panel px-3.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xs">
                     <span className="text-gray-500 text-xs ml-2">تعداد کل:</span>
-                    <span className="font-mono font-bold text-blue-700">{totalFilteredCount}</span>
+                    <span className="font-mono font-black text-blue-700 dark:text-blue-400">{totalFilteredCount}</span>
                 </div>
-                <div className="glass-panel px-3 py-1 rounded-lg border border-blue-200">
+                <div className="glass-panel px-3.5 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xs">
                     <span className="text-gray-500 text-xs ml-2">مجموع مبلغ:</span>
-                    <span className="font-mono font-bold text-blue-700 text-lg">{formatCurrency(totalFilteredAmount)}</span>
+                    <span className="font-mono font-black text-blue-700 dark:text-blue-400 text-base">{formatCurrency(totalFilteredAmount)}</span>
                 </div>
             </div>
         </div>
@@ -662,7 +800,7 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
           onClose={() => setShowAiScanner(false)}
         />
       )}
-    </>
+    </div>
   );
 };
 

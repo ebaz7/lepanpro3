@@ -316,16 +316,18 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
             )}
 
             {/* Header */}
-            <div className="bg-gradient-to-r from-teal-700 to-teal-900 p-6 text-white flex justify-between items-center">
+            <div className="bg-gradient-to-r from-slate-900 via-teal-950 to-slate-900 p-6 text-white flex justify-between items-center border-b border-teal-500/20">
                 <div className="flex items-center gap-3">
-                    <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm"><Truck size={28} className="text-white"/></div>
+                    <div className="bg-teal-600/30 border border-teal-400/30 p-2.5 rounded-2xl text-teal-300">
+                        <Truck size={26} />
+                    </div>
                     <div>
-                        <h2 className="text-xl font-black">صدور حواله خروج بار کارخانه</h2>
-                        <p className="text-teal-100 text-xs mt-1">فرم رسمی درخواست خروج کالا و محصول</p>
+                        <h2 className="text-xl md:text-2xl font-black tracking-tight">صدور حواله خروج بار کارخانه</h2>
+                        <p className="text-xs text-teal-200/80 mt-0.5 font-medium">فرم رسمی درخواست خروج کالا و محصول، تفکیک مقاصد و اتصال به سامانه سایان</p>
                     </div>
                 </div>
-                <div className="hidden md:block text-teal-200 text-sm font-bold bg-white/10 px-3 py-1 rounded-full">
-                    مرحله ۱: ثبت فروش
+                <div className="hidden md:flex items-center gap-2 text-teal-200 text-xs font-black bg-white/10 px-3.5 py-1.5 rounded-xl border border-white/10">
+                    <span>مرحله ۱: ثبت فروش</span>
                 </div>
             </div>
 

@@ -409,7 +409,23 @@ const CreateOrder: React.FC<CreateOrderProps> = ({ onSuccess, currentUser }) => 
             </div>
         )}
 
-        <div className="p-6 border-b border-gray-100 flex items-center gap-3"><div className="bg-green-50 p-2 rounded-lg text-green-600"><Plus size={24} /></div><h2 className="text-xl font-bold text-gray-800">ثبت دستور پرداخت جدید</h2></div>
+        <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-6 text-white flex justify-between items-center flex-wrap gap-4 border-b border-blue-500/20">
+            <div className="flex items-center gap-3">
+                <div className="bg-blue-600/30 border border-blue-400/30 p-2.5 rounded-2xl text-blue-300">
+                    <CreditCard size={26} />
+                </div>
+                <div>
+                    <h2 className="text-xl md:text-2xl font-black tracking-tight">ثبت و صدور دستور پرداخت جدید</h2>
+                    <p className="text-xs text-blue-200/80 mt-0.5 font-medium">تعیین ذینفع، تاریخ پرداخت، شرح و تفکیک روش‌های تسویه (انتقال / چک / نقدی)</p>
+                </div>
+            </div>
+            {payingCompany && (
+                <div className="text-xs font-bold bg-white/10 text-blue-200 px-3.5 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
+                    <Building2 size={14} />
+                    <span>شرکت: {payingCompany}</span>
+                </div>
+            )}
+        </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2"><label className="text-sm font-medium text-gray-700 flex items-center gap-2"><Building2 size={16}/> شرکت پرداخت کننده</label><select className="w-full border border-gray-300 rounded-xl px-4 py-3 glass-panel" value={payingCompany} onChange={handleCompanyChange} onKeyDown={handleKeyDown}><option value="">-- انتخاب کنید --</option>{availableCompanies.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
