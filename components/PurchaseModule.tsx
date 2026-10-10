@@ -39,6 +39,25 @@ import { FileViewerModal } from './FileViewerModal';
 import { LS_KEYS, getLocalData } from '../services/apiService';
 import { useCachedAsset } from '../hooks/useCachedAsset';
 
+export function fixMojibake(str: string): string {
+    if (!str || typeof str !== 'string') return str || '';
+    if (/[\u00C0-\u00FF]/.test(str)) {
+        try {
+            const bytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) {
+                bytes[i] = str.charCodeAt(i) & 0xFF;
+            }
+            const decoded = new TextDecoder('utf-8').decode(bytes);
+            if (decoded && !decoded.includes('')) {
+                return decoded;
+            }
+        } catch (e) {
+            // fallback
+        }
+    }
+    return str;
+}
+
 const CachedImage: React.FC<React.ImgHTMLAttributes<HTMLImageElement>> = ({ src, alt, className, ...props }) => {
     const cachedSrc = useCachedAsset(src);
     return <img src={cachedSrc || src} alt={alt} className={className} {...props} />;
@@ -195,7 +214,7 @@ export const canUserViewProformas = (
 
 export const checkPurchasePermission = (
     user: User,
-    permKey: keyof RolePermissions | string,
+    permKey: string,
     settings?: SystemSettings | null,
     request?: PurchaseRequest | null
 ): boolean => {
@@ -427,9 +446,9 @@ export const canUserAccessZanjanBranch = (user: User, settings?: SystemSettings 
     return false;
 };
 
-const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
+const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, initialTab?: 'DASHBOARD' | 'REQUESTS' | 'RECEIPTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE' }> = ({ currentUser, settings, initialTab = 'REQUESTS' }) => {
     const isMobile = useIsMobile();
-    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'REQUESTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE'>(initialTab);
+    const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'REQUESTS' | 'RECEIPTS' | 'PARTS' | 'KARDEX' | 'ARCHIVE'>(initialTab);
     const [loading, setLoading] = useState(false);
     
     const perms = React.useMemo(() => {
@@ -577,6 +596,12 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
                         درخواست‌های فعال
                     </button>
                     <button 
+                        onClick={() => setActiveTab('RECEIPTS')} 
+                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'RECEIPTS' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                    >
+                        رسیدهای انبار
+                    </button>
+                    <button 
                         onClick={() => setActiveTab('PARTS')} 
                         className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'PARTS' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
                     >
@@ -609,6 +634,15 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
                 {activeTab === 'REQUESTS' && (
                     <PurchaseRequestsTab 
                         requests={requests.filter(r => r.status !== PurchaseRequestStatus.COMPLETED && r.status !== PurchaseRequestStatus.REJECTED)} 
+                        currentUser={currentUser} 
+                        onRequestUpdate={loadRequests} 
+                        parts={parts}
+                        settings={settings}
+                    />
+                )}
+                {activeTab === 'RECEIPTS' && (
+                    <WarehouseReceiptsTab 
+                        requests={requests} 
                         currentUser={currentUser} 
                         onRequestUpdate={loadRequests} 
                         parts={parts}
@@ -5028,35 +5062,442 @@ const QCApprovalModal = ({ onClose, onConfirm }: any) => {
     );
 };
 
-const WarehouseReceiptModal = ({ onClose, onConfirm }: any) => {
+const WarehouseReceiptModal = ({ request, onClose, onConfirm }: any) => {
     const shamsi = getCurrentShamsiDate();
     const [num, setNum] = useState(() => {
+        if (request?.warehouseReceiptNumber) return request.warehouseReceiptNumber;
         const randomNum = Math.floor(1000 + Math.random() * 9000);
         return `RI-${shamsi.year}/${randomNum}`;
     });
-    const [date, setDate] = useState(`${shamsi.year}/${shamsi.month}/${shamsi.day}`);
+    const [date, setDate] = useState(request?.warehouseReceiptDate || `${shamsi.year}/${shamsi.month}/${shamsi.day}`);
+    const [warehouseName, setWarehouseName] = useState(request?.warehouseName || 'انبار قطعات و تجهیزات کارخانه زنجان');
+    const [receiverName, setReceiverName] = useState(request?.receiverName || request?.approverWarehouseReceipt || '');
+    const [delivererName, setDelivererName] = useState(request?.delivererName || request?.proformas?.find((p: any) => p.isChosen)?.vendorName || '');
+    const [waybillNumber, setWaybillNumber] = useState(request?.waybillNumber || '');
+    const [notes, setNotes] = useState(request?.warehouseNotes || 'کالا با سلامت فیزیکی کامل و تطابق مشخصات تحویل انبار گردید.');
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000008] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center p-4 bg-black/50 backdrop-blur-sm text-right dir-rtl">
-            <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl animate-scale-in">
-                <h3 className="font-black text-xl mb-6 text-gray-800 flex items-center gap-2"><Warehouse className="text-indigo-600"/> صدور رسید انبار</h3>
-                <div className="space-y-6">
-                    <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2">شماره رسید انبار (تولید خودکار)</label>
-                        <input className="w-full border rounded-xl p-4 text-sm font-mono font-black bg-gray-100 cursor-not-allowed text-gray-500" value={num} readOnly />
+        <div className="fixed inset-0 z-[100000008] flex items-start pt-10 md:pt-16 pb-20 overflow-y-auto justify-center p-4 bg-black/60 backdrop-blur-sm text-right dir-rtl">
+            <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl animate-scale-in">
+                <div className="flex justify-between items-center border-b pb-4 mb-5 border-gray-100">
+                    <h3 className="font-black text-lg md:text-xl text-gray-800 flex items-center gap-2">
+                        <Warehouse className="text-indigo-600"/> 
+                        <span>صدور رسید انبار رسمی ورود کالا</span>
+                    </h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 cursor-pointer">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                {request && (
+                    <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 mb-5 text-xs font-bold space-y-1">
+                        <div className="flex justify-between text-indigo-900">
+                            <span>درخواست خرید: <strong className="font-mono">{request.requestNumber}</strong></span>
+                            <span>نام کالا: <strong>{request.itemName}</strong></span>
+                        </div>
+                        <div className="text-gray-600 text-[11px]">
+                            مقدار ورودی: <strong>{request.entryQuantity || request.quantity} {request.unit}</strong> | تامین‌کننده: <strong>{request.proformas?.find((p: any) => p.isChosen)?.vendorName || 'نامشخص'}</strong>
+                        </div>
                     </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-500 block mb-2">تاریخ رسید</label>
-                        <input className="w-full border rounded-xl p-4 text-sm font-black text-center" value={date} onChange={e=>setDate(e.target.value)} />
+                )}
+
+                <div className="space-y-4 text-xs font-bold">
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-gray-600 block mb-1">شماره رسید انبار</label>
+                            <input className="w-full border rounded-xl p-3 text-xs font-mono font-black bg-gray-50 focus:ring-2 focus:ring-indigo-500 outline-none text-indigo-700" value={num} onChange={e=>setNum(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="text-gray-600 block mb-1">تاریخ ثبت رسید</label>
+                            <input className="w-full border rounded-xl p-3 text-xs font-mono font-black text-center focus:ring-2 focus:ring-indigo-500 outline-none" value={date} onChange={e=>setDate(e.target.value)} />
+                        </div>
                     </div>
+
+                    <div>
+                        <label className="text-gray-600 block mb-1">انبار مقصد</label>
+                        <select className="w-full border rounded-xl p-3 text-xs font-bold bg-white focus:ring-2 focus:ring-indigo-500 outline-none" value={warehouseName} onChange={e=>setWarehouseName(e.target.value)}>
+                            <option value="انبار قطعات و تجهیزات کارخانه زنجان">انبار قطعات و تجهیزات کارخانه زنجان</option>
+                            <option value="انبار مواد اولیه و ملزومات">انبار مواد اولیه و ملزومات</option>
+                            <option value="انبار ابزارآلات و ایمنی">انبار ابزارآلات و ایمنی</option>
+                            <option value="انبار عمومی کارخانه">انبار عمومی کارخانه</option>
+                        </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-gray-600 block mb-1">نام تحویل‌گیرنده (انباردار)</label>
+                            <input className="w-full border rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="نام انباردار" value={receiverName} onChange={e=>setReceiverName(e.target.value)} />
+                        </div>
+                        <div>
+                            <label className="text-gray-600 block mb-1">نام تحویل‌دهنده (باربری / راننده)</label>
+                            <input className="w-full border rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="نام تحویل‌دهنده" value={delivererName} onChange={e=>setDelivererName(e.target.value)} />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-gray-600 block mb-1">شماره فاکتور / بارنامه</label>
+                        <input className="w-full border rounded-xl p-3 text-xs font-mono focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="شماره فاکتور یا بارنامه خرید" value={waybillNumber} onChange={e=>setWaybillNumber(e.target.value)} />
+                    </div>
+
+                    <div>
+                        <label className="text-gray-600 block mb-1">ملاحظات و وضعیت سلامت فیزیکی کالا</label>
+                        <textarea className="w-full border rounded-xl p-3 text-xs focus:ring-2 focus:ring-indigo-500 outline-none h-20" placeholder="توضیحات و ملاحظات تحویل کالا..." value={notes} onChange={e=>setNotes(e.target.value)} />
+                    </div>
+
                     <div className="flex gap-3 pt-4">
-                        <button onClick={() => onConfirm({ warehouseReceiptNumber: num, warehouseReceiptDate: date })} className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 transition-all text-xs">صدور و تایید نهایی رسید</button>
-                        <button onClick={onClose} className="px-6 bg-white border border-gray-300 text-gray-500 font-bold rounded-2xl text-xs">انصراف</button>
+                        <button 
+                            onClick={() => onConfirm({ 
+                                warehouseReceiptNumber: num, 
+                                warehouseReceiptDate: date,
+                                warehouseName,
+                                receiverName,
+                                delivererName,
+                                waybillNumber,
+                                warehouseNotes: notes 
+                            })} 
+                            className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-black py-3.5 rounded-2xl shadow-lg active:scale-95 transition-all text-xs flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            <CheckCircle size={16} />
+                            <span>ثبت و ارسال جهت تایید مدیریت</span>
+                        </button>
+                        <button onClick={onClose} className="px-6 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-2xl text-xs cursor-pointer">
+                            انصراف
+                        </button>
                     </div>
                 </div>
             </div>
         </div>,
         document.body
+    );
+};
+
+// --- WAREHOUSE RECEIPTS TAB ---
+const WarehouseReceiptsTab = ({ requests, currentUser, onRequestUpdate, parts, settings }: any) => {
+    const [subTab, setSubTab] = useState<'PENDING' | 'REGISTER'>('PENDING');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedReqForModal, setSelectedReqForModal] = useState<any>(null);
+    const [selectedReqForView, setSelectedReqForView] = useState<any>(null);
+    const [printingReq, setPrintingReq] = useState<any>(null);
+    const [actionLoading, setActionLoading] = useState(false);
+
+    const hasPurchasePerm = (perm: string) => {
+        return checkPurchasePermission(currentUser, perm, settings);
+    };
+
+    const isAdmin = currentUser.role === UserRole.ADMIN || (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN));
+    const canWarehouseFinalize = isAdmin || hasPurchasePerm('canWarehouseFinalize');
+    const canApproveFactory = isAdmin || hasPurchasePerm('canApproveFactory');
+
+    // Pending requests for warehouse receipt or manager approval
+    const pendingReceiptRequests = requests.filter((r: PurchaseRequest) => 
+        r.status === PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT ||
+        r.status === PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN
+    );
+
+    // Registered/Archived warehouse receipts
+    const registeredReceipts = requests.filter((r: PurchaseRequest) => 
+        !!r.warehouseReceiptNumber || r.status === PurchaseRequestStatus.COMPLETED
+    );
+
+    const counts = {
+        total: registeredReceipts.length,
+        pendingIssue: requests.filter((r: PurchaseRequest) => r.status === PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT).length,
+        pendingSign: requests.filter((r: PurchaseRequest) => r.status === PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN).length,
+        completed: requests.filter((r: PurchaseRequest) => r.status === PurchaseRequestStatus.COMPLETED && !!r.warehouseReceiptNumber).length
+    };
+
+    const handleIssueReceipt = async (reqId: string, receiptData: any) => {
+        setActionLoading(true);
+        try {
+            const targetReq = requests.find((r: any) => r.id === reqId);
+            if (!targetReq) return;
+            const updated = {
+                ...targetReq,
+                ...receiptData,
+                approverWarehouseReceipt: currentUser.fullName,
+                status: PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN,
+                updatedAt: Date.now(),
+                auditLogs: [
+                    ...(targetReq.auditLogs || []),
+                    {
+                        id: generateUUID(),
+                        user: currentUser.fullName,
+                        role: currentUser.role,
+                        action: 'صدور رسید انبار',
+                        timestamp: Date.now(),
+                        details: `رسید انبار شماره ${receiptData.warehouseReceiptNumber} صادر و جهت تایید مدیریت ارسال شد.`
+                    }
+                ]
+            };
+            await updatePurchaseRequest(updated);
+            alert(`رسید انبار شماره ${receiptData.warehouseReceiptNumber} با موفقیت صادر و جهت امضای مدیریت ارسال گردید.`);
+            setSelectedReqForModal(null);
+            if (onRequestUpdate) onRequestUpdate();
+        } catch (e) {
+            console.error(e);
+            alert('خطا در ثبت رسید انبار');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleApproveReceiptByManager = async (req: any) => {
+        if (!confirm(`آیا از تایید، امضای دیجیتال و بایگانی رسید انبار شماره ${req.warehouseReceiptNumber || req.requestNumber} اطمینان دارید؟`)) return;
+        setActionLoading(true);
+        try {
+            const updated = {
+                ...req,
+                approverFactoryArchive: currentUser.fullName,
+                approverFactoryFinal: currentUser.fullName,
+                status: PurchaseRequestStatus.COMPLETED,
+                completedAt: Date.now(),
+                updatedAt: Date.now(),
+                auditLogs: [
+                    ...(req.auditLogs || []),
+                    {
+                        id: generateUUID(),
+                        user: currentUser.fullName,
+                        role: currentUser.role,
+                        action: 'تایید نهایی و بایگانی رسید انبار',
+                        timestamp: Date.now(),
+                        details: `رسید انبار شماره ${req.warehouseReceiptNumber || '-'} توسط مدیریت کارخانه تایید، امضا و بایگانی گردید.`
+                    }
+                ]
+            };
+            await updatePurchaseRequest(updated);
+            alert('رسید انبار با موفقیت توسط مدیریت تایید و در بایگانی دائم ثبت گردید.');
+            if (onRequestUpdate) onRequestUpdate();
+        } catch (e) {
+            console.error(e);
+            alert('خطا در تایید مدیریت');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const filteredList = (subTab === 'PENDING' ? pendingReceiptRequests : registeredReceipts).filter((r: any) => {
+        if (!searchTerm.trim()) return true;
+        const q = searchTerm.toLowerCase();
+        return (r.requestNumber || '').toLowerCase().includes(q) ||
+               (r.warehouseReceiptNumber || '').toLowerCase().includes(q) ||
+               (r.itemName || '').toLowerCase().includes(q) ||
+               (r.purchaseReason || '').toLowerCase().includes(q);
+    });
+
+    return (
+        <div className="space-y-6 text-right dir-rtl">
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 text-white p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p className="text-xs text-indigo-100 font-bold">کل رسیدهای صادر شده</p>
+                        <h3 className="text-2xl font-black mt-1">{counts.total}</h3>
+                    </div>
+                    <Warehouse size={32} className="text-indigo-200 opacity-80" />
+                </div>
+                <div className="bg-gradient-to-br from-amber-500 to-amber-700 text-white p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p className="text-xs text-amber-100 font-bold">در انتظار صدور رسید</p>
+                        <h3 className="text-2xl font-black mt-1">{counts.pendingIssue}</h3>
+                    </div>
+                    <Clock size={32} className="text-amber-200 opacity-80" />
+                </div>
+                <div className="bg-gradient-to-br from-purple-500 to-purple-700 text-white p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p className="text-xs text-purple-100 font-bold">در انتظار تایید مدیریت</p>
+                        <h3 className="text-2xl font-black mt-1">{counts.pendingSign}</h3>
+                    </div>
+                    <ShieldCheck size={32} className="text-purple-200 opacity-80" />
+                </div>
+                <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 text-white p-5 rounded-2xl shadow-lg flex items-center justify-between">
+                    <div>
+                        <p className="text-xs text-emerald-100 font-bold">بایگانی نهایی رسیدها</p>
+                        <h3 className="text-2xl font-black mt-1">{counts.completed}</h3>
+                    </div>
+                    <CheckCircle size={32} className="text-emerald-200 opacity-80" />
+                </div>
+            </div>
+
+            {/* Controls & Search */}
+            <div className="glass-panel p-4 rounded-2xl border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex bg-gray-200 p-1 rounded-xl w-full md:w-auto">
+                    <button 
+                        onClick={() => setSubTab('PENDING')}
+                        className={`flex-1 md:flex-none px-5 py-2.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${subTab === 'PENDING' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600'}`}
+                    >
+                        <Clock size={14} />
+                        <span>کارتابل درخواست‌های رسید انبار ({pendingReceiptRequests.length})</span>
+                    </button>
+                    <button 
+                        onClick={() => setSubTab('REGISTER')}
+                        className={`flex-1 md:flex-none px-5 py-2.5 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${subTab === 'REGISTER' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600'}`}
+                    >
+                        <Warehouse size={14} />
+                        <span>دفتر ثبت و بایگانی رسیدهای انبار ({registeredReceipts.length})</span>
+                    </button>
+                </div>
+
+                <div className="relative w-full md:w-80">
+                    <input 
+                        type="text"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        placeholder="جستجوی شماره رسید، درخواست یا نام کالا..."
+                        className="w-full bg-white border border-gray-300 rounded-xl py-2.5 pr-10 pl-4 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <Search size={16} className="absolute right-3 top-3 text-gray-400" />
+                </div>
+            </div>
+
+            {/* List Table */}
+            <div className="glass-panel rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-right border-collapse">
+                        <thead>
+                            <tr className="bg-gray-100/80 text-gray-700 text-xs font-black border-b border-gray-200">
+                                <th className="p-4">شماره رسید انبار</th>
+                                <th className="p-4">شماره درخواست</th>
+                                <th className="p-4">شرح کالا / قطعه</th>
+                                <th className="p-4 text-center">مقدار</th>
+                                <th className="p-4">تاریخ رسید</th>
+                                <th className="p-4">وضعیت فرآیند رسید</th>
+                                <th className="p-4 text-center">عملیات مدیریت و انبار</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 text-xs font-bold text-gray-800">
+                            {filteredList.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="p-10 text-center text-gray-400">
+                                        هیچ سند یا درخواستی در این بخش یافت نشد.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredList.map((req: any) => (
+                                    <tr key={req.id} className="hover:bg-indigo-50/40 transition-colors">
+                                        <td className="p-4 font-mono font-black text-indigo-700">
+                                            {req.warehouseReceiptNumber || <span className="text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">در انتظار صدور</span>}
+                                        </td>
+                                        <td className="p-4 font-mono font-bold text-gray-600">
+                                            {req.requestNumber}
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="font-black text-gray-900">{req.itemName}</div>
+                                            <div className="text-[10px] text-gray-500 line-clamp-1">{req.purchaseReason || req.specifications || '-'}</div>
+                                        </td>
+                                        <td className="p-4 text-center font-black">
+                                            {req.entryQuantity || req.quantity} {req.unit}
+                                        </td>
+                                        <td className="p-4 font-mono text-gray-600">
+                                            {req.warehouseReceiptDate || formatDate(req.updatedAt || req.createdAt)}
+                                        </td>
+                                        <td className="p-4">
+                                            {req.status === PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT && (
+                                                <span className="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-[10px] font-black border border-amber-200 inline-flex items-center gap-1">
+                                                    <Clock size={12}/> منتظر صدور توسط انباردار
+                                                </span>
+                                            )}
+                                            {req.status === PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN && (
+                                                <span className="bg-purple-100 text-purple-800 px-2.5 py-1 rounded-full text-[10px] font-black border border-purple-200 inline-flex items-center gap-1">
+                                                    <ShieldCheck size={12}/> منتظر تایید و امضای مدیریت
+                                                </span>
+                                            )}
+                                            {req.status === PurchaseRequestStatus.COMPLETED && (
+                                                <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-[10px] font-black border border-emerald-200 inline-flex items-center gap-1">
+                                                    <CheckCircle size={12}/> تایید شده و بایگانی نهایی
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex items-center justify-center gap-2">
+                                                {/* Issue Receipt Button */}
+                                                {req.status === PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT && canWarehouseFinalize && (
+                                                    <button 
+                                                        onClick={() => setSelectedReqForModal(req)}
+                                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-black shadow-sm transition-all flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Warehouse size={13} />
+                                                        <span>صدور رسید</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Approve Receipt Button */}
+                                                {req.status === PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN && canApproveFactory && (
+                                                    <button 
+                                                        onClick={() => handleApproveReceiptByManager(req)}
+                                                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-black shadow-sm transition-all flex items-center gap-1 cursor-pointer"
+                                                        disabled={actionLoading}
+                                                    >
+                                                        <CheckCircle size={13} />
+                                                        <span>تایید مدیریت</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Print Receipt Button */}
+                                                {req.warehouseReceiptNumber && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            setPrintingReq(req);
+                                                            setTimeout(() => window.print(), 300);
+                                                        }}
+                                                        className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                        title="چاپ رسید انبار (A5)"
+                                                    >
+                                                        <Printer size={13} />
+                                                        <span>چاپ</span>
+                                                    </button>
+                                                )}
+
+                                                {/* View Request Details */}
+                                                <button 
+                                                    onClick={() => setSelectedReqForView(req)}
+                                                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                >
+                                                    <Eye size={13} />
+                                                    <span>جزئیات</span>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Warehouse Receipt Creation Modal */}
+            {selectedReqForModal && (
+                <WarehouseReceiptModal 
+                    request={selectedReqForModal}
+                    onClose={() => setSelectedReqForModal(null)}
+                    onConfirm={(data: any) => handleIssueReceipt(selectedReqForModal.id, data)}
+                />
+            )}
+
+            {/* View Request Modal */}
+            {selectedReqForView && (
+                <ViewRequestModal 
+                    request={selectedReqForView} 
+                    onClose={() => setSelectedReqForView(null)} 
+                    currentUser={currentUser} 
+                    onSuccess={() => {
+                        setSelectedReqForView(null);
+                        if (onRequestUpdate) onRequestUpdate();
+                    }} 
+                    settings={settings} 
+                    parts={parts} 
+                />
+            )}
+
+            {/* Print Hidden Render Section */}
+            {printingReq && (
+                <div className="print-render-wrapper opacity-0 pointer-events-none absolute -z-50 overflow-hidden h-0 w-0" aria-hidden="true">
+                    <div id="print-purchase-receipt-standalone">
+                        <PrintWarehouseReceipt request={printingReq} />
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -5137,24 +5578,25 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
-                const bstr = evt.target?.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
+                const buffer = evt.target?.result;
+                const wb = XLSX.read(buffer, { type: 'array', codepage: 65001 });
                 const wsname = wb.SheetNames[0];
                 const ws = wb.Sheets[wsname];
                 const data = XLSX.utils.sheet_to_json(ws);
                 
                 let successCount = 0;
                 for (const row of data as any[]) {
-                    if (!row['نام کالا']) continue;
+                    const itemName = fixMojibake(row['نام کالا'] || row['نام'] || '');
+                    if (!itemName) continue;
                     const newPart: PartMasterData = {
                         id: generateUUID(),
-                        name: row['نام کالا'] || '',
-                        type: row['نوع'] || 'قطعات',
-                        category: row['گروه'] || 'عمومی',
-                        subCategory: row['زیرگروه'] || '',
-                        dimensions: row['ابعاد یا مشخصات'] || '',
-                        machineName: row['نام دستگاه'] || '',
-                        unit: row['واحد'] || 'عدد',
+                        name: itemName,
+                        type: fixMojibake(row['نوع'] || 'قطعات'),
+                        category: fixMojibake(row['گروه'] || 'عمومی'),
+                        subCategory: fixMojibake(row['زیرگروه'] || ''),
+                        dimensions: fixMojibake(row['ابعاد یا مشخصات'] || ''),
+                        machineName: fixMojibake(row['نام دستگاه'] || ''),
+                        unit: fixMojibake(row['واحد'] || 'عدد'),
                         minStock: parseInt(row['حداقل موجودی']) || 0,
                         currentStock: parseInt(row['موجودی اولیه']) || 0
                     };
@@ -5168,7 +5610,7 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                 console.error(err);
             }
         };
-        reader.readAsBinaryString(file);
+        reader.readAsArrayBuffer(file);
     };
 
     return (

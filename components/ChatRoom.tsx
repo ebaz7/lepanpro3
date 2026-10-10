@@ -3728,7 +3728,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             <MediaAttachmentModal 
                 isOpen={!!pendingAttachmentModalFiles && pendingAttachmentModalFiles.length > 0}
                 initialFiles={pendingAttachmentModalFiles || []}
-                targetName={activeChannel?.name || 'گفتگو'}
+                targetName={(activeChannel as any)?.name || (activeChannel as any)?.title || 'گفتگو'}
                 replyingTo={replyingTo ? {
                     id: replyingTo.id,
                     sender: replyingTo.sender,

@@ -278,7 +278,6 @@ import {
   Tag,
   PlusCircle,
   Paintbrush,
-  CheckCircle2,
   SlidersHorizontal,
   Table,
   Minus,
@@ -2445,13 +2444,13 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
     const isOwner =
       l.createdBy === currentUser.id ||
-      l.createdById === currentUser.id ||
+      (l as any).createdById === currentUser.id ||
       l.createdBy === currentUser.fullName ||
-      l.createdBy === currentUser.name ||
-      l.creatorName === currentUser.fullName ||
-      l.createdByName === currentUser.fullName ||
+      l.createdBy === (currentUser as any).name ||
+      (l as any).creatorName === currentUser.fullName ||
+      (l as any).createdByName === currentUser.fullName ||
       l.sender === currentUser.fullName ||
-      l.sender === currentUser.name;
+      l.sender === (currentUser as any).name;
 
     const isAssigned =
       l.referredTo?.includes(currentUser.id) ||
@@ -2529,11 +2528,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     // Privacy and Cartable Relevance filter
     const isCreator =
       letter.createdBy === currentUser.id ||
-      letter.createdById === currentUser.id ||
+      (letter as any).createdById === currentUser.id ||
       letter.createdBy === currentUser.fullName ||
-      letter.createdBy === currentUser.name ||
-      letter.creatorName === currentUser.fullName ||
-      letter.createdByName === currentUser.fullName;
+      letter.createdBy === (currentUser as any).name ||
+      (letter as any).creatorName === currentUser.fullName ||
+      (letter as any).createdByName === currentUser.fullName;
     const isReferred =
       letter.referredTo?.includes(currentUser.id) ||
       letter.referredTo?.includes(currentUser.username) ||
@@ -2542,7 +2541,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       (s) =>
         s.userId === currentUser.id ||
         s.name === currentUser.fullName ||
-        s.name === currentUser.name,
+        s.name === (currentUser as any).name,
     );
     const isRelevantToUser = isCreator || isReferred || isSigner;
 
@@ -2629,6 +2628,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       sender: letter.sender || "",
       receiver: letter.receiver || "",
       type: letter.type || "internal",
+      referredTo: letter.referredTo || [],
       attachments: letter.attachments || [],
       hasAttachment: letter.hasAttachment ?? ((letter.attachments && letter.attachments.length > 0) || false),
       attachmentDescription: letter.attachmentDescription || "",

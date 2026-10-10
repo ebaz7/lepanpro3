@@ -26,6 +26,49 @@ export interface ParsedContactPreview {
 }
 
 /**
+ * Fixes Mojibake caused by UTF-8 bytes decoded as Windows-1252/ISO-8859-1
+ */
+export function fixMojibake(str: string): string {
+    if (!str || typeof str !== 'string') return str || '';
+    if (/[\u00C0-\u00FF]/.test(str)) {
+        try {
+            const bytes = new Uint8Array(str.length);
+            for (let i = 0; i < str.length; i++) {
+                bytes[i] = str.charCodeAt(i) & 0xFF;
+            }
+            const decoded = new TextDecoder('utf-8').decode(bytes);
+            if (decoded && !decoded.includes('')) {
+                return decoded;
+            }
+        } catch (e) {
+            // fallback
+        }
+    }
+    return str;
+}
+
+/**
+ * Decodes vCard field values (handling QUOTED-PRINTABLE, CHARSET=UTF-8, etc.)
+ */
+function decodeVCardValue(val: string): string {
+    if (!val) return '';
+    let result = val.trim();
+    if (result.includes('=')) {
+        try {
+            const clean = result.replace(/=\r?\n/g, '');
+            const hexParts = clean.split('=').filter(Boolean);
+            if (hexParts.length > 0 && /^[0-9A-Fa-f]{2}$/.test(hexParts[0])) {
+                const bytes = new Uint8Array(hexParts.map(h => parseInt(h.substring(0, 2), 16)));
+                result = new TextDecoder('utf-8').decode(bytes);
+            }
+        } catch (e) {
+            // fallback
+        }
+    }
+    return fixMojibake(result);
+}
+
+/**
  * Normalizes phone numbers (e.g. +98 912 548 0900 -> 09125480900)
  */
 export function normalizePhoneNumber(raw: string): string {
@@ -65,11 +108,13 @@ function parseVCardText(text: string): ParsedContactPreview[] {
         for (const line of lines) {
             const cleanLine = line.trim();
             if (cleanLine.startsWith('FN:') || cleanLine.startsWith('FN;')) {
-                name = cleanLine.substring(cleanLine.indexOf(':') + 1).trim();
+                const rawVal = cleanLine.substring(cleanLine.indexOf(':') + 1);
+                name = decodeVCardValue(rawVal);
             } else if (!name && (cleanLine.startsWith('N:') || cleanLine.startsWith('N;'))) {
-                const parts = cleanLine.substring(cleanLine.indexOf(':') + 1).split(';');
-                const lastName = (parts[0] || '').trim();
-                const firstName = (parts[1] || '').trim();
+                const rawVal = cleanLine.substring(cleanLine.indexOf(':') + 1);
+                const parts = rawVal.split(';');
+                const lastName = decodeVCardValue(parts[0] || '');
+                const firstName = decodeVCardValue(parts[1] || '');
                 name = `${firstName} ${lastName}`.trim();
             } else if (cleanLine.toUpperCase().startsWith('TEL')) {
                 const num = cleanLine.substring(cleanLine.indexOf(':') + 1).trim();
@@ -78,12 +123,15 @@ function parseVCardText(text: string): ParsedContactPreview[] {
                 email = cleanLine.substring(cleanLine.indexOf(':') + 1).trim();
             } else if (cleanLine.toUpperCase().startsWith('BDAY')) {
                 birthday = cleanLine.substring(cleanLine.indexOf(':') + 1).trim();
-            } else if (cleanLine.toUpperCase().startsWith('ORG:')) {
-                company = cleanLine.substring(cleanLine.indexOf(':') + 1).split(';')[0].trim();
+            } else if (cleanLine.toUpperCase().startsWith('ORG')) {
+                const rawVal = cleanLine.substring(cleanLine.indexOf(':') + 1).split(';')[0];
+                company = decodeVCardValue(rawVal);
             } else if (cleanLine.toUpperCase().startsWith('ADR')) {
-                address = cleanLine.substring(cleanLine.indexOf(':') + 1).replace(/;/g, ' ').trim();
-            } else if (cleanLine.toUpperCase().startsWith('NOTE:')) {
-                notes = cleanLine.substring(cleanLine.indexOf(':') + 1).trim();
+                const rawVal = cleanLine.substring(cleanLine.indexOf(':') + 1).replace(/;/g, ' ');
+                address = decodeVCardValue(rawVal);
+            } else if (cleanLine.toUpperCase().startsWith('NOTE')) {
+                const rawVal = cleanLine.substring(cleanLine.indexOf(':') + 1);
+                notes = decodeVCardValue(rawVal);
             }
         }
 
@@ -91,14 +139,14 @@ function parseVCardText(text: string): ParsedContactPreview[] {
         if (name || primaryPhone) {
             contacts.push({
                 id: Math.random().toString(36).substr(2, 9),
-                name: name || primaryPhone || 'مخاطب بدون نام',
+                name: fixMojibake(name || primaryPhone || 'مخاطب بدون نام'),
                 mobile: primaryPhone,
                 secondaryPhone: phones[1] || undefined,
                 email,
                 birthday,
-                company,
-                address,
-                notes,
+                company: fixMojibake(company),
+                address: fixMojibake(address),
+                notes: fixMojibake(notes),
                 isDuplicate: false,
                 selected: true
             });
@@ -123,6 +171,8 @@ function parseTabularData(rows: any[]): ParsedContactPreview[] {
             const last = String(row['Family Name'] || row['Last Name'] || '').trim();
             name = `${first} ${last}`.trim();
         }
+
+        name = fixMojibake(name);
 
         // 2. Resolve Phone
         let phone = '';
@@ -160,13 +210,13 @@ function parseTabularData(rows: any[]): ParsedContactPreview[] {
         const birthday = String(row['Birthday'] || row['تاریخ تولد'] || '').trim();
 
         // 5. Company / Org
-        const company = String(row['Organization 1 - Name'] || row['Company'] || row['شرکت'] || '').trim();
+        const company = fixMojibake(String(row['Organization 1 - Name'] || row['Company'] || row['شرکت'] || '').trim());
 
         // 6. Address
-        const address = String(row['Address 1 - Formatted'] || row['Address'] || row['آدرس'] || '').trim();
+        const address = fixMojibake(String(row['Address 1 - Formatted'] || row['Address'] || row['آدرس'] || '').trim());
 
         // 7. Notes
-        const notes = String(row['Notes'] || row['یادداشت'] || '').trim();
+        const notes = fixMojibake(String(row['Notes'] || row['یادداشت'] || '').trim());
 
         if (name || phone) {
             list.push({
@@ -213,7 +263,7 @@ export const GoogleContactsImportModal: React.FC<GoogleContactsImportModalProps>
         const lowerName = file.name.toLowerCase();
 
         if (lowerName.endsWith('.vcf') || lowerName.endsWith('.vcard')) {
-            // Read as text for vCard
+            // Read as UTF-8 text for vCard
             const textReader = new FileReader();
             textReader.onload = (event) => {
                 try {
@@ -227,14 +277,14 @@ export const GoogleContactsImportModal: React.FC<GoogleContactsImportModalProps>
                     setIsParsing(false);
                 }
             };
-            textReader.readAsText(file);
+            textReader.readAsText(file, 'UTF-8');
         } else {
-            // Read as binary for CSV or Excel via XLSX
-            const binReader = new FileReader();
-            binReader.onload = (event) => {
+            // Read as ArrayBuffer for CSV or Excel via XLSX to preserve UTF-8 Persian text
+            const bufReader = new FileReader();
+            bufReader.onload = (event) => {
                 try {
-                    const bstr = event.target?.result;
-                    const wb = XLSX.read(bstr, { type: 'binary' });
+                    const data = event.target?.result;
+                    const wb = XLSX.read(data, { type: 'array', codepage: 65001 });
                     const sheetName = wb.SheetNames[0];
                     const sheet = wb.Sheets[sheetName];
                     const rows = XLSX.utils.sheet_to_json(sheet);
@@ -252,7 +302,7 @@ export const GoogleContactsImportModal: React.FC<GoogleContactsImportModalProps>
                     setIsParsing(false);
                 }
             };
-            binReader.readAsBinaryString(file);
+            bufReader.readAsArrayBuffer(file);
         }
     };
 

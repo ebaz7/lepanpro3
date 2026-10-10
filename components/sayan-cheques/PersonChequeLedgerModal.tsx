@@ -46,7 +46,7 @@ interface PersonChequeLedgerModalProps {
 // Helpers for Shamsi Math
 export const parseShamsiDate = (str: string): { jy: number; jm: number; jd: number } | null => {
     if (!str) return null;
-    const clean = String(str).trim().replace(/[۰-۹]/g, x => '۰۱۲۳۴۵۶۷۸۹'.indexOf(x));
+    const clean = String(str).trim().replace(/[۰-۹]/g, x => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x)));
     const match = clean.match(/(13\d{2}|14\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
     if (!match) return null;
     return {
@@ -189,7 +189,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
 
     // Smart Matcher Solver Algorithm
     const handleRunSmartMatch = () => {
-        const rawTargetSum = parseFloat(String(targetSumInput || '0').replace(/,/g, '').replace(/[۰-۹]/g, x => '۰۱۲۳۴۵۶۷۸۹'.indexOf(x)));
+        const rawTargetSum = parseFloat(String(targetSumInput || '0').replace(/,/g, '').replace(/[۰-۹]/g, x => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x))));
         if (!rawTargetSum || rawTargetSum <= 0) {
             alert('لطفاً مبلغ کل هدف را به ریال یا تومان وارد نمایید.');
             return;
@@ -649,12 +649,12 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
     const handleShareToChat = () => {
         if (!rasResult) {
             const summary = `📊 گزارش اسناد و چک‌های سایان\n👤 شخص: ${selectedName} (کد: ${selectedCode})\n💰 مجموع چک‌های دریافتی: ${formatMoney(stats.totalReceived)} ریال\n💸 مجموع چک‌های خرج‌شده: ${formatMoney(stats.totalSpent)} ریال\n🔢 تعداد کل: ${stats.totalCount} فقره`;
-            openSendToChat({ title: 'گزارش چک‌ها', text: summary });
+            openSendToChat({ title: 'گزارش چک‌ها', defaultMessage: summary });
             return;
         }
 
         const text = `📋 گزارش راس‌گیری چک‌های سایان ERP\n👤 طرف‌حساب: ${selectedName} (کد: ${selectedCode})\n📅 مبدأ محاسبه: ${rasResult.baseDateShamsi}\n\n🌟 تاریخ دقیق راس چک‌ها: ${rasResult.rasDateShamsi} (${rasResult.dayOfWeekFa})\n⏳ فاصله میانگین وزنی: ${rasResult.weightedAvgDays} روز\n💰 جمع کل مبالغ: ${formatMoney(rasResult.totalAmount)} ریال (${formatToman(rasResult.totalAmount)} تومان)\n🔢 تعداد چک‌های منتخب: ${rasResult.totalCheques} فقره\n📊 میانگین ساده سررسید: ${rasResult.simpleAvgDays} روز\n💳 سود دوران / هزینه تاخیر (${rasResult.interestRateAnnual}٪ سالانه): ${formatMoney(rasResult.totalInterestCost)} ریال`;
-        openSendToChat({ title: 'گزارش راس‌گیری چک‌ها', text });
+        openSendToChat({ title: 'گزارش راس‌گیری چک‌ها', defaultMessage: text });
     };
 
     // Browser Print Handler
@@ -727,7 +727,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                         </button>
 
                         <button
-                            onClick={handleExportExcel}
+                            onClick={() => handleExportExcel()}
                             className="p-2 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
                             title="خروجی کامل اکسل چک‌ها"
                         >
@@ -1903,7 +1903,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={handleExportExcel}
+                            onClick={() => handleExportExcel()}
                             className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                         >
                             <Download size={15} />
