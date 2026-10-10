@@ -504,7 +504,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         const savedFrom = localStorage.getItem('sayan_default_date_from');
         const savedTo = localStorage.getItem('sayan_default_date_to');
         
-        // Default to active fiscal year if savedFrom is missing
+        // Default to active fiscal year (1405) if savedFrom is missing
         const initialFrom = savedFrom || `${activeYear}/01/01`;
         const initialTo = savedTo || `${activeYear}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
         
@@ -2112,9 +2112,19 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             setCompareSalesDataA(processedA);
 
             // Fetch Period B for comparison if active
-            if (compareMode && salesDateFromB && salesDateToB) {
-                const gregFromB = jalaliToGregorianStr(salesDateFromB);
-                const gregToB = jalaliToGregorianStr(salesDateToB);
+            if (compareMode) {
+                const shiftShamsiYear = (shamsiStr: string, delta: number) => {
+                    if (!shamsiStr) return '';
+                    const p = shamsiStr.split('/');
+                    if (p.length !== 3) return shamsiStr;
+                    const y = parseInt(p[0], 10);
+                    return `${y + delta}/${p[1]}/${p[2]}`;
+                };
+                const effFromB = salesDateFromB || shiftShamsiYear(dateFrom, -1);
+                const effToB = salesDateToB || shiftShamsiYear(dateTo, -1);
+
+                const gregFromB = jalaliToGregorianStr(effFromB);
+                const gregToB = jalaliToGregorianStr(effToB);
                 
                 const dateFilterB = gregFromB && gregToB 
                     ? `AND LEFT(t10.Field_008, 10) >= '${gregFromB}' AND LEFT(t10.Field_008, 10) <= '${gregToB}'` 

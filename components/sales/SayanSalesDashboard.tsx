@@ -417,21 +417,17 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     yesterday.setDate(yesterday.getDate() - 1);
     const jYesterday = jalaali.toJalaali(yesterday.getFullYear(), yesterday.getMonth() + 1, yesterday.getDate());
 
-    // Determine target year being inspected (e.g. 1404 or 1405)
+    // Determine target year being inspected (e.g. 1405)
     const targetYear = (() => {
       if (dateFrom) {
         const match = dateFrom.match(/(\d{4})/);
         if (match) return parseInt(match[1], 10);
-        const match2 = dateFrom.match(/(\d{1,4})/);
-        if (match2) {
-          let y = parseInt(match2[1], 10);
-          if (y < 100) y += 1400;
-          else if (y >= 100 && y < 1000) y += 1000;
-          return y;
-        }
       }
       return jNow.jy;
     })();
+
+    // Reference Jalaali date for Today / Month / Quarter KPI matching
+    const refJalaali = jNow;
 
     // Detailed Item Map
     const itemMap = new Map<string, {
@@ -531,7 +527,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       })();
       
       // Today
-      if (jRow.jy === jNow.jy && jRow.jm === jNow.jm && jRow.jd === jNow.jd) {
+      if (jRow.jy === refJalaali.jy && jRow.jm === refJalaali.jm && jRow.jd === refJalaali.jd) {
         if (isReturn) {
           todayRetAmt += amt; todayRetWgt += qty;
         } else {
@@ -540,7 +536,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       }
 
       // Yesterday
-      if (jRow.jy === jYesterday.jy && jRow.jm === jYesterday.jm && jRow.jd === jYesterday.jd) {
+      if (jRow.jy === refJalaali.jy && jRow.jm === refJalaali.jm && jRow.jd === (refJalaali.jd - 1)) {
         if (isReturn) {
           yesterdayRetAmt += amt; yesterdayRetWgt += qty;
         } else {
@@ -548,17 +544,16 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         }
       }
 
-      // Month (Match target year; if targetYear is current year use current month, else aggregate for month)
-      const targetMonth = targetYear === jNow.jy ? jNow.jm : (jRow.jm || 1);
-      if (jRow.jy === targetYear && (targetYear === jNow.jy ? jRow.jm === targetMonth : true)) {
+      // Month
+      if (jRow.jy === targetYear && jRow.jm === refJalaali.jm) {
         if (isReturn) monthNetAmt -= amt; else monthNetAmt += amt;
         if (isReturn) monthNetWgt -= qty; else monthNetWgt += qty;
       }
 
       // Quarter
-      const currentQuarter = Math.ceil(jNow.jm / 3);
+      const currentQuarter = Math.ceil(refJalaali.jm / 3);
       const rowQuarter = Math.ceil(jRow.jm / 3);
-      if (jRow.jy === targetYear && (targetYear === jNow.jy ? rowQuarter === currentQuarter : true)) {
+      if (jRow.jy === targetYear && rowQuarter === currentQuarter) {
         if (isReturn) quarterNetAmt -= amt; else quarterNetAmt += amt;
         if (isReturn) quarterNetWgt -= qty; else quarterNetWgt += qty;
       }
@@ -1000,6 +995,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     setSelectedPreset(presetKey);
     const now = new Date();
     const jNow = jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    const baseYear = jNow.jy;
 
     let fromStr = '';
     let toStr = '';
@@ -1007,13 +1003,13 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     const pad = (n: number) => String(n).padStart(2, '0');
 
     if (presetKey === 'today') {
-      fromStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
       toStr = fromStr;
     } else if (presetKey === 'yesterday') {
       const yDate = new Date(now);
       yDate.setDate(yDate.getDate() - 1);
       const jY = jalaali.toJalaali(yDate.getFullYear(), yDate.getMonth() + 1, yDate.getDate());
-      fromStr = `${jY.jy}/${pad(jY.jm)}/${pad(jY.jd)}`;
+      fromStr = `${baseYear}/${pad(jY.jm)}/${pad(jY.jd)}`;
       toStr = fromStr;
     } else if (presetKey === 'this_week') {
       // Current Saturday to Today
@@ -1022,23 +1018,23 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       const satDate = new Date(now);
       satDate.setDate(satDate.getDate() - distSat);
       const jSat = jalaali.toJalaali(satDate.getFullYear(), satDate.getMonth() + 1, satDate.getDate());
-      fromStr = `${jSat.jy}/${pad(jSat.jm)}/${pad(jSat.jd)}`;
-      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${baseYear}/${pad(jSat.jm)}/${pad(jSat.jd)}`;
+      toStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'this_month') {
-      fromStr = `${jNow.jy}/${pad(jNow.jm)}/01`;
-      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${baseYear}/${pad(jNow.jm)}/01`;
+      toStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'last_month') {
       let prevM = jNow.jm - 1;
-      let prevY = jNow.jy;
+      let prevY = baseYear;
       if (prevM < 1) { prevM = 12; prevY -= 1; }
       fromStr = `${prevY}/${pad(prevM)}/01`;
       const daysInPrev = jalaali.jalaaliMonthLength(prevY, prevM);
       toStr = `${prevY}/${pad(prevM)}/${pad(daysInPrev)}`;
     } else if (presetKey === 'this_year') {
-      fromStr = `${jNow.jy}/01/01`;
-      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${baseYear}/01/01`;
+      toStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'last_year') {
-      const prevY = jNow.jy - 1;
+      const prevY = baseYear - 1;
       fromStr = `${prevY}/01/01`;
       toStr = `${prevY}/12/29`;
     }
