@@ -614,6 +614,11 @@ export interface SalesContact {
     birthday?: string; // Gregorian YYYY-MM-DD
     sendBirthdayGreeting: boolean;
     accountCode?: string;
+    sayanPersonCode?: string;
+    sayanTafsiliCode?: string;
+    sayanPersonName?: string;
+    sayanMobile?: string;
+    autoNotifyOnExit?: boolean;
 }
 
 

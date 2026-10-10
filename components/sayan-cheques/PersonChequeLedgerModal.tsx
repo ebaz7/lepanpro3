@@ -106,7 +106,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
     const [error, setError] = useState<string | null>(null);
 
     // Active Tab
-    const [activeTab, setActiveTab] = useState<'list' | 'ras'>('list');
+    const [activeTab, setActiveTab] = useState<'list' | 'ras' | 'smart_match'>('list');
 
     // Filtering States
     const [searchQuery, setSearchQuery] = useState('');
@@ -117,6 +117,20 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
     const [dueFrom, setDueFrom] = useState<string>('');
     const [dueTo, setDueTo] = useState<string>('');
     const [selectedChequeIds, setSelectedChequeIds] = useState<Set<string>>(new Set());
+
+    // Smart Matcher Target State
+    const [targetSumInput, setTargetSumInput] = useState<string>('2500000000');
+    const [targetRasInput, setTargetRasInput] = useState<string>(() => dateToShamsi(new Date(Date.now() + 90 * 24 * 3600 * 1000)));
+    const [targetDueFromInput, setTargetDueFromInput] = useState<string>('');
+    const [targetDueToInput, setTargetDueToInput] = useState<string>('');
+    const [targetChequeTypeInput, setTargetChequeTypeInput] = useState<'all' | 'spent' | 'received'>('all');
+    const [smartMatchResult, setSmartMatchResult] = useState<{
+        matchedCheques: SayanPersonCheque[];
+        totalMatchedSum: number;
+        matchedRasDate: string;
+        sumDiff: number;
+        rasDaysDiff: number;
+    } | null>(null);
 
     // Ras Calculation Settings
     const [rasBaseType, setRasBaseType] = useState<'today' | 'first_cheque' | 'last_cheque' | 'custom'>('today');
@@ -171,6 +185,114 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
         } finally {
             setIsLoading(false);
         }
+    };
+
+    // Smart Matcher Solver Algorithm
+    const handleRunSmartMatch = () => {
+        const rawTargetSum = parseFloat(String(targetSumInput || '0').replace(/,/g, '').replace(/[۰-۹]/g, x => '۰۱۲۳۴۵۶۷۸۹'.indexOf(x)));
+        if (!rawTargetSum || rawTargetSum <= 0) {
+            alert('لطفاً مبلغ کل هدف را به ریال یا تومان وارد نمایید.');
+            return;
+        }
+
+        // Filter pool according to conditions
+        let pool = cheques.filter(c => {
+            if (targetChequeTypeInput !== 'all' && c.chequeType !== targetChequeTypeInput) return false;
+            if (targetDueFromInput) {
+                const cleanFrom = targetDueFromInput.replace(/\//g, '');
+                const cleanDue = String(c.dueDate || '').replace(/\//g, '');
+                if (cleanDue && cleanDue < cleanFrom) return false;
+            }
+            if (targetDueToInput) {
+                const cleanTo = targetDueToInput.replace(/\//g, '');
+                const cleanDue = String(c.dueDate || '').replace(/\//g, '');
+                if (cleanDue && cleanDue > cleanTo) return false;
+            }
+            return true;
+        });
+
+        if (pool.length === 0) {
+            alert('هیچ چکی با شروط سررسید و نوع انتخاب شده یافت نشد.');
+            return;
+        }
+
+        const targetRasDateObj = shamsiToDate(targetRasInput) || new Date();
+        const baseMs = targetRasDateObj.getTime();
+
+        // Optimized subset algorithm
+        const candidates = [...pool].sort((a, b) => (shamsiToDate(a.dueDate)?.getTime() || 0) - (shamsiToDate(b.dueDate)?.getTime() || 0));
+        const numCandidates = candidates.length;
+
+        let bestCombination: SayanPersonCheque[] = [];
+        let bestScore = Infinity;
+
+        const iterations = Math.min(2500, numCandidates * 50 + 500);
+        for (let iter = 0; iter < iterations; iter++) {
+            const sampleSize = Math.floor(Math.random() * Math.min(15, numCandidates)) + 1;
+            const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+            const subset: SayanPersonCheque[] = [];
+            let currentSum = 0;
+
+            for (const ch of shuffled) {
+                if (subset.length >= sampleSize) break;
+                if (currentSum + ch.amount <= rawTargetSum * 1.3) {
+                    subset.push(ch);
+                    currentSum += ch.amount;
+                }
+            }
+
+            if (subset.length === 0) continue;
+
+            let sumWeightedMs = 0;
+            let sumAmt = 0;
+            subset.forEach(c => {
+                const d = shamsiToDate(c.dueDate) || targetRasDateObj;
+                sumWeightedMs += c.amount * d.getTime();
+                sumAmt += c.amount;
+            });
+
+            const avgMs = sumWeightedMs / sumAmt;
+            const rasDiffDays = Math.abs(avgMs - baseMs) / (24 * 3600 * 1000);
+            const sumDiffRatio = Math.abs(sumAmt - rawTargetSum) / rawTargetSum;
+
+            const score = sumDiffRatio * 100 + rasDiffDays * 2.5;
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestCombination = subset;
+            }
+        }
+
+        if (bestCombination.length === 0) {
+            bestCombination = candidates.slice(0, 3);
+        }
+
+        let totalSum = 0;
+        let sumWeightedMs = 0;
+        bestCombination.forEach(c => {
+            const d = shamsiToDate(c.dueDate) || targetRasDateObj;
+            totalSum += c.amount;
+            sumWeightedMs += c.amount * d.getTime();
+        });
+
+        const calculatedRasMs = totalSum > 0 ? (sumWeightedMs / totalSum) : baseMs;
+        const calculatedRasDate = new Date(calculatedRasMs);
+        const rasShamsiStr = dateToShamsi(calculatedRasDate);
+        const daysDiff = Math.round((calculatedRasMs - baseMs) / (24 * 3600 * 1000));
+
+        const result = {
+            matchedCheques: bestCombination,
+            totalMatchedSum: totalSum,
+            matchedRasDate: rasShamsiStr,
+            sumDiff: totalSum - rawTargetSum,
+            rasDaysDiff: daysDiff
+        };
+
+        setSmartMatchResult(result);
+
+        // Auto select matched items in list
+        const matchedIds = new Set<string>(bestCombination.map(c => c.id));
+        setSelectedChequeIds(matchedIds);
     };
 
     useEffect(() => {
@@ -804,7 +926,19 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 }`}
                             >
                                 <Sparkles size={15} />
-                                <span>ماشین‌حساب راس‌گیری پیشرفته</span>
+                                <span>ماشین‌حساب راس‌گیری</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('smart_match')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    activeTab === 'smart_match'
+                                        ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
+                                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                                }`}
+                            >
+                                <SlidersHorizontal size={15} />
+                                <span>🎯 انتخاب هوشمند با مبلغ و راس هدف</span>
                             </button>
                         </div>
 
@@ -834,10 +968,9 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 type="button"
                                 onClick={() => {
                                     setFilterChequeType('received');
-                                    setFilterStatus('all');
                                 }}
                                 className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                                    filterChequeType === 'received' && filterStatus === 'all'
+                                    filterChequeType === 'received'
                                         ? 'bg-emerald-600 text-white shadow-xs'
                                         : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
                                 }`}
@@ -849,45 +982,14 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 type="button"
                                 onClick={() => {
                                     setFilterChequeType('spent');
-                                    setFilterStatus('all');
                                 }}
                                 className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                                    filterChequeType === 'spent' && filterStatus === 'all'
+                                    filterChequeType === 'spent'
                                         ? 'bg-blue-600 text-white shadow-xs'
                                         : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
                                 }`}
                             >
                                 فقط خرج‌شده ({stats.countSpent})
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setFilterChequeType('all');
-                                    setFilterStatus('returned');
-                                }}
-                                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                                    filterStatus === 'returned'
-                                        ? 'bg-rose-600 text-white shadow-xs'
-                                        : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100'
-                                }`}
-                            >
-                                🔴 فقط برگشتی‌ها
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setFilterChequeType('all');
-                                    setFilterStatus('cleared');
-                                }}
-                                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                                    filterStatus === 'cleared'
-                                        ? 'bg-teal-600 text-white shadow-xs'
-                                        : 'bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 hover:bg-teal-100'
-                                }`}
-                            >
-                                🟢 پاس‌شده / وصولی
                             </button>
 
                             <button
@@ -1264,7 +1366,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 </table>
                             </div>
                         </div>
-                    ) : (
+                    ) : activeTab === 'ras' ? (
                         /* ================= TAB 2: ADVANCED RAS CALCULATOR ================= */
                         <div className="space-y-6">
                             {/* Ras Configuration Controls */}
@@ -1534,7 +1636,263 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 </div>
                             )}
                         </div>
-                    )}
+                    ) : activeTab === 'smart_match' ? (
+                        /* ================= TAB 3: SMART MATCH TARGET FINDER ================= */
+                        <div className="space-y-6 animate-fade-in">
+                            {/* Input Form Banner */}
+                            <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-purple-950 text-white rounded-3xl p-5 shadow-xl border border-indigo-500/30 space-y-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-500/30 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className="p-2.5 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-2xl shadow-md">
+                                            <SlidersHorizontal className="w-5 h-5 text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-black text-sm sm:text-base">🎯 ابزار انتخاب هوشمند چک بابت تسویه با مبلغ و راس هدف</h3>
+                                            <p className="text-xs text-indigo-200">
+                                                مبلغ و تاریخ راس مدنظر خود را مشخص کنید تا سیستم بهترین ترکیب چک‌های تطبیقی را از بین {cheques.length} چک موجود به صورت اتوماتیک انتخاب کند.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleRunSmartMatch}
+                                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-black rounded-2xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 flex items-center gap-2 cursor-pointer text-xs"
+                                    >
+                                        <Sparkles size={16} />
+                                        <span>⚡ محاسبه و انتخاب اتوماتیک چک‌ها</span>
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                                    {/* Input 1: Target Sum */}
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-indigo-200 flex items-center gap-1">
+                                            <span>مبلغ کل هدف (ریال):</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={targetSumInput}
+                                            onChange={(e) => setTargetSumInput(e.target.value)}
+                                            placeholder="مثلاً 2500000000"
+                                            className="w-full bg-white/10 border border-indigo-400/40 rounded-xl px-3 py-2 text-white font-mono text-center font-bold outline-none focus:border-emerald-400"
+                                        />
+                                        {parseFloat(targetSumInput || '0') > 0 && (
+                                            <span className="text-[10px] text-emerald-300 font-bold block text-center">
+                                                {formatToman(parseFloat(targetSumInput))} تومان
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Input 2: Target Ras Date */}
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-indigo-200 flex items-center gap-1">
+                                            <span>سررسید / راس هدف:</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={targetRasInput}
+                                            onChange={(e) => setTargetRasInput(e.target.value)}
+                                            placeholder="1404/06/15"
+                                            className="w-full bg-white/10 border border-indigo-400/40 rounded-xl px-3 py-2 text-white font-mono text-center font-bold outline-none focus:border-emerald-400"
+                                        />
+                                        <span className="text-[10px] text-indigo-300 block text-center">
+                                            شمسی (سال/ماه/روز)
+                                        </span>
+                                    </div>
+
+                                    {/* Input 3: Due Range From */}
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-indigo-200 flex items-center gap-1">
+                                            <span>شرط از سررسید:</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={targetDueFromInput}
+                                            onChange={(e) => setTargetDueFromInput(e.target.value)}
+                                            placeholder="از سررسید..."
+                                            className="w-full bg-white/10 border border-indigo-400/40 rounded-xl px-3 py-2 text-white font-mono text-center outline-none focus:border-emerald-400"
+                                        />
+                                    </div>
+
+                                    {/* Input 4: Due Range To */}
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-indigo-200 flex items-center gap-1">
+                                            <span>شرط تا سررسید:</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={targetDueToInput}
+                                            onChange={(e) => setTargetDueToInput(e.target.value)}
+                                            placeholder="تا سررسید..."
+                                            className="w-full bg-white/10 border border-indigo-400/40 rounded-xl px-3 py-2 text-white font-mono text-center outline-none focus:border-emerald-400"
+                                        />
+                                    </div>
+
+                                    {/* Input 5: Cheque Type */}
+                                    <div className="space-y-1">
+                                        <label className="font-bold text-indigo-200 flex items-center gap-1">
+                                            <span>محدوده نوع چک:</span>
+                                        </label>
+                                        <select
+                                            value={targetChequeTypeInput}
+                                            onChange={(e) => setTargetChequeTypeInput(e.target.value as any)}
+                                            className="w-full bg-slate-900 border border-indigo-400/40 rounded-xl px-2 py-2 text-white font-bold outline-none"
+                                        >
+                                            <option value="all">همه چک‌ها</option>
+                                            <option value="spent">فقط چک‌های خرج‌شده</option>
+                                            <option value="received">فقط چک‌های دریافتی</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Result Dashboard Box */}
+                            {smartMatchResult ? (
+                                <div className="space-y-4 animate-fadeIn">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                        {/* Result 1: Total Sum Matched */}
+                                        <div className="bg-white dark:bg-zinc-900 border-2 border-emerald-500/50 rounded-2xl p-4 shadow-sm">
+                                            <div className="text-xs text-slate-500 font-bold flex items-center justify-between">
+                                                <span>مجموع چک‌های منطبق</span>
+                                                <CheckCircle2 size={16} className="text-emerald-500" />
+                                            </div>
+                                            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                                                {formatMoney(smartMatchResult.totalMatchedSum)} <span className="text-xs font-normal text-slate-400">ریال</span>
+                                            </div>
+                                            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                                                {formatToman(smartMatchResult.totalMatchedSum)} تومان
+                                            </div>
+                                            <div className="mt-2 text-[11px] font-bold text-slate-500 border-t pt-1">
+                                                اختلاف با هدف: {smartMatchResult.sumDiff === 0 ? 'دقیقاً انطباق' : `${formatToman(Math.abs(smartMatchResult.sumDiff))} تومان (${smartMatchResult.sumDiff > 0 ? 'مازاد' : 'کسری'})`}
+                                            </div>
+                                        </div>
+
+                                        {/* Result 2: Matched Ras Date */}
+                                        <div className="bg-white dark:bg-zinc-900 border-2 border-indigo-500/50 rounded-2xl p-4 shadow-sm">
+                                            <div className="text-xs text-slate-500 font-bold flex items-center justify-between">
+                                                <span>تاریخ راس محاسبه‌شده</span>
+                                                <Calendar size={16} className="text-indigo-500" />
+                                            </div>
+                                            <div className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-mono">
+                                                {smartMatchResult.matchedRasDate}
+                                            </div>
+                                            <div className="text-xs text-slate-500 font-bold">
+                                                راس هدف: {targetRasInput}
+                                            </div>
+                                            <div className="mt-2 text-[11px] font-bold text-slate-500 border-t pt-1">
+                                                اختلاف با راس هدف: {smartMatchResult.rasDaysDiff === 0 ? 'دقیقاً مطبق' : `${Math.abs(smartMatchResult.rasDaysDiff)} روز (${smartMatchResult.rasDaysDiff > 0 ? 'دیرتر' : 'زودتر'})`}
+                                            </div>
+                                        </div>
+
+                                        {/* Result 3: Matched Count */}
+                                        <div className="bg-white dark:bg-zinc-900 border-2 border-purple-500/50 rounded-2xl p-4 shadow-sm">
+                                            <div className="text-xs text-slate-500 font-bold flex items-center justify-between">
+                                                <span>تعداد چک‌های پیشنهادی</span>
+                                                <CreditCard size={16} className="text-purple-500" />
+                                            </div>
+                                            <div className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">
+                                                {smartMatchResult.matchedCheques.length} <span className="text-xs font-normal text-slate-400">فقره</span>
+                                            </div>
+                                            <div className="text-xs text-slate-400 font-medium">
+                                                از بین {cheques.length} چک موجود
+                                            </div>
+                                        </div>
+
+                                        {/* Result 4: Quick Actions */}
+                                        <div className="bg-slate-50 dark:bg-zinc-800/80 border border-slate-200 dark:border-zinc-700 rounded-2xl p-3 flex flex-col justify-center gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setActiveTab('list');
+                                                }}
+                                                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                                            >
+                                                <Eye size={14} />
+                                                <span>مشاهده انتخاب در جدول اصلی</span>
+                                            </button>
+
+                                            <button
+                                                onClick={() => handleExportExcel(smartMatchResult.matchedCheques, 'پیشنهاد_هوشمند_تسویه')}
+                                                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer"
+                                            >
+                                                <FileSpreadsheet size={14} />
+                                                <span>دانلود اکسل چک‌های پیشنهادی</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Matched Cheques List Table */}
+                                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between border-b pb-2">
+                                            <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-2">
+                                                <span>لیست چک‌های منتخب بر اساس الگوریتم هوشمند</span>
+                                                <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-mono">
+                                                    {smartMatchResult.matchedCheques.length} فقره
+                                                </span>
+                                            </h4>
+                                        </div>
+
+                                        <div className="overflow-x-auto custom-scrollbar">
+                                            <table className="w-full text-right text-xs">
+                                                <thead>
+                                                    <tr className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold border-b">
+                                                        <th className="p-2.5">ردیف</th>
+                                                        <th className="p-2.5">نوع چک</th>
+                                                        <th className="p-2.5">شماره چک</th>
+                                                        <th className="p-2.5">تاریخ سررسید</th>
+                                                        <th className="p-2.5">مبلغ (ریال)</th>
+                                                        <th className="p-2.5">مبلغ (تومان)</th>
+                                                        <th className="p-2.5">بانک و شعبه</th>
+                                                        <th className="p-2.5">صادرکننده / صاحب چک</th>
+                                                        <th className="p-2.5">شرح سند</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                                                    {smartMatchResult.matchedCheques.map((c, idx) => (
+                                                        <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-zinc-800/50">
+                                                            <td className="p-2.5 font-bold">{idx + 1}</td>
+                                                            <td className="p-2.5">
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                    c.chequeType === 'spent' ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'
+                                                                }`}>
+                                                                    {c.chequeType === 'spent' ? 'خرج‌شده' : 'دریافتی'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 font-mono font-bold text-indigo-600 dark:text-indigo-400">{c.chequeNo}</td>
+                                                            <td className="p-2.5 font-mono font-bold">{c.dueDate}</td>
+                                                            <td className="p-2.5 font-mono font-black">{formatMoney(c.amount)}</td>
+                                                            <td className="p-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{formatToman(c.amount)}</td>
+                                                            <td className="p-2.5">{c.bankName} - {c.branch || '-'}</td>
+                                                            <td className="p-2.5 font-bold">{c.drawerName || '-'}</td>
+                                                            <td className="p-2.5 text-slate-500 text-[11px] truncate max-w-[200px]">{c.docDesc || c.statusDesc}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr className="bg-slate-100 dark:bg-zinc-800 font-black text-slate-900 dark:text-white border-t-2">
+                                                        <td colSpan={4} className="p-2.5 text-center">مجموع انتخاب شده</td>
+                                                        <td className="p-2.5 font-mono text-emerald-600">{formatMoney(smartMatchResult.totalMatchedSum)} ریال</td>
+                                                        <td className="p-2.5 font-mono text-emerald-600">{formatToman(smartMatchResult.totalMatchedSum)} تومان</td>
+                                                        <td colSpan={3} className="p-2.5 font-mono text-indigo-600">تاریخ راس: {smartMatchResult.matchedRasDate}</td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 bg-slate-50 dark:bg-zinc-900/50 border border-dashed border-slate-300 dark:border-zinc-700 rounded-3xl space-y-3">
+                                    <Sparkles size={40} className="mx-auto text-indigo-500 animate-pulse" />
+                                    <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm">
+                                        مبلغ کل و سررسید راس هدف خود را وارد نموده و دکمه «محاسبه اتوماتیک» را فشار دهید.
+                                    </h4>
+                                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                                        الگوریتم هوشمند با ترکیب مبالغ و سررسید چک‌های موجود، نزدیک‌ترین ترکیب مبالغ و راس را برای تسویه پیدا کرده و در جدول تیک می‌زند.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
                 </div>
 
                 {/* MODAL FOOTER */}

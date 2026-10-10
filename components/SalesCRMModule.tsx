@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Upload, Download, Gift, Save, X, FileText, UserPlus, GitMerge } from 'lucide-react';
+import { Plus, Trash2, Edit2, Upload, Download, Gift, Save, X, FileText, UserPlus, GitMerge, Database, Link2, Sparkles, RefreshCw, CheckCircle2, Search } from 'lucide-react';
 import { SalesContact, BirthdayGreetingTemplate } from '../types';
 import { apiCall } from '../services/apiService';
 import { getSettings, saveSettings } from '../services/storageService';
 import * as XLSX from 'xlsx';
 import { saveBlobAndOpenFile } from '../services/fileService';
+import { searchSayanPersons, SayanPersonResult } from '../services/sayanExitService';
 
 export default function SalesCRMModule() {
     const [contacts, setContacts] = useState<SalesContact[]>([]);
@@ -201,12 +202,101 @@ export default function SalesCRMModule() {
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingContact, setEditingContact] = useState<SalesContact | null>(null);
-    const [formData, setFormData] = useState<Partial<SalesContact>>({ name: '', mobile: '', birthday: '', telegramId: '', baleId: '', accountCode: '' });
+    const [formData, setFormData] = useState<Partial<SalesContact>>({ 
+        name: '', mobile: '', birthday: '', telegramId: '', baleId: '', accountCode: '',
+        sayanPersonCode: '', sayanTafsiliCode: '', sayanPersonName: '', sayanMobile: ''
+    });
+
+    // Sayan Connection States
+    const [sayanSearchText, setSayanSearchText] = useState('');
+    const [sayanSuggestions, setSayanSuggestions] = useState<SayanPersonResult[]>([]);
+    const [sayanSearching, setSayanSearching] = useState(false);
+    const [linkingContactSayan, setLinkingContactSayan] = useState<SalesContact | null>(null);
+    const [isAutoMatchingSayan, setIsAutoMatchingSayan] = useState(false);
+
+    const handleSearchSayan = async (q: string) => {
+        setSayanSearchText(q);
+        if (!q || q.trim().length < 2) {
+            setSayanSuggestions([]);
+            return;
+        }
+        setSayanSearching(true);
+        try {
+            const results = await searchSayanPersons(q);
+            setSayanSuggestions(results || []);
+        } catch (e) {
+            console.warn('Sayan search failed:', e);
+        } finally {
+            setSayanSearching(false);
+        }
+    };
+
+    const handleSelectSayanPerson = (p: SayanPersonResult) => {
+        setFormData(prev => ({
+            ...prev,
+            name: prev.name || p.name,
+            mobile: prev.mobile || p.mobile || '',
+            accountCode: prev.accountCode || p.tafsiliCode || p.accountingCode || p.personCode,
+            sayanPersonCode: p.personCode,
+            sayanTafsiliCode: p.tafsiliCode || p.accountingCode || p.personCode,
+            sayanPersonName: p.name,
+            sayanMobile: p.mobile || ''
+        }));
+        setSayanSuggestions([]);
+        setSayanSearchText('');
+    };
+
+    const handleQuickLinkToContact = async (contact: SalesContact, sayanP: SayanPersonResult) => {
+        const updated = contacts.map(c => {
+            if (c.id === contact.id) {
+                return {
+                    ...c,
+                    sayanPersonCode: sayanP.personCode,
+                    sayanTafsiliCode: sayanP.tafsiliCode || sayanP.accountingCode || sayanP.personCode,
+                    sayanPersonName: sayanP.name,
+                    sayanMobile: sayanP.mobile || c.mobile,
+                    accountCode: c.accountCode || sayanP.tafsiliCode || sayanP.personCode,
+                    mobile: c.mobile || sayanP.mobile || ''
+                };
+            }
+            return c;
+        });
+        await updateContacts(updated);
+        setLinkingContactSayan(null);
+        setSayanSuggestions([]);
+        alert(`مخاطب «${contact.name}» با موفقیت به حساب سایان (${sayanP.name} - کد ${sayanP.personCode}) متصل شد.`);
+    };
+
+    const handleAutoMatchAllSayan = async () => {
+        if (!confirm('آیا مایلید سیستم تمامی مخاطبین را بر اساس نام و شماره موبایل با حساب‌های اشخاص در سایان ERP تطبیق داده و متصل کند؟')) return;
+        setIsAutoMatchingSayan(true);
+        try {
+            const res = await apiCall<{ success: boolean; matchedCount: number; contacts: SalesContact[] }>('/sayan/contacts/auto-match', 'POST', {});
+            if (res && res.success) {
+                if (Array.isArray(res.contacts)) {
+                    setContacts(res.contacts);
+                }
+                alert(`✅ تطبیق با موفقیت انجام شد: تعداد ${res.matchedCount || 0} مخاطب به حساب‌های سایان متصل گردیدند.`);
+            } else {
+                alert('خطا در انجام تطبیق خودکار با سایان');
+            }
+        } catch (e: any) {
+            console.error('Auto match sayan error:', e);
+            alert(`خطا در ارتباط با سایان: ${e.message || 'خطای سرور'}`);
+        } finally {
+            setIsAutoMatchingSayan(false);
+        }
+    };
 
     // Handler to open modal for new contact
     const handleAddManualContact = () => {
         setEditingContact(null);
-        setFormData({ name: '', mobile: '', birthday: '', telegramId: '', baleId: '', accountCode: '', sendBirthdayGreeting: true });
+        setFormData({ 
+            name: '', mobile: '', birthday: '', telegramId: '', baleId: '', accountCode: '', 
+            sendBirthdayGreeting: true, sayanPersonCode: '', sayanTafsiliCode: '', sayanPersonName: '', sayanMobile: '' 
+        });
+        setSayanSuggestions([]);
+        setSayanSearchText('');
         setIsModalOpen(true);
     };
 
@@ -214,6 +304,8 @@ export default function SalesCRMModule() {
     const handleEditContact = (contact: SalesContact) => {
         setEditingContact(contact);
         setFormData(contact);
+        setSayanSuggestions([]);
+        setSayanSearchText('');
         setIsModalOpen(true);
     };
 
@@ -224,7 +316,17 @@ export default function SalesCRMModule() {
         }
 
         if (editingContact) {
-            updateContacts(contacts.map(c => c.id === editingContact.id ? { ...editingContact, ...formData, telegramId: formData.telegramId, baleId: formData.baleId, accountCode: formData.accountCode } as SalesContact : c));
+            updateContacts(contacts.map(c => c.id === editingContact.id ? { 
+                ...editingContact, 
+                ...formData, 
+                telegramId: formData.telegramId, 
+                baleId: formData.baleId, 
+                accountCode: formData.accountCode,
+                sayanPersonCode: formData.sayanPersonCode,
+                sayanTafsiliCode: formData.sayanTafsiliCode,
+                sayanPersonName: formData.sayanPersonName,
+                sayanMobile: formData.sayanMobile
+            } as SalesContact : c));
         } else {
             const newContact: SalesContact = {
                 id: Date.now().toString(),
@@ -362,8 +464,16 @@ export default function SalesCRMModule() {
 
                     {/* Contacts Table / Cards */}
                     <div className="glass-panel p-4 md:p-6 rounded-2xl border border-gray-200 shadow-sm">
-                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                <label className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-xl font-bold cursor-pointer hover:bg-emerald-200 border border-emerald-200">
+                            <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
+                                <button 
+                                    onClick={handleAutoMatchAllSayan} 
+                                    disabled={isAutoMatchingSayan} 
+                                    className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-4 py-2 rounded-xl font-bold shadow-md shadow-indigo-100 transition-all cursor-pointer text-xs sm:text-sm"
+                                >
+                                    <Sparkles size={16} className={isAutoMatchingSayan ? 'animate-spin' : ''}/>
+                                    <span>{isAutoMatchingSayan ? 'در حال تطبیق با سایان...' : 'اتصال خودکار کل مخاطبین به سایان'}</span>
+                                </button>
+                                <label className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-xl font-bold cursor-pointer hover:bg-emerald-200 border border-emerald-200 text-xs sm:text-sm">
                                      <Upload size={18}/> ایمپورت اکسل
                                      <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
                                 </label>
@@ -376,18 +486,19 @@ export default function SalesCRMModule() {
                                     const wb = XLSX.utils.book_new();
                                     XLSX.utils.book_append_sheet(wb, ws, "Contacts");
                                     XLSX.writeFile(wb, "Sample_Contacts.xlsx");
-                                }} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800/40 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-xl font-bold hover:bg-gray-200 border"><Download size={18}/> نمونه اکسل</button>
-                                <button onClick={exportContacts} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-gray-100 px-4 py-2 rounded-xl font-bold hover:bg-gray-200 border"><Download size={18}/> اکسپورت</button>
-                                <button onClick={handleAddManualContact} className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100"><Plus size={18}/> افزودن دستی</button>
+                                }} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-gray-100 dark:bg-gray-800/40 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-xl font-bold hover:bg-gray-200 border text-xs sm:text-sm"><Download size={18}/> نمونه اکسل</button>
+                                <button onClick={exportContacts} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-gray-100 px-4 py-2 rounded-xl font-bold hover:bg-gray-200 border text-xs sm:text-sm"><Download size={18}/> اکسپورت</button>
+                                <button onClick={handleAddManualContact} className="w-full md:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 text-xs sm:text-sm"><Plus size={18}/> افزودن دستی</button>
                             </div>
 
                         {/* Desktop View */}
-                        <div className="hidden md:block overflow-x-auto">
+                        <div className="hidden md:block overflow-x-auto mt-4">
                             <table className="w-full text-sm text-right">
                                 <thead>
                                     <tr className="border-b bg-gray-50 text-gray-500">
                                         <th className="p-4 font-bold text-right">نام مشتری</th>
                                         <th className="p-4 font-bold text-center">شماره موبایل</th>
+                                        <th className="p-4 font-bold text-center">حساب سایان (ERP)</th>
                                         <th className="p-4 font-bold text-center">کد حساب مالی</th>
                                         <th className="p-4 font-bold text-center">تاریخ تولد</th>
                                         <th className="p-4 font-bold text-center">تبریک تولد</th>
@@ -397,15 +508,47 @@ export default function SalesCRMModule() {
                                 <tbody>
                                     {contacts.map(c => {
                                         const isLinked = botSubscribers.some(sub => sub.mobile?.includes(c.mobile.slice(-10)) || c.mobile.includes(sub.mobile?.slice(-10)));
+                                        const hasSayan = !!(c.sayanPersonCode || c.sayanTafsiliCode);
                                         return (
                                             <tr key={c.id} className="border-b hover:bg-gray-50 transition-colors">
                                                 <td className="p-4 font-bold text-gray-800">
                                                     <div className="flex flex-col">
                                                         <span>{c.name}</span>
-                                                        {isLinked && <span className="text-[8px] bg-blue-100 text-blue-600 px-1 rounded w-fit mt-1">متصل به ربات</span>}
+                                                        <div className="flex items-center gap-1 mt-1">
+                                                            {isLinked && <span className="text-[8px] bg-blue-100 text-blue-600 px-1 rounded w-fit">متصل به ربات</span>}
+                                                            {c.telegramId && <span className="text-[8px] bg-sky-50 text-sky-600 px-1 rounded font-mono">TG</span>}
+                                                            {c.baleId && <span className="text-[8px] bg-emerald-50 text-emerald-600 px-1 rounded font-mono">بله</span>}
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="p-4 text-center font-mono">{c.mobile}</td>
+                                                <td className="p-4 text-center">
+                                                    {hasSayan ? (
+                                                        <div className="inline-flex flex-col items-center gap-0.5">
+                                                            <span className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40 px-2.5 py-0.5 rounded-xl text-xs font-mono font-bold flex items-center gap-1">
+                                                                <Database size={11}/> {c.sayanTafsiliCode || c.sayanPersonCode}
+                                                            </span>
+                                                            {c.sayanPersonName && (
+                                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate max-w-[130px]" title={c.sayanPersonName}>
+                                                                    {c.sayanPersonName}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setLinkingContactSayan(c);
+                                                                setSayanSearchText(c.name || '');
+                                                                handleSearchSayan(c.name || '');
+                                                            }}
+                                                            className="text-[11px] bg-gray-50 hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 border border-dashed border-gray-300 hover:border-indigo-300 px-2.5 py-1 rounded-xl font-bold flex items-center gap-1 transition-colors mx-auto cursor-pointer"
+                                                        >
+                                                            <Link2 size={12}/>
+                                                            <span>اتصال به سایان</span>
+                                                        </button>
+                                                    )}
+                                                </td>
                                                 <td className="p-4 text-center font-mono font-bold text-emerald-600 dark:text-emerald-400">
                                                     {c.accountCode ? <span className="bg-emerald-50 dark:bg-emerald-950/20 px-2.5 py-1 rounded-lg text-xs"><code>{c.accountCode}</code></span> : <span className="text-gray-300 text-xs">-</span>}
                                                 </td>
@@ -425,20 +568,38 @@ export default function SalesCRMModule() {
                                             </tr>
                                         );
                                     })}
-                                    {contacts.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-gray-400 italic font-medium">هیچ مخاطبی ثبت نشده است.</td></tr>}
+                                    {contacts.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-gray-400 italic font-medium">هیچ مخاطبی ثبت نشده است.</td></tr>}
                                 </tbody>
                             </table>
                         </div>
 
                         {/* Mobile View */}
-                        <div className="md:hidden space-y-4">
+                        <div className="md:hidden space-y-4 mt-4">
                             {contacts.map(c => (
-                                <div key={c.id} className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex justify-between items-center group">
-                                    <div>
-                                        <div className="font-bold text-gray-800">{c.name}</div>
-                                        <div className="text-xs text-gray-500 font-mono mt-1">{c.mobile}</div>
-                                        {c.accountCode && <div className="text-xs text-emerald-600 font-bold mt-1">کد حسابدار: {c.accountCode}</div>}
-                                        {c.birthday && <div className="text-[10px] text-gray-400 mt-1">تولد: {c.birthday}</div>}
+                                <div key={c.id} className="bg-gray-50 dark:bg-zinc-800/40 p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 flex justify-between items-center group">
+                                    <div className="space-y-1">
+                                        <div className="font-bold text-gray-800 dark:text-white flex items-center gap-1.5">
+                                            <span>{c.name}</span>
+                                            {c.sayanPersonCode && (
+                                                <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold">
+                                                    سایان: {c.sayanTafsiliCode || c.sayanPersonCode}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-gray-500 font-mono">{c.mobile}</div>
+                                        {c.accountCode && <div className="text-xs text-emerald-600 font-bold">کد تفصیلی: {c.accountCode}</div>}
+                                        {!c.sayanPersonCode && (
+                                            <button 
+                                                onClick={() => {
+                                                    setLinkingContactSayan(c);
+                                                    setSayanSearchText(c.name || '');
+                                                    handleSearchSayan(c.name || '');
+                                                }}
+                                                className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-bold flex items-center gap-1 mt-1"
+                                            >
+                                                <Link2 size={11}/> اتصال به حساب سایان
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="flex gap-1">
                                         <button onClick={() => handleEditContact(c)} className="p-2 text-blue-600 glass-panel rounded-xl shadow-sm"><Edit2 size={16}/></button>
@@ -537,6 +698,96 @@ export default function SalesCRMModule() {
                                     placeholder="۰۹۱۲..."
                                 />
                             </div>
+                            {/* Sayan ERP Account Link Section */}
+                            <div className="bg-indigo-50/50 dark:bg-zinc-800/60 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                                        <Database size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                        <span>اتصال به حساب شخص در سایان ERP</span>
+                                    </label>
+                                    {formData.sayanPersonCode && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setFormData(prev => ({ ...prev, sayanPersonCode: '', sayanTafsiliCode: '', sayanPersonName: '', sayanMobile: '' }))}
+                                            className="text-[10px] text-red-500 hover:text-red-700 font-bold"
+                                        >
+                                            قطع اتصال
+                                        </button>
+                                    )}
+                                </div>
+
+                                {formData.sayanPersonCode ? (
+                                    <div className="bg-white dark:bg-zinc-900 p-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between text-xs">
+                                        <div className="space-y-0.5">
+                                            <div className="font-bold text-indigo-900 dark:text-white flex items-center gap-1.5">
+                                                <CheckCircle2 size={13} className="text-emerald-500" />
+                                                <span>{formData.sayanPersonName || formData.name}</span>
+                                            </div>
+                                            <div className="text-[10px] text-gray-500 font-mono">
+                                                کد شخص: <b>{formData.sayanPersonCode}</b> {formData.sayanTafsiliCode ? `| تفصیلی: ${formData.sayanTafsiliCode}` : ''}
+                                            </div>
+                                        </div>
+                                        <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full font-mono">
+                                            متصل به سایان
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <div className="flex gap-1.5">
+                                            <div className="relative flex-1">
+                                                <input 
+                                                    className="w-full border border-indigo-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs bg-white dark:bg-zinc-900 text-gray-900 dark:text-gray-100 outline-none focus:border-indigo-500 pl-8"
+                                                    placeholder="جستجوی نام یا کد در سایان..."
+                                                    value={sayanSearchText}
+                                                    onChange={e => handleSearchSayan(e.target.value)}
+                                                />
+                                                {sayanSearching ? (
+                                                    <RefreshCw size={13} className="absolute left-2.5 top-3 text-indigo-500 animate-spin" />
+                                                ) : (
+                                                    <Search size={13} className="absolute left-2.5 top-3 text-gray-400" />
+                                                )}
+                                            </div>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    const term = formData.name || formData.mobile || '';
+                                                    if (term) handleSearchSayan(term);
+                                                }}
+                                                className="px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                                                title="جستجوی نام این مخاطب در سایان"
+                                            >
+                                                <Sparkles size={12}/>
+                                                <span>استعلام</span>
+                                            </button>
+                                        </div>
+
+                                        {/* Dropdown Suggestions */}
+                                        {sayanSuggestions.length > 0 && (
+                                            <div className="absolute top-full left-0 right-0 z-50 bg-white dark:bg-zinc-800 border border-indigo-200 dark:border-zinc-700 rounded-xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+                                                {sayanSuggestions.map(sp => (
+                                                    <button 
+                                                        key={sp.id || sp.personCode}
+                                                        type="button"
+                                                        onClick={() => handleSelectSayanPerson(sp)}
+                                                        className="w-full text-right p-2.5 hover:bg-indigo-50 dark:hover:bg-zinc-700/60 border-b last:border-0 flex justify-between items-center text-xs transition-colors cursor-pointer"
+                                                    >
+                                                        <div>
+                                                            <div className="font-bold text-gray-800 dark:text-white">{sp.name}</div>
+                                                            <div className="text-[10px] text-gray-500 font-mono">
+                                                                کد: {sp.personCode} {sp.tafsiliCode ? `| تفصیلی: ${sp.tafsiliCode}` : ''}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-left font-mono text-[10px] text-indigo-600 dark:text-indigo-400">
+                                                            {sp.mobile || '-'}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 mb-1">کد تفصیلی حسابداری (جهت دریافت راحت مانده در ربات)</label>
                                 <input 
@@ -810,6 +1061,100 @@ export default function SalesCRMModule() {
                                 className="px-5 bg-gray-150 hover:bg-gray-200 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 rounded-xl font-bold text-sm"
                             >
                                 انصراف
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Quick Sayan Account Linking Modal */}
+            {linkingContactSayan && (
+                <div role="dialog" className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in text-right font-sans" dir="rtl">
+                    <div className="glass-panel rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-zinc-800 animate-scale-in">
+                        <div className="bg-gradient-to-l from-indigo-700 to-purple-800 p-4 text-white flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <Database size={20} className="text-indigo-200" />
+                                <div>
+                                    <h3 className="font-extrabold text-sm sm:text-base">اتصال مخاطب به حساب سایان ERP</h3>
+                                    <p className="text-[11px] text-indigo-100 mt-0.5">مخاطب: <b>{linkingContactSayan.name}</b> ({linkingContactSayan.mobile})</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setLinkingContactSayan(null)} className="p-1.5 hover:bg-white/20 rounded-lg text-white font-bold text-xs">✕</button>
+                        </div>
+
+                        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                                    جستجوی شخص یا شرکت در پایگاه داده سایان (نام، کد شخص، کد تفصیلی یا موبایل):
+                                </label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        className="w-full border-2 border-indigo-100 dark:border-zinc-700 rounded-xl p-3 text-xs bg-white dark:bg-zinc-800 outline-none focus:border-indigo-500 pl-9 font-bold"
+                                        placeholder="نام مشتری یا کد حساب در سایان..."
+                                        value={sayanSearchText}
+                                        onChange={e => handleSearchSayan(e.target.value)}
+                                        autoFocus
+                                    />
+                                    {sayanSearching ? (
+                                        <RefreshCw size={16} className="absolute left-3 top-3 text-indigo-600 animate-spin" />
+                                    ) : (
+                                        <Search size={16} className="absolute left-3 top-3 text-gray-400" />
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Suggestions List */}
+                            <div className="space-y-2">
+                                <span className="text-[11px] font-bold text-gray-500 block">نتایج جستجو در سایان:</span>
+                                {sayanSuggestions.length > 0 ? (
+                                    <div className="divide-y divide-gray-100 dark:divide-zinc-800 border rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+                                        {sayanSuggestions.map(sp => (
+                                            <div 
+                                                key={sp.id || sp.personCode} 
+                                                className="p-3 hover:bg-indigo-50/70 dark:hover:bg-zinc-800 flex items-center justify-between transition-colors cursor-pointer group"
+                                                onClick={() => handleQuickLinkToContact(linkingContactSayan, sp)}
+                                            >
+                                                <div className="space-y-0.5">
+                                                    <div className="font-bold text-sm text-gray-800 dark:text-white group-hover:text-indigo-600 transition-colors">
+                                                        {sp.name}
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-500 font-mono">
+                                                        کد شخص: <b className="text-indigo-600">{sp.personCode}</b> {sp.tafsiliCode ? `| تفصیلی: ${sp.tafsiliCode}` : ''}
+                                                    </div>
+                                                    {sp.address && <div className="text-[10px] text-gray-400 truncate max-w-xs">{sp.address}</div>}
+                                                </div>
+                                                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                    {sp.mobile && <span className="text-[10px] text-gray-400 font-mono">{sp.mobile}</span>}
+                                                    <button 
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleQuickLinkToContact(linkingContactSayan, sp); }}
+                                                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Link2 size={12} />
+                                                        <span>انتخاب و اتصال</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : sayanSearching ? (
+                                    <div className="text-center py-8 text-xs text-indigo-600 font-bold animate-pulse">
+                                        در حال جستجو در پایگاه سایان...
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-8 text-xs text-gray-400 bg-gray-50 dark:bg-zinc-800/30 rounded-xl border border-dashed">
+                                        نام مشتری را در کادر بالا تایپ کنید تا نتایج سایان نمایش داده شود.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-800/40 flex justify-end">
+                            <button 
+                                onClick={() => setLinkingContactSayan(null)}
+                                className="px-5 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-zinc-700 text-gray-700 dark:text-zinc-200 rounded-xl font-bold text-xs"
+                            >
+                                انصراف و بستن
                             </button>
                         </div>
                     </div>

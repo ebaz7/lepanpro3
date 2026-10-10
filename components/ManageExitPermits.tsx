@@ -8,7 +8,7 @@ import { formatDate, formatIranianPlate } from '../constants';
 import { 
     Eye, Trash2, Search, CheckCircle, Truck, XCircle, Edit, Loader2, 
     Package, Archive, RefreshCw, UserCheck, ShieldCheck, Warehouse, 
-    User as UserIcon, Building2, Bell, AlertTriangle, MoreVertical, Edit3, FileText, Paperclip, Undo2
+    User as UserIcon, Building2, Bell, AlertTriangle, MoreVertical, Edit3, FileText, Paperclip, Undo2, MessageSquare
 } from 'lucide-react';
 import PrintExitPermit from './PrintExitPermit';
 import WarehouseFinalizeModal from './WarehouseFinalizeModal'; 
@@ -269,6 +269,24 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         } catch (e) {
             console.error('Manual Notify Error:', e);
             alert('خطا در ارسال به ربات‌ها');
+        } finally {
+            setProcessingId(null);
+        }
+    };
+
+    const handleNotifyCustomer = async (p: ExitPermit) => {
+        if (!confirm(`آیا مایلید مشخصات بارگیری و خروج (وزن، پلاک، مشخصات راننده و فاکتور) به واتساپ و بات‌های مشتری («${p.recipientName}») ارسال شود؟`)) return;
+        setProcessingId(p.id);
+        try {
+            const res = await apiCall<{ success: boolean; result?: any; error?: string }>(`/exit-permits/${p.id}/notify-customer`, 'POST', {});
+            if (res && res.success) {
+                alert('✅ پیام خروج بار با موفقیت به واتساپ و ربات‌های مشتری ارسال گردید.');
+            } else {
+                alert(`⚠️ نتیجه ارسال: ${res?.error || 'شماره تماس یا آیدی مشتری یافت نشد. لطفاً در لیست مخاطبین بررسی فرمایید.'}`);
+            }
+        } catch (e: any) {
+            console.error('Customer Notify Error:', e);
+            alert(`خطا در ارسال پیام به مشتری: ${e?.message || 'خطای شبکه'}`);
         } finally {
             setProcessingId(null);
         }
@@ -591,7 +609,14 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                     <button onClick={() => handleDelete(p.id)} className="bg-red-50 text-red-500 px-3 py-2 rounded-lg"><Trash2 size={16}/></button>
                 )}
                 {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.SALES_MANAGER) && (
-                    <button onClick={() => handleManualNotify(p)} title="ارسال مجدد دستی به ربات" className="bg-indigo-50 text-indigo-600 px-3 py-2 rounded-lg"><Bell size={16}/></button>
+                    <>
+                        <button onClick={() => handleNotifyCustomer(p)} title="ارسال پیام خروج بار و مشخصات راننده به مشتری (واتساپ و ربات‌ها)" className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg hover:bg-emerald-100 transition-colors">
+                            <MessageSquare size={16}/>
+                        </button>
+                        <button onClick={() => handleManualNotify(p)} title="ارسال مجدد دستی به ربات" className="bg-indigo-50 text-indigo-600 px-3 py-2 rounded-lg hover:bg-indigo-100 transition-colors">
+                            <Bell size={16}/>
+                        </button>
+                    </>
                 )}
             </div>
             
@@ -675,7 +700,10 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                                 </>
                             )}
                             {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CEO || currentUser.role === UserRole.SALES_MANAGER) && (
-                                <button onClick={() => handleManualNotify(p)} title="ارسال مجدد به ربات" className="bg-indigo-50 text-indigo-600 p-2 rounded-xl hover:bg-indigo-100"><Bell size={18}/></button>
+                                <>
+                                    <button onClick={() => handleNotifyCustomer(p)} title="ارسال پیام خروج بار، وزن و مشخصات راننده به مشتری (واتساپ و ربات‌ها)" className="bg-emerald-50 text-emerald-600 p-2 rounded-xl hover:bg-emerald-100 transition-colors"><MessageSquare size={18}/></button>
+                                    <button onClick={() => handleManualNotify(p)} title="ارسال مجدد به ربات" className="bg-indigo-50 text-indigo-600 p-2 rounded-xl hover:bg-indigo-100 transition-colors"><Bell size={18}/></button>
+                                </>
                             )}
                         </div>
                     </div>

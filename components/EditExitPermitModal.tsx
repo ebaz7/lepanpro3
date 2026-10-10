@@ -150,8 +150,8 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
           recipientName: contact.name,
           phone: contact.mobile || d.phone,
           address: contact.address || d.address,
-          sayanPersonCode: contact.personCode || d.sayanPersonCode,
-          sayanTafsiliCode: contact.tafsiliCode || d.sayanTafsiliCode,
+          sayanPersonCode: contact.sayanPersonCode || contact.personCode || d.sayanPersonCode,
+          sayanTafsiliCode: contact.sayanTafsiliCode || contact.tafsiliCode || contact.accountCode || d.sayanTafsiliCode,
         };
       }
       return d;
@@ -638,7 +638,7 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2">
                                   <span className="font-bold text-xs text-gray-900 dark:text-gray-100">{con.name}</span>
-                                  {con.isSayan && (
+                                  {(con.isSayan || con.sayanPersonCode || con.sayanTafsiliCode) && (
                                     <span className="text-[9px] bg-indigo-600 text-white font-bold px-1.5 py-0.5 rounded font-mono">
                                       سایان ERP
                                     </span>
@@ -647,9 +647,9 @@ const EditExitPermitModal: React.FC<EditExitPermitModalProps> = ({ permit, onClo
                                     <span className="text-[8px] bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 px-1 rounded">ربات</span>
                                   )}
                                 </div>
-                                {con.isSayan && con.personCode && (
+                                {(con.isSayan || con.sayanPersonCode || con.sayanTafsiliCode) && (
                                   <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
-                                    کد شخص: {con.personCode} {con.tafsiliCode ? `| تفصیلی: ${con.tafsiliCode}` : ''}
+                                    کد شخص: {con.personCode || con.sayanPersonCode} {(con.tafsiliCode || con.sayanTafsiliCode || con.accountCode) ? `| تفصیلی: ${con.tafsiliCode || con.sayanTafsiliCode || con.accountCode}` : ''}
                                   </div>
                                 )}
                                 {con.address && (

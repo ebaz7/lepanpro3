@@ -177,8 +177,15 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
         d[0].recipientName = contact.name;
         if (contact.mobile) d[0].phone = contact.mobile;
         if (contact.address) d[0].address = contact.address;
-        if (contact.personCode) (d[0] as any).sayanPersonCode = contact.personCode;
-        if (contact.tafsiliCode) (d[0] as any).sayanTafsiliCode = contact.tafsiliCode;
+        if (contact.sayanPersonCode || contact.personCode) {
+            (d[0] as any).sayanPersonCode = contact.sayanPersonCode || contact.personCode;
+        }
+        if (contact.sayanTafsiliCode || contact.tafsiliCode || contact.accountCode) {
+            (d[0] as any).sayanTafsiliCode = contact.sayanTafsiliCode || contact.tafsiliCode || contact.accountCode;
+        }
+        if (contact.sayanPersonName) {
+            (d[0] as any).sayanPersonName = contact.sayanPersonName;
+        }
         setDestinations(d);
         setContactSuggestions([]);
     };
@@ -443,7 +450,7 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                                                 <div className="space-y-0.5">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-bold text-sm text-gray-900">{con.name}</span>
-                                                        {con.isSayan && (
+                                                        {(con.isSayan || con.sayanPersonCode || con.sayanTafsiliCode) && (
                                                             <span className="text-[9px] bg-indigo-600 text-white font-bold px-1.5 py-0.5 rounded font-mono">
                                                                 سایان ERP
                                                             </span>
@@ -452,9 +459,9 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
                                                             <span className="text-[8px] bg-blue-50 text-blue-500 px-1 rounded">ربات</span>
                                                         )}
                                                     </div>
-                                                    {con.isSayan && con.personCode && (
+                                                    {(con.isSayan || con.sayanPersonCode || con.sayanTafsiliCode) && (
                                                         <div className="text-[10px] text-indigo-600 font-mono">
-                                                            کد شخص: {con.personCode} {con.tafsiliCode ? `| تفصیلی: ${con.tafsiliCode}` : ''}
+                                                            کد شخص: {con.personCode || con.sayanPersonCode} {(con.tafsiliCode || con.sayanTafsiliCode || con.accountCode) ? `| تفصیلی: ${con.tafsiliCode || con.sayanTafsiliCode || con.accountCode}` : ''}
                                                         </div>
                                                     )}
                                                 </div>

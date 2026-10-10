@@ -1514,33 +1514,55 @@ export const sendBotMessageByPhone = async (phone, text, photoBase64 = null) => 
     if (!phone) return false;
     const db = getDb();
     const cleanPhone = phone.toString().replace(/[^0-9]/g, '').slice(-10); // Last 10 digits
+    if (!cleanPhone || cleanPhone.length < 7) return false;
     
-    // Find subscriber
+    // Find subscriber in botSubscribers
     const sub = (db.botSubscribers || []).find(s => {
         if (!s.mobile) return false;
         const subPhone = s.mobile.toString().replace(/[^0-9]/g, '').slice(-10);
         return subPhone === cleanPhone;
     });
 
-    if (!sub) return false;
+    // Also check salesContacts in settings
+    const contact = (db.settings?.salesContacts || []).find(c => {
+        if (!c.mobile) return false;
+        const cPhone = c.mobile.toString().replace(/[^0-9]/g, '').slice(-10);
+        return cPhone === cleanPhone;
+    });
 
+    const tgChatId = (sub && sub.telegramChatId) || (contact && contact.telegramId) || null;
+    const baleChatId = (sub && sub.baleChatId) || (contact && contact.baleId) || null;
+
+    if (!tgChatId && !baleChatId && (!sub || (!sub.telegramChatId && !sub.baleChatId))) {
+        return false;
+    }
+
+    let sent = false;
     try {
-        const platform = sub.platform;
-        const chatId = platform === 'telegram' ? sub.telegramChatId : sub.baleChatId;
-        if (!chatId) return false;
-
         const baleModule = await import('./bale.js');
         const tgModule = await import('./telegram.js');
+        const buffer = photoBase64 ? Buffer.from(photoBase64, 'base64') : null;
 
-        if (photoBase64) {
-            const buffer = Buffer.from(photoBase64, 'base64');
-            if (platform === 'telegram') await tgModule.sendBotPhoto(chatId, buffer, text);
-            else if (platform === 'bale') await baleModule.sendBotPhoto(chatId, buffer, text);
-        } else {
-            if (platform === 'telegram') await tgModule.sendBotMessage(chatId, text);
-            else if (platform === 'bale') await baleModule.sendBotMessage(chatId, text);
+        if (tgChatId && db.settings?.telegramBotToken) {
+            try {
+                if (buffer && tgModule.sendBotPhoto) await tgModule.sendBotPhoto(tgChatId, buffer, text);
+                else if (tgModule.sendBotMessage) await tgModule.sendBotMessage(tgChatId, text);
+                sent = true;
+            } catch (tgErr) {
+                console.warn(`[BotCore] Failed sending TG by phone ${phone}:`, tgErr.message);
+            }
         }
-        return true;
+
+        if (baleChatId && db.settings?.baleBotToken) {
+            try {
+                if (buffer && baleModule.sendBotPhoto) await baleModule.sendBotPhoto(baleChatId, buffer, text);
+                else if (baleModule.sendBotMessage) await baleModule.sendBotMessage(baleChatId, text);
+                sent = true;
+            } catch (baleErr) {
+                console.warn(`[BotCore] Failed sending Bale by phone ${phone}:`, baleErr.message);
+            }
+        }
+        return sent;
     } catch (e) {
         console.error(`[BotCore] Failed to send to ${phone}:`, e.message);
         return false;
@@ -3027,6 +3049,245 @@ export const handleMessage = async (platform, chatId, text, sendFn, sendPhotoFn,
     });
 };
 
+// --- AUTOMATIC NOTIFICATION TO CUSTOMER ON CARGO EXIT (WHATSAPP, TELEGRAM, BALE) ---
+export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
+    if (!p) return { success: false, reason: 'سند خروج نامعتبر است' };
+    const freshDb = db || getDb();
+    const settings = freshDb.settings || {};
+    const salesContacts = settings.salesContacts || [];
+    const botSubscribers = freshDb.botSubscribers || [];
+
+    // Deduplication check for automatic calls to prevent duplicate triggers
+    const dedupeKey = `CUST_EXIT_${p.id}_${p.exitTime || ''}`;
+    if (!manual && isDuplicateNotification(dedupeKey)) {
+        return { success: true, skipped: true, reason: 'قبلاً ارسال شده است' };
+    }
+
+    // Collect all destinations/customers
+    const destinationsList = (p.destinations && p.destinations.length > 0)
+        ? p.destinations
+        : [{ recipientName: p.recipientName || '', phone: '', address: p.destinationAddress || '' }];
+
+    let sentSummary = [];
+
+    // Pre-generate invoice image if possible
+    let imgB64 = null;
+    let imgBuffer = null;
+    try {
+        imgBuffer = await Renderer.generateRecordImage(p, 'CUSTOMER_INVOICE');
+        if (!imgBuffer) {
+            imgBuffer = await Renderer.generateRecordImage(p, 'EXIT', { forceHidePrices: false });
+        }
+        if (imgBuffer) {
+            imgB64 = imgBuffer.toString('base64');
+        }
+    } catch (invErr) {
+        console.warn("[notifyCustomerCargoExit] Image generation error:", invErr.message);
+    }
+
+    // Calculate cargo weight and carton count
+    const itemsToCalculate = (p.items && p.items.length > 0)
+        ? p.items
+        : [{ cartonCount: p.cartonCount || 0, weight: p.weight || 0, goodsName: p.goodsName || 'محصولات کارخانه' }];
+    const totalCartons = itemsToCalculate.reduce((s, i) => s + (Number(i.deliveredCartonCount ?? i.cartonCount) || 0), 0);
+    const totalWeight = Number((itemsToCalculate.reduce((s, i) => s + (Number(i.deliveredWeight ?? i.weight) || 0), 0)).toFixed(3));
+    const totalAmount = itemsToCalculate.reduce((s, i) => s + ((Number(i.deliveredCartonCount ?? i.cartonCount) || 0) * (Number(i.price) || 0)), 0);
+
+    const goodsListFormatted = itemsToCalculate.map((it, idx) => {
+        const count = it.deliveredCartonCount ?? it.cartonCount ?? 0;
+        const w = it.deliveredWeight ?? it.weight ?? 0;
+        return `  ▫️ ${idx + 1}. *${it.goodsName}* (${count} کارتن${w > 0 ? ` | ${w} کیلوگرم` : ''})`;
+    }).join('\n');
+
+    for (const dest of destinationsList) {
+        const destName = (dest.recipientName || p.recipientName || '').trim();
+        let targetPhone = (dest.phone || '').trim();
+        let targetTgId = null;
+        let targetBaleId = null;
+        let matchedContact = null;
+
+        // 1. Try resolving contact from salesContacts
+        let sCode = dest.sayanPersonCode || p.sayanPersonCode;
+        let sTafsili = dest.sayanTafsiliCode || p.sayanTafsiliCode;
+
+        if (sCode || sTafsili) {
+            matchedContact = salesContacts.find(c => 
+                (sCode && c.sayanPersonCode && String(c.sayanPersonCode).trim() === String(sCode).trim()) ||
+                (sTafsili && c.sayanTafsiliCode && String(c.sayanTafsiliCode).trim() === String(sTafsili).trim())
+            );
+        }
+
+        if (!matchedContact && destName) {
+            const normDest = destName.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').trim().toLowerCase();
+            matchedContact = salesContacts.find(c => {
+                if (!c.name) return false;
+                const normC = c.name.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').trim().toLowerCase();
+                return normC === normDest || normC.includes(normDest) || normDest.includes(normC);
+            });
+        }
+
+        // Live Sayan Fallback: If no phone or matched contact found yet, query Sayan live database by destination name or code
+        if (!targetPhone && !matchedContact && (destName || sCode || sTafsili)) {
+            try {
+                const sayanSearchTerm = destName || sCode || sTafsili;
+                const sanitizedTerm = String(sayanSearchTerm).replace(/'/g, "''").trim();
+                if (sanitizedTerm.length >= 2) {
+                    const { executeSayanQuery } = await import('./sayan-order-automation.js');
+                    const liveSql = `
+                        SELECT TOP 3 
+                            RTRIM(LTRIM(Field_003)) as PersonCode,
+                            RTRIM(LTRIM(COALESCE(Field_015, ''))) as Mobile,
+                            RTRIM(LTRIM(COALESCE(Field_030, Field_021, Field_003))) as TafsiliCode,
+                            RTRIM(LTRIM(COALESCE(Field_006, '') + ' ' + COALESCE(Field_007, ''))) as FullName
+                        FROM GNR_TBL_001 WITH (NOLOCK)
+                        WHERE (
+                            Field_006 LIKE N'%${sanitizedTerm}%' OR 
+                            Field_007 LIKE N'%${sanitizedTerm}%' OR 
+                            Field_003 = '${sanitizedTerm}' OR
+                            Field_030 = '${sanitizedTerm}'
+                        ) AND Field_015 IS NOT NULL AND LEN(RTRIM(LTRIM(Field_015))) >= 10
+                    `;
+                    const liveRows = await executeSayanQuery(liveSql, 15000).catch(() => []);
+                    if (liveRows && liveRows.length > 0) {
+                        const foundRow = liveRows[0];
+                        if (foundRow.Mobile) {
+                            targetPhone = String(foundRow.Mobile).trim();
+                            console.log(`[notifyCustomerCargoExit] Resolved customer mobile ${targetPhone} directly from Sayan live GNR_TBL_001 for "${destName}"`);
+                        }
+                        if (!sCode && foundRow.PersonCode) sCode = foundRow.PersonCode;
+                        if (!sTafsili && foundRow.TafsiliCode) sTafsili = foundRow.TafsiliCode;
+                    }
+                }
+            } catch (liveSayanErr) {
+                console.warn("[notifyCustomerCargoExit] Live Sayan mobile lookup error:", liveSayanErr.message);
+            }
+        }
+
+        if (matchedContact) {
+            if (!targetPhone && matchedContact.mobile) {
+                targetPhone = matchedContact.mobile.trim();
+            }
+            if (matchedContact.telegramId) targetTgId = matchedContact.telegramId.trim();
+            if (matchedContact.baleId) targetBaleId = matchedContact.baleId.trim();
+        }
+
+        // 2. Check bot subscribers by phone
+        if (targetPhone) {
+            const clean10 = targetPhone.replace(/[^0-9]/g, '').slice(-10);
+            const sub = botSubscribers.find(s => s.mobile && s.mobile.replace(/[^0-9]/g, '').slice(-10) === clean10);
+            if (sub) {
+                if (!targetTgId && sub.telegramChatId) targetTgId = sub.telegramChatId;
+                if (!targetBaleId && sub.baleChatId) targetBaleId = sub.baleChatId;
+            }
+        }
+
+        // If no phone or bot IDs, skip
+        if (!targetPhone && !targetTgId && !targetBaleId) {
+            console.warn(`[notifyCustomerCargoExit] No customer phone or bot ID found for: "${destName}". Skipping.`);
+            continue;
+        }
+
+        const sayanAccountInfo = (sTafsili || sCode) ? `\n🔗 *حساب سایان:* کد تفصیلی ${sTafsili || sCode}` : '';
+
+        // Formulate customer message with all requested details
+        const customerCaption = 
+            `🚚 *اعلام بارگیری و خروج بار کارخانه*\n\n` +
+            `👤 *مشتری گرامی:* *${destName || '-'}*${sayanAccountInfo}\n` +
+            `🏢 *شرکت صادرکننده:* ${p.company || '-'}\n` +
+            `🔢 *شماره حواله خروج:* #${p.permitNumber}\n` +
+            `📅 *تاریخ خروج:* ${toShamsiFull(p.date)}\n` +
+            (p.exitTime ? `🕒 *ساعت خروج از کارخانه:* ${p.exitTime}\n` : '') +
+            `\n⚖️ *وزن کل بار:* *${totalWeight.toLocaleString()} کیلوگرم*\n` +
+            `📦 *تعداد کارتن / بسته‌ها:* *${totalCartons.toLocaleString()} عدد*\n` +
+            `\n👨‍✈️ *مشخصات و نام راننده:* *${p.driverName || 'ثبت نشده'}*\n` +
+            `📞 *شماره تماس راننده:* *${p.driverPhone || 'ثبت نشده'}*\n` +
+            `🆔 *شماره پلاک خودرو:* *${p.plateNumber || 'ثبت نشده'}*\n` +
+            `📍 *مقصد تحویل:* ${dest.address || p.destinationAddress || 'تحویل درب کارخانه'}\n` +
+            `\n📦 *اقلام و کالاهای بارگیری شده:*\n${goodsListFormatted}\n` +
+            (totalAmount > 0 ? `\n💵 *مبلغ فاکتور:* ${totalAmount.toLocaleString()} ریال\n` : '') +
+            (p.description ? `\n📝 *توضیحات:* ${p.description}\n` : '') +
+            `\n✅ محموله شما با مشخصات فوق با موفقیت بارگیری و از کارخانه خارج گردید. تصویر فاکتور رسمی خروج کالا نیز پیوست می‌باشد.\n\nبا سپاس از اعتماد و خرید شما 🙏`;
+
+        let channelResults = { phone: targetPhone, name: destName, wa: false, tg: false, bale: false };
+
+        // 1. WhatsApp Delivery
+        if (targetPhone && settings.whatsappEnabled !== false) {
+            try {
+                const waModule = await import('./whatsapp.js');
+                if (waModule && waModule.sendMessage) {
+                    const mediaOpts = imgB64 ? {
+                        data: imgB64,
+                        mimeType: 'image/png',
+                        filename: `exit-permit-${p.permitNumber}.png`
+                    } : undefined;
+                    await waModule.sendMessage(targetPhone, customerCaption, mediaOpts);
+                    channelResults.wa = true;
+                    console.log(`[notifyCustomerCargoExit] ✅ Sent WhatsApp to customer ${destName} (${targetPhone})`);
+                }
+            } catch (waErr) {
+                console.warn(`[notifyCustomerCargoExit] WhatsApp fail for ${targetPhone}:`, waErr.message);
+            }
+        }
+
+        // 2. Telegram Bot Delivery
+        if (targetTgId && settings.telegramBotToken) {
+            try {
+                const tgModule = await import('./telegram.js');
+                if (tgModule) {
+                    const cleanTg = sanitizeGroupId(targetTgId);
+                    if (imgBuffer && tgModule.sendBotPhoto) {
+                        await tgModule.sendBotPhoto(cleanTg, imgBuffer, customerCaption);
+                        channelResults.tg = true;
+                    } else if (tgModule.sendBotMessage) {
+                        await tgModule.sendBotMessage(cleanTg, customerCaption);
+                        channelResults.tg = true;
+                    }
+                    console.log(`[notifyCustomerCargoExit] ✅ Sent Telegram to customer ${destName} (${cleanTg})`);
+                }
+            } catch (tgErr) {
+                console.warn(`[notifyCustomerCargoExit] Telegram fail for ${targetTgId}:`, tgErr.message);
+            }
+        }
+
+        // 3. Bale Bot Delivery
+        if (targetBaleId && settings.baleBotToken) {
+            try {
+                const baleModule = await import('./bale.js');
+                if (baleModule) {
+                    const cleanBale = sanitizeGroupId(targetBaleId);
+                    if (imgBuffer && baleModule.sendBotPhoto) {
+                        await baleModule.sendBotPhoto(cleanBale, imgBuffer, customerCaption);
+                        channelResults.bale = true;
+                    } else if (baleModule.sendBotMessage) {
+                        await baleModule.sendBotMessage(cleanBale, customerCaption);
+                        channelResults.bale = true;
+                    }
+                    console.log(`[notifyCustomerCargoExit] ✅ Sent Bale to customer ${destName} (${cleanBale})`);
+                }
+            } catch (baleErr) {
+                console.warn(`[notifyCustomerCargoExit] Bale fail for ${targetBaleId}:`, baleErr.message);
+            }
+        }
+
+        // 4. Phone-based Bot Fallback
+        if (targetPhone && (!channelResults.tg || !channelResults.bale)) {
+            try {
+                const botRes = await sendBotMessageByPhone(targetPhone, customerCaption, imgB64);
+                if (botRes) {
+                    channelResults.botPhone = true;
+                }
+            } catch (e) {}
+        }
+
+        sentSummary.push(channelResults);
+    }
+
+    return {
+        success: sentSummary.length > 0,
+        recipientsNotified: sentSummary
+    };
+};
+
 export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db, stepName, eventType = 'STEP') => {
     try {
         const isEdit = eventType === 'EDIT';
@@ -3246,50 +3507,15 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
             }
         }
 
-        // --- Customer Notification with Proforma Image ---
-        if (p.status === 'خارج شده (بایگانی)' && !isEdit && !isDelete) {
-            const customerPhone = (p.destinations && p.destinations[0]) ? p.destinations[0].phone : (p.driverPhone || null);
-            if (customerPhone) {
-                (async () => {
-                    try {
-                        const amount = (p.items||[]).reduce((sum, item) => sum + ((item.deliveredCartonCount ?? item.cartonCount ?? 0) * (item.price || 0)), 0);
-                        const customerCaption = `✨ *فاکتور نهایی خروج کالا #${p.permitNumber}*\n\n` +
-                                              `👤 خریدار: *${p.recipientName || '-'}*\n` +
-                                              `⚖️ وزن کل: ${p.weight} کیلوگرم\n` +
-                                              `📦 تعداد کل: ${p.cartonCount} کارتن\n` +
-                                              `💵 مبلغ کل: ${amount.toLocaleString()} ریال\n` +
-                                              (p.driverName ? `👨‍✈️ راننده: ${p.driverName}\n` : '') +
-                                              (p.plateNumber ? `🆔 پلاک: ${p.plateNumber}\n` : '') +
-                                              `🕒 ساعت خروج: ${p.exitTime || '-'}\n\n` +
-                                              `✅ کالای شما با موفقیت بارگیری و از کارخانه خارج شد. تصویر فاکتور رسمی پیوست گردید.\n\nبا سپاس از اعتماد شما 🙏`;
-                        
-                        let imgB64 = null;
-                        try {
-                            const customerImg = await Renderer.generateRecordImage(p, 'CUSTOMER_INVOICE');
-                            if (customerImg) imgB64 = customerImg.toString('base64');
-                        } catch (invErr) {
-                            console.warn("Failed to generate customer invoice image:", invErr.message);
-                        }
-
-                        // 1. WhatsApp
-                        if (whatsapp && typeof whatsapp.sendMessage === 'function') {
-                            const mediaOpts = imgB64 ? {
-                                data: imgB64,
-                                mimeType: 'image/png',
-                                filename: `invoice-${p.permitNumber}.png`
-                            } : undefined;
-                            await whatsapp.sendMessage(customerPhone, customerCaption, mediaOpts);
-                        }
-
-                        // 2. Telegram / Bale (Via bot-core helper)
-                        await sendBotMessageByPhone(customerPhone, customerCaption, imgB64);
-
-                        console.log(`✅ Professional proforma sent to customer: ${customerPhone}`);
-                    } catch (e) {
-                        console.error("❌ Customer proforma notification failed:", e.message);
-                    }
-                })();
-            }
+        // --- Customer Notification when Cargo Exits Factory (Weight, Plate, Driver details to Customer WhatsApp & Bots) ---
+        if ((p.status === 'خارج شده (بایگانی)' || p.status === 'خارج شد') && !isEdit && !isDelete) {
+            (async () => {
+                try {
+                    await notifyCustomerCargoExit(p, db, false);
+                } catch (cErr) {
+                    console.error("❌ Customer cargo exit notification failed:", cErr.message);
+                }
+            })();
         }
 
         // Distinctly and separately fire off to all targets with bulletproof fallbacks

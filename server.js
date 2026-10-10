@@ -43,7 +43,7 @@ import archiver from 'archiver';
 import AdmZip from 'adm-zip';
 import webpush from 'web-push';
 import * as utils from './backend/utils.js';
-import { notifyExitPermitStep, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport, notifyDriverPayment } from './backend/bot-core.js';
+import { notifyExitPermitStep, notifyCustomerCargoExit, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport, notifyDriverPayment } from './backend/bot-core.js';
 import * as telegram from './backend/telegram.js';
 import * as bale from './backend/bale.js';
 import * as Renderer from './backend/renderer.js';
@@ -9805,6 +9805,108 @@ app.post('/api/exit-permits/:id/bot-notify', async (req, res) => {
     } catch (e) {
         console.error("Manual bot notify error in server.js:", e);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Custom endpoint for manual or re-dispatch of customer cargo exit notification (WhatsApp, Telegram, Bale)
+app.post('/api/exit-permits/:id/notify-customer', async (req, res) => {
+    try {
+        const db = getDb();
+        const { id } = req.params;
+        const permit = (db.exitPermits || []).find(p => p.id === id);
+        if (!permit) {
+            return res.status(404).json({ success: false, error: 'برگه خروج یافت نشد' });
+        }
+        const result = await notifyCustomerCargoExit(permit, db, true);
+        res.json({ success: true, result });
+    } catch (e) {
+        console.error("Manual customer notify error in server.js:", e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Endpoint to batch auto-match contacts with Sayan customers/accounts
+app.post('/api/sayan/contacts/auto-match', async (req, res) => {
+    try {
+        const db = getDb();
+        const contacts = db.settings?.salesContacts || [];
+        if (!contacts.length) {
+            return res.json({ success: true, matchedCount: 0, contacts: [] });
+        }
+
+        // Get customers list from Sayan remittance service
+        let sayanCustomers = await sayanRemittanceService.getAllSayanCustomers(true).catch(() => []);
+
+        // Also query GNR_TBL_001 if available for additional person coverage
+        try {
+            const { executeSayanQuery } = await import('./backend/sayan-order-automation.js');
+            const gnrRows = await executeSayanQuery(`
+                SELECT TOP 500
+                    RTRIM(LTRIM(Field_003)) as PersonCode,
+                    RTRIM(LTRIM(COALESCE(Field_015, ''))) as Mobile,
+                    RTRIM(LTRIM(COALESCE(Field_030, Field_021, Field_003))) as TafsiliCode,
+                    RTRIM(LTRIM(COALESCE(Field_006, '') + ' ' + COALESCE(Field_007, ''))) as FullName
+                FROM GNR_TBL_001 WITH (NOLOCK)
+                WHERE Field_006 IS NOT NULL AND LEN(RTRIM(LTRIM(Field_006))) > 0
+            `, 25000).catch(() => []);
+            if (gnrRows && gnrRows.length > 0) {
+                const gnrFormatted = gnrRows.map(r => ({
+                    personCode: r.PersonCode,
+                    tafsiliCode: r.TafsiliCode || r.PersonCode,
+                    name: r.FullName,
+                    mobile: r.Mobile
+                }));
+                // Merge without duplicates
+                const seen = new Set(sayanCustomers.map(sc => String(sc.personCode || sc.tafsiliCode).trim()));
+                for (const g of gnrFormatted) {
+                    const key = String(g.personCode || g.tafsiliCode).trim();
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        sayanCustomers.push(g);
+                    }
+                }
+            }
+        } catch (gnrErr) {
+            console.warn("GNR_TBL_001 auto-match lookup fallback:", gnrErr.message);
+        }
+
+        let updatedCount = 0;
+
+        const updatedContacts = contacts.map(c => {
+            if (c.sayanPersonCode || c.sayanTafsiliCode) return c; // Already linked
+            
+            const cleanName = (c.name || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').trim().toLowerCase();
+            const cleanMobile = (c.mobile || '').replace(/[^0-9]/g, '').slice(-10);
+
+            const match = sayanCustomers.find(sc => {
+                const scName = (sc.name || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').trim().toLowerCase();
+                const scMobile = (sc.mobile || '').replace(/[^0-9]/g, '').slice(-10);
+                return (cleanMobile && scMobile && cleanMobile === scMobile) ||
+                       (cleanName && scName && (cleanName === scName || scName.includes(cleanName) || cleanName.includes(scName)));
+            });
+
+            if (match) {
+                updatedCount++;
+                return {
+                    ...c,
+                    sayanPersonCode: match.personCode || match.tafsiliCode,
+                    sayanTafsiliCode: match.tafsiliCode || match.personCode,
+                    sayanPersonName: match.name,
+                    sayanMobile: match.mobile || c.mobile
+                };
+            }
+            return c;
+        });
+
+        if (updatedCount > 0) {
+            db.settings.salesContacts = updatedContacts;
+            saveDb(db);
+        }
+
+        res.json({ success: true, matchedCount: updatedCount, contacts: updatedContacts });
+    } catch (e) {
+        console.error("Auto match Sayan contacts error:", e);
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
