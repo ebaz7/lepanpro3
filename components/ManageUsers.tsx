@@ -47,6 +47,13 @@ const ManageUsers: React.FC = () => {
     canViewPricingAndInvoices: false,
     canManageZanjanPurchasing: false,
     canExecuteBuyerZanjan: false,
+    canCreatePurchaseRequest: false,
+    canApproveWarehouseKeeper: false,
+    canWarehouseFinalize: false,
+    canApproveTechnical: false,
+    canApproveShiftLeader: false,
+    canCheckQC: false,
+    canRegisterEntry: false,
     scopeZanjanOnly: false,
     scopeTehranOnly: false,
     canAccessSayanRegistrations: false,
@@ -148,6 +155,13 @@ const ManageUsers: React.FC = () => {
       canViewPricingAndInvoices: user.canViewPricingAndInvoices || false,
       canManageZanjanPurchasing: user.canManageZanjanPurchasing || false,
       canExecuteBuyerZanjan: user.canExecuteBuyerZanjan || false,
+      canCreatePurchaseRequest: user.canCreatePurchaseRequest || false,
+      canApproveWarehouseKeeper: user.canApproveWarehouseKeeper || false,
+      canWarehouseFinalize: user.canWarehouseFinalize || false,
+      canApproveTechnical: user.canApproveTechnical || false,
+      canApproveShiftLeader: user.canApproveShiftLeader || false,
+      canCheckQC: user.canCheckQC || false,
+      canRegisterEntry: user.canRegisterEntry || false,
       scopeZanjanOnly: user.scopeZanjanOnly || false,
       scopeTehranOnly: user.scopeTehranOnly || false,
       canAccessSayanRegistrations: user.canAccessSayanRegistrations || false,
@@ -852,6 +866,22 @@ const ManageUsers: React.FC = () => {
 
                       <div className="space-y-2.5">
                         <label className="flex items-center gap-2.5 text-xs text-teal-950 dark:text-teal-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-teal-200/80 dark:border-teal-800 cursor-pointer hover:bg-teal-50">
+                          <input type="checkbox" checked={formData.canCreatePurchaseRequest} onChange={e => setFormData({...formData, canCreatePurchaseRequest: e.target.checked})} className="w-4 h-4 text-teal-600 rounded" />
+                          <span className="font-bold">📝 ثبت درخواست خرید جدید در کارخانه (انباردار / متقاضی)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-amber-950 dark:text-amber-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-800 cursor-pointer hover:bg-amber-50">
+                          <input type="checkbox" checked={formData.canManageParts} onChange={e => setFormData({...formData, canManageParts: e.target.checked})} className="w-4 h-4 text-amber-600 rounded" />
+                          <span className="font-bold">📦 تعریف و کدینگ کالا (کارخانه / انبار)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-teal-950 dark:text-teal-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-teal-200/80 dark:border-teal-800 cursor-pointer hover:bg-teal-50">
+                          <input type="checkbox" checked={formData.canApproveWarehouseKeeper} onChange={e => setFormData({...formData, canApproveWarehouseKeeper: e.target.checked})} className="w-4 h-4 text-teal-600 rounded" />
+                          <span className="font-bold">🏬 بررسی موجودی انبار کارخانه (انباردار - مرحله ۱)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-teal-950 dark:text-teal-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-teal-200/80 dark:border-teal-800 cursor-pointer hover:bg-teal-50">
+                          <input type="checkbox" checked={formData.canWarehouseFinalize} onChange={e => setFormData({...formData, canWarehouseFinalize: e.target.checked})} className="w-4 h-4 text-teal-600 rounded" />
+                          <span className="font-bold">📥 رسید انبار نهایی و ورود قطعات به انبار کارخانه (انباردار)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-teal-950 dark:text-teal-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-teal-200/80 dark:border-teal-800 cursor-pointer hover:bg-teal-50">
                           <input type="checkbox" checked={formData.canApproveFactoryDecision} onChange={e => setFormData({...formData, canApproveFactoryDecision: e.target.checked})} className="w-4 h-4 text-teal-600 rounded" />
                           <span className="font-bold">🏭 تعیین مسیر و تصمیم‌گیری خرید محلی (مدیر کارخانه)</span>
                         </label>
@@ -866,6 +896,22 @@ const ManageUsers: React.FC = () => {
                         <label className="flex items-center gap-2.5 text-xs text-teal-900 dark:text-teal-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-teal-200/80 dark:border-teal-800 cursor-pointer hover:bg-teal-50">
                           <input type="checkbox" checked={formData.canExecuteBuyerZanjan} onChange={e => setFormData({...formData, canExecuteBuyerZanjan: e.target.checked})} className="w-4 h-4 text-teal-600 rounded" />
                           <span>🛍️ ثبت خرید و فاکتور کارپرداز زنجان (کارخانه)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-indigo-950 dark:text-indigo-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800 cursor-pointer hover:bg-indigo-50">
+                          <input type="checkbox" checked={formData.canApproveTechnical} onChange={e => setFormData({...formData, canApproveTechnical: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded" />
+                          <span>🔧 تایید فنی و تطابق سفارش (واحد نت / فنی کارخانه)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-indigo-950 dark:text-indigo-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-indigo-200/80 dark:border-indigo-800 cursor-pointer hover:bg-indigo-50">
+                          <input type="checkbox" checked={formData.canApproveShiftLeader} onChange={e => setFormData({...formData, canApproveShiftLeader: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded" />
+                          <span>⏱️ تایید سرشیفت کارخانه</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-emerald-950 dark:text-emerald-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-emerald-200/80 dark:border-emerald-800 cursor-pointer hover:bg-emerald-50">
+                          <input type="checkbox" checked={formData.canCheckQC} onChange={e => setFormData({...formData, canCheckQC: e.target.checked})} className="w-4 h-4 text-emerald-600 rounded" />
+                          <span>🔬 بررسی و تایید کنترل کیفی (QC)</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-orange-950 dark:text-orange-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-orange-200/80 dark:border-orange-800 cursor-pointer hover:bg-orange-50">
+                          <input type="checkbox" checked={formData.canRegisterEntry} onChange={e => setFormData({...formData, canRegisterEntry: e.target.checked})} className="w-4 h-4 text-orange-600 rounded" />
+                          <span>🛡️ ثبت ورود کالا به کارخانه (انتظامات / نگهبانی)</span>
                         </label>
                         <label className="flex items-center gap-2.5 text-xs text-teal-900 dark:text-teal-200 bg-white/90 dark:bg-gray-800 p-2.5 rounded-xl border border-teal-200/80 dark:border-teal-800 cursor-pointer hover:bg-teal-50">
                           <input type="checkbox" checked={formData.canApproveFactoryFinal} onChange={e => setFormData({...formData, canApproveFactoryFinal: e.target.checked})} className="w-4 h-4 text-teal-600 rounded" />

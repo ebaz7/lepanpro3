@@ -38,12 +38,22 @@ interface TextOverlay {
     fontSize: number;
 }
 
+interface CropRect {
+    x: number; // 0 to 1
+    y: number; // 0 to 1
+    w: number; // 0 to 1
+    h: number; // 0 to 1
+}
+
 interface MediaAttachmentModalProps {
     isOpen: boolean;
     initialFiles: File[];
     targetName: string;
     onClose: () => void;
     onSend: (items: { file: File; caption: string }[]) => Promise<void> | void;
+    replyingTo?: { id: string; sender: string; message?: string } | null;
+    onCancelReply?: () => void;
+    initialCaption?: string;
 }
 
 const COLOR_PALETTE = [
@@ -70,7 +80,10 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
     initialFiles,
     targetName,
     onClose,
-    onSend
+    onSend,
+    replyingTo,
+    onCancelReply,
+    initialCaption
 }) => {
     const [items, setItems] = useState<AttachmentItem[]>([]);
     const [activeIndex, setActiveIndex] = useState(0);
@@ -88,8 +101,14 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
     const [isAddingText, setIsAddingText] = useState<boolean>(false);
     const [activeResizeScale, setActiveResizeScale] = useState<number>(1.0);
 
+    // Interactive Crop States
+    const [cropRect, setCropRect] = useState<CropRect>({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 });
+    const [cropAspect, setCropAspect] = useState<number | null>(null); // null = free, 1 = 1:1, etc.
+    const [cropUndoHistory, setCropUndoHistory] = useState<Record<string, Array<{ file: File; previewUrl: string; editedBlob?: Blob }>>>({});
+
     // Canvas references
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const canvasWrapperRef = useRef<HTMLDivElement | null>(null);
     const isDrawingRef = useRef(false);
     const currentPathRef = useRef<DrawingPath | null>(null);
     const fileInputAdditionalRef = useRef<HTMLInputElement | null>(null);
@@ -103,7 +122,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
             return;
         }
 
-        const newItems: AttachmentItem[] = initialFiles.map((file) => {
+        const newItems: AttachmentItem[] = initialFiles.map((file, idx) => {
             const isImage = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|bmp)$/i.test(file.name);
             const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
             const previewUrl = URL.createObjectURL(file);
@@ -114,7 +133,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                 previewUrl,
                 isImage,
                 isPdf,
-                caption: '',
+                caption: idx === 0 && initialCaption ? initialCaption : '',
                 rotation: 0,
                 resizeScale: 1.0
             };
@@ -123,9 +142,12 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
         setItems(newItems);
         setActiveIndex(0);
         setActiveTool('none');
+        setCropRect({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 });
+        setCropAspect(null);
         setDrawingHistory({});
         setRedoHistory({});
         setTextOverlays({});
+        setCropUndoHistory({});
 
         // Auto focus caption
         setTimeout(() => {
@@ -138,7 +160,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                 if (item.editedPreviewUrl) URL.revokeObjectURL(item.editedPreviewUrl);
             });
         };
-    }, [isOpen, initialFiles]);
+    }, [isOpen, initialFiles, initialCaption]);
 
     const activeItem = items[activeIndex] || null;
 
@@ -425,17 +447,221 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
         currentPathRef.current = null;
     };
 
+    // Interactive Crop Drag and Resize Logic
+    const handleCropStart = (e: React.PointerEvent, handleType: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const wrapper = canvasWrapperRef.current;
+        if (!wrapper) return;
+        const rect = wrapper.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return;
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const initialCrop = { ...cropRect };
+        const canvasW = canvasRef.current?.width || 1000;
+        const canvasH = canvasRef.current?.height || 1000;
+
+        const handlePointerMove = (moveEv: PointerEvent) => {
+            moveEv.preventDefault();
+            const deltaPxX = moveEv.clientX - startX;
+            const deltaPxY = moveEv.clientY - startY;
+            const dx = deltaPxX / rect.width;
+            const dy = deltaPxY / rect.height;
+
+            let next = { ...initialCrop };
+
+            if (handleType === 'move') {
+                next.x = Math.max(0, Math.min(1 - next.w, initialCrop.x + dx));
+                next.y = Math.max(0, Math.min(1 - next.h, initialCrop.y + dy));
+            } else {
+                let x1 = initialCrop.x;
+                let y1 = initialCrop.y;
+                let x2 = initialCrop.x + initialCrop.w;
+                let y2 = initialCrop.y + initialCrop.h;
+
+                const minW = 0.05;
+                const minH = 0.05;
+
+                if (handleType.includes('w')) {
+                    x1 = Math.max(0, Math.min(x2 - minW, initialCrop.x + dx));
+                }
+                if (handleType.includes('e')) {
+                    x2 = Math.min(1, Math.max(x1 + minW, (initialCrop.x + initialCrop.w) + dx));
+                }
+                if (handleType.includes('n')) {
+                    y1 = Math.max(0, Math.min(y2 - minH, initialCrop.y + dy));
+                }
+                if (handleType.includes('s')) {
+                    y2 = Math.min(1, Math.max(y1 + minH, (initialCrop.y + initialCrop.h) + dy));
+                }
+
+                if (cropAspect) {
+                    const pixelW = (x2 - x1) * canvasW;
+                    const pixelH = (y2 - y1) * canvasH;
+                    if (handleType.includes('w') || handleType.includes('e')) {
+                        const targetPixelH = pixelW / cropAspect;
+                        const targetNormH = targetPixelH / canvasH;
+                        if (handleType.includes('n')) {
+                            y1 = Math.max(0, y2 - targetNormH);
+                        } else {
+                            y2 = Math.min(1, y1 + targetNormH);
+                        }
+                    } else {
+                        const targetPixelW = pixelH * cropAspect;
+                        const targetNormW = targetPixelW / canvasW;
+                        if (handleType.includes('w')) {
+                            x1 = Math.max(0, x2 - targetNormW);
+                        } else {
+                            x2 = Math.min(1, x1 + targetNormW);
+                        }
+                    }
+                }
+
+                next = {
+                    x: Math.max(0, x1),
+                    y: Math.max(0, y1),
+                    w: Math.max(minW, Math.min(1 - x1, x2 - x1)),
+                    h: Math.max(minH, Math.min(1 - y1, y2 - y1))
+                };
+            }
+
+            setCropRect(next);
+        };
+
+        const handlePointerUp = () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+            window.removeEventListener('pointercancel', handlePointerUp);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
+        window.addEventListener('pointercancel', handlePointerUp);
+    };
+
+    const setPresetAspect = (ratio: number | null) => {
+        setCropAspect(ratio);
+        if (!ratio || !canvasRef.current) return;
+
+        const canvasW = canvasRef.current.width || 800;
+        const canvasH = canvasRef.current.height || 600;
+        const canvasRatio = canvasW / canvasH;
+
+        let newW = 0.8;
+        let newH = 0.8;
+
+        if (ratio > canvasRatio) {
+            newW = 0.85;
+            newH = (newW * canvasW) / (ratio * canvasH);
+        } else {
+            newH = 0.85;
+            newW = (newH * ratio * canvasH) / canvasW;
+        }
+
+        newW = Math.min(0.96, Math.max(0.1, newW));
+        newH = Math.min(0.96, Math.max(0.1, newH));
+
+        const newX = Math.max(0, (1 - newW) / 2);
+        const newY = Math.max(0, (1 - newH) / 2);
+
+        setCropRect({ x: newX, y: newY, w: newW, h: newH });
+    };
+
+    const handleApplyCrop = () => {
+        const canvas = canvasRef.current;
+        if (!canvas || !activeItem) return;
+
+        const sx = Math.max(0, Math.round(cropRect.x * canvas.width));
+        const sy = Math.max(0, Math.round(cropRect.y * canvas.height));
+        const sw = Math.min(canvas.width - sx, Math.round(cropRect.w * canvas.width));
+        const sh = Math.min(canvas.height - sy, Math.round(cropRect.h * canvas.height));
+
+        if (sw < 10 || sh < 10) return;
+
+        // Save for undo
+        setCropUndoHistory(prev => ({
+            ...prev,
+            [activeItem.id]: [...(prev[activeItem.id] || []), {
+                file: activeItem.file,
+                previewUrl: activeItem.previewUrl,
+                editedBlob: activeItem.editedBlob
+            }]
+        }));
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = sw;
+        offscreen.height = sh;
+        const ctx = offscreen.getContext('2d');
+        if (!ctx) return;
+
+        ctx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+
+        offscreen.toBlob((blob) => {
+            if (!blob) return;
+
+            const newUrl = URL.createObjectURL(blob);
+            const ext = activeItem.file.name.includes('.') ? activeItem.file.name.split('.').pop() : 'jpg';
+            const baseName = activeItem.file.name.replace(/\.[^/.]+$/, "");
+            const newName = `${baseName}_crop.${ext === 'png' ? 'png' : 'jpg'}`;
+            const newFile = new File([blob], newName, { type: blob.type || 'image/jpeg' });
+
+            setItems(prev => prev.map((it, idx) => {
+                if (idx !== activeIndex) return it;
+                return {
+                    ...it,
+                    file: newFile,
+                    previewUrl: newUrl,
+                    editedPreviewUrl: newUrl,
+                    editedBlob: blob,
+                    rotation: 0
+                };
+            }));
+
+            // Reset drawing paths as they have been baked into the cropped image
+            setDrawingHistory(prev => ({ ...prev, [activeItem.id]: [] }));
+            setRedoHistory(prev => ({ ...prev, [activeItem.id]: [] }));
+            setTextOverlays(prev => ({ ...prev, [activeItem.id]: [] }));
+
+            setActiveTool('none');
+            setCropAspect(null);
+            setCropRect({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 });
+        }, activeItem.file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.95);
+    };
+
     // Undo action
     const handleUndo = () => {
         if (!activeItem) return;
         const list = drawingHistory[activeItem.id] || [];
-        if (list.length === 0) return;
+        if (list.length > 0) {
+            const last = list[list.length - 1];
+            const remaining = list.slice(0, list.length - 1);
 
-        const last = list[list.length - 1];
-        const remaining = list.slice(0, list.length - 1);
+            setDrawingHistory(prev => ({ ...prev, [activeItem.id]: remaining }));
+            setRedoHistory(prev => ({ ...prev, [activeItem.id]: [...(prev[activeItem.id] || []), last] }));
+            return;
+        }
 
-        setDrawingHistory(prev => ({ ...prev, [activeItem.id]: remaining }));
-        setRedoHistory(prev => ({ ...prev, [activeItem.id]: [...(prev[activeItem.id] || []), last] }));
+        // Revert crop if available
+        const cropList = cropUndoHistory[activeItem.id] || [];
+        if (cropList.length > 0) {
+            const prevCrop = cropList[cropList.length - 1];
+            const remainingCrop = cropList.slice(0, cropList.length - 1);
+            setCropUndoHistory(prev => ({ ...prev, [activeItem.id]: remainingCrop }));
+
+            setItems(prev => prev.map((it, idx) => {
+                if (idx !== activeIndex) return it;
+                return {
+                    ...it,
+                    file: prevCrop.file,
+                    previewUrl: prevCrop.previewUrl,
+                    editedPreviewUrl: prevCrop.previewUrl,
+                    editedBlob: prevCrop.editedBlob,
+                    rotation: 0
+                };
+            }));
+        }
     };
 
     // Redo action
@@ -785,6 +1011,26 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
 
                         <div className="w-[1px] h-5 bg-white/20 mx-0.5" />
 
+                        {/* Crop Tool */}
+                        <button
+                            onClick={() => {
+                                if (activeTool === 'crop') {
+                                    setActiveTool('none');
+                                } else {
+                                    setActiveTool('crop');
+                                    setCropRect({ x: 0.05, y: 0.05, w: 0.9, h: 0.9 });
+                                    setCropAspect(null);
+                                }
+                            }}
+                            className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                activeTool === 'crop' ? 'bg-emerald-600 text-white shadow-md' : 'text-zinc-300 hover:bg-white/10'
+                            }`}
+                            title="برش و کراپ عکس با حرکت ماوس"
+                        >
+                            <Crop size={16} />
+                            <span className="hidden md:inline">کراپ</span>
+                        </button>
+
                         {/* Rotate Tool */}
                         <button
                             onClick={handleRotate}
@@ -811,7 +1057,10 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                         {/* Undo / Redo */}
                         <button
                             onClick={handleUndo}
-                            disabled={!drawingHistory[activeItem.id] || drawingHistory[activeItem.id].length === 0}
+                            disabled={
+                                (!drawingHistory[activeItem.id] || drawingHistory[activeItem.id].length === 0) &&
+                                (!cropUndoHistory[activeItem.id] || cropUndoHistory[activeItem.id].length === 0)
+                            }
                             className="p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
                             title="لغو آخرین تغییر (Undo)"
                         >
@@ -836,7 +1085,7 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
             </div>
 
             {/* Sub-toolbar for Colors and Stroke Size when a drawing tool is active */}
-            {activeItem?.isImage && activeTool !== 'none' && activeTool !== 'resize' && (
+            {activeItem?.isImage && activeTool !== 'none' && activeTool !== 'resize' && activeTool !== 'crop' && (
                 <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 bg-zinc-900/95 border border-white/20 px-3 py-1.5 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-slide-down">
                     {/* Color Circles */}
                     <div className="flex items-center gap-1.5">
@@ -869,6 +1118,71 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
                                 <span style={{ width: size + 2, height: size + 2, backgroundColor: strokeSize === size ? '#fff' : '#aaa', borderRadius: '50%' }} />
                             </button>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Sub-toolbar for Interactive Crop */}
+            {activeItem?.isImage && activeTool === 'crop' && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-zinc-900/95 border border-white/20 p-2 sm:p-2.5 rounded-2xl shadow-2xl flex flex-wrap items-center justify-center gap-2 max-w-[95vw] animate-slide-down">
+                    <div className="flex items-center gap-1 sm:gap-1.5 text-xs">
+                        <span className="font-bold text-emerald-400 flex items-center gap-1 px-1">
+                            <Crop size={14} /> نسبت:
+                        </span>
+                        {[
+                            { label: 'آزاد', val: null },
+                            { label: '۱:۱', val: 1 },
+                            { label: '۴:۳', val: 4 / 3 },
+                            { label: '۱۶:۹', val: 16 / 9 },
+                            { label: '۳:۴', val: 3 / 4 },
+                            { label: '۹:۱۶', val: 9 / 16 },
+                        ].map((opt) => (
+                            <button
+                                key={opt.label}
+                                type="button"
+                                onClick={() => setPresetAspect(opt.val)}
+                                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                    cropAspect === opt.val
+                                        ? 'bg-emerald-600 text-white shadow-md'
+                                        : 'bg-white/10 text-zinc-300 hover:bg-white/20'
+                                }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="w-[1px] h-5 bg-white/20 hidden sm:block" />
+
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setCropAspect(null);
+                                setCropRect({ x: 0, y: 0, w: 1, h: 1 });
+                            }}
+                            className="px-2 py-1 bg-white/10 hover:bg-white/20 text-zinc-300 text-xs rounded-lg transition-colors cursor-pointer"
+                            title="پوشش کل تصویر"
+                        >
+                            کل تصویر
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={handleApplyCrop}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-md hover:scale-105"
+                        >
+                            <Check size={14} /> تایید برش
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setActiveTool('none')}
+                            className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
+                            title="انصراف"
+                        >
+                            <X size={16} />
+                        </button>
                     </div>
                 </div>
             )}
@@ -939,22 +1253,124 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
             <div className="flex-1 w-full h-full pt-16 pb-28 flex items-center justify-center overflow-hidden p-2 sm:p-6 relative">
                 {activeItem?.isImage ? (
                     <div className="relative max-w-full max-h-full flex items-center justify-center">
-                        <canvas
-                            ref={canvasRef}
-                            onMouseDown={handlePointerDown}
-                            onMouseMove={handlePointerMove}
-                            onMouseUp={handlePointerUp}
-                            onMouseLeave={handlePointerUp}
-                            onTouchStart={handlePointerDown}
-                            onTouchMove={handlePointerMove}
-                            onTouchEnd={handlePointerUp}
-                            className={`max-w-[85vw] max-h-[62vh] object-contain rounded-lg shadow-2xl transition-all ${
-                                activeTool !== 'none' && activeTool !== 'resize' ? 'cursor-crosshair' : 'cursor-default'
-                            }`}
-                            style={{
-                                touchAction: activeTool !== 'none' ? 'none' : 'auto'
-                            }}
-                        />
+                        <div ref={canvasWrapperRef} className="relative inline-block select-none max-w-[85vw] max-h-[62vh]">
+                            <canvas
+                                ref={canvasRef}
+                                onMouseDown={handlePointerDown}
+                                onMouseMove={handlePointerMove}
+                                onMouseUp={handlePointerUp}
+                                onMouseLeave={handlePointerUp}
+                                onTouchStart={handlePointerDown}
+                                onTouchMove={handlePointerMove}
+                                onTouchEnd={handlePointerUp}
+                                className={`block max-w-[85vw] max-h-[62vh] object-contain rounded-lg shadow-2xl transition-all ${
+                                    activeTool !== 'none' && activeTool !== 'resize' && activeTool !== 'crop' ? 'cursor-crosshair' : 'cursor-default'
+                                }`}
+                                style={{
+                                    touchAction: activeTool !== 'none' ? 'none' : 'auto'
+                                }}
+                            />
+
+                            {/* Crop Box Overlay with Mouse & Touch Control */}
+                            {activeItem?.isImage && activeTool === 'crop' && (
+                                <div className="absolute inset-0 z-30 select-none overflow-hidden touch-none pointer-events-auto">
+                                    {/* Shaded Masks Around the Crop Selection */}
+                                    <div
+                                        className="absolute top-0 left-0 right-0 bg-black/65 pointer-events-none transition-none"
+                                        style={{ height: `${cropRect.y * 100}%` }}
+                                    />
+                                    <div
+                                        className="absolute left-0 right-0 bottom-0 bg-black/65 pointer-events-none transition-none"
+                                        style={{ top: `${(cropRect.y + cropRect.h) * 100}%` }}
+                                    />
+                                    <div
+                                        className="absolute left-0 bg-black/65 pointer-events-none transition-none"
+                                        style={{
+                                            top: `${cropRect.y * 100}%`,
+                                            width: `${cropRect.x * 100}%`,
+                                            height: `${cropRect.h * 100}%`
+                                        }}
+                                    />
+                                    <div
+                                        className="absolute right-0 bg-black/65 pointer-events-none transition-none"
+                                        style={{
+                                            top: `${cropRect.y * 100}%`,
+                                            left: `${(cropRect.x + cropRect.w) * 100}%`,
+                                            height: `${cropRect.h * 100}%`
+                                        }}
+                                    />
+
+                                    {/* Draggable & Resizable Crop Window */}
+                                    <div
+                                        className="absolute border border-white shadow-[0_0_0_1px_rgba(0,0,0,0.8),inset_0_0_0_1px_rgba(0,0,0,0.4)] cursor-move select-none"
+                                        style={{
+                                            left: `${cropRect.x * 100}%`,
+                                            top: `${cropRect.y * 100}%`,
+                                            width: `${cropRect.w * 100}%`,
+                                            height: `${cropRect.h * 100}%`
+                                        }}
+                                        onPointerDown={(e) => handleCropStart(e, 'move')}
+                                    >
+                                        {/* Rule of Thirds Grid (3x3) */}
+                                        <div className="absolute inset-0 pointer-events-none grid grid-cols-3 grid-rows-3 opacity-60">
+                                            <div className="border-r border-b border-white/40" />
+                                            <div className="border-r border-b border-white/40" />
+                                            <div className="border-b border-white/40" />
+                                            <div className="border-r border-b border-white/40" />
+                                            <div className="border-r border-b border-white/40" />
+                                            <div className="border-b border-white/40" />
+                                            <div className="border-r border-white/40" />
+                                            <div className="border-r border-white/40" />
+                                            <div />
+                                        </div>
+
+                                        {/* 4 Corner Handles (Thick L-Brackets) */}
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'nw')}
+                                            className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-white cursor-nwse-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش از گوشه بالا-چپ"
+                                        />
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'ne')}
+                                            className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-white cursor-nesw-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش از گوشه بالا-راست"
+                                        />
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'sw')}
+                                            className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-white cursor-nesw-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش از گوشه پایین-چپ"
+                                        />
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'se')}
+                                            className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-white cursor-nwse-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش از گوشه پایین-راست"
+                                        />
+
+                                        {/* 4 Edge Handles (Center Pills) */}
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'n')}
+                                            className="absolute -top-1 left-1/2 -translate-x-1/2 w-8 h-2 bg-white rounded-full cursor-ns-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش لبه بالا"
+                                        />
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 's')}
+                                            className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-2 bg-white rounded-full cursor-ns-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش لبه پایین"
+                                        />
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'w')}
+                                            className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-8 bg-white rounded-full cursor-ew-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش لبه چپ"
+                                        />
+                                        <div
+                                            onPointerDown={(e) => handleCropStart(e, 'e')}
+                                            className="absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-8 bg-white rounded-full cursor-ew-resize z-40 filter drop-shadow-md hover:scale-110 transition-transform"
+                                            title="برش لبه راست"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ) : activeItem?.isPdf ? (
                     /* High Quality PDF File Preview Card */
@@ -1000,6 +1416,26 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
 
             {/* Bottom Floating Bar: Caption Input, Thumbnail Strip, Send Button */}
             <div className="absolute bottom-0 left-0 right-0 bg-zinc-950/90 border-t border-white/10 px-3 sm:px-6 py-3 flex flex-col gap-2.5 z-30">
+                {/* Reply Context Preview Banner */}
+                {replyingTo && (
+                    <div className="flex items-center justify-between bg-zinc-900/95 border-r-4 border-emerald-500 rounded-2xl px-3.5 py-2 text-xs text-zinc-300 shadow-xl max-w-4xl mx-auto w-full">
+                        <div className="flex items-center gap-2 truncate">
+                            <span className="text-emerald-400 font-bold shrink-0">در حال پاسخ به {replyingTo.sender}:</span>
+                            <span className="text-zinc-400 truncate max-w-xs sm:max-w-md">{replyingTo.message || 'فایل / پیوست'}</span>
+                        </div>
+                        {onCancelReply && (
+                            <button
+                                type="button"
+                                onClick={onCancelReply}
+                                className="p-1 hover:bg-white/10 rounded-full text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0 mr-2"
+                                title="لغو پاسخ"
+                            >
+                                <X size={14} />
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 {/* Caption Input Line (WhatsApp Web Style) */}
                 <div className="flex items-center gap-2 max-w-4xl mx-auto w-full relative">
                     {/* Emoji Trigger */}

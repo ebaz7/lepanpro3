@@ -769,7 +769,30 @@ export default function SalesCRMModule() {
                                             </tr>
                                         );
                                     })}
-                                    {contacts.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-gray-400 italic font-medium">هیچ مخاطبی ثبت نشده است.</td></tr>}
+                                    {contacts.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="p-12 text-center">
+                                                <div className="flex flex-col items-center justify-center gap-3 text-gray-400">
+                                                    <Users size={40} className="text-gray-300 dark:text-gray-600" />
+                                                    <p className="text-sm font-bold text-gray-600 dark:text-gray-300">هیچ مخاطبی در سیستم ثبت نشده است.</p>
+                                                    <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                                                        <button 
+                                                            onClick={() => setIsGoogleImportOpen(true)}
+                                                            className="flex items-center gap-1.5 text-xs font-black bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl shadow-md transition-all cursor-pointer"
+                                                        >
+                                                            <Users size={14} />
+                                                            <span>ایمپورت از Google Contacts</span>
+                                                        </button>
+                                                        <label className="flex items-center gap-1.5 text-xs font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-3.5 py-2 rounded-xl transition-all cursor-pointer">
+                                                            <Upload size={14} />
+                                                            <span>فایل اکسل / CSV</span>
+                                                            <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleFileUpload} />
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -808,7 +831,19 @@ export default function SalesCRMModule() {
                                     </div>
                                 </div>
                             ))}
-                            {contacts.length === 0 && <div className="p-8 text-center text-gray-400 italic text-sm">لیست خالی است.</div>}
+                            {contacts.length === 0 && (
+                                <div className="p-8 text-center glass-panel rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center gap-3">
+                                    <Users size={36} className="text-gray-300" />
+                                    <p className="text-xs font-bold text-gray-500">لیست مخاطبین خالی است.</p>
+                                    <button 
+                                        onClick={() => setIsGoogleImportOpen(true)}
+                                        className="flex items-center gap-1.5 text-xs font-black bg-blue-600 text-white px-4 py-2 rounded-xl shadow-md cursor-pointer"
+                                    >
+                                        <Users size={14} />
+                                        <span>ایمپورت از Google Contacts</span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>

@@ -178,8 +178,13 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         case UserRole.WAREHOUSE_KEEPER:
             perms.canViewExitPermits = true;
             perms.canApproveExitWarehouse = true; // CRITICAL DEFAULT
-            perms.canManageWarehouse = false;
+            perms.canManageWarehouse = true;
             perms.canManagePurchase = true;
+            perms.canManageParts = true;
+            perms.canCreate = true;
+            perms.canCreatePurchaseRequest = true;
+            perms.canApproveWarehouseKeeper = true;
+            perms.canWarehouseFinalize = true;
             break;
 
         case UserRole.SECURITY_HEAD:
@@ -303,6 +308,46 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         }
         if (userObject.canManageParts !== undefined) {
             perms.canManageParts = userObject.canManageParts;
+        }
+        if (userObject.canCreatePurchaseRequest !== undefined) {
+            perms.canCreatePurchaseRequest = userObject.canCreatePurchaseRequest;
+            if (userObject.canCreatePurchaseRequest) perms.canCreate = true;
+        }
+        if (userObject.canApproveWarehouseKeeper !== undefined) {
+            perms.canApproveWarehouseKeeper = userObject.canApproveWarehouseKeeper;
+        }
+        if (userObject.canWarehouseFinalize !== undefined) {
+            perms.canWarehouseFinalize = userObject.canWarehouseFinalize;
+        }
+        if (userObject.canApproveTechnical !== undefined) {
+            perms.canApproveTechnical = userObject.canApproveTechnical;
+        }
+        if (userObject.canApproveShiftLeader !== undefined) {
+            perms.canApproveShiftLeader = userObject.canApproveShiftLeader;
+        }
+        if (userObject.canCheckQC !== undefined) {
+            perms.canCheckQC = userObject.canCheckQC;
+        }
+        if (userObject.canRegisterEntry !== undefined) {
+            perms.canRegisterEntry = userObject.canRegisterEntry;
+        }
+        if (userObject.canManageZanjanPurchasing !== undefined) {
+            perms.canManageZanjanPurchasing = userObject.canManageZanjanPurchasing;
+        }
+        if (userObject.canExecuteBuyerZanjan !== undefined) {
+            perms.canExecuteBuyerZanjan = userObject.canExecuteBuyerZanjan;
+        }
+        if (userObject.canApproveFactoryDecision !== undefined) {
+            perms.canApproveFactoryDecision = userObject.canApproveFactoryDecision;
+        }
+        if (userObject.canApproveFactory !== undefined) {
+            perms.canApproveFactory = userObject.canApproveFactory;
+        }
+        if (userObject.canApproveFactoryFinal !== undefined) {
+            perms.canApproveFactoryFinal = userObject.canApproveFactoryFinal;
+        }
+        if (userObject.canViewPricingAndInvoices !== undefined) {
+            perms.canViewPricingAndInvoices = userObject.canViewPricingAndInvoices;
         }
         if (userObject.canManageArchiveAttachments !== undefined) {
             perms.canManageArchiveAttachments = userObject.canManageArchiveAttachments;

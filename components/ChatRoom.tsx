@@ -1358,6 +1358,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     const tempId = generateUUID();
                     const tempUrl = URL.createObjectURL(audioBlob);
                     
+                    const currentVoiceReplyTo = replyingTo ? {
+                        id: replyingTo.id,
+                        sender: replyingTo.sender,
+                        message: replyingTo.message || (replyingTo.audioUrl ? 'پیام صوتی' : 'فایل')
+                    } : undefined;
+
                     const tempMsg: ChatMessage = {
                         id: tempId,
                         sender: currentUser.fullName,
@@ -1366,15 +1372,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                         message: '',
                         timestamp: Date.now(),
                         recipient: activeChannel?.type === 'private' ? activeChannel.id! : undefined,
-                        groupId: activeChannel?.type === 'group' ? activeChannel.id! : undefined,
+                        groupId: (activeChannel?.type === 'group' || activeChannel?.type === 'task_group') ? activeChannel.id! : undefined,
                         audioUrl: tempUrl,
                         audioDuration: durationSec,
+                        replyTo: currentVoiceReplyTo,
                         readBy: [],
                         isPending: true,
                         uploadProgress: 0
                     };
                     
                     setMessages(prev => [...prev, tempMsg]);
+                    setReplyingTo(null);
                     setTimeout(scrollToBottom, 50);
                     setIsUploading(false); // Hide spinner, show message immediately
                     setIsRecording(false);
@@ -1391,7 +1399,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                         const result = await uploadFile(`voice_${Date.now()}.${ext}`, base64);
                         
                         // Update with real URL and same ID
-                        const realMsg = { ...tempMsg, audioUrl: result.url, isPending: false, uploadProgress: undefined };
+                        const realMsg = { ...tempMsg, audioUrl: result.url, replyTo: currentVoiceReplyTo, isPending: false, uploadProgress: undefined };
                         await sendMessage(realMsg);
                         
                         setMessages(prev => prev.map(m => m.id === tempId ? realMsg : m));
@@ -1487,6 +1495,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const handleSendFromAttachmentModal = async (items: { file: File; caption: string }[]) => {
         if (!currentUser || !items || items.length === 0) return;
 
+        const currentAttachmentReplyTo = replyingTo ? {
+            id: replyingTo.id,
+            sender: replyingTo.sender,
+            message: replyingTo.message || (replyingTo.audioUrl ? 'پیام صوتی' : 'فایل')
+        } : undefined;
+
         for (const item of items) {
             const safeName = item.file.name || `unknown_${Date.now()}`;
             const newMsgId = generateUUID();
@@ -1499,8 +1513,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 message: item.caption || '',
                 timestamp: Date.now(),
                 recipient: activeChannel?.type === 'private' ? activeChannel.id! : undefined,
-                groupId: activeChannel?.type === 'group' ? activeChannel.id! : undefined,
+                groupId: (activeChannel?.type === 'group' || activeChannel?.type === 'task_group') ? activeChannel.id! : undefined,
                 attachment: { fileName: safeName, url: '' }, // empty URL while pending
+                replyTo: currentAttachmentReplyTo,
                 readBy: [],
                 isPending: true,
                 uploadProgress: 0
@@ -1518,6 +1533,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     ...pendingMsg,
                     message: item.caption || '',
                     attachment: { fileName: result.fileName, url: result.url },
+                    replyTo: currentAttachmentReplyTo,
                     isPending: false,
                     uploadProgress: undefined
                 };
@@ -1530,6 +1546,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 setPendingMessages(prev => prev.filter(m => m.id !== newMsgId));
             }
         }
+
+        // Reset reply and input text after sending attachments
+        setReplyingTo(null);
+        setInputText('');
     };
 
     const handlePaste = (e: React.ClipboardEvent) => {
@@ -3709,6 +3729,13 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 isOpen={!!pendingAttachmentModalFiles && pendingAttachmentModalFiles.length > 0}
                 initialFiles={pendingAttachmentModalFiles || []}
                 targetName={activeChannel?.name || 'گفتگو'}
+                replyingTo={replyingTo ? {
+                    id: replyingTo.id,
+                    sender: replyingTo.sender,
+                    message: replyingTo.message || (replyingTo.audioUrl ? 'پیام صوتی' : 'فایل')
+                } : null}
+                onCancelReply={() => setReplyingTo(null)}
+                initialCaption={inputText.trim() ? inputText : undefined}
                 onClose={() => setPendingAttachmentModalFiles(null)}
                 onSend={handleSendFromAttachmentModal}
             />

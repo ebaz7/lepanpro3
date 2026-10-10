@@ -144,6 +144,17 @@ export const canUserViewProformas = (
             }
         }
 
+        // Check if user has direct factory purchasing/approval permissions
+        if (
+            user.canManageZanjanPurchasing || 
+            user.canExecuteBuyerZanjan || 
+            user.canApproveFactory || 
+            user.canApproveFactoryDecision || 
+            user.canApproveFactoryFinal
+        ) {
+            return true;
+        }
+
         // Check if user is in Zanjan allowed or purchasing user IDs
         if (
             (settings?.purchaseZanjanAllowedUserIds || []).includes(user.id) ||
@@ -173,9 +184,12 @@ export const canUserViewProformas = (
         ) {
             return true;
         }
+        if (user.canManageProformas || user.canSelectProforma || user.canApproveCommercialManager || user.canApproveCEO) {
+            return true;
+        }
     }
 
-    // All others: strictly restricted
+    // All others: strictly restricted (proformas are confidential)
     return false;
 };
 
@@ -246,26 +260,31 @@ export const checkPurchasePermission = (
 
         // --- ZANJAN FACTORY BRANCH ---
         case 'canApproveFactoryDecision':
+            if (user.canApproveFactoryDecision === true) return true;
             if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
             if ((settings?.purchaseZanjanDecisionApproverUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canManageZanjanPurchasing':
-            if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه')) return true;
+            if (user.canManageZanjanPurchasing === true) return true;
+            if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه') || checkRoleMatch('خرید زنجان')) return true;
             if ((settings?.purchaseZanjanPurchasingUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canApproveFactory':
+            if (user.canApproveFactory === true) return true;
             if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
             if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canExecuteBuyerZanjan':
-            if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه')) return true;
+            if (user.canExecuteBuyerZanjan === true) return true;
+            if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه') || checkRoleMatch('خرید زنجان')) return true;
             if ((settings?.purchaseZanjanBuyerUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canApproveFactoryFinal':
+            if (user.canApproveFactoryFinal === true) return true;
             if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
             if ((settings?.purchaseZanjanFinalApproverUserIds || []).includes(user.id)) return true;
             if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
@@ -277,43 +296,53 @@ export const checkPurchasePermission = (
 
         // --- COMMON STAGES ---
         case 'canView':
-            if (user.canManagePurchase) return true;
+            if (user.canManagePurchase === true) return true;
+            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('factory') || checkRoleMatch('کارخانه')) return true;
             break;
 
         case 'canCreate':
-            if (user.canManagePurchase) return true;
+            if (user.canCreatePurchaseRequest === true || (user as any).canCreate === true) return true;
+            if (user.canManagePurchase === true) return true;
+            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('factory') || checkRoleMatch('کارخانه')) return true;
             break;
 
         case 'canApproveTechnical':
+            if (user.canApproveTechnical === true) return true;
             if (checkRoleMatch('technical') || checkRoleMatch('فنی') || checkRoleMatch('نت')) return true;
             break;
 
         case 'canApproveShiftLeader':
+            if (user.canApproveShiftLeader === true) return true;
             if (checkRoleMatch('shift') || checkRoleMatch('سرشیفت')) return true;
             break;
 
         case 'canApproveWarehouseKeeper':
+            if (user.canApproveWarehouseKeeper === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
             break;
 
         case 'canRegisterEntry':
+            if (user.canRegisterEntry === true) return true;
             if (checkRoleMatch('security') || checkRoleMatch('نگهبان') || checkRoleMatch('انتظامات')) return true;
             break;
 
         case 'canCheckQC':
+            if (user.canCheckQC === true) return true;
             if (checkRoleMatch('qc') || checkRoleMatch('کنترل کیفی')) return true;
             break;
 
         case 'canWarehouseFinalize':
+            if (user.canWarehouseFinalize === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
             break;
 
         case 'canManageParts':
-            if (user.canManageParts || checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
+            if (user.canManageParts === true) return true;
+            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('factory') || checkRoleMatch('کارخانه')) return true;
             break;
 
         case 'canViewPricingAndInvoices':
-            if (user.canViewPricingAndInvoices || checkRoleMatch('ceo') || checkRoleMatch('commercial') || checkRoleMatch('financial')) return true;
+            if (user.canViewPricingAndInvoices === true || checkRoleMatch('ceo') || checkRoleMatch('commercial') || checkRoleMatch('financial')) return true;
             break;
     }
 
@@ -367,7 +396,17 @@ export const canUserAccessZanjanBranch = (user: User, settings?: SystemSettings 
     }
     const checkRoleMatch = (snippet: string) => rolesList.some(r => r.includes(snippet.toLowerCase()));
 
-    if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه') || checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید کارخانه') || checkRoleMatch('خرید زنجان')) return true;
+    // Any Factory role (Factory Manager, Purchasing, Warehouse, Technical, Shift Leader, QC, Guard) belongs to Factory/Zanjan
+    if (
+        checkRoleMatch('factory') || checkRoleMatch('کارخانه') ||
+        checkRoleMatch('warehouse') || checkRoleMatch('انبار') ||
+        checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') ||
+        checkRoleMatch('technical') || checkRoleMatch('فنی') || checkRoleMatch('نت') ||
+        checkRoleMatch('shift') || checkRoleMatch('سرشیفت') ||
+        checkRoleMatch('qc') || checkRoleMatch('کنترل کیفی') ||
+        checkRoleMatch('security') || checkRoleMatch('انتظامات')
+    ) return true;
+
     if ((settings?.purchaseZanjanAllowedUserIds || []).includes(user.id)) return true;
     if ((settings?.purchaseZanjanDecisionApproverUserIds || []).includes(user.id)) return true;
     if ((settings?.purchaseZanjanPurchasingUserIds || []).includes(user.id)) return true;
@@ -375,7 +414,15 @@ export const canUserAccessZanjanBranch = (user: User, settings?: SystemSettings 
     if ((settings?.purchaseZanjanBuyerUserIds || []).includes(user.id)) return true;
     if ((settings?.purchaseZanjanFinalApproverUserIds || []).includes(user.id)) return true;
 
-    if (user.canApproveFactoryDecision || user.canManageZanjanPurchasing || user.canApproveFactory || user.canExecuteBuyerZanjan || user.canApproveFactoryFinal) return true;
+    if (
+        user.canApproveFactoryDecision || user.canManageZanjanPurchasing || 
+        user.canApproveFactory || user.canExecuteBuyerZanjan || 
+        user.canApproveFactoryFinal || user.canApproveWarehouseKeeper || 
+        user.canWarehouseFinalize || user.canApproveTechnical || 
+        user.canApproveShiftLeader || user.canCheckQC || 
+        user.canRegisterEntry || user.canManageParts || user.canManagePurchase ||
+        user.canCreatePurchaseRequest
+    ) return true;
 
     return false;
 };
@@ -1003,7 +1050,7 @@ const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, is
         );
     });
 
-    const canCreate = hasPurchasePerm('canCreate');
+    const canCreate = hasPurchasePerm('canCreate') || !!currentUser.canCreatePurchaseRequest || !!currentUser.canManagePurchase || currentUser.role === UserRole.WAREHOUSE_KEEPER;
 
     return (
         <div className="space-y-4">
@@ -5068,7 +5115,8 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
                            hasPurchasePerm('canManageWarehouse') || 
                            hasPurchasePerm('canWarehouseFinalize') || 
                            currentUser.role === UserRole.ADMIN || 
-                           (currentUser.roles && currentUser.roles.includes(UserRole.ADMIN)) ||
+                           currentUser.role === UserRole.WAREHOUSE_KEEPER ||
+                           (currentUser.roles && (currentUser.roles.includes(UserRole.ADMIN) || currentUser.roles.includes(UserRole.WAREHOUSE_KEEPER))) ||
                            !!currentUser.canManageParts;
 
     const filtered = parts.filter((p: PartMasterData) => 

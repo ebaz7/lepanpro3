@@ -60,7 +60,7 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
   const canCreateExit = perms.canCreateExitPermit === true;
   const canViewInvoices = perms.canViewInvoices === true;
   const canViewExit = perms.canViewExitPermits === true;
-  const canManageWarehouse = currentUser.role === UserRole.ADMIN || perms.canManageWarehouse === true;
+  const canManageWarehouse = currentUser.role === UserRole.ADMIN || perms.canManageWarehouse === true || currentUser.role === UserRole.WAREHOUSE_KEEPER || currentUser.role === 'warehouse_keeper';
   const canSeeTrade = currentUser.role === UserRole.ADMIN || perms.canManageTrade === true;
   const canSeeBalances = currentUser.role === UserRole.ADMIN || (perms as any).canViewCustomerBalances === true;
   const canSeeProducts = currentUser.role === UserRole.ADMIN || perms.canManageSales === true;
@@ -68,7 +68,15 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
   const canSeeSecurity = currentUser.role === UserRole.ADMIN || perms.canViewSecurity === true;
   const canSeeKnowledgeBase = currentUser.role === UserRole.ADMIN || perms.canViewKnowledgeBase === true || perms.canManageKnowledgeBase === true;
   const canSeeMeetings = currentUser.role === UserRole.ADMIN || perms.canViewMeetings === true;
-  const canSeePurchase = currentUser.role === UserRole.ADMIN || (perms.canView === true);
+  const canSeePurchase = currentUser.role === UserRole.ADMIN || 
+    perms.canView === true || 
+    perms.canManagePurchase === true || 
+    currentUser.canManagePurchase === true || 
+    currentUser.canManageParts === true || 
+    currentUser.canCreatePurchaseRequest === true ||
+    currentUser.role === UserRole.WAREHOUSE_KEEPER || 
+    currentUser.role === UserRole.FACTORY_MANAGER || 
+    currentUser.role === UserRole.COMMERCIAL;
   const canSeeCcti = true; // عمومی برای تمام کاربران (تبدیل عکس، PDF و ادغام)
   const canSeeSayan = currentUser.role === UserRole.ADMIN || 
     perms.canViewSayan === true || 

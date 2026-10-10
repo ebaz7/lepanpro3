@@ -64,6 +64,13 @@ export interface User {
   canViewPricingAndInvoices?: boolean;
   canManageZanjanPurchasing?: boolean;
   canExecuteBuyerZanjan?: boolean;
+  canCreatePurchaseRequest?: boolean;
+  canApproveWarehouseKeeper?: boolean;
+  canWarehouseFinalize?: boolean;
+  canApproveTechnical?: boolean;
+  canApproveShiftLeader?: boolean;
+  canCheckQC?: boolean;
+  canRegisterEntry?: boolean;
   scopeZanjanOnly?: boolean;
   scopeTehranOnly?: boolean;
   purchaseScope?: 'ALL' | 'TEHRAN_ONLY' | 'ZANJAN_ONLY';

@@ -119,7 +119,16 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-let PORT = parseInt(process.env.PORT, 10) || 3000;
+let PORT = parseInt(process.env.DEFAULT_APP_PORT || process.env.APP_PORT, 10);
+if (!PORT || isNaN(PORT)) {
+    const envPort = parseInt(process.env.PORT, 10);
+    // 8080 is reserved by Nginx inside the container, dev server must run on 3000
+    if (!isNaN(envPort) && envPort !== 8080) {
+        PORT = envPort;
+    } else {
+        PORT = 3000;
+    }
+}
 const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
 if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
     const parsed = parseInt(process.argv[portArgIndex + 1], 10);
