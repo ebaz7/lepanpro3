@@ -437,11 +437,12 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         if (!jalaliStr) return '';
         try {
             const res = parseShamsiParts(jalaliStr);
-            if (!res) return jalaliStr;
+            if (!res) return '';
             const g = jalaali.toGregorian(res.jy, res.jm, res.jd);
+            if (!g || !g.gy || isNaN(g.gy)) return '';
             return `${g.gy}-${String(g.gm).padStart(2, '0')}-${String(g.gd).padStart(2, '0')}`;
         } catch {
-            return jalaliStr;
+            return '';
         }
     };
 
@@ -499,14 +500,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         const today = new Date();
         const jToday = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
         
-        const activeYear = getActiveFiscalYearLabel();
+        const currentYear = jToday.jy; // 1405
         
         const savedFrom = localStorage.getItem('sayan_default_date_from');
         const savedTo = localStorage.getItem('sayan_default_date_to');
         
-        // Default to active fiscal year (1405) if savedFrom is missing
-        const initialFrom = savedFrom || `${activeYear}/01/01`;
-        const initialTo = savedTo || `${activeYear}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
+        // Default to current year 1405 start if savedFrom is missing or from an old year
+        const initialFrom = (savedFrom && !savedFrom.startsWith('1403') && !savedFrom.startsWith('1404')) ? savedFrom : `${currentYear}/01/01`;
+        const initialTo = savedTo || `${currentYear}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
         
         setDateFrom(initialFrom);
         setDateTo(initialTo);
@@ -1996,11 +1997,30 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const fetchSalesData = async () => {
         setIsLoading(true);
         try {
+            // Helper for shifting Shamsi year
+            const shiftShamsiYear = (shamsiStr: string, delta: number) => {
+                if (!shamsiStr) return '';
+                const p = shamsiStr.split('/');
+                if (p.length !== 3) return shamsiStr;
+                const y = parseInt(p[0], 10);
+                return `${y + delta}/${p[1]}/${p[2]}`;
+            };
+
+            let effectiveFromB = salesDateFromB;
+            let effectiveToB = salesDateToB;
+
+            if (compareMode && (!effectiveFromB || !effectiveToB)) {
+                effectiveFromB = shiftShamsiYear(dateFrom, -1);
+                effectiveToB = shiftShamsiYear(dateTo, -1);
+                if (effectiveFromB) setSalesDateFromB(effectiveFromB);
+                if (effectiveToB) setSalesDateToB(effectiveToB);
+            }
+
             const gregFrom = jalaliToGregorianStr(dateFrom);
             const gregTo = jalaliToGregorianStr(dateTo);
             
             const dateFilter = gregFrom && gregTo 
-                ? `AND LEFT(t10.Field_008, 10) >= '${gregFrom}' AND LEFT(t10.Field_008, 10) <= '${gregTo}'` 
+                ? `AND t10.Field_008 >= '${gregFrom}T00:00:00.000Z' AND t10.Field_008 <= '${gregTo}T23:59:59.000Z'` 
                 : '';
 
             // Fetch Period A
@@ -2057,80 +2077,17 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                   ${dateFilter}
                 ORDER BY t10.Field_008 DESC
             `;
-            const dataA = await runSayanQuery(sqlA);
 
-            const allocateSalesRows = (rawRows: any[]) => {
-                const invMap = new Map<string, any[]>();
-                rawRows.forEach(row => {
-                    const docId = row.DocId || 'unknown';
-                    if (!invMap.has(docId)) invMap.set(docId, []);
-                    invMap.get(docId)!.push(row);
-                });
-
-                const processed: any[] = [];
-                invMap.forEach((rows) => {
-                    const headerPayable = parseFloat(rows[0].HeaderPayable || rows[0].Amount || 0);
-                    const sumItemAmt = rows.reduce((s, r) => s + parseFloat(r.Amount || 0), 0);
-                    const sumItemQty = rows.reduce((s, r) => s + parseFloat(r.Quantity || 0), 0);
-
-                    rows.forEach(r => {
-                        const itemAmt = parseFloat(r.Amount || 0);
-                        const itemQty = parseFloat(r.Quantity || 0);
-                        let allocatedAmt = 0;
-                        if (headerPayable > 0) {
-                            if (sumItemAmt > 0) {
-                                allocatedAmt = headerPayable * (itemAmt / sumItemAmt);
-                            } else if (sumItemQty > 0) {
-                                allocatedAmt = headerPayable * (itemQty / sumItemQty);
-                            } else {
-                                allocatedAmt = headerPayable / rows.length;
-                            }
-                        } else {
-                            allocatedAmt = itemAmt;
-                        }
-                        processed.push({
-                            ...r,
-                            Amount: allocatedAmt.toString(),
-                            isOfficial: (() => {
-                                const h = String(r.Notes || '').trim();
-                                const i = String(r.ItemNotes || '').trim();
-                                const hLower = h.toLowerCase();
-                                const iLower = i.toLowerCase();
-                                if (hLower.includes('غیر رسمی') || hLower.includes('غير رسمي') || iLower.includes('غیر رسمی') || iLower.includes('غير رسمي')) {
-                                    return false;
-                                }
-                                return hLower.includes('رسمی') || hLower.includes('رسمي') || iLower.includes('رسمی') || iLower.includes('رسمي') || hLower.includes('ارزش افزوده') || iLower.includes('ارزش افزوده');
-                            })()
-                        });
-                    });
-                });
-                return processed;
-            };
-
-            const processedA = allocateSalesRows(dataA);
-            setSalesData(processedA);
-            setCompareSalesDataA(processedA);
-
-            // Fetch Period B for comparison if active
-            if (compareMode) {
-                const shiftShamsiYear = (shamsiStr: string, delta: number) => {
-                    if (!shamsiStr) return '';
-                    const p = shamsiStr.split('/');
-                    if (p.length !== 3) return shamsiStr;
-                    const y = parseInt(p[0], 10);
-                    return `${y + delta}/${p[1]}/${p[2]}`;
-                };
-                const effFromB = salesDateFromB || shiftShamsiYear(dateFrom, -1);
-                const effToB = salesDateToB || shiftShamsiYear(dateTo, -1);
-
-                const gregFromB = jalaliToGregorianStr(effFromB);
-                const gregToB = jalaliToGregorianStr(effToB);
+            let sqlB = '';
+            if (compareMode && effectiveFromB && effectiveToB) {
+                const gregFromB = jalaliToGregorianStr(effectiveFromB);
+                const gregToB = jalaliToGregorianStr(effectiveToB);
                 
                 const dateFilterB = gregFromB && gregToB 
-                    ? `AND LEFT(t10.Field_008, 10) >= '${gregFromB}' AND LEFT(t10.Field_008, 10) <= '${gregToB}'` 
+                    ? `AND t10.Field_008 >= '${gregFromB}T00:00:00.000Z' AND t10.Field_008 <= '${gregToB}T23:59:59.000Z'` 
                     : '';
 
-                const sqlB = `
+                sqlB = `
                     SELECT 
                         t10.Field_001 as DocId,
                         t10.Field_006 as InvoiceNum,
@@ -2183,12 +2140,78 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                       ${dateFilterB}
                     ORDER BY t10.Field_008 DESC
                 `;
-                const dataB = await runSayanQuery(sqlB);
+            }
+
+            const allocateSalesRows = (rawRows: any[]) => {
+                if (!Array.isArray(rawRows)) return [];
+                const invMap = new Map<string, any[]>();
+                rawRows.forEach(row => {
+                    const docId = row.DocId || 'unknown';
+                    if (!invMap.has(docId)) invMap.set(docId, []);
+                    invMap.get(docId)!.push(row);
+                });
+
+                const processed: any[] = [];
+                invMap.forEach((rows) => {
+                    const headerPayable = parseFloat(rows[0].HeaderPayable || rows[0].Amount || 0);
+                    const sumItemAmt = rows.reduce((s, r) => s + parseFloat(r.Amount || 0), 0);
+                    const sumItemQty = rows.reduce((s, r) => s + parseFloat(r.Quantity || 0), 0);
+
+                    rows.forEach(r => {
+                        const itemAmt = parseFloat(r.Amount || 0);
+                        const itemQty = parseFloat(r.Quantity || 0);
+                        let allocatedAmt = 0;
+                        if (headerPayable > 0) {
+                            if (sumItemAmt > 0) {
+                                allocatedAmt = headerPayable * (itemAmt / sumItemAmt);
+                            } else if (sumItemQty > 0) {
+                                allocatedAmt = headerPayable * (itemQty / sumItemQty);
+                            } else {
+                                allocatedAmt = headerPayable / rows.length;
+                            }
+                        } else {
+                            allocatedAmt = itemAmt;
+                        }
+                        processed.push({
+                            ...r,
+                            Amount: allocatedAmt.toString(),
+                            isOfficial: (() => {
+                                const h = String(r.Notes || '').trim();
+                                const i = String(r.ItemNotes || '').trim();
+                                const hLower = h.toLowerCase();
+                                const iLower = i.toLowerCase();
+                                if (hLower.includes('غیر رسمی') || hLower.includes('غير رسمي') || iLower.includes('غیر رسمی') || iLower.includes('غير رسمي')) {
+                                    return false;
+                                }
+                                return hLower.includes('رسمی') || hLower.includes('رسمي') || iLower.includes('رسمی') || iLower.includes('رسمي') || hLower.includes('ارزش افزوده') || iLower.includes('ارزش افزوده');
+                            })()
+                        });
+                    });
+                });
+                return processed;
+            };
+
+            const promises: Promise<any>[] = [runSayanQuery(sqlA)];
+            if (sqlB) {
+                promises.push(runSayanQuery(sqlB));
+            }
+
+            const results = await Promise.all(promises);
+            const dataA = results[0] || [];
+            const processedA = allocateSalesRows(dataA);
+            setSalesData(processedA);
+            setCompareSalesDataA(processedA);
+
+            if (sqlB && results.length > 1) {
+                const dataB = results[1] || [];
                 const processedB = allocateSalesRows(dataB);
                 setCompareSalesDataB(processedB);
+            } else if (!compareMode) {
+                setCompareSalesDataB([]);
             }
         } catch (err: any) {
-            toast.error(`خطا در واکشی اطلاعات فروش: ${err.message}`);
+            console.error(err);
+            toast.error(`خطا در واکشی اطلاعات فروش: ${err.message || err}`);
         } finally {
             setIsLoading(false);
         }

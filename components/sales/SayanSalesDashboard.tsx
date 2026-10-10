@@ -344,12 +344,16 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         const mTo = parseInt(partsTo[1], 10);
         const dTo = parseInt(partsTo[2], 10);
 
+        const getMaxDays = (y: number, m: number) => m <= 6 ? 31 : (m <= 11 ? 30 : (jalaali.isLeapJalaaliYear(y) ? 30 : 29));
+
         let bFrom = '';
         let bTo = '';
 
         if (preset === 'prev_year') {
-          bFrom = `${yFrom - 1}/${String(mFrom).padStart(2, '0')}/${String(dFrom).padStart(2, '0')}`;
-          bTo = `${yTo - 1}/${String(mTo).padStart(2, '0')}/${String(dTo).padStart(2, '0')}`;
+          const maxDf = getMaxDays(yFrom - 1, mFrom);
+          const maxDt = getMaxDays(yTo - 1, mTo);
+          bFrom = `${yFrom - 1}/${String(mFrom).padStart(2, '0')}/${String(Math.min(dFrom, maxDf)).padStart(2, '0')}`;
+          bTo = `${yTo - 1}/${String(mTo).padStart(2, '0')}/${String(Math.min(dTo, maxDt)).padStart(2, '0')}`;
         } else if (preset === 'prev_month') {
           let prevMFrom = mFrom - 1;
           let prevYFrom = yFrom;
@@ -359,8 +363,11 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           let prevYTo = yTo;
           if (prevMTo < 1) { prevMTo = 12; prevYTo--; }
 
-          bFrom = `${prevYFrom}/${String(prevMFrom).padStart(2, '0')}/${String(dFrom).padStart(2, '0')}`;
-          bTo = `${prevYTo}/${String(prevMTo).padStart(2, '0')}/${String(dTo).padStart(2, '0')}`;
+          const maxDf = getMaxDays(prevYFrom, prevMFrom);
+          const maxDt = getMaxDays(prevYTo, prevMTo);
+
+          bFrom = `${prevYFrom}/${String(prevMFrom).padStart(2, '0')}/${String(Math.min(dFrom, maxDf)).padStart(2, '0')}`;
+          bTo = `${prevYTo}/${String(prevMTo).padStart(2, '0')}/${String(Math.min(dTo, maxDt)).padStart(2, '0')}`;
         } else if (preset === 'prev_quarter') {
           let prevMFrom = mFrom - 3;
           let prevYFrom = yFrom;
@@ -370,8 +377,11 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           let prevYTo = yTo;
           if (prevMTo < 1) { prevMTo += 12; prevYTo--; }
 
-          bFrom = `${prevYFrom}/${String(prevMFrom).padStart(2, '0')}/${String(dFrom).padStart(2, '0')}`;
-          bTo = `${prevYTo}/${String(prevMTo).padStart(2, '0')}/${String(dTo).padStart(2, '0')}`;
+          const maxDf = getMaxDays(prevYFrom, prevMFrom);
+          const maxDt = getMaxDays(prevYTo, prevMTo);
+
+          bFrom = `${prevYFrom}/${String(prevMFrom).padStart(2, '0')}/${String(Math.min(dFrom, maxDf)).padStart(2, '0')}`;
+          bTo = `${prevYTo}/${String(prevMTo).padStart(2, '0')}/${String(Math.min(dTo, maxDt)).padStart(2, '0')}`;
         }
 
         onCompareDateRangeChange(bFrom, bTo);
@@ -417,17 +427,21 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     yesterday.setDate(yesterday.getDate() - 1);
     const jYesterday = jalaali.toJalaali(yesterday.getFullYear(), yesterday.getMonth() + 1, yesterday.getDate());
 
-    // Determine target year being inspected (e.g. 1405)
+    // Determine target year being inspected (e.g. 1404 or 1405)
     const targetYear = (() => {
       if (dateFrom) {
         const match = dateFrom.match(/(\d{4})/);
         if (match) return parseInt(match[1], 10);
+        const match2 = dateFrom.match(/(\d{1,4})/);
+        if (match2) {
+          let y = parseInt(match2[1], 10);
+          if (y < 100) y += 1400;
+          else if (y >= 100 && y < 1000) y += 1000;
+          return y;
+        }
       }
       return jNow.jy;
     })();
-
-    // Reference Jalaali date for Today / Month / Quarter KPI matching
-    const refJalaali = jNow;
 
     // Detailed Item Map
     const itemMap = new Map<string, {
@@ -527,7 +541,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       })();
       
       // Today
-      if (jRow.jy === refJalaali.jy && jRow.jm === refJalaali.jm && jRow.jd === refJalaali.jd) {
+      if (jRow.jy === jNow.jy && jRow.jm === jNow.jm && jRow.jd === jNow.jd) {
         if (isReturn) {
           todayRetAmt += amt; todayRetWgt += qty;
         } else {
@@ -536,7 +550,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       }
 
       // Yesterday
-      if (jRow.jy === refJalaali.jy && jRow.jm === refJalaali.jm && jRow.jd === (refJalaali.jd - 1)) {
+      if (jRow.jy === jYesterday.jy && jRow.jm === jYesterday.jm && jRow.jd === jYesterday.jd) {
         if (isReturn) {
           yesterdayRetAmt += amt; yesterdayRetWgt += qty;
         } else {
@@ -544,16 +558,17 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         }
       }
 
-      // Month
-      if (jRow.jy === targetYear && jRow.jm === refJalaali.jm) {
+      // Month (Match target year; if targetYear is current year use current month, else aggregate for month)
+      const targetMonth = targetYear === jNow.jy ? jNow.jm : (jRow.jm || 1);
+      if (jRow.jy === targetYear && (targetYear === jNow.jy ? jRow.jm === targetMonth : true)) {
         if (isReturn) monthNetAmt -= amt; else monthNetAmt += amt;
         if (isReturn) monthNetWgt -= qty; else monthNetWgt += qty;
       }
 
       // Quarter
-      const currentQuarter = Math.ceil(refJalaali.jm / 3);
+      const currentQuarter = Math.ceil(jNow.jm / 3);
       const rowQuarter = Math.ceil(jRow.jm / 3);
-      if (jRow.jy === targetYear && rowQuarter === currentQuarter) {
+      if (jRow.jy === targetYear && (targetYear === jNow.jy ? rowQuarter === currentQuarter : true)) {
         if (isReturn) quarterNetAmt -= amt; else quarterNetAmt += amt;
         if (isReturn) quarterNetWgt -= qty; else quarterNetWgt += qty;
       }
@@ -995,7 +1010,6 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     setSelectedPreset(presetKey);
     const now = new Date();
     const jNow = jalaali.toJalaali(now.getFullYear(), now.getMonth() + 1, now.getDate());
-    const baseYear = jNow.jy;
 
     let fromStr = '';
     let toStr = '';
@@ -1003,13 +1017,13 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     const pad = (n: number) => String(n).padStart(2, '0');
 
     if (presetKey === 'today') {
-      fromStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
       toStr = fromStr;
     } else if (presetKey === 'yesterday') {
       const yDate = new Date(now);
       yDate.setDate(yDate.getDate() - 1);
       const jY = jalaali.toJalaali(yDate.getFullYear(), yDate.getMonth() + 1, yDate.getDate());
-      fromStr = `${baseYear}/${pad(jY.jm)}/${pad(jY.jd)}`;
+      fromStr = `${jY.jy}/${pad(jY.jm)}/${pad(jY.jd)}`;
       toStr = fromStr;
     } else if (presetKey === 'this_week') {
       // Current Saturday to Today
@@ -1018,23 +1032,23 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       const satDate = new Date(now);
       satDate.setDate(satDate.getDate() - distSat);
       const jSat = jalaali.toJalaali(satDate.getFullYear(), satDate.getMonth() + 1, satDate.getDate());
-      fromStr = `${baseYear}/${pad(jSat.jm)}/${pad(jSat.jd)}`;
-      toStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${jSat.jy}/${pad(jSat.jm)}/${pad(jSat.jd)}`;
+      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'this_month') {
-      fromStr = `${baseYear}/${pad(jNow.jm)}/01`;
-      toStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${jNow.jy}/${pad(jNow.jm)}/01`;
+      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'last_month') {
       let prevM = jNow.jm - 1;
-      let prevY = baseYear;
+      let prevY = jNow.jy;
       if (prevM < 1) { prevM = 12; prevY -= 1; }
       fromStr = `${prevY}/${pad(prevM)}/01`;
       const daysInPrev = jalaali.jalaaliMonthLength(prevY, prevM);
       toStr = `${prevY}/${pad(prevM)}/${pad(daysInPrev)}`;
     } else if (presetKey === 'this_year') {
-      fromStr = `${baseYear}/01/01`;
-      toStr = `${baseYear}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      fromStr = `${jNow.jy}/01/01`;
+      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'last_year') {
-      const prevY = baseYear - 1;
+      const prevY = jNow.jy - 1;
       fromStr = `${prevY}/01/01`;
       toStr = `${prevY}/12/29`;
     }
@@ -1774,7 +1788,12 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (onToggleCompareMode) onToggleCompareMode(!compareMode);
+                  const nextMode = !compareMode;
+                  if (nextMode && (!salesDateFromB || !salesDateToB)) {
+                    applyPreset('prev_year');
+                  } else if (onToggleCompareMode) {
+                    onToggleCompareMode(nextMode);
+                  }
                 }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
                   compareMode
@@ -2805,7 +2824,12 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (onToggleCompareMode) onToggleCompareMode(!compareMode);
+                    const nextMode = !compareMode;
+                    if (nextMode && (!salesDateFromB || !salesDateToB)) {
+                      applyPreset('prev_year');
+                    } else if (onToggleCompareMode) {
+                      onToggleCompareMode(nextMode);
+                    }
                   }}
                   className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
                     compareMode 
@@ -3023,43 +3047,12 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
               <p className="text-xs text-slate-600 font-bold">در حال دریافت و تحلیل آماری داده‌های بازه دوم از سیستم سایان ERP...</p>
             </div>
           ) : !compareDataB || compareDataB.length === 0 ? (
-            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
-              <AlertCircle className="w-12 h-12 text-amber-500 mx-auto" />
-              <div>
-                <h4 className="text-sm font-extrabold text-slate-800">هیچ تراکنشی در بازه دوم (دوره B) یافت نشد</h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                  تراکنشی در تاریخ‌های مشخص شده (<span className="font-mono font-bold text-amber-700">{salesDateFromB} تا {salesDateToB}</span>) در دیتابیس سایان ERP یافت نشد. جهت مشاهده مقایسه، از میانبرهای زیر بازه دوم را به سال مالی دارای تراکنش تغییر دهید:
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => applyPreset('prev_year')}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs px-4 py-2 font-bold transition-all shadow-sm cursor-pointer"
-                >
-                  همسان سال قبل (پارسال)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onDateRangeChange) onDateRangeChange('1404/01/01', '1404/12/29');
-                    if (onCompareDateRangeChange) onCompareDateRangeChange('1403/01/01', '1403/12/29');
-                    if (onToggleCompareMode) onToggleCompareMode(true);
-                  }}
-                  className="bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs px-4 py-2 font-bold transition-all shadow-sm cursor-pointer"
-                >
-                  تنظیم دوره A به ۱۴۰۴ و دوره B به ۱۴۰۳
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onCompareDateRangeChange) onCompareDateRangeChange('1403/01/01', '1403/12/29');
-                  }}
-                  className="bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs px-4 py-2 font-bold transition-all shadow-sm cursor-pointer"
-                >
-                  انتخاب کل سال ۱۴۰۳ برای دوره B
-                </button>
-              </div>
+            <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl">
+              <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
+              <h4 className="text-sm font-extrabold text-slate-800">هیچ تراکنشی در بازه دوم یافت نشد</h4>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 mb-4">
+                تراکنشی در تاریخ‌های مشخص شده برای بازه دوم در سیستم ERP یافت نشد. می‌توانید با دکمه‌های میانبر (مثلا همسان سال قبل) بازه دیگری انتخاب کنید.
+              </p>
             </div>
           ) : (
             <>
