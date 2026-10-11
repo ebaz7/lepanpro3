@@ -8,6 +8,34 @@ import {
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
+export const processBioImageUrl = (rawUrl?: string, defaultFallback: string = ''): string => {
+  if (!rawUrl || typeof rawUrl !== 'string') return defaultFallback;
+  let url = rawUrl.trim();
+  if (!url) return defaultFallback;
+
+  // Transform Google Drive links to direct view URLs
+  if (url.includes('drive.google.com')) {
+    const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return `https://lh3.googleusercontent.com/d/${match[1]}`;
+    }
+  }
+
+  // Transform Dropbox links
+  if (url.includes('dropbox.com')) {
+    url = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '');
+  }
+
+  // Normalize protocol
+  if (url.startsWith('//')) {
+    url = `https:${url}`;
+  } else if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('data:') && !url.startsWith('blob:') && !url.startsWith('/')) {
+    url = `https://${url}`;
+  }
+
+  return url;
+};
+
 interface PublicBioPageProps {
   config: BioLinkConfig;
   onBackToApp?: () => void;
@@ -287,13 +315,21 @@ END:VCARD`;
     }
   };
 
+  const DEFAULT_COVER = 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000';
+  const DEFAULT_AVATAR = '/lepan-logo.png';
+
+  const processedCover = processBioImageUrl(config.coverUrl, DEFAULT_COVER);
+  const processedAvatar = processBioImageUrl(config.avatarUrl, DEFAULT_AVATAR);
+
   return (
-    <div className={`w-full min-h-screen dir-rtl font-sans bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-6 px-3'}`}>
+    <div className={`w-full dir-rtl font-sans bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start public-bio-scroll-view ${
+      isEmbeddedPreview ? 'p-0 h-full max-h-full overflow-y-auto' : 'h-screen h-dvh max-h-screen max-h-dvh overflow-y-auto overflow-x-hidden py-6 px-3'
+    }`}>
       <Toaster position="top-center" />
       
       {/* Top Action Bar if in full screen */}
       {!isEmbeddedPreview && (
-        <div className="w-full max-w-md mb-4 flex items-center justify-between px-2">
+        <div className="w-full max-w-md mb-4 flex items-center justify-between px-2 shrink-0">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-black text-slate-800 dark:text-slate-200">کارت ویزیت دیجیتال لپان لینک</span>
@@ -318,16 +354,22 @@ END:VCARD`;
       )}
 
       {/* Main Lepan Link Card Wrapper */}
-      <div className={`w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 ${isEmbeddedPreview ? 'shadow-none rounded-2xl border-0' : ''}`}>
+      <div className={`w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 ${
+        isEmbeddedPreview ? 'shadow-none rounded-2xl border-0' : 'mb-12'
+      }`}>
         
         {/* Cover Photo Header */}
         <div className="relative w-full h-44 bg-slate-800 overflow-hidden">
           <img
-            src={config.coverUrl || 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000'}
+            src={processedCover}
             alt="Cover"
+            referrerPolicy="no-referrer"
             className="w-full h-full object-cover opacity-90 scale-105 transform hover:scale-100 transition-transform duration-700"
             onError={(e) => {
-              (e.target as HTMLElement).style.display = 'none';
+              const target = e.target as HTMLImageElement;
+              if (target.src !== DEFAULT_COVER) {
+                target.src = DEFAULT_COVER;
+              }
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
@@ -345,11 +387,15 @@ END:VCARD`;
           <div className="relative -mt-16 mb-3 inline-block">
             <div className="w-28 h-28 rounded-full bg-white dark:bg-slate-900 p-1.5 shadow-xl border-2 border-white dark:border-slate-800 mx-auto">
               <img
-                src={config.avatarUrl || '/lepan-logo.png'}
+                src={processedAvatar}
                 alt="Logo"
+                referrerPolicy="no-referrer"
                 className="w-full h-full rounded-full object-cover bg-slate-50 dark:bg-slate-800"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/lepan-logo.png';
+                  const target = e.target as HTMLImageElement;
+                  if (target.src !== DEFAULT_AVATAR) {
+                    target.src = DEFAULT_AVATAR;
+                  }
                 }}
               />
             </div>
