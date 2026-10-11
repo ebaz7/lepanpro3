@@ -101,6 +101,7 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
     perms.canAccessSayanPendingDocs === true;
 
   const canSeeChequeReceipts = currentUser.role === UserRole.ADMIN || perms.canAccessChequeReceipts === true;
+  const canSeeDigitalCard = currentUser.role === UserRole.ADMIN || perms.canAccessDigitalCard !== false;
 
   const items: AppNavItem[] = [
     ALL_NAVIGATION_ITEMS['dashboard']
@@ -120,7 +121,7 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
   if (canSeePurchase) items.push(ALL_NAVIGATION_ITEMS['purchase']);
   items.push(ALL_NAVIGATION_ITEMS['secretariat']);
   if (canSeeChequeReceipts) items.push(ALL_NAVIGATION_ITEMS['cheque-receipts']);
-  items.push(ALL_NAVIGATION_ITEMS['digital-card']);
+  if (canSeeDigitalCard) items.push(ALL_NAVIGATION_ITEMS['digital-card']);
   items.push(ALL_NAVIGATION_ITEMS['chat']);
   if (canSeeKnowledgeBase) items.push(ALL_NAVIGATION_ITEMS['knowledge']);
   if (canSeeTrade) items.push(ALL_NAVIGATION_ITEMS['trade']);

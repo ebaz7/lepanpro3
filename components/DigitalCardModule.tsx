@@ -1,25 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BioLinkConfig, BioLinkBlock, BioLinkOrder, User } from '../types';
+import { BioLinkConfig, BioLinkBlock, BioLinkOrder, User, SystemSettings, UserRole } from '../types';
 import { getBioLinkConfig, saveBioLinkConfig } from '../services/storageService';
+import { getRolePermissions } from '../services/authService';
 import { PublicBioPage } from './PublicBioPage';
 import QRCode from 'qrcode';
 import { 
   QrCode, Edit3, Eye, Printer, Download, Plus, Trash2, ArrowUp, ArrowDown, 
   Check, X, Sparkles, Navigation, Phone, Mail, Instagram, FileText, ShoppingBag, 
   Globe, Share2, Copy, Smartphone, Layers, Palette, RefreshCw, Loader2, PhoneCall,
-  ExternalLink, Building2, UserCheck, MessageSquare, AlertCircle, Save
+  ExternalLink, Building2, UserCheck, MessageSquare, AlertCircle, Save, ShieldAlert, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface DigitalCardModuleProps {
   currentUser: User | null;
+  settings?: SystemSettings | null;
 }
 
-export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUser }) => {
+export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUser, settings }) => {
   const [activeTab, setActiveTab] = useState<'editor' | 'qr_print' | 'orders'>('editor');
   const [config, setConfig] = useState<BioLinkConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Permission calculation: Can the current user edit/modify the digital card?
+  const canManage = Boolean(
+    currentUser?.role === UserRole.ADMIN ||
+    currentUser?.role === 'ADMIN' ||
+    (currentUser && settings && getRolePermissions(currentUser.role, settings, currentUser).canManageDigitalCard === true)
+  );
 
   // QR Code Generator States
   const [qrSize, setQrSize] = useState(300);
@@ -120,6 +129,10 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
 
   const handleSaveConfig = async () => {
     if (!config) return;
+    if (!canManage) {
+      toast.error('شما دسترسی لازم برای ویرایش و ذخیره تنظیمات زیلینک و کارت دیجیتال را ندارید.');
+      return;
+    }
     setSaving(true);
     try {
       const updated = await saveBioLinkConfig(config);
@@ -343,6 +356,12 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                 لینک عمومی فعال
               </span>
+              {!canManage && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  حالت فقط مشاهده
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               صفحه اختصاصی شرکت، مسیریاب‌ها، راه‌های ارتباطی و کیو آر کد جهت چاپ روی کارت ویزیت
@@ -362,14 +381,21 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
             <span className="font-mono text-[11px] text-blue-600">{config.slug}</span>
           </button>
 
-          <button
-            onClick={handleSaveConfig}
-            disabled={saving}
-            className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            <span>ذخیره تغییرات</span>
-          </button>
+          {canManage ? (
+            <button
+              onClick={handleSaveConfig}
+              disabled={saving}
+              className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>ذخیره تغییرات</span>
+            </button>
+          ) : (
+            <div className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 text-xs font-bold flex items-center gap-1.5" title="دسترسی تغییرات فقط برای نقش‌های مجاز در تنظیمات فعال است">
+              <Lock className="w-3.5 h-3.5" />
+              <span>تغییرات قفل است</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -511,39 +537,41 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   </h3>
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => handleOpenAddBlock('neshan')}
-                    className="px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-[11px] font-bold hover:bg-rose-100"
-                  >
-                    + نشان
-                  </button>
-                  <button
-                    onClick={() => handleOpenAddBlock('balad')}
-                    className="px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 text-[11px] font-bold hover:bg-indigo-100"
-                  >
-                    + بلد
-                  </button>
-                  <button
-                    onClick={() => handleOpenAddBlock('phone')}
-                    className="px-2.5 py-1 rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 text-[11px] font-bold hover:bg-blue-100"
-                  >
-                    + تلفن
-                  </button>
-                  <button
-                    onClick={() => handleOpenAddBlock('instagram')}
-                    className="px-2.5 py-1 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 text-[11px] font-bold hover:bg-purple-100"
-                  >
-                    + اینستاگرام
-                  </button>
-                  <button
-                    onClick={() => handleOpenAddBlock()}
-                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black flex items-center gap-1 shadow-sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>افزودن بلوک جدید</span>
-                  </button>
-                </div>
+                {canManage && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => handleOpenAddBlock('neshan')}
+                      className="px-2.5 py-1 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 text-[11px] font-bold hover:bg-rose-100"
+                    >
+                      + نشان
+                    </button>
+                    <button
+                      onClick={() => handleOpenAddBlock('balad')}
+                      className="px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 text-[11px] font-bold hover:bg-indigo-100"
+                    >
+                      + بلد
+                    </button>
+                    <button
+                      onClick={() => handleOpenAddBlock('phone')}
+                      className="px-2.5 py-1 rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 text-[11px] font-bold hover:bg-blue-100"
+                    >
+                      + تلفن
+                    </button>
+                    <button
+                      onClick={() => handleOpenAddBlock('instagram')}
+                      className="px-2.5 py-1 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 text-[11px] font-bold hover:bg-purple-100"
+                    >
+                      + اینستاگرام
+                    </button>
+                    <button
+                      onClick={() => handleOpenAddBlock()}
+                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black flex items-center gap-1 shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>افزودن بلوک جدید</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Blocks List */}
@@ -592,32 +620,44 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => handleToggleBlockActive(block.id)}
-                        className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold border transition-colors ${
+                      {canManage ? (
+                        <>
+                          <button
+                            onClick={() => handleToggleBlockActive(block.id)}
+                            className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold border transition-colors ${
+                              block.isActive
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800'
+                            }`}
+                          >
+                            {block.isActive ? 'فعال' : 'غیرفعال'}
+                          </button>
+
+                          <button
+                            onClick={() => handleOpenEditBlock(block)}
+                            className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            title="ویرایش بلوک"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteBlock(block.id)}
+                            className="p-2 rounded-xl border border-rose-200 dark:border-rose-900/50 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                            title="حذف بلوک"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-extrabold border ${
                           block.isActive
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300'
                             : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800'
-                        }`}
-                      >
-                        {block.isActive ? 'فعال' : 'غیرفعال'}
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenEditBlock(block)}
-                        className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-                        title="ویرایش بلوک"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-
-                      <button
-                        onClick={() => handleDeleteBlock(block.id)}
-                        className="p-2 rounded-xl border border-rose-200 dark:border-rose-900/50 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50"
-                        title="حذف بلوک"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                        }`}>
+                          {block.isActive ? 'فعال' : 'غیرفعال'}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

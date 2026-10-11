@@ -102,6 +102,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             canAccessSayanRegistrations: true, canSayanPreInvoices: true,
             canSayanRegisterCheque: true, canSayanEditReceipt: true, canSayanApproveAccounting: true, canSayanApproveCeo: true, canSayanFinalApprove: true, canSayanDeleteReceipt: true,
             canAccessChequeReceipts: true,
+            canAccessDigitalCard: true,
+            canManageDigitalCard: true,
             // Purchase-specific permissions hardwired for administrator:
             canView: true, canCreate: true, canApproveTechnical: true, canApproveFactory: true, canApproveCEO: true,
             canManageProformas: true, canSelectProforma: true, canRegisterEntry: true, canCheckQC: true,
@@ -125,7 +127,9 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canViewSayan: false, canViewSayanTraz: false, canViewSayanSales: false, canViewSayanProduction: false, canViewSayanProdReturns: false, canViewSayanCheques: false, canViewSayanRemittances: false, canViewSayanWarehouseOverview: false, canViewSayanWarehouseWidget: false,
         canAccessSayanRegistrations: false, canSayanPreInvoices: false,
         canSayanRegisterCheque: false, canSayanEditReceipt: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanFinalApprove: false, canSayanDeleteReceipt: false,
-        canAccessChequeReceipts: false
+        canAccessChequeReceipts: false,
+        canAccessDigitalCard: true,
+        canManageDigitalCard: false
     };
 
     // Apply System Defaults (Hardcoded Logic)
@@ -142,6 +146,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canViewSecurity = true;
             perms.canViewCustomerBalances = true;
             perms.canImportCustomerBalances = true;
+            perms.canManageDigitalCard = true;
             break;
 
         case UserRole.FINANCIAL:
@@ -160,6 +165,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
             perms.canManageArchiveAttachments = true;
             perms.canViewExitPermits = true; 
             perms.canViewCustomerBalances = true;
+            perms.canManageDigitalCard = true;
             break;
 
         case UserRole.SALES_MANAGER:

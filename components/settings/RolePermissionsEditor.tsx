@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { SystemSettings, UserRole, RolePermissions, CustomRole, User } from '../../types';
-import { ShieldCheck, Truck, Warehouse, Lock, ChevronDown, ChevronUp, Landmark, Trash2, CheckSquare, Square, Info, ClipboardList, ShoppingCart, Pencil, Check, FileText, Briefcase, Building2, Sliders } from 'lucide-react';
+import { ShieldCheck, Truck, Warehouse, Lock, ChevronDown, ChevronUp, Landmark, Trash2, CheckSquare, Square, Info, ClipboardList, ShoppingCart, Pencil, Check, FileText, Briefcase, Building2, Sliders, QrCode } from 'lucide-react';
 import PurchaseWorkflowApproversSettings from './PurchaseWorkflowApproversSettings';
 
 interface Props {
@@ -184,6 +184,16 @@ const PERMISSION_GROUPS = [
         color: 'emerald', 
         items: [
             { id: 'canAccessChequeReceipts', label: 'مشاهده و دسترسی به ماژول مستقل رسید دریافت چک عمومی (غیر سایان)' }
+        ] 
+    },
+    { 
+        id: 'digital_card', 
+        title: 'کارت دیجیتال و QR کد (زیلینک هوشمند شرکت)', 
+        icon: QrCode, 
+        color: 'sky', 
+        items: [
+            { id: 'canAccessDigitalCard', label: 'مشاهده و دسترسی به صفحه کارت دیجیتال و QR کد' },
+            { id: 'canManageDigitalCard', label: 'دسترسی مدیریت، ویرایش اطلاعات، تغییر بلوک‌ها و تنظیمات زیلینک و QR کد' }
         ] 
     },
     { 

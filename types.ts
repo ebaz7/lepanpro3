@@ -247,6 +247,8 @@ export interface RolePermissions {
   canAccessSecretariat?: boolean;
   canManageSecretariatSettings?: boolean;
   canAccessChequeReceipts?: boolean;
+  canAccessDigitalCard?: boolean;
+  canManageDigitalCard?: boolean;
   [key: string]: boolean | undefined;
 }
 

@@ -97,6 +97,7 @@ import {
   CheckCircle,
   Rocket,
   ArrowUpCircle,
+  QrCode,
 } from "lucide-react";
 import { publishApplicationUpdate } from "../services/updateService";
 import { apiCall, getServerHost } from "../services/apiService";
@@ -116,6 +117,7 @@ import PurchaseWorkflowApproversSettings from "./settings/PurchaseWorkflowApprov
 import BackupManager from "./settings/BackupManager";
 import BotManager from "./settings/BotManager";
 import { WhatsAppDiagnosticTool } from "./settings/WhatsAppDiagnosticTool";
+import { DigitalCardModule } from "./DigitalCardModule";
 
 // Internal QRCode Component with Local Offline Generation
 const QRCode = ({ value, size }: { value: string; size: number }) => {
@@ -211,6 +213,7 @@ const Settings: React.FC<SettingsProps> = ({
     | "bot"
     | "meetings"
     | "secretariat"
+    | "digital-card"
     | "security"
     | "camera"
     | "theme"
@@ -2413,6 +2416,13 @@ const Settings: React.FC<SettingsProps> = ({
                 className={`whitespace-nowrap flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs md:text-sm font-medium transition-all ${activeCategory === "secretariat" ? "bg-purple-600 text-white shadow-md font-bold" : "text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-800"}`}
               >
                 <FileText size={16} /> تنظیمات دبیرخانه
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCategory("digital-card")}
+                className={`whitespace-nowrap flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs md:text-sm font-medium transition-all ${activeCategory === "digital-card" ? "bg-sky-600 text-white shadow-md font-bold" : "text-gray-600 dark:text-gray-300 hover:bg-gray-200/60 dark:hover:bg-gray-800"}`}
+              >
+                <QrCode size={16} /> کارت دیجیتال و QR کد
               </button>
               <button
                 type="button"
@@ -7058,6 +7068,33 @@ const Settings: React.FC<SettingsProps> = ({
                       قالبی یافت نشد.
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {activeCategory === "digital-card" && (
+              <div className="space-y-6 animate-fade-in text-right" dir="rtl">
+                <div className="glass-panel p-6 rounded-3xl border border-sky-200/70 dark:border-sky-800/40 bg-gradient-to-r from-sky-50/60 to-blue-50/60 dark:from-sky-950/30 dark:to-blue-950/30">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl text-white shadow-lg shadow-sky-500/20">
+                        <QrCode size={26} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                          تنظیمات کارت دیجیتال و QR کد عمومی (زیلینک)
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          مدیریت صفحه عمومی شرکت، تعیین بلوک‌ها، مسیریاب‌ها، لینک‌ها و استایل چاپ کیو آر کد
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Embedded DigitalCardModule */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-3xl border border-slate-200 dark:border-slate-800 p-2 md:p-4">
+                  <DigitalCardModule currentUser={currentUser} settings={settings} />
                 </div>
               </div>
             )}
