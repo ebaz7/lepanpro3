@@ -8,7 +8,7 @@ import {
   QrCode, Edit3, Eye, Printer, Download, Plus, Trash2, ArrowUp, ArrowDown, 
   Check, X, Sparkles, Navigation, Phone, Mail, Instagram, FileText, ShoppingBag, 
   Globe, Share2, Copy, Smartphone, Layers, Palette, RefreshCw, Loader2, PhoneCall,
-  ExternalLink, Building2, UserCheck, MessageSquare, AlertCircle, Save, ShieldAlert, Lock
+  ExternalLink, Building2, UserCheck, MessageSquare, AlertCircle, Save, ShieldAlert, Lock, MapPin
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
