@@ -788,6 +788,8 @@ function App() {
         safePushState({ tab: 'dashboard', root: true }, '', '#dashboard');
     }
 
+    const defaultTab = window.location.hash.replace('#', '');
+
     if (['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts', 'digital-card'].includes(defaultTab)) {
         setActiveTabState(defaultTab); 
         safeReplaceState({ tab: defaultTab }, '', `#${defaultTab}`);
