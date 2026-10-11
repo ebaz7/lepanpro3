@@ -37,11 +37,13 @@ import { SplitViewSelectorModal } from './components/SplitViewSelectorModal';
 import { WorkstationFloatingWindow } from './components/WorkstationFloatingWindow';
 import { SplitViewDragOverlay } from './components/SplitViewDragOverlay';
 import { FloatingCalculator } from './components/FloatingCalculator';
+import { DigitalCardModule } from './components/DigitalCardModule';
+import { PublicBioPage } from './components/PublicBioPage';
 import { AppNavItem, getAppNavItems, getSidebarLabel } from './utils/navigationItems';
-import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks } from './services/storageService'; 
+import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks, getBioLinkConfig } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
 import { logoutGoogleWorkspace } from './services/googleWorkspaceService';
-import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage, SystemAnnouncement, ChatGroup, TaskGroup, GroupTask } from './types';
+import { PaymentOrder, User, OrderStatus, UserRole, AppNotification, SystemSettings, PaymentMethod, ChatMessage, SystemAnnouncement, ChatGroup, TaskGroup, GroupTask, BioLinkConfig } from './types';
 import { Loader2, Bell, X, MessageSquare, AlertTriangle, FileWarning, CreditCard, BellRing, Columns, Maximize2, Minimize2, ArrowRightLeft, Minus, ExternalLink, Calculator, Monitor } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import { generateUUID, parsePersianDate, formatCurrency } from './constants';
@@ -95,6 +97,19 @@ function App() {
   // Floating Calculator State
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isCalculatorMinimized, setIsCalculatorMinimized] = useState(false);
+
+  // Public Bio / QR Code Card Public Page View State
+  const [isPublicBioView, setIsPublicBioView] = useState<boolean>(() => {
+    try {
+      const hash = window.location.hash;
+      const path = window.location.pathname;
+      const search = window.location.search;
+      return hash.startsWith('#p/') || path.startsWith('/p/') || search.includes('p=') || search.includes('public_bio');
+    } catch {
+      return false;
+    }
+  });
+  const [publicBioConfig, setPublicBioConfig] = useState<BioLinkConfig | null>(null);
 
   const activeTabRef = useRef(activeTab);
   const tabHistoryRef = useRef(tabHistory);
@@ -734,9 +749,13 @@ function App() {
 
     const hash = window.location.hash.replace('#', '');
     const path = window.location.pathname.replace(/^\/+/, '');
+    const search = window.location.search;
     const defaultTab = hash || path || 'dashboard';
 
-    if (['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts'].includes(defaultTab)) {
+    if (hash.startsWith('p/') || path.startsWith('p/') || search.includes('p=') || search.includes('public_bio')) {
+        setIsPublicBioView(true);
+        getBioLinkConfig().then(cfg => setPublicBioConfig(cfg)).catch(console.error);
+    } else if (['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts', 'digital-card'].includes(defaultTab)) {
         setActiveTabState(defaultTab); 
         safeReplaceState({ tab: defaultTab }, '', `#${defaultTab}`);
     } else { 
@@ -1764,6 +1783,8 @@ function App() {
         return <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>;
       case 'cheque-receipts':
         return (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) ? <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div> : null;
+      case 'digital-card':
+        return <div className="page-transition flex flex-col flex-1 min-h-0"><DigitalCardModule currentUser={currentUser} /></div>;
       case 'chat':
         return (
           <div className="flex-1 flex flex-col w-full min-h-0 h-full page-transition">
@@ -1828,7 +1849,26 @@ function App() {
                 </div>
             )}
         </AnimatePresence>
-        {!currentUser ? (
+        {isPublicBioView ? (
+            <PublicBioPage 
+                config={publicBioConfig || {
+                    slug: 'lepanbaft',
+                    companyTitle: 'شرکت تولیدی لپان بافت',
+                    companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
+                    avatarUrl: '/lepan-logo.png',
+                    coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+                    theme: 'zilink_light',
+                    addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
+                    blocks: []
+                }}
+                onBackToApp={() => {
+                    setIsPublicBioView(false);
+                    if (window.location.hash.startsWith('#p/')) {
+                        window.location.hash = '#dashboard';
+                    }
+                }}
+            />
+        ) : !currentUser ? (
             <Login onLogin={handleLogin} />
         ) : (
             <>

@@ -1,5 +1,5 @@
 
-import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, TradeAttachment, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, DriverPayment, PersonnelDelay, PersonnelOvertime, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem } from '../types';
+import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, TradeAttachment, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, DriverPayment, PersonnelDelay, PersonnelOvertime, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem, BioLinkConfig, BioLinkOrder } from '../types';
 import { apiCall, getLocalData, LS_KEYS } from './apiService';
 
 // Safely return array
@@ -1061,6 +1061,41 @@ export const notifyDriverPaymentToBots = async (
         options
     });
 };
+
+// --- BIO-LINK & DIGITAL CARD (ZILINK) SERVICES ---
+export const getBioLinkConfig = async (): Promise<BioLinkConfig> => {
+    try {
+        const res = await apiCall<{ success: boolean; config: BioLinkConfig }>('/bio-link');
+        if (res && res.config) return res.config;
+    } catch (e) {
+        console.error("Failed to fetch BioLinkConfig:", e);
+    }
+    return {
+        slug: 'lepanbaft',
+        companyTitle: 'شرکت تولیدی لپان بافت',
+        companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
+        avatarUrl: '/lepan-logo.png',
+        coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+        theme: 'zilink_light',
+        blocks: []
+    };
+};
+
+export const saveBioLinkConfig = async (config: Partial<BioLinkConfig>): Promise<BioLinkConfig> => {
+    const res = await apiCall<{ success: boolean; config: BioLinkConfig }>('/bio-link', 'POST', config);
+    return res.config;
+};
+
+export const submitBioLinkOrder = async (orderData: {
+    customerName: string;
+    customerPhone: string;
+    productTitle?: string;
+    quantity?: string;
+    notes?: string;
+}): Promise<{ success: boolean; message?: string; error?: string; order?: BioLinkOrder }> => {
+    return await apiCall<{ success: boolean; message?: string; error?: string; order?: BioLinkOrder }>('/bio-link/order', 'POST', orderData);
+};
+
 
 
 

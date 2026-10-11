@@ -7013,6 +7013,205 @@ app.delete('/api/chat/:id', async (req, res) => {
     res.json(db.messages || []); 
 });
 
+// --- BIO-LINK & DIGITAL CARD ENDPOINTS (ZILINK STYLE) ---
+const DEFAULT_BIO_LINK_CONFIG = {
+    slug: 'lepanbaft',
+    companyTitle: 'شرکت تولیدی لپان بافت',
+    companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
+    avatarUrl: '/lepan-logo.png',
+    coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+    theme: 'zilink_light',
+    primaryColor: '#0284c7',
+    addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
+    blocks: [
+        {
+            id: 'block_neshan',
+            category: 'maps',
+            title: 'مسیریاب نشان',
+            subtitle: 'مسیریاب آنلاین نشان',
+            value: 'https://nshn.ir',
+            iconName: 'neshan',
+            badge: 'نقشه و مسیریابی',
+            colorTheme: 'rose',
+            isActive: true,
+            order: 1
+        },
+        {
+            id: 'block_balad',
+            category: 'maps',
+            title: 'مسیریاب بلد',
+            subtitle: 'مسیریاب آنلاین بلد',
+            value: 'https://balad.ir',
+            iconName: 'balad',
+            badge: 'نقشه و مسیریابی',
+            colorTheme: 'indigo',
+            isActive: true,
+            order: 2
+        },
+        {
+            id: 'block_google_maps',
+            category: 'maps',
+            title: 'مسیریاب گوگل',
+            subtitle: 'Google Maps Location',
+            value: 'https://maps.google.com/?q=35.6892,51.3890',
+            iconName: 'google_maps',
+            badge: 'بین‌المللی',
+            colorTheme: 'emerald',
+            isActive: true,
+            order: 3
+        },
+        {
+            id: 'block_phone_mgr',
+            category: 'phones',
+            title: 'مدیریت : فتوت',
+            subtitle: 'تماس مستقیم با مدیریت',
+            value: '09125088474',
+            iconName: 'mobile',
+            badge: 'مدیریت ارشد',
+            colorTheme: 'blue',
+            isActive: true,
+            order: 4
+        },
+        {
+            id: 'block_phone_sales',
+            category: 'phones',
+            title: 'فروش : مقدم',
+            subtitle: 'تماس با واحد فروش و سفارشات',
+            value: '09120244159',
+            iconName: 'mobile',
+            badge: 'واحد فروش',
+            colorTheme: 'blue',
+            isActive: true,
+            order: 5
+        },
+        {
+            id: 'block_phone_office',
+            category: 'phones',
+            title: 'فروش (تلفن ثابت)',
+            subtitle: 'دفتر مرکزی ۵۵۸۰۰۰۹۱-۰۲۱',
+            value: '02155800091',
+            iconName: 'phone',
+            badge: 'دفتر مرکزی',
+            colorTheme: 'slate',
+            isActive: true,
+            order: 6
+        },
+        {
+            id: 'block_email',
+            category: 'emails',
+            title: 'ایمیل رسمی',
+            subtitle: 'lepanbaft55@gmail.com',
+            value: 'lepanbaft55@gmail.com',
+            iconName: 'email',
+            badge: 'مکاتبات',
+            colorTheme: 'indigo',
+            isActive: true,
+            order: 7
+        },
+        {
+            id: 'block_instagram',
+            category: 'socials',
+            title: 'اینستاگرام',
+            subtitle: 'صفحه رسمی شرکت لپان بافت',
+            value: 'https://instagram.com/lepanbaft',
+            iconName: 'instagram',
+            badge: 'اینستاگرام',
+            colorTheme: 'purple',
+            isActive: true,
+            order: 8
+        },
+        {
+            id: 'block_catalog',
+            category: 'catalog',
+            title: 'دانلود کاتالوگ و لیست مشخصات نخ‌ها',
+            subtitle: 'مشاهده و دریافت کاتالوگ محصولات (PDF)',
+            value: '/lepan-catalog.pdf',
+            iconName: 'file',
+            badge: 'دانلود کاتالوگ',
+            colorTheme: 'amber',
+            isActive: true,
+            order: 9
+        },
+        {
+            id: 'block_order_request',
+            category: 'order_form',
+            title: 'ثبت سفارش مستقیم و استعلام قیمت',
+            subtitle: 'ارسال درخواست نخ، POY و ساپورت با پاسخگویی سریع',
+            value: 'order_form',
+            iconName: 'order',
+            badge: 'ثبت سفارش',
+            colorTheme: 'emerald',
+            isActive: true,
+            order: 10
+        }
+    ],
+    orders: [],
+    updatedAt: Date.now()
+};
+
+app.get('/api/bio-link', (req, res) => {
+    const db = getDb();
+    if (!db.bioLinkConfig) {
+        db.bioLinkConfig = DEFAULT_BIO_LINK_CONFIG;
+        saveDb(db);
+    }
+    res.json({ success: true, config: db.bioLinkConfig });
+});
+
+app.post('/api/bio-link', (req, res) => {
+    const db = getDb();
+    const current = db.bioLinkConfig || DEFAULT_BIO_LINK_CONFIG;
+    db.bioLinkConfig = {
+        ...current,
+        ...req.body,
+        updatedAt: Date.now()
+    };
+    saveDb(db);
+    res.json({ success: true, config: db.bioLinkConfig });
+});
+
+app.post('/api/bio-link/order', (req, res) => {
+    const db = getDb();
+    if (!db.bioLinkConfig) {
+        db.bioLinkConfig = DEFAULT_BIO_LINK_CONFIG;
+    }
+    const { customerName, customerPhone, productTitle, quantity, notes } = req.body;
+    if (!customerName || !customerPhone) {
+        return res.status(400).json({ success: false, error: 'نام و شماره تماس الزامی است.' });
+    }
+    const newOrder = {
+        id: `ord_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        customerName: String(customerName).trim(),
+        customerPhone: String(customerPhone).trim(),
+        productTitle: String(productTitle || 'استعلام عمومی').trim(),
+        quantity: String(quantity || '').trim(),
+        notes: String(notes || '').trim(),
+        status: 'pending',
+        createdAt: Date.now()
+    };
+    if (!Array.isArray(db.bioLinkConfig.orders)) {
+        db.bioLinkConfig.orders = [];
+    }
+    db.bioLinkConfig.orders.unshift(newOrder);
+
+    // Create system notification for sales team & admins
+    if (!Array.isArray(db.notifications)) {
+        db.notifications = [];
+    }
+    db.notifications.unshift({
+        id: `notif_biolink_${Date.now()}`,
+        title: '📦 ثبت سفارش جدید از زیلینک / QR کد عمومی',
+        message: `سفارش جدید از مشتری: ${newOrder.customerName} (${newOrder.customerPhone}) - کالا: ${newOrder.productTitle} (${newOrder.quantity})`,
+        type: 'info',
+        createdAt: Date.now(),
+        read: false,
+        url: 'digital-card'
+    });
+
+    saveDb(db);
+    res.json({ success: true, message: 'سفارش شما با موفقیت ثبت گردید. کارشناسان فروش با شما تماس خواهند گرفت.', order: newOrder });
+});
+
 // --- SETTINGS AND DATABASE CONFIGURATION ENDPOINTS ---
 app.get('/api/settings', (req, res) => {
     const db = getDb();

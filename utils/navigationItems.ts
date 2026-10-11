@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BadgePlus, Receipt, ArrowLeftRight, Truck, ScrollText, 
   ClipboardCheck, Warehouse, BarChart3, FileCheck2, ShieldCheck, CalendarDays, 
   ShoppingCart, FolderArchive, Banknote, MessagesSquare, BookOpen, Globe, 
-  Wallet, Boxes, Handshake, Headset, UserCog, Settings 
+  Wallet, Boxes, Handshake, Headset, UserCog, Settings, QrCode
 } from 'lucide-react';
 import { User, UserRole, SystemSettings } from '../types';
 import { getRolePermissions, hasPermission } from '../services/authService';
@@ -40,6 +40,7 @@ export const ALL_NAVIGATION_ITEMS: Record<string, AppNavItem> = {
   'products': { id: 'products', label: 'کالاها', icon: Boxes, desc: 'کاتالوگ و مشخصات کالاها' },
   'sales': { id: 'sales', label: 'مشتریان', icon: Handshake, desc: 'مدیریت مشتریان و فروش' },
   'tickets': { id: 'tickets', label: 'تیکت‌ها', icon: Headset, desc: 'پشتیبانی و تیکت‌های سازمانی' },
+  'digital-card': { id: 'digital-card', label: 'کارت دیجیتال و QR کد', icon: QrCode, desc: 'زیلینک اختصاصی، مسیریاب‌ها، راه‌های ارتباطی و کیو آر کد' },
   'users': { id: 'users', label: 'کاربران', icon: UserCog, desc: 'مدیریت کاربران و دسترسی‌ها' },
   'settings': { id: 'settings', label: 'تنظیمات', icon: Settings, desc: 'تنظیمات سیستم و پیکربندی' },
 };
@@ -119,6 +120,7 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
   if (canSeePurchase) items.push(ALL_NAVIGATION_ITEMS['purchase']);
   items.push(ALL_NAVIGATION_ITEMS['secretariat']);
   if (canSeeChequeReceipts) items.push(ALL_NAVIGATION_ITEMS['cheque-receipts']);
+  items.push(ALL_NAVIGATION_ITEMS['digital-card']);
   items.push(ALL_NAVIGATION_ITEMS['chat']);
   if (canSeeKnowledgeBase) items.push(ALL_NAVIGATION_ITEMS['knowledge']);
   if (canSeeTrade) items.push(ALL_NAVIGATION_ITEMS['trade']);

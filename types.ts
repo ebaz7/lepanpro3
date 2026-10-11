@@ -2077,5 +2077,44 @@ export interface ChequeReceipt {
     createdBy: string;
 }
 
+export interface BioLinkBlock {
+    id: string;
+    category: 'maps' | 'phones' | 'emails' | 'socials' | 'links' | 'catalog' | 'order_form' | 'custom';
+    title: string;
+    subtitle?: string;
+    value: string; // URL, Phone Number, Address, Email
+    iconName?: string; // 'neshan', 'balad', 'google_maps', 'phone', 'mobile', 'email', 'instagram', 'telegram', 'whatsapp', 'website', 'file', 'order', 'globe'
+    badge?: string;
+    colorTheme?: 'emerald' | 'blue' | 'indigo' | 'amber' | 'rose' | 'slate' | 'purple';
+    isActive: boolean;
+    order: number;
+}
+
+export interface BioLinkOrder {
+    id: string;
+    customerName: string;
+    customerPhone: string;
+    productTitle?: string;
+    quantity?: string;
+    notes?: string;
+    status: 'pending' | 'contacted' | 'completed' | 'cancelled';
+    createdAt: number;
+}
+
+export interface BioLinkConfig {
+    slug: string; // e.g. "lepanbaft"
+    companyTitle: string; // "شرکت تولیدی لپان بافت"
+    companySubtitle: string; // "تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت"
+    avatarUrl: string; // Logo
+    coverUrl: string; // Banner
+    theme: 'zilink_light' | 'dark' | 'gradient_blue' | 'emerald_pro';
+    primaryColor?: string;
+    addressText?: string;
+    blocks: BioLinkBlock[];
+    orders?: BioLinkOrder[];
+    updatedAt?: number;
+}
+
+
 
 
