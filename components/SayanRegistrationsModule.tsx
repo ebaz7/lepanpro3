@@ -17,6 +17,7 @@ interface PendingRequest {
     doc53Id: string;
     fiscalYear: string;
     docNo: string;
+    archiveCode?: string;
     subNo: string;
     subCode: string;
     docDate: string;
@@ -38,6 +39,7 @@ interface ArchivedRequest {
     doc53Id: string;
     fiscalYear: string;
     docNo: string;
+    archiveCode?: string;
     subNo: string;
     subCode: string;
     docDate: string;
@@ -169,7 +171,14 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
     const [logStatusFilter, setLogStatusFilter] = useState<'ALL' | 'SUCCESS' | 'FAILED' | 'DRY_RUN'>('ALL');
     
     // Item Details Modal
-    const [selectedDocForItems, setSelectedDocForItems] = useState<{ docNo: string; fiscalYear: string; note?: string } | null>(null);
+    const [selectedDocForItems, setSelectedDocForItems] = useState<{ 
+        docNo: string; 
+        fiscalYear: string; 
+        archiveCode?: string; 
+        doc53Id?: string; 
+        note?: string;
+        itemsCount?: number;
+    } | null>(null);
     const [docItems, setDocItems] = useState<RequestItemDetail[]>([]);
 
     // Vendor override modal
@@ -551,11 +560,16 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
         }
     };
 
-    const handleViewItems = async (doc: { docNo: string; fiscalYear: string; note?: string }) => {
+    const handleViewItems = async (doc: { docNo: string; fiscalYear: string; archiveCode?: string; doc53Id?: string; note?: string; itemsCount?: number }) => {
         setSelectedDocForItems(doc);
         setItemsLoading(true);
         try {
-            const data = await fetchApiJson(`/api/sayan/order-automation/items/${doc.docNo}?fiscalYear=${doc.fiscalYear}`);
+            const queryParams = new URLSearchParams({
+                fiscalYear: doc.fiscalYear || '4',
+                archiveCode: doc.archiveCode || '',
+                docId: doc.doc53Id || ''
+            });
+            const data = await fetchApiJson(`/api/sayan/order-automation/items/${doc.docNo}?${queryParams.toString()}`);
             if (data.success) {
                 setDocItems(data.items || []);
             } else {
@@ -1510,12 +1524,26 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                         <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Package className="w-5 h-5 text-blue-600" />
-                                <h3 className="font-black text-sm text-slate-900 dark:text-white">
-                                    اقلام درخواست خرید #{selectedDocForItems.docNo}
-                                </h3>
-                                <span className="text-xs text-slate-400 font-mono">
-                                    (سال مالی {selectedDocForItems.fiscalYear})
-                                </span>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                                            اقلام درخواست خرید #{selectedDocForItems.docNo}
+                                        </h3>
+                                        {selectedDocForItems.archiveCode && (
+                                            <span className="text-xs px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-mono font-medium">
+                                                کد بایگانی: {selectedDocForItems.archiveCode}
+                                            </span>
+                                        )}
+                                        <span className="text-xs text-slate-400 font-mono">
+                                            (سال مالی {selectedDocForItems.fiscalYear})
+                                        </span>
+                                    </div>
+                                    {selectedDocForItems.note && (
+                                        <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
+                                            شرح: {selectedDocForItems.note}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <button
                                 onClick={() => setSelectedDocForItems(null)}
@@ -1524,6 +1552,26 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
+
+                        {/* Summary Bar if items exist */}
+                        {docItems.length > 0 && (
+                            <div className="px-4 py-2.5 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900/40 flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-slate-600 dark:text-slate-300">
+                                        تعداد کل ردیف‌ها: <b className="text-blue-600 font-mono">{docItems.length}</b>
+                                    </span>
+                                    <span>•</span>
+                                    <span className="text-slate-600 dark:text-slate-300">
+                                        جمع کل مقدار: <b className="text-emerald-600 font-mono">
+                                            {docItems.reduce((acc, curr) => acc + (Number(curr.Qty) || 0), 0).toLocaleString('fa-IR')}
+                                        </b> {docItems[0]?.UnitName || 'کیلوگرم'}
+                                    </span>
+                                </div>
+                                <span className="text-[11px] text-slate-500 font-medium">
+                                    تطابق با پایگاه‌داده سایان ERP
+                                </span>
+                            </div>
+                        )}
 
                         <div className="p-4 overflow-y-auto flex-1">
                             {itemsLoading ? (
@@ -1538,10 +1586,10 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                             ) : (
                                 <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                                     {docItems.map((item, idx) => (
-                                        <div key={idx} className="py-3 px-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors">
+                                        <div key={idx} className="py-2.5 px-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors">
                                             <div className="flex items-start gap-2.5">
-                                                <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 mt-0.5">
-                                                    <Package className="w-4 h-4" />
+                                                <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-[11px] font-mono font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                                    {idx + 1}
                                                 </div>
                                                 <div>
                                                     <div className="font-bold text-slate-900 dark:text-white text-sm">

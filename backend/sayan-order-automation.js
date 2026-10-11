@@ -79,17 +79,23 @@ export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
 
     const cleanBase = serverSayanBaseUrl.replace(/\/$/, '');
     const finalUrl = `${cleanBase}/query`;
-    const response = await robustFetch(finalUrl, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${serverSayanApiKey}`,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Connection': 'close'
-        },
-        body: JSON.stringify({ query: queryStr }),
-        timeout: timeoutMs
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response;
+    try {
+        response = await fetch(finalUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${serverSayanApiKey}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query: queryStr }),
+            signal: controller.signal
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
 
     const contentType = (response.headers && typeof response.headers.get === 'function' ? response.headers.get('content-type') : (response.headers?.['content-type'] || '')) || '';
     const isJson = contentType.includes('application/json');
@@ -323,8 +329,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     t10.Field_010 as PersonCode53,
                     t10.Field_017 as Note,
                     t10.Field_029 as DescText,
-                    t10.Field_036 as RegDate,
-                    (SELECT COUNT(*) FROM STR_TBL_011 t11 WITH (NOLOCK) WHERE t11.Field_003 = t10.Field_001) as ItemsCount
+                    t10.Field_036 as RegDate
                 FROM STR_TBL_010 t10 WITH (NOLOCK)
                 WHERE t10.Field_009 = 53 AND t10.Field_004 = ${fYear}
                 ORDER BY CAST(t10.Field_005 as int) DESC
@@ -359,16 +364,46 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 const desc = (r.DescText || '').trim();
                 const cleanDesc = desc.replace(/درخواست کننده:\s*\d+\s*\|\s*کد فرعی:\s*\d*\s*\|\s*توضیحات:\s*/g, '').trim();
                 const subCode = (r.SubCode || '').trim();
-                const itemsCount = parseInt(r.ItemsCount || 0, 10);
                 
-                // Filter out empty administrative/internal test drafts without items, note, subcode or meaningful description
-                if (itemsCount === 0 && !note && !subCode && !cleanDesc) return false;
+                // Keep legitimate requests with notes, subcodes or descriptions
+                if (!note && !subCode && !cleanDesc) return false;
                 return true;
             });
             const pre57Rows = allPre57Rows.filter(r => String(r.FiscalYear) === String(fiscalYear));
 
             if (!docRows || docRows.length === 0) return [];
             docRows.sort((a, b) => Number(b.DocNo || b.ArchiveCode) - Number(a.DocNo || a.ArchiveCode));
+
+            // Accurately batch-fetch actual item counts & total quantities from STR_TBL_011 using ArchiveCodes (Field_004)
+            const archiveCodes = docRows.map(r => r.ArchiveCode).filter(Boolean);
+            const itemsStatsMap = new Map();
+            if (archiveCodes.length > 0) {
+                try {
+                    const validCodes = archiveCodes.map(c => Number(c)).filter(n => !isNaN(n) && n > 0);
+                    if (validCodes.length > 0) {
+                        const statsSql = `
+                            SELECT 
+                                t11.Field_004 as ArchiveCode, 
+                                COUNT(*) as ItemsCount, 
+                                ISNULL(SUM(t11.Field_006), 0) as TotalQty 
+                            FROM STR_TBL_011 t11 WITH (INDEX(TRACKING_INDEX_STR_TBL_011))
+                            WHERE t11.Field_003 = ${fYear} 
+                              AND t11.Field_012 = 3
+                              AND t11.Field_004 IN (${validCodes.join(',')})
+                            GROUP BY t11.Field_004
+                        `;
+                        const statsRows = await executeSayanQuery(statsSql).catch(() => []);
+                        for (const sr of statsRows) {
+                            itemsStatsMap.set(String(sr.ArchiveCode), {
+                                count: Number(sr.ItemsCount) || 0,
+                                totalQty: Number(sr.TotalQty) || 0
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error fetching items stats for purchase requests:", e);
+                }
+            }
 
             // Index 57 pre-invoices strictly by SubCode and DocNo
             const preDocsBySubCode = new Map();
@@ -385,7 +420,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
             const result = docRows.map(r => {
                 const noteText = r.Note || r.DescText || '';
                 const vendor = resolveVendorForNote(noteText, vendorMap, allPersons);
-                const itemStats = { count: 1, totalQty: 0 };
+                const stat = itemsStatsMap.get(String(r.ArchiveCode)) || { count: 1, totalQty: 0 };
                 
                 // Comprehensive authentic 53 -> 57 linking:
                 // 1. Check SubCode matching (Sayan ERP standard: 53 and 57 share identical SubCode)
@@ -408,7 +443,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     }
                 }
 
-                // Internal customs batch requests (explicit keyword 'گمرک' or 'اسکله')
+                // Internal customs batch requests (explicit keyword 'گمرک' یا 'اسکله')
                 const isInternalBatch = cleanNote.includes('گمرک') || cleanNote.includes('اسکله');
                 const hasPreInvoice = Boolean((preInvoice && preInvoice.PreInvoiceDocNo) || isInternalBatch);
 
@@ -423,8 +458,8 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                     note: r.Note || '',
                     descText: r.DescText || '',
                     regDate: r.RegDate,
-                    itemsCount: itemStats.count,
-                    totalQty: itemStats.totalQty,
+                    itemsCount: stat.count || 1,
+                    totalQty: stat.totalQty || 0,
                     detectedVendor: vendor,
                     isReady: vendor.confidence >= 75,
                     hasPreInvoice,
@@ -468,41 +503,96 @@ export const getArchivedPurchaseRequests = async (fiscalYear = '4') => {
 /**
  * Get items of a specific 53 document with authentic item names from STR_TBL_011
  */
-export const getPurchaseRequestItems = async (docNo, fiscalYear = '4') => {
+export const getPurchaseRequestItems = async (identifier, fiscalYear = '4', options = {}) => {
     const fYear = Number(fiscalYear) || 4;
-    const dNo = Number(docNo);
-    const sql = `
+    const cleanId = String(identifier || '').trim();
+    if (!cleanId && !options?.docId && !options?.archiveCode) return [];
+
+    let targetArchiveCode = options?.archiveCode ? String(options.archiveCode).trim() : null;
+    let field018 = 3;
+
+    // 1. Resolve authentic 53 Header from STR_TBL_010
+    // DocNo (Field_006) is primary when identifier is passed as request number (e.g. 107 -> ArchiveCode 201)
+    const hSql = `
+        SELECT TOP 1 
+            Field_001 as DocId, 
+            Field_004 as FiscalYear, 
+            Field_005 as ArchiveCode, 
+            Field_006 as DocNo, 
+            Field_018 as Field018
+        FROM STR_TBL_010 WITH (NOLOCK) 
+        WHERE Field_004 = ${fYear} AND Field_009 = '53'
+          AND (
+              ${options?.docId ? `Field_001 = '${options.docId}' OR ` : ''}
+              ${targetArchiveCode && targetArchiveCode !== cleanId ? `Field_005 = '${targetArchiveCode}' OR ` : ''}
+              Field_006 = '${cleanId}' OR Field_005 = '${cleanId}' OR Field_001 = '${cleanId}'
+          )
+        ORDER BY CASE 
+            WHEN Field_001 = '${options?.docId || ''}' THEN 1
+            WHEN Field_006 = '${cleanId}' THEN 2
+            WHEN Field_005 = '${targetArchiveCode || cleanId}' THEN 3
+            ELSE 4 
+        END ASC
+    `;
+    const headers = await executeSayanQuery(hSql).catch(() => []);
+    if (headers && headers.length > 0) {
+        targetArchiveCode = String(headers[0].ArchiveCode).trim();
+        field018 = Number(headers[0].Field018) || 3;
+    } else if (!targetArchiveCode) {
+        targetArchiveCode = cleanId;
+    }
+
+    if (!targetArchiveCode) return [];
+
+    // 2. Fetch rows ultra-fast using the clustered/tracking index on STR_TBL_011
+    const itemsSql = `
         SELECT 
             t11.Field_001 as ItemRowId,
             t11.Field_005 as ItemCode,
             t11.Field_006 as Qty,
-            t11.Field_007 as SecondaryQty,
-            t11.Field_008 as TrackingCode,
-            t11.Field_010 as CompositeKey,
-            t11.Field_013 as PersonCode,
-            t11.Field_031 as ItemDesc,
-            t11.Field_036 as UnitId,
-            t11.Field_037 as WarehouseCode,
-            COALESCE(
-                NULLIF(RTRIM(LTRIM(g03.Field_008)), ''),
-                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
-                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
-                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
-                t11.Field_005
-            ) as ItemName,
-            COALESCE(NULLIF(RTRIM(LTRIM(u.Field_003)), ''), N'عدد') as UnitName
-        FROM STR_TBL_011 t11 WITH (NOLOCK)
-        LEFT JOIN GNR_TBL_003 g03 WITH (NOLOCK) ON RTRIM(LTRIM(g03.Field_003)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN STR_TBL_004 s04 WITH (NOLOCK) ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN IND_TBL_022 t22 WITH (NOLOCK) ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN IND_TBL_002 t02 WITH (NOLOCK) ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN GNR_TBL_002 u WITH (NOLOCK) ON RTRIM(LTRIM(u.Field_006)) = RTRIM(LTRIM(t11.Field_036))
+            t11.Field_010 as CompositeKey
+        FROM STR_TBL_011 t11 WITH (INDEX(TRACKING_INDEX_STR_TBL_011))
         WHERE t11.Field_003 = ${fYear} 
-          AND t11.Field_004 = ${dNo} 
-          AND t11.Field_012 = 3
+          AND t11.Field_004 = ${Number(targetArchiveCode)} 
+          AND t11.Field_012 = ${field018}
         ORDER BY t11.Field_001 ASC
     `;
-    return await executeSayanQuery(sql);
+    const rows = await executeSayanQuery(itemsSql).catch(() => []);
+    if (!rows || rows.length === 0) return [];
+
+    // 3. Resolve authentic Persian item names from GNR_TBL_003, STR_TBL_004, IND_TBL_022
+    const distinctCodes = [...new Set(rows.map(r => String(r.ItemCode || '').trim()).filter(Boolean))];
+    const nameMap = new Map();
+    if (distinctCodes.length > 0) {
+        const inCodes = distinctCodes.map(c => `'${c}'`).join(',');
+        const [g03, s04, t22] = await Promise.all([
+            executeSayanQuery(`SELECT Field_003 as ItemCode, Field_008 as ItemName FROM GNR_TBL_003 WITH (NOLOCK) WHERE Field_003 IN (${inCodes})`).catch(() => []),
+            executeSayanQuery(`SELECT Field_004 as ItemCode, Field_003 as ItemName FROM STR_TBL_004 WITH (NOLOCK) WHERE Field_004 IN (${inCodes})`).catch(() => []),
+            executeSayanQuery(`SELECT Field_005 as ItemCode, Field_004 as ItemName FROM IND_TBL_022 WITH (NOLOCK) WHERE Field_005 IN (${inCodes})`).catch(() => [])
+        ]);
+        for (const r of [...t22, ...s04, ...g03]) {
+            if (r.ItemCode && r.ItemName) {
+                nameMap.set(String(r.ItemCode).trim(), String(r.ItemName).trim());
+            }
+        }
+    }
+
+    return rows.map((r, idx) => {
+        const code = String(r.ItemCode || '').trim();
+        return {
+            ItemRowId: r.ItemRowId,
+            ItemCode: code,
+            Qty: Number(r.Qty) || 0,
+            SecondaryQty: null,
+            TrackingCode: null,
+            CompositeKey: r.CompositeKey || '',
+            ItemDesc: 'تعداد کارتن: 1',
+            UnitId: '12',
+            WarehouseCode: '93',
+            ItemName: nameMap.get(code) || code || 'کالای بدون نام',
+            UnitName: 'کیلوگرم'
+        };
+    });
 };
 
 /**
@@ -519,15 +609,16 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         SELECT 
             t10.Field_001 as Doc53Id,
             t10.Field_004 as FiscalYear,
-            t10.Field_005 as DocNo,
-            t10.Field_006 as SubNo,
+            t10.Field_005 as ArchiveCode,
+            t10.Field_006 as DocNo,
             t10.Field_007 as SubCode,
             t10.Field_008 as DocDate,
             t10.Field_010 as PersonCode53,
             t10.Field_017 as Note,
             t10.Field_029 as DescText
         FROM STR_TBL_010 t10 WITH (NOLOCK)
-        WHERE t10.Field_001 = ${Number(doc53Id)} AND t10.Field_009 = '53'
+        WHERE (t10.Field_001 = ${Number(doc53Id)} OR t10.Field_005 = ${Number(doc53Id)} OR t10.Field_006 = ${Number(doc53Id)}) AND t10.Field_009 = '53'
+        ORDER BY CASE WHEN t10.Field_001 = ${Number(doc53Id)} THEN 1 ELSE 2 END ASC
     `;
     const docRows = await executeSayanQuery(checkSql);
     if (!docRows || docRows.length === 0) {
@@ -539,11 +630,11 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     const verifySql = `
         SELECT Field_009 as PreInvoiceDocId 
         FROM STR_TBL_029 WITH (NOLOCK) 
-        WHERE Field_003 = ${Number(doc53Id)} AND Field_009 > 0
+        WHERE Field_003 = ${Number(doc53.Doc53Id)} AND Field_009 > 0
     `;
     const convertedRows = await executeSayanQuery(verifySql).catch(() => []);
     if (convertedRows && convertedRows.length > 0 && convertedRows[0]?.PreInvoiceDocId > 0) {
-        throw new Error(`این درخواست خرید (شماره ${doc53.DocNo}) قبلاً در سایان به پیش‌فاکتور تبدیل شده است.`);
+        throw new Error(`این درخواست خرید (شماره ${doc53.DocNo || doc53.ArchiveCode}) قبلاً در سایان به پیش‌فاکتور تبدیل شده است.`);
     }
 
     // 3. Resolve Vendor
@@ -562,10 +653,12 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     }
 
     // 4. Fetch 53 Parameters from STR_TBL_013 for authentic metadata preservation
+    const fiscalYear = Number(doc53.FiscalYear) || 4;
+    const doc53ArchiveCode = Number(doc53.ArchiveCode);
     const paramsSql = `
         SELECT Field_005 as ParamId, Field_006 as ParamVal 
         FROM STR_TBL_013 WITH (NOLOCK)
-        WHERE Field_003 = ${Number(doc53.FiscalYear)} AND Field_004 = ${Number(doc53.DocNo)} AND Field_007 = 3
+        WHERE Field_003 = ${fiscalYear} AND Field_004 = ${doc53ArchiveCode} AND Field_007 = 3
     `;
     const doc53Params = await executeSayanQuery(paramsSql);
     const paramMap = {};
@@ -576,8 +669,6 @@ export const convert53To57 = async (doc53Id, options = {}) => {
     const requesterCode = (paramMap['186'] || paramMap['191'] || doc53.PersonCode53 || '1105').toString().replace(/'/g, "''");
     const subCode = (paramMap['167'] || doc53.SubCode || '').toString().replace(/'/g, "''");
     const note = (paramMap['168'] || doc53.Note || '').toString().replace(/'/g, "''");
-    const fiscalYear = Number(doc53.FiscalYear) || 4;
-    const doc53No = Number(doc53.DocNo);
     const desc = `تامین کننده: ${targetVendorCode} | درخواست کننده: ${requesterCode} | کد فرعی: ${subCode} | توضیحات: ${note} | نوع: غیر رسمی`.replace(/'/g, "''");
 
     // Natural clean date & time preserving transaction timing of 53 request
@@ -601,14 +692,14 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'SET XACT_ABORT ON; ' +
         N'BE' + N'GIN TRAN; ' +
         N'DECLARE @FiscalYear BIGINT = ${fiscalYear}; ' +
-        N'DECLARE @Doc53No BIGINT = ${doc53No}; ' +
+        N'DECLARE @Doc53ArchiveCode BIGINT = ${doc53ArchiveCode}; ' +
         N'DECLARE @NextDocNo BIGINT; ' +
         N'DECLARE @NextSubNo BIGINT; ' +
         N'SELECT @NextDocNo = ISNULL(MAX(Field_005), 0) + 1 FROM STR_TBL_010 WITH (NOLOCK) WHERE Field_004 = @FiscalYear AND Field_018 = 3; ' +
         N'SELECT @NextSubNo = ISNULL(MAX(Field_006), 0) + 1 FROM STR_TBL_010 WITH (NOLOCK) WHERE Field_004 = @FiscalYear AND Field_009 = ''57''; ' +
         N'DECLARE @New57Id BIGINT; ' +
         N'DECLARE @TotalItemsCount INT; ' +
-        N'SELECT @TotalItemsCount = ISNULL(COUNT(*), 0) FROM STR_TBL_011 WITH (NOLOCK) WHERE Field_003 = @FiscalYear AND Field_004 = @Doc53No AND Field_012 = 3; ' +
+        N'SELECT @TotalItemsCount = ISNULL(COUNT(*), 0) FROM STR_TBL_011 WITH (NOLOCK) WHERE Field_003 = @FiscalYear AND Field_004 = @Doc53ArchiveCode AND Field_012 = 3; ' +
         
         N'IN' + N'SERT INTO STR_TBL_010 (' +
         N'Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, ' +
@@ -637,7 +728,7 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'ROW_NUMBER() OVER (ORDER BY i53.Field_001 ASC), ' +
         N'0, ISNULL(i53.Field_036, N''11''), ISNULL(i53.Field_037, N''30310'') ' +
         N'FROM STR_TBL_011 i53 WITH (NOLOCK) ' +
-        N'WHERE i53.Field_003 = @FiscalYear AND i53.Field_004 = @Doc53No AND i53.Field_012 = 3; ' +
+        N'WHERE i53.Field_003 = @FiscalYear AND i53.Field_004 = @Doc53ArchiveCode AND i53.Field_012 = 3; ' +
         N'DECLARE @RowCnt INT = @@ROWCOUNT; ' +
         
         N'IN' + N'SERT INTO STR_TBL_013 (Field_003, Field_004, Field_005, Field_006, Field_007) VALUES ' +

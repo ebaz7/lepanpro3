@@ -3054,6 +3054,22 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
                 تراکنشی در تاریخ‌های مشخص شده برای بازه دوم در سیستم ERP یافت نشد. می‌توانید با دکمه‌های میانبر (مثلا همسان سال قبل) بازه دیگری انتخاب کنید.
               </p>
             </div>
+          ) : comparisonMetrics && comparisonMetrics.compareGroupRows.length === 0 && comparisonMetrics.compareItemRows.length === 0 ? (
+            <div className="p-8 text-center bg-amber-50/90 border-2 border-amber-300 rounded-2xl space-y-3">
+              <AlertCircle className="w-12 h-12 text-amber-600 mx-auto" />
+              <h4 className="text-sm font-black text-amber-900">تمامی {excludedSalesGroups.length} گروه کالایی از گزارش مقایسه‌ای مستثنی شده‌اند!</h4>
+              <p className="text-xs text-amber-800 max-w-md mx-auto leading-relaxed font-medium">
+                شما با کلیک روی چیپ‌های بالای صفحه، تمامی گروه‌های کالا را از محاسبات و جدول حذف فرموده‌اید. برای مشاهده مجدد تراز مقایسه‌ای، روی دکمه زیر کلیک کنید:
+              </p>
+              <button
+                type="button"
+                onClick={clearExcludedSalesGroups}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-black text-xs px-6 py-3 rounded-xl shadow-lg cursor-pointer transition-all inline-flex items-center gap-2 active:scale-95"
+              >
+                <RefreshCw size={16} />
+                <span>پاکسازی فیلترها و نمایش مجدد تمامی گروه‌ها ({availableSalesGroups.length} گروه)</span>
+              </button>
+            </div>
           ) : (
             <>
               {/* COMPARISON METRICS SUMMARY CARDS */}

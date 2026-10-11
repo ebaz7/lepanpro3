@@ -1931,7 +1931,9 @@ app.get('/api/sayan/order-automation/items/:docNo', async (req, res) => {
         const db = getDb();
         const config = sayanOrderAuto.getAutomationConfig(db);
         const fiscalYear = req.query.fiscalYear || config.fiscalYear || '4';
-        const items = await sayanOrderAuto.getPurchaseRequestItems(req.params.docNo, fiscalYear);
+        const archiveCode = req.query.archiveCode;
+        const docId = req.query.docId;
+        const items = await sayanOrderAuto.getPurchaseRequestItems(req.params.docNo, fiscalYear, { archiveCode, docId });
         res.json({
             success: true,
             items
