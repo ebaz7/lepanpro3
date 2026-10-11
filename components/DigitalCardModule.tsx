@@ -85,8 +85,7 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
   const generateQRCode = async () => {
     try {
       const targetUrl = getPublicUrl();
-      const canvas = document.createElement('canvas');
-      await QRCode.toCanvas(canvas, targetUrl, {
+      const qrDataUrlBase = await QRCode.toDataURL(targetUrl, {
         width: qrSize,
         margin: 2,
         color: {
@@ -96,34 +95,52 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
         errorCorrectionLevel: 'H'
       });
 
-      // Optionally embed logo in center of QR code
-      if (embedLogo) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.src = config?.avatarUrl || '/lepan-logo.png';
-          await new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = resolve;
-          });
-
-          const logoSize = qrSize * 0.22;
-          const center = (qrSize - logoSize) / 2;
-
-          // White background circle/rounded rect for logo
-          ctx.fillStyle = qrBgColor;
-          ctx.beginPath();
-          ctx.arc(qrSize / 2, qrSize / 2, logoSize / 2 + 4, 0, Math.PI * 2);
-          ctx.fill();
-
-          ctx.drawImage(img, center, center, logoSize, logoSize);
-        }
+      if (!embedLogo) {
+        setQrDataUrl(qrDataUrlBase);
+        return;
       }
+
+      // Draw onto canvas to add "LEPAN" center text badge with stylish font
+      const canvas = document.createElement('canvas');
+      canvas.width = qrSize;
+      canvas.height = qrSize;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setQrDataUrl(qrDataUrlBase);
+        return;
+      }
+
+      const img = new Image();
+      img.src = qrDataUrlBase;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
+
+      ctx.drawImage(img, 0, 0);
+
+      const badgeWidth = qrSize * 0.42;
+      const badgeHeight = qrSize * 0.18;
+      const badgeX = (qrSize - badgeWidth) / 2;
+      const badgeY = (qrSize - badgeHeight) / 2;
+
+      ctx.fillStyle = qrBgColor;
+      ctx.fillRect(badgeX, badgeY, badgeWidth, badgeHeight);
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = qrColor;
+      ctx.strokeRect(badgeX, badgeY, badgeWidth, badgeHeight);
+
+      ctx.fillStyle = qrColor;
+      ctx.font = `900 ${Math.round(qrSize * 0.09)}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LEPAN', qrSize / 2, qrSize / 2);
 
       setQrDataUrl(canvas.toDataURL('image/png'));
     } catch (err) {
       console.error('QR code generation error:', err);
+      toast.error('خطا در تولید QR کد');
     }
   };
 
@@ -302,6 +319,46 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
 
   const handlePrintCard = () => {
     window.print();
+  };
+
+  const handlePrintStandaloneQR = () => {
+    if (!qrDataUrl) {
+      toast.error('تصویر QR کد آماده نیست.');
+      return;
+    }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('مرورگر از باز کردن پنجره چاپ جلوگیری کرد.');
+      return;
+    }
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>چاپ QR کد LEPAN - ${config.companyTitle}</title>
+          <style>
+            body { font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #fff; color: #000; }
+            .card { border: 2px dashed #333; border-radius: 24px; padding: 30px; display: inline-block; max-width: 400px; margin: auto; }
+            h1 { font-size: 22px; font-weight: 900; margin-bottom: 5px; color: #0f172a; }
+            p { font-size: 13px; color: #475569; margin-bottom: 20px; line-height: 1.6; }
+            img { width: 280px; height: 280px; object-fit: contain; margin: 15px 0; }
+            .badge { display: inline-block; background: #e0f2fe; color: #0369a1; padding: 6px 16px; border-radius: 999px; font-weight: bold; font-size: 12px; margin-top: 15px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>${config.companyTitle}</h1>
+            <p>${config.companySubtitle || 'مسیریابی، راه‌های ارتباطی و ثبت سفارش آنلاین'}</p>
+            <img src="${qrDataUrl}" alt="QR Code LEPAN" />
+            <div class="badge">اسکن کنید (LEPAN)</div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    toast.success('پنجره چاپ اختصاصی QR کد باز شد.');
   };
 
   const handleCopyLink = () => {
@@ -759,11 +816,19 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   </button>
 
                   <button
+                    onClick={handlePrintStandaloneQR}
+                    className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-indigo-500/20 active:scale-98 transition-all"
+                  >
+                    <Printer className="w-4 h-4" />
+                    <span>چاپ اختصاصی و شیک QR کد LEPAN</span>
+                  </button>
+
+                  <button
                     onClick={handlePrintCard}
                     className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-800 dark:hover:bg-slate-700 font-extrabold text-xs flex items-center justify-center gap-2 shadow-sm active:scale-98 transition-all"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>چاپ کارت ویزیت هوشمند (Print)</span>
+                    <span>چاپ کارت ویزیت کامل دو رو</span>
                   </button>
                 </div>
               </div>
