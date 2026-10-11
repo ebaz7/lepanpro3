@@ -1062,10 +1062,11 @@ export const notifyDriverPaymentToBots = async (
     });
 };
 
-// --- BIO-LINK & DIGITAL CARD (ZILINK) SERVICES ---
-export const getBioLinkConfig = async (): Promise<BioLinkConfig> => {
+// --- BIO-LINK & DIGITAL CARD (LEPAN LINK) SERVICES ---
+export const getBioLinkConfig = async (isAdmin: boolean = false): Promise<BioLinkConfig> => {
     try {
-        const res = await apiCall<{ success: boolean; config: BioLinkConfig }>('/bio-link');
+        const query = isAdmin ? '?scope=admin' : '';
+        const res = await apiCall<{ success: boolean; config: BioLinkConfig }>(`/bio-link${query}`);
         if (res && res.config) return res.config;
     } catch (e) {
         console.error("Failed to fetch BioLinkConfig:", e);
@@ -1076,7 +1077,7 @@ export const getBioLinkConfig = async (): Promise<BioLinkConfig> => {
         companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
         avatarUrl: '/lepan-logo.png',
         coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
-        theme: 'zilink_light',
+        theme: 'lepan_light',
         blocks: []
     };
 };

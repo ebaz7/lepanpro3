@@ -40,7 +40,7 @@ export const ALL_NAVIGATION_ITEMS: Record<string, AppNavItem> = {
   'products': { id: 'products', label: 'کالاها', icon: Boxes, desc: 'کاتالوگ و مشخصات کالاها' },
   'sales': { id: 'sales', label: 'مشتریان', icon: Handshake, desc: 'مدیریت مشتریان و فروش' },
   'tickets': { id: 'tickets', label: 'تیکت‌ها', icon: Headset, desc: 'پشتیبانی و تیکت‌های سازمانی' },
-  'digital-card': { id: 'digital-card', label: 'کارت دیجیتال و QR کد', icon: QrCode, desc: 'زیلینک اختصاصی، مسیریاب‌ها، راه‌های ارتباطی و کیو آر کد' },
+  'digital-card': { id: 'digital-card', label: 'کارت دیجیتال و QR کد', icon: QrCode, desc: 'لپان لینک اختصاصی، مسیریاب‌ها، راه‌های ارتباطی و کیو آر کد' },
   'users': { id: 'users', label: 'کاربران', icon: UserCog, desc: 'مدیریت کاربران و دسترسی‌ها' },
   'settings': { id: 'settings', label: 'تنظیمات', icon: Settings, desc: 'تنظیمات سیستم و پیکربندی' },
 };

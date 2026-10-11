@@ -61,7 +61,7 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
   const loadConfig = async () => {
     setLoading(true);
     try {
-      const data = await getBioLinkConfig();
+      const data = await getBioLinkConfig(true);
       setConfig(data);
     } catch (e: any) {
       toast.error('خطا در دریافت اطلاعات زیلینک');

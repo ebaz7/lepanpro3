@@ -7082,7 +7082,7 @@ const Settings: React.FC<SettingsProps> = ({
                       </div>
                       <div>
                         <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                          تنظیمات کارت دیجیتال و QR کد عمومی (زیلینک)
+                          تنظیمات کارت دیجیتال و QR کد عمومی (لپان لینک)
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                           مدیریت صفحه عمومی شرکت، تعیین بلوک‌ها، مسیریاب‌ها، لینک‌ها و استایل چاپ کیو آر کد

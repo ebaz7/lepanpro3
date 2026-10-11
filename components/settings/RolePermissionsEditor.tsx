@@ -188,12 +188,12 @@ const PERMISSION_GROUPS = [
     },
     { 
         id: 'digital_card', 
-        title: 'کارت دیجیتال و QR کد (زیلینک هوشمند شرکت)', 
+        title: 'کارت دیجیتال و QR کد (لپان لینک هوشمند شرکت)', 
         icon: QrCode, 
         color: 'sky', 
         items: [
             { id: 'canAccessDigitalCard', label: 'مشاهده و دسترسی به صفحه کارت دیجیتال و QR کد' },
-            { id: 'canManageDigitalCard', label: 'دسترسی مدیریت، ویرایش اطلاعات، تغییر بلوک‌ها و تنظیمات زیلینک و QR کد' }
+            { id: 'canManageDigitalCard', label: 'دسترسی مدیریت، ویرایش اطلاعات، تغییر بلوک‌ها و تنظیمات لپان لینک و QR کد' }
         ] 
     },
     { 

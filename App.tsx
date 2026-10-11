@@ -738,24 +738,57 @@ function App() {
   };
 
   useEffect(() => {
-    if (isNative) return; 
-    
-    // Ensure we have a base history entry
+    const isPublicCheck = () => {
+      try {
+        const rawHash = window.location.hash || '';
+        const rawPath = window.location.pathname || '';
+        const rawSearch = window.location.search || '';
+        return (
+          rawHash.startsWith('#p/') ||
+          rawHash.startsWith('#/p/') ||
+          rawHash === '#p' ||
+          rawPath.startsWith('/p/') ||
+          rawSearch.includes('p=') ||
+          rawSearch.includes('public_bio') ||
+          rawHash.includes('#bio') ||
+          rawHash.includes('#lepanlink')
+        );
+      } catch {
+        return false;
+      }
+    };
+
+    const isPublic = isPublicCheck();
+    setIsPublicBioView(isPublic);
+    if (isPublic) {
+      getBioLinkConfig().then(cfg => setPublicBioConfig(cfg)).catch(console.error);
+    }
+
+    const handleRouteCheck = () => {
+      const stillPublic = isPublicCheck();
+      setIsPublicBioView(stillPublic);
+      if (stillPublic) {
+        getBioLinkConfig().then(cfg => setPublicBioConfig(cfg)).catch(console.error);
+      }
+    };
+
+    window.addEventListener('popstate', handleRouteCheck);
+    window.addEventListener('hashchange', handleRouteCheck);
+
+    if (isNative || isPublic) {
+      return () => {
+        window.removeEventListener('popstate', handleRouteCheck);
+        window.removeEventListener('hashchange', handleRouteCheck);
+      };
+    }
+
+    // Ensure we have a base history entry ONLY when not in public bio view
     if (window.history.length <= 1) {
         safeReplaceState({ tab: 'dashboard' }, '', '#dashboard');
-        // Push once so we can "pop" to dashboard without leaving
         safePushState({ tab: 'dashboard', root: true }, '', '#dashboard');
     }
 
-    const hash = window.location.hash.replace('#', '');
-    const path = window.location.pathname.replace(/^\/+/, '');
-    const search = window.location.search;
-    const defaultTab = hash || path || 'dashboard';
-
-    if (hash.startsWith('p/') || path.startsWith('p/') || search.includes('p=') || search.includes('public_bio')) {
-        setIsPublicBioView(true);
-        getBioLinkConfig().then(cfg => setPublicBioConfig(cfg)).catch(console.error);
-    } else if (['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts', 'digital-card'].includes(defaultTab)) {
+    if (['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts', 'digital-card'].includes(defaultTab)) {
         setActiveTabState(defaultTab); 
         safeReplaceState({ tab: defaultTab }, '', `#${defaultTab}`);
     } else { 
@@ -763,6 +796,7 @@ function App() {
     }
 
     const handlePopState = (event: PopStateEvent) => {
+        if (isPublicCheck()) return;
         const handled = goBack(true);
         if (!handled && event.state?.tab) {
             setActiveTab(event.state.tab, false);
@@ -770,7 +804,11 @@ function App() {
     };
 
     window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handleRouteCheck);
+      window.removeEventListener('hashchange', handleRouteCheck);
+      window.removeEventListener('popstate', handlePopState);
+    };
   }, []);
 
   useEffect(() => {
@@ -874,6 +912,7 @@ function App() {
   }, []);
 
   useEffect(() => { 
+    if (isPublicBioView) return;
     const user = getCurrentUser(); 
     if (user) {
         setCurrentUser(user); 
@@ -883,7 +922,7 @@ function App() {
     }
     syncNativeShownNotifications().catch(console.error);
     syncServiceWorkerShownNotifications().catch(console.error);
-  }, []);
+  }, [isPublicBioView]);
 
   useEffect(() => {
     const handleTabChange = (e: any) => {
@@ -995,6 +1034,7 @@ function App() {
   };
 
   const showToast = (title: string, message: string) => {
+      if (isPublicBioView) return;
       playNotificationSound();
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       setToast({ show: true, title, message });
@@ -1002,6 +1042,7 @@ function App() {
   };
 
   const addAppNotification = (title: string, message: string, url?: string) => { 
+      if (isPublicBioView) return;
       // Only for local non-db alerts (like cheque alerts), though they will be 
       // overwritten if setNotifications is called. The toast is more important.
       showToast(title, message);
@@ -1036,7 +1077,7 @@ function App() {
   };
 
   const loadData = async (silent = false) => {
-    if (!currentUser) return;
+    if (!currentUser || isPublicBioView) return;
     if (isSyncingRef.current) {
         syncPendingRef.current = true;
         return;
@@ -1400,7 +1441,7 @@ function App() {
 
   // --- RECURRING 10-MINUTE TASK REMINDER WATCHDOG FOR TAGGED USERS ---
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || isPublicBioView) return;
 
     const checkTaskAlarms = async () => {
       try {
@@ -1507,15 +1548,17 @@ function App() {
   }, [currentUser]);
 
   useEffect(() => { 
-      if (currentUser) { 
+      if (currentUser && !isPublicBioView) { 
           loadData(false); 
           // Stable background polling interval (15s native / 30s web)
           const intervalDuration = isNative ? 15000 : 30000;
-          const intervalId = setInterval(() => loadData(true), intervalDuration); 
+          const intervalId = setInterval(() => {
+            if (!isPublicBioView) loadData(true);
+          }, intervalDuration); 
           
           // Heartbeat for Last Seen (Every 1 minute)
           const heartbeatId = setInterval(() => {
-              apiCall('/heartbeat', 'POST', { username: currentUser.username }).catch(console.error);
+            if (!isPublicBioView) apiCall('/heartbeat', 'POST', { username: currentUser.username }).catch(console.error);
           }, 60000);
 
           return () => { 
@@ -1523,7 +1566,7 @@ function App() {
               clearInterval(heartbeatId);
           }; 
       } 
-  }, [currentUser]);
+  }, [currentUser, isPublicBioView]);
 
   useEffect(() => {
       if (!currentUser) return;
@@ -1812,7 +1855,7 @@ function App() {
   return (
     <>
         <AnimatePresence>
-            {toast && toast.show && toastStyle && (
+            {!isPublicBioView && toast && toast.show && toastStyle && (
                 <div className="fixed inset-x-0 top-6 z-[9999999] flex justify-center pointer-events-none w-full px-4">
                     <motion.div
                         initial={{ opacity: 0, y: -45, scale: 0.93 }}
@@ -1857,15 +1900,9 @@ function App() {
                     companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
                     avatarUrl: '/lepan-logo.png',
                     coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
-                    theme: 'zilink_light',
+                    theme: 'lepan_light',
                     addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
                     blocks: []
-                }}
-                onBackToApp={() => {
-                    setIsPublicBioView(false);
-                    if (window.location.hash.startsWith('#p/')) {
-                        window.location.hash = '#dashboard';
-                    }
                 }}
             />
         ) : !currentUser ? (

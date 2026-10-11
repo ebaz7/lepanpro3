@@ -4,9 +4,9 @@ import { submitBioLinkOrder, getBioLinkConfig } from '../services/storageService
 import { 
   MapPin, Phone, Mail, Instagram, Send, Globe, FileText, ShoppingBag, 
   Share2, UserPlus, Check, X, Loader2, Sparkles, Navigation, ChevronLeft,
-  MessageCircle, ExternalLink, ArrowRight, Building2, PhoneCall
+  MessageCircle, ExternalLink, ArrowRight, Building2, PhoneCall, Bot
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 
 interface PublicBioPageProps {
   config: BioLinkConfig;
@@ -47,13 +47,28 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({ config: initialCon
     .filter(b => b.isActive)
     .sort((a, b) => a.order - b.order);
 
+  const botBlocks = activeBlocks.filter(b => 
+    b.category === 'bots' || 
+    b.iconName === 'telegram_bot' || 
+    b.iconName === 'bale_bot' || 
+    b.iconName === 'telegram' || 
+    b.iconName === 'bale' ||
+    b.title.includes('تلگرام') ||
+    b.title.includes('بله')
+  );
   const mapBlocks = activeBlocks.filter(b => b.category === 'maps');
   const phoneBlocks = activeBlocks.filter(b => b.category === 'phones');
   const emailBlocks = activeBlocks.filter(b => b.category === 'emails');
-  const socialBlocks = activeBlocks.filter(b => b.category === 'socials');
+  const socialBlocks = activeBlocks.filter(b => 
+    b.category === 'socials' && 
+    !botBlocks.some(bot => bot.id === b.id)
+  );
   const catalogBlocks = activeBlocks.filter(b => b.category === 'catalog');
   const orderBlocks = activeBlocks.filter(b => b.category === 'order_form');
-  const otherBlocks = activeBlocks.filter(b => !['maps', 'phones', 'emails', 'socials', 'catalog', 'order_form'].includes(b.category));
+  const otherBlocks = activeBlocks.filter(b => 
+    !['maps', 'phones', 'emails', 'socials', 'catalog', 'order_form', 'bots'].includes(b.category) &&
+    !botBlocks.some(bot => bot.id === b.id)
+  );
 
   // Generate vCard string for 1-click contact saving
   const handleDownloadVCard = () => {
@@ -119,6 +134,25 @@ END:VCARD`;
       return;
     }
 
+    // Bots handling (Telegram and Bale)
+    if (block.category === 'bots' || block.iconName === 'telegram_bot' || block.iconName === 'bale_bot' || block.title.includes('تلگرام') || block.title.includes('بله')) {
+      let val = (block.value || '').trim();
+      const isTelegram = block.iconName === 'telegram_bot' || block.iconName === 'telegram' || block.title.includes('تلگرام') || val.includes('t.me');
+      const isBale = block.iconName === 'bale_bot' || block.iconName === 'bale' || block.title.includes('بله') || val.includes('ble.ir');
+
+      if (isTelegram) {
+        const clean = val.replace(/^@/, '').replace(/^https?:\/\/t\.me\//, '');
+        val = `https://t.me/${clean}`;
+      } else if (isBale) {
+        const clean = val.replace(/^@/, '').replace(/^https?:\/\/ble\.ir\//, '');
+        val = `https://ble.ir/${clean}`;
+      } else if (!val.startsWith('http://') && !val.startsWith('https://')) {
+        val = `https://${val}`;
+      }
+      window.open(val, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     if (block.value && block.value !== 'order_form') {
       let url = block.value;
       if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('mailto:') && !url.startsWith('tel:')) {
@@ -153,6 +187,22 @@ END:VCARD`;
   // Icon Helper Function
   const renderBlockIcon = (block: BioLinkBlock) => {
     const iconName = block.iconName || '';
+    if (iconName === 'telegram_bot' || iconName === 'telegram' || block.title.includes('تلگرام')) {
+      return (
+        <div className="w-10 h-10 rounded-2xl bg-sky-500/10 text-sky-500 dark:text-sky-400 flex items-center justify-center shrink-0 shadow-sm border border-sky-500/20">
+          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.37.74-.56 2.92-1.27 4.86-2.11 5.83-2.52 2.77-1.15 3.35-1.35 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06-.01.19-.03.32z"/>
+          </svg>
+        </div>
+      );
+    }
+    if (iconName === 'bale_bot' || iconName === 'bale' || block.title.includes('بله')) {
+      return (
+        <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 font-black text-xs shadow-sm border border-emerald-500/20">
+          <span className="px-1.5 py-0.5 rounded-lg bg-emerald-600 text-white text-[11px] font-black tracking-wider shadow-sm">بله</span>
+        </div>
+      );
+    }
     if (iconName === 'neshan') {
       return (
         <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 font-black text-xs">
@@ -239,17 +289,15 @@ END:VCARD`;
 
   return (
     <div className={`w-full min-h-screen dir-rtl font-sans bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-6 px-3'}`}>
+      <Toaster position="top-center" />
       
       {/* Top Action Bar if in full screen */}
-      {!isEmbeddedPreview && onBackToApp && (
+      {!isEmbeddedPreview && (
         <div className="w-full max-w-md mb-4 flex items-center justify-between px-2">
-          <button
-            onClick={onBackToApp}
-            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800 text-xs font-bold flex items-center gap-1.5 shadow-sm hover:bg-slate-50 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>بازگشت به برنامه</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-black text-slate-800 dark:text-slate-200">کارت ویزیت دیجیتال لپان لینک</span>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleShare}
@@ -260,7 +308,7 @@ END:VCARD`;
             </button>
             <button
               onClick={handleDownloadVCard}
-              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+              className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>ذخیره مخاطب</span>
@@ -269,7 +317,7 @@ END:VCARD`;
         </div>
       )}
 
-      {/* Main Zilink Card Wrapper */}
+      {/* Main Lepan Link Card Wrapper */}
       <div className={`w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 ${isEmbeddedPreview ? 'shadow-none rounded-2xl border-0' : ''}`}>
         
         {/* Cover Photo Header */}
@@ -284,10 +332,10 @@ END:VCARD`;
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
           
-          {/* Zilink Badge */}
+          {/* Lepan Link Badge */}
           <div className="absolute top-3 left-3 bg-white/20 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
             <Sparkles className="w-3 h-3 text-amber-300" />
-            <span>زیلینک اختصاصی</span>
+            <span>لپان لینک اختصاصی</span>
           </div>
         </div>
 
@@ -337,7 +385,44 @@ END:VCARD`;
         {/* Dynamic Blocks Container */}
         <div className="p-4 space-y-5 bg-slate-50/50 dark:bg-slate-950/40 min-h-[350px]">
           
-          {/* 1. Maps & Navigation Section */}
+          {/* 1. Telegram & Bale Bots Section */}
+          {botBlocks.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 px-1">
+                <Bot className="w-3.5 h-3.5 text-sky-500" />
+                <span>بات‌ها و پیام‌رسان‌ها (تلگرام و بله)</span>
+              </div>
+              <div className="space-y-2">
+                {botBlocks.map(block => (
+                  <button
+                    key={block.id}
+                    onClick={() => handleBlockClick(block)}
+                    className={`w-full p-3.5 rounded-2xl border flex items-center justify-between transition-all duration-200 text-right active:scale-[0.98] ${getBlockCardStyle(block)}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {renderBlockIcon(block)}
+                      <div>
+                        <div className="font-bold text-xs">{block.title}</div>
+                        {block.subtitle && (
+                          <div className="text-[10px] opacity-75 font-medium mt-0.5 line-clamp-1">{block.subtitle}</div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {block.badge && (
+                        <span className="text-[9px] font-bold px-2 py-0.5 rounded-lg bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">
+                          {block.badge}
+                        </span>
+                      )}
+                      <ExternalLink className="w-4 h-4 opacity-50 shrink-0" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2. Maps & Navigation Section */}
           {mapBlocks.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 px-1">
@@ -526,7 +611,7 @@ END:VCARD`;
             {config.companyTitle || 'شرکت تولیدی لپان بافت'}
           </div>
           <div className="text-[10px] mt-1 text-slate-400">
-            طراحی شده اختصاصی - زیلینک هوشمند ارائه‌دهنده کارت ویزیت و QR کد
+            طراحی شده اختصاصی - لپان لینک هوشمند ارائه‌دهنده کارت ویزیت و QR کد
           </div>
         </div>
 

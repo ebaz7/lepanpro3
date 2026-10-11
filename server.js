@@ -7013,14 +7013,14 @@ app.delete('/api/chat/:id', async (req, res) => {
     res.json(db.messages || []); 
 });
 
-// --- BIO-LINK & DIGITAL CARD ENDPOINTS (ZILINK STYLE) ---
+// --- BIO-LINK & DIGITAL CARD ENDPOINTS (LEPAN LINK STYLE) ---
 const DEFAULT_BIO_LINK_CONFIG = {
     slug: 'lepanbaft',
     companyTitle: 'شرکت تولیدی لپان بافت',
     companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
     avatarUrl: '/lepan-logo.png',
     coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
-    theme: 'zilink_light',
+    theme: 'lepan_light',
     primaryColor: '#0284c7',
     addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
     blocks: [
@@ -7097,6 +7097,30 @@ const DEFAULT_BIO_LINK_CONFIG = {
             order: 6
         },
         {
+            id: 'block_telegram_bot',
+            category: 'bots',
+            title: 'ربات تلگرام لپان بافت',
+            subtitle: 'ارتباط مستقیم و پشتیبانی هوشمند در تلگرام (@lepanbaft_bot)',
+            value: 'https://t.me/lepanbaft_bot',
+            iconName: 'telegram_bot',
+            badge: 'ربات تلگرام',
+            colorTheme: 'blue',
+            isActive: true,
+            order: 7
+        },
+        {
+            id: 'block_bale_bot',
+            category: 'bots',
+            title: 'بازوی بله لپان بافت',
+            subtitle: 'ارتباط هوشمند و استعلام قیمت در پیام‌رسان بله (ble.ir/lepanbaft_bot)',
+            value: 'https://ble.ir/lepanbaft_bot',
+            iconName: 'bale_bot',
+            badge: 'ربات بله',
+            colorTheme: 'emerald',
+            isActive: true,
+            order: 8
+        },
+        {
             id: 'block_email',
             category: 'emails',
             title: 'ایمیل رسمی',
@@ -7106,7 +7130,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
             badge: 'مکاتبات',
             colorTheme: 'indigo',
             isActive: true,
-            order: 7
+            order: 9
         },
         {
             id: 'block_instagram',
@@ -7118,7 +7142,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
             badge: 'اینستاگرام',
             colorTheme: 'purple',
             isActive: true,
-            order: 8
+            order: 10
         },
         {
             id: 'block_catalog',
@@ -7130,7 +7154,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
             badge: 'دانلود کاتالوگ',
             colorTheme: 'amber',
             isActive: true,
-            order: 9
+            order: 11
         },
         {
             id: 'block_order_request',
@@ -7142,7 +7166,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
             badge: 'ثبت سفارش',
             colorTheme: 'emerald',
             isActive: true,
-            order: 10
+            order: 12
         }
     ],
     orders: [],
@@ -7154,16 +7178,52 @@ app.get('/api/bio-link', (req, res) => {
     if (!db.bioLinkConfig) {
         db.bioLinkConfig = DEFAULT_BIO_LINK_CONFIG;
         saveDb(db);
+    } else {
+        // Ensure telegram and bale bots are present if not already added
+        const currentBlocks = Array.isArray(db.bioLinkConfig.blocks) ? db.bioLinkConfig.blocks : [];
+        let hasChanges = false;
+        if (!currentBlocks.some(b => b.iconName === 'telegram_bot' || b.id === 'block_telegram_bot')) {
+            const telBlock = DEFAULT_BIO_LINK_CONFIG.blocks.find(b => b.id === 'block_telegram_bot');
+            if (telBlock) { currentBlocks.push(telBlock); hasChanges = true; }
+        }
+        if (!currentBlocks.some(b => b.iconName === 'bale_bot' || b.id === 'block_bale_bot')) {
+            const baleBlock = DEFAULT_BIO_LINK_CONFIG.blocks.find(b => b.id === 'block_bale_bot');
+            if (baleBlock) { currentBlocks.push(baleBlock); hasChanges = true; }
+        }
+        if (hasChanges) {
+            db.bioLinkConfig.blocks = currentBlocks;
+            saveDb(db);
+        }
     }
-    res.json({ success: true, config: db.bioLinkConfig });
+    const isAdminScope = req.query.scope === 'admin';
+    if (isAdminScope) {
+        return res.json({ success: true, config: db.bioLinkConfig });
+    }
+
+    // Public view: completely sanitize and protect internal customer orders and private data
+    const publicConfig = {
+        slug: db.bioLinkConfig.slug || 'lepanbaft',
+        companyTitle: db.bioLinkConfig.companyTitle || 'شرکت تولیدی لپان بافت',
+        companySubtitle: db.bioLinkConfig.companySubtitle || '',
+        avatarUrl: db.bioLinkConfig.avatarUrl || '/lepan-logo.png',
+        coverUrl: db.bioLinkConfig.coverUrl || '',
+        theme: db.bioLinkConfig.theme || 'lepan_light',
+        addressText: db.bioLinkConfig.addressText || '',
+        blocks: Array.isArray(db.bioLinkConfig.blocks) 
+            ? db.bioLinkConfig.blocks.filter(b => b.isActive !== false)
+            : []
+    };
+    res.json({ success: true, config: publicConfig });
 });
 
 app.post('/api/bio-link', (req, res) => {
     const db = getDb();
     const current = db.bioLinkConfig || DEFAULT_BIO_LINK_CONFIG;
+    const { orders, ...safeUpdates } = req.body || {};
     db.bioLinkConfig = {
         ...current,
-        ...req.body,
+        ...safeUpdates,
+        orders: Array.isArray(orders) ? orders : (current.orders || []),
         updatedAt: Date.now()
     };
     saveDb(db);
@@ -7200,7 +7260,7 @@ app.post('/api/bio-link/order', (req, res) => {
     }
     db.notifications.unshift({
         id: `notif_biolink_${Date.now()}`,
-        title: '📦 ثبت سفارش جدید از زیلینک / QR کد عمومی',
+        title: '📦 ثبت سفارش جدید از لپان لینک / QR کد عمومی',
         message: `سفارش جدید از مشتری: ${newOrder.customerName} (${newOrder.customerPhone}) - کالا: ${newOrder.productTitle} (${newOrder.quantity})`,
         type: 'info',
         createdAt: Date.now(),

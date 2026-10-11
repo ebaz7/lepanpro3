@@ -2081,11 +2081,11 @@ export interface ChequeReceipt {
 
 export interface BioLinkBlock {
     id: string;
-    category: 'maps' | 'phones' | 'emails' | 'socials' | 'links' | 'catalog' | 'order_form' | 'custom';
+    category: 'maps' | 'phones' | 'emails' | 'socials' | 'bots' | 'links' | 'catalog' | 'order_form' | 'custom';
     title: string;
     subtitle?: string;
     value: string; // URL, Phone Number, Address, Email
-    iconName?: string; // 'neshan', 'balad', 'google_maps', 'phone', 'mobile', 'email', 'instagram', 'telegram', 'whatsapp', 'website', 'file', 'order', 'globe'
+    iconName?: string; // 'neshan', 'balad', 'google_maps', 'phone', 'mobile', 'email', 'instagram', 'telegram_bot', 'bale_bot', 'telegram', 'bale', 'whatsapp', 'website', 'file', 'order', 'globe'
     badge?: string;
     colorTheme?: 'emerald' | 'blue' | 'indigo' | 'amber' | 'rose' | 'slate' | 'purple';
     isActive: boolean;
@@ -2109,7 +2109,7 @@ export interface BioLinkConfig {
     companySubtitle: string; // "تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت"
     avatarUrl: string; // Logo
     coverUrl: string; // Banner
-    theme: 'zilink_light' | 'dark' | 'gradient_blue' | 'emerald_pro';
+    theme: 'lepan_light' | 'zilink_light' | 'dark' | 'gradient_blue' | 'emerald_pro';
     primaryColor?: string;
     addressText?: string;
     blocks: BioLinkBlock[];
