@@ -552,6 +552,8 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     }, [receiptsList]);
 
     // Person Search
+    const [allPersonsCache, setAllPersonsCache] = useState<SayanPerson[]>([]);
+
     const fetchPersons = async (q: string, force = false) => {
         setSearchingPersons(true);
         try {
@@ -559,7 +561,12 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             const data = await res.json();
             if (data.success && Array.isArray(data.persons)) {
                 setPersonSearchResults(data.persons);
-                setPersonDropdownOpen(true);
+                if (data.persons.length > 0) {
+                    setPersonDropdownOpen(true);
+                }
+                if (!q && data.persons.length > 0) {
+                    setAllPersonsCache(data.persons);
+                }
                 if (force) {
                     setSuccessMessage(`استعلام زنده سایان انجام شد (${toPersianDigits(data.persons.length)} طرف حساب فعال دریافت گردید).`);
                 }
@@ -571,6 +578,54 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         }
     };
 
+    const normalizeSearchText = (str: string) => {
+        if (!str) return '';
+        return str
+            .replace(/^(آقای|خانم|شرکت|فروشگاه|کارخانه|مهندس|دکتر)\s+/gi, '')
+            .replace(/[\u200c\u00a0\-_]/g, ' ')
+            .replace(/\u064A/g, 'ی')
+            .replace(/\u0649/g, 'ی')
+            .replace(/\u0643/g, 'ک')
+            .replace(/[\u0622\u0623\u0625]/g, 'ا')
+            .replace(/\u0629/g, 'ه')
+            .trim()
+            .toLowerCase();
+    };
+
+    const displayedPersonResults = useMemo(() => {
+        const q = (personQuery || '').trim();
+        const baseList = (personSearchResults.length > 0 ? personSearchResults : allPersonsCache);
+        if (!q) return baseList;
+
+        const normQ = normalizeSearchText(q);
+        const tokens = normQ.split(/\s+/).filter(t => t.length > 0);
+
+        const filtered = baseList.filter(p => {
+            const rawName = p.fullName || '';
+            const normName = normalizeSearchText(rawName);
+            const rawClean = rawName.replace(/[\u200c\u00a0\-_]/g, ' ').toLowerCase();
+            const code = String(p.personCode || '').toLowerCase();
+            const tafsili = String(p.tafsiliCode || '').toLowerCase();
+
+            return tokens.every(t => normName.includes(t) || rawClean.includes(t) || code.includes(t) || tafsili.includes(t));
+        });
+
+        return filtered.sort((a, b) => {
+            const nameA = normalizeSearchText(a.fullName || '');
+            const nameB = normalizeSearchText(b.fullName || '');
+            const pCodeA = String(a.personCode || '').toLowerCase();
+            const pCodeB = String(b.personCode || '').toLowerCase();
+
+            const scoreA = (nameA === normQ || pCodeA === normQ ? 10000 : 0) + (nameA.startsWith(normQ) ? 5000 : 0) + (nameA.includes(normQ) ? 2000 : 0);
+            const scoreB = (nameB === normQ || pCodeB === normQ ? 10000 : 0) + (nameB.startsWith(normQ) ? 5000 : 0) + (nameB.includes(normQ) ? 2000 : 0);
+            return scoreB - scoreA;
+        });
+    }, [personQuery, personSearchResults, allPersonsCache]);
+
+    useEffect(() => {
+        setHighlightedPersonIdx(0);
+    }, [displayedPersonResults]);
+
     useEffect(() => {
         if (!personQuery || personQuery.trim().length === 0) {
             fetchPersons('');
@@ -578,7 +633,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         }
         const timer = setTimeout(() => {
             fetchPersons(personQuery.trim());
-        }, 200);
+        }, 150);
         return () => clearTimeout(timer);
     }, [personQuery, fiscalYear]);
 
@@ -1101,6 +1156,58 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         }
     };
 
+    // Fix invalid Sanad 1 receipts
+    const [fixingSanadOne, setFixingSanadOne] = useState(false);
+    const handleFixSanadOneReceipts = async () => {
+        const proceed = window.confirm('سیستم تمام اسنادی را که دارای شماره سند ۱ غیرواقعی هستند بررسی نموده و وضعیت آن‌ها را جهت ثبت رسمی و دریافت شماره سند و بایگانی واقعی در سایان آماده‌سازی می‌کند. آیا ادامه می‌دهید؟');
+        if (!proceed) return;
+        setFixingSanadOne(true);
+        try {
+            const res = await fetch('/api/sayan/cheque-receipts/fix-invalid-sanad-one', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fiscalYear })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSuccessMessage(data.message || `${data.count} رسید اصلاح و آماده ثبت مجدد در سایان گردید.`);
+                fetchReceipts(true);
+            } else {
+                setErrorMessage(data.error || 'خطا در اصلاح اسناد سند ۱');
+            }
+        } catch (err: any) {
+            setErrorMessage(err.message || 'خطا در ارتباط با سرور');
+        } finally {
+            setFixingSanadOne(false);
+        }
+    };
+
+    // Re-register a single receipt into Sayan
+    const handleReRegisterInSayan = async (receiptId: string) => {
+        const proceed = window.confirm('آیا از ثبت مجدد این رسید و صدور سند رسمی در پایگاه‌داده سایان اطمینان دارید؟');
+        if (!proceed) return;
+        setActionLoading(receiptId);
+        try {
+            const res = await fetch(`/api/sayan/cheque-receipts/${receiptId}/re-register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ receiptId, currentUser })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSuccessMessage(`رسید با موفقیت در سایان ثبت شد. شماره سند: ${toPersianDigits(data.docNo || '-')}، کد بایگانی: ${toPersianDigits(data.archiveCode || '-')}`);
+                setSelectedDetailReceipt(null);
+                fetchReceipts(true);
+            } else {
+                setErrorMessage(data.error || 'خطا در ثبت مجدد در سایان');
+            }
+        } catch (err: any) {
+            setErrorMessage(err.message || 'خطا در ارتباط با سایان جهت ثبت مجدد');
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     // Filtered lists
     const pendingAccountingList = useMemo(() => {
         return receiptsList.filter(r => r.status === 'PENDING_ACCOUNTING');
@@ -1270,6 +1377,17 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                             <span className="hidden md:inline">تنظیمات تایید نهایی و سایان</span>
                         </button>
                     )}
+
+                    <button
+                        type="button"
+                        onClick={handleFixSanadOneReceipts}
+                        disabled={fixingSanadOne}
+                        className="px-3 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white shadow-sm transition-all flex items-center gap-1.5 text-xs font-bold shrink-0"
+                        title="بررسی اسنادی که با سند ۱ ثبت شده‌اند و بازنشانی آن‌ها جهت ثبت مجدد با سند واقعی"
+                    >
+                        {fixingSanadOne ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                        <span>اصلاح اسناد با سند ۱ (ثبت مجدد سایان)</span>
+                    </button>
                 </div>
             </div>
 
@@ -1365,29 +1483,40 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                         value={personQuery}
                                         onChange={(e) => {
                                             setPersonQuery(e.target.value);
+                                            setPersonDropdownOpen(true);
                                             if (selectedPerson && e.target.value !== selectedPerson.fullName) {
                                                 setSelectedPerson(null);
                                             }
                                         }}
                                         onFocus={() => {
-                                            if (personSearchResults.length > 0) {
-                                                setPersonDropdownOpen(true);
-                                            } else if (personQuery.trim().length > 0) {
-                                                fetchPersons(personQuery.trim());
-                                            } else {
+                                            setPersonDropdownOpen(true);
+                                            if (personSearchResults.length === 0 && allPersonsCache.length === 0) {
                                                 fetchPersons('');
                                             }
                                         }}
                                         onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
+                                            if (e.key === 'ArrowDown') {
                                                 e.preventDefault();
-                                                if (!selectedPerson && personSearchResults.length > 0) {
-                                                    const first = personSearchResults[0];
-                                                    setSelectedPerson(first);
-                                                    setPersonQuery(first.fullName);
-                                                    setPersonDropdownOpen(false);
-                                                    setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: first.fullName })));
-                                                    document.getElementById('input-receipt-no')?.focus();
+                                                setPersonDropdownOpen(true);
+                                                setHighlightedPersonIdx(prev => Math.min(prev + 1, Math.max(0, displayedPersonResults.length - 1)));
+                                            } else if (e.key === 'ArrowUp') {
+                                                e.preventDefault();
+                                                setPersonDropdownOpen(true);
+                                                setHighlightedPersonIdx(prev => Math.max(prev - 1, 0));
+                                            } else if (e.key === 'Escape') {
+                                                setPersonDropdownOpen(false);
+                                            } else if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                if (personDropdownOpen && displayedPersonResults.length > 0) {
+                                                    const selected = displayedPersonResults[highlightedPersonIdx] || displayedPersonResults[0];
+                                                    if (selected) {
+                                                        setSelectedPerson(selected);
+                                                        setPersonQuery(selected.fullName);
+                                                        setPersonDropdownOpen(false);
+                                                        setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: selected.fullName })));
+                                                        const nextEl = document.getElementById('input-posht-nomreh') || document.getElementById('input-receipt-no');
+                                                        nextEl?.focus();
+                                                    }
                                                 } else {
                                                     handleEnterNext(0, 'person');
                                                 }
@@ -1408,7 +1537,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 {selectedPerson ? (
                                     <div className="mt-1 flex items-center justify-between text-[10px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
                                         <span>طرف حساب معتبر سایان</span>
-                                        <span className="font-mono">کد تفصیلی: {toPersianDigits(selectedPerson.personCode)}</span>
+                                        <span className="font-mono">کد تفصیلی: {toPersianDigits(selectedPerson.tafsiliCode || selectedPerson.personCode)}</span>
                                     </div>
                                 ) : (
                                     <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
@@ -1418,49 +1547,78 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
                                 {/* Person Dropdown */}
                                 {personDropdownOpen && (
-                                    <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl z-40 max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
-                                        {personSearchResults.length > 0 ? (
-                                            personSearchResults.map((p, pIdx) => (
-                                                <button
-                                                    key={`${p.personCode}-${pIdx}`}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedPerson(p);
-                                                        setPersonQuery(p.fullName);
-                                                        setPersonDropdownOpen(false);
-                                                        // Sync InNameOf in cheque rows to selected person
-                                                        setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: p.fullName })));
-                                                        document.getElementById('input-receipt-no')?.focus();
-                                                    }}
-                                                    className="w-full text-right p-2.5 text-xs hover:bg-emerald-50 dark:hover:bg-slate-700 transition-colors flex items-center justify-between group cursor-pointer"
-                                                >
-                                                    <div>
-                                                        <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
-                                                            <span>{p.fullName}</span>
-                                                            {p.levelCode === '11' ? (
-                                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-normal">مشتری</span>
-                                                            ) : p.levelCode === '31' ? (
-                                                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 font-normal">تامین‌کننده</span>
-                                                            ) : null}
+                                    <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border-2 border-emerald-500/30 dark:border-emerald-500/40 rounded-2xl shadow-2xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700/60">
+                                        <div className="p-2 bg-slate-50 dark:bg-slate-900/80 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-bold text-slate-500">
+                                            <span>طرف‌های حساب سایان ({toPersianDigits(displayedPersonResults.length)})</span>
+                                            {searchingPersons && (
+                                                <span className="flex items-center gap-1 text-emerald-600">
+                                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                                    <span>در حال جستجو...</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                        {displayedPersonResults.length > 0 ? (
+                                            displayedPersonResults.map((p, pIdx) => {
+                                                const isSelected = selectedPerson?.personCode === p.personCode;
+                                                const isHighlighted = pIdx === highlightedPersonIdx;
+                                                return (
+                                                    <button
+                                                        key={`${p.personCode}-${p.tafsiliCode}-${pIdx}`}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setSelectedPerson(p);
+                                                            setPersonQuery(p.fullName);
+                                                            setPersonDropdownOpen(false);
+                                                            setChequeRows(prev => prev.map(r => ({ ...r, inNameOf: p.fullName })));
+                                                            const nextEl = document.getElementById('input-posht-nomreh') || document.getElementById('input-receipt-no');
+                                                            nextEl?.focus();
+                                                        }}
+                                                        className={`w-full text-right p-2.5 text-xs transition-colors flex items-center justify-between group cursor-pointer ${
+                                                            isHighlighted
+                                                                ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-950 dark:text-emerald-100 font-bold border-r-4 border-emerald-600'
+                                                                : isSelected
+                                                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200'
+                                                                : 'hover:bg-slate-50 dark:hover:bg-slate-700/50 text-slate-800 dark:text-slate-200'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <User className={`w-3.5 h-3.5 shrink-0 ${isHighlighted ? 'text-emerald-600' : 'text-slate-400'}`} />
+                                                            <div>
+                                                                <div className="flex items-center gap-1.5 font-bold text-slate-800 dark:text-slate-200 group-hover:text-emerald-700 dark:group-hover:text-emerald-400">
+                                                                    <span>{p.fullName}</span>
+                                                                    {p.levelCode === '11' ? (
+                                                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 font-normal">مشتری</span>
+                                                                    ) : p.levelCode === '31' ? (
+                                                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 font-normal">تامین‌کننده</span>
+                                                                    ) : null}
+                                                                </div>
+                                                                {p.nationalId && <div className="text-[10px] text-slate-400 font-mono">کدملی: {p.nationalId}</div>}
+                                                            </div>
                                                         </div>
-                                                        {p.nationalId && <div className="text-[10px] text-slate-400 font-mono">کدملی: {p.nationalId}</div>}
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 border border-blue-200">
-                                                            کد: {toPersianDigits(p.personCode)}
-                                                        </span>
-                                                        {p.tafsiliCode && p.tafsiliCode !== p.personCode && (
-                                                            <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950 text-purple-600 border border-purple-200">
-                                                                تفصیلی: {toPersianDigits(p.tafsiliCode)}
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <span className="font-mono text-xs px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-blue-600 border border-blue-200">
+                                                                کد: {toPersianDigits(p.personCode)}
                                                             </span>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            ))
+                                                            {p.tafsiliCode && p.tafsiliCode !== p.personCode && (
+                                                                <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-950 text-purple-600 border border-purple-200">
+                                                                    تفصیلی: {toPersianDigits(p.tafsiliCode)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })
                                         ) : (
                                             !searchingPersons && (
-                                                <div className="p-3 text-center text-xs text-slate-400">
-                                                    هیچ حسابی در سایان با این عنوان یافت نشد
+                                                <div className="p-3 text-center text-xs text-slate-400 flex flex-col items-center gap-1">
+                                                    <span>هیچ حسابی در سایان با «{personQuery}» یافت نشد</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => fetchPersons(personQuery.trim(), true)}
+                                                        className="text-emerald-600 font-bold hover:underline mt-1 cursor-pointer"
+                                                    >
+                                                        استعلام مستقیم کل پایگاه اطلاعاتی سایان
+                                                    </button>
                                                 </div>
                                             )
                                         )}
@@ -2365,7 +2523,11 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                             {toPersianDigits(r.cheques?.length || 1)} برگ
                                         </td>
                                         <td className="px-3 py-3 font-mono">
-                                            {r.archiveCode ? (
+                                            {(String(r.docNo) === '1' || String(r.archiveCode) === '1') ? (
+                                                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-black bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700">
+                                                    سند ۱ (نیازمند ثبت مجدد)
+                                                </span>
+                                            ) : r.archiveCode ? (
                                                 <div className="flex items-center gap-1 text-purple-600 font-bold">
                                                     <span>سند: {toPersianDigits(r.docNo || '-')}</span>
                                                     <span className="text-[10px] text-slate-400">({toPersianDigits(r.archiveCode)})</span>
@@ -2375,7 +2537,12 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                             )}
                                         </td>
                                         <td className="px-3 py-3">
-                                            {r.status === 'REGISTERED_IN_SAYAN' ? (
+                                            {(String(r.docNo) === '1' || String(r.archiveCode) === '1') ? (
+                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 flex items-center gap-1">
+                                                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                                                    <span>نیازمند ثبت مجدد در سایان</span>
+                                                </span>
+                                            ) : r.status === 'REGISTERED_IN_SAYAN' ? (
                                                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
                                                     ثبت شده در سایان
                                                 </span>
@@ -2408,8 +2575,19 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                                 >
                                                     <Eye className="w-4 h-4" />
                                                 </button>
-
-                                                {r.archiveCode ? (
+                                                {(String(r.docNo) === '1' || String(r.archiveCode) === '1' || r.status === 'PENDING_CEO') ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleReRegisterInSayan(r.id)}
+                                                        disabled={actionLoading === r.id}
+                                                        className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-bold text-[11px] border border-emerald-500 shadow-sm flex items-center gap-1 hover:from-emerald-700 hover:to-teal-800 transition-all shrink-0"
+                                                        title="ثبت مجدد و دریافت شماره سند و بایگانی واقعی سایان"
+                                                    >
+                                                        {actionLoading === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                                                        <span>ثبت مجدد در سایان</span>
+                                                    </button>
+                                                ) : null}
+                                                {r.archiveCode && String(r.archiveCode) !== '1' ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => setInspectingArchiveCode({ archiveCode: r.archiveCode, docNo: r.docNo })}

@@ -1838,7 +1838,7 @@ function App() {
       case 'cheque-receipts':
         return (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) ? <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div> : null;
       case 'digital-card':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><DigitalCardModule currentUser={currentUser} settings={settings} /></div>;
+        return (currentUser && (currentUser.role === UserRole.ADMIN || (settings && (getRolePermissions(currentUser.role, settings, currentUser).canAccessDigitalCard === true || getRolePermissions(currentUser.role, settings, currentUser).canManageDigitalCard === true)) || (currentUser as any).canAccessDigitalCard === true || (currentUser as any).canManageDigitalCard === true)) ? <div className="page-transition flex flex-col flex-1 min-h-0"><DigitalCardModule currentUser={currentUser} settings={settings} /></div> : <div className="p-8 text-center font-bold text-red-500">شما دسترسی لازم برای مشاهده این بخش را ندارید.</div>;
       case 'chat':
         return (
           <div className="flex-1 flex flex-col w-full min-h-0 h-full page-transition">
@@ -1904,9 +1904,11 @@ function App() {
             )}
         </AnimatePresence>
         {isPublicBioView ? (
-            <PublicBioPage 
-                config={publicBioConfig || FALLBACK_BIO_CONFIG}
-            />
+            <div className="w-full min-h-screen h-auto overflow-y-auto overscroll-y-contain -webkit-overflow-scrolling-touch bg-slate-50 dark:bg-slate-950">
+              <PublicBioPage 
+                  config={publicBioConfig || FALLBACK_BIO_CONFIG}
+              />
+            </div>
         ) : !currentUser ? (
             <Login onLogin={handleLogin} />
         ) : (
@@ -2050,7 +2052,7 @@ function App() {
                     {activeTab === 'purchase' && <div className="page-transition flex flex-col flex-1 min-h-0"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>}
                     {activeTab === 'secretariat' && currentUser && <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>}
                     {activeTab === 'cheque-receipts' && currentUser && (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) && <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div>}
-                    {activeTab === 'digital-card' && currentUser && <div className="page-transition flex flex-col flex-1 min-h-0"><DigitalCardModule currentUser={currentUser} settings={settings} /></div>}
+                    {activeTab === 'digital-card' && currentUser && (currentUser.role === UserRole.ADMIN || (settings && (getRolePermissions(currentUser.role, settings, currentUser).canAccessDigitalCard === true || getRolePermissions(currentUser.role, settings, currentUser).canManageDigitalCard === true)) || (currentUser as any).canAccessDigitalCard === true || (currentUser as any).canManageDigitalCard === true) && <div className="page-transition flex flex-col flex-1 min-h-0"><DigitalCardModule currentUser={currentUser} settings={settings} /></div>}
                     
                     <div className={activeTab === 'chat' ? 'flex-1 flex flex-col w-full min-h-0 h-full page-transition' : 'fixed inset-0 pointer-events-none opacity-0 invisible overflow-hidden h-0'}>
                         <ChatRoom 

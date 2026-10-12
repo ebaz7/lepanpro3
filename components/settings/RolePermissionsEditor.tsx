@@ -46,10 +46,10 @@ const PERMISSION_GROUPS = [
         color: 'amber', 
         items: [
             { id: 'canView', label: '👁️ مشاهده کلی ماژول درخواست خرید (کارتابل)' },
-            { id: 'canCreate', label: '➕ ثبت درخواست خرید اولیه (واحد فنی / پرسنل)' },
-            { id: 'canApproveTechnical', label: '🔧 بررسی و تایید فنی نت (مرحله اول)' },
-            { id: 'canApproveShiftLeader', label: '👷 تایید سرشیفت کارخانه (مرحله دوم)' },
-            { id: 'canApproveWarehouseKeeper', label: '📦 بررسی موجودی توسط انباردار کارخانه (مرحله سوم)' },
+            { id: 'canCreate', label: '➕ ثبت درخواست خرید اولیه (سرشیفت / پرسنل)' },
+            { id: 'canApproveShiftLeader', label: '👷 تایید سرپرست خط (مرحله اول پس از ثبت)' },
+            { id: 'canApproveTechnical', label: '🔧 بررسی و تایید فنی نت (مرحله دوم)' },
+            { id: 'canApproveWarehouseKeeper', label: '📦 بررسی موجودی توسط انباردار قطعات / کارخانه (مرحله سوم)' },
             { id: 'canRegisterEntry', label: '🚪 ثبت ورود فیزیکی کالا (انتظامات)' },
             { id: 'canCheckQC', label: '🔬 تایید کنترل کیفیت (QC)' },
             { id: 'canWarehouseFinalize', label: '📑 صدور رسید انبار نهایی' },
@@ -270,22 +270,34 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
     // --- CORE PERMISSION UPDATE LOGIC ---
     const handlePermissionChange = (roleId: string, groupId: string, permKey: string, value: boolean) => {
         const isPurchase = groupId === 'purchase' || groupId.startsWith('purchase_');
-        const currentStore = isPurchase ? (settings.purchaseRolePermissions || {}) : (settings.rolePermissions || {});
-        const currentRolePerms = currentStore[roleId] || {};
-        
+        const currentPurchaseStore = settings.purchaseRolePermissions || {};
+        const currentGeneralStore = settings.rolePermissions || {};
+
         const updatedRolePerms = {
-            ...currentRolePerms,
+            ...((isPurchase ? currentPurchaseStore[roleId] : currentGeneralStore[roleId]) || {}),
             [permKey]: value
         };
 
-        const newSettingsKey = isPurchase ? 'purchaseRolePermissions' : 'rolePermissions';
-        
-        const newSettings = {
+        const newSettings: any = {
             ...settings,
-            [newSettingsKey]: {
-                ...currentStore,
-                [roleId]: updatedRolePerms
-            }
+            ...(isPurchase ? {
+                purchaseRolePermissions: {
+                    ...currentPurchaseStore,
+                    [roleId]: updatedRolePerms
+                },
+                rolePermissions: {
+                    ...currentGeneralStore,
+                    [roleId]: {
+                        ...(currentGeneralStore[roleId] || {}),
+                        [permKey]: value
+                    }
+                }
+            } : {
+                rolePermissions: {
+                    ...currentGeneralStore,
+                    [roleId]: updatedRolePerms
+                }
+            })
         };
 
         onUpdateSettings(newSettings);
@@ -293,24 +305,37 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
 
     const toggleGroup = (roleId: string, groupId: string, groupItems: {id: string}[], isChecked: boolean) => {
         const isPurchase = groupId === 'purchase' || groupId.startsWith('purchase_');
-        const currentStore = isPurchase ? (settings.purchaseRolePermissions || {}) : (settings.rolePermissions || {});
-        const currentRolePerms = currentStore[roleId] || {};
+        const currentPurchaseStore = settings.purchaseRolePermissions || {};
+        const currentGeneralStore = settings.rolePermissions || {};
+        const baseRolePerms = (isPurchase ? currentPurchaseStore[roleId] : currentGeneralStore[roleId]) || {};
         
-        const updatedRolePerms = { ...currentRolePerms };
+        const updatedRolePerms = { ...baseRolePerms };
         
         groupItems.forEach(item => {
             // @ts-ignore
             updatedRolePerms[item.id] = isChecked;
         });
 
-        const newSettingsKey = isPurchase ? 'purchaseRolePermissions' : 'rolePermissions';
-
-        const newSettings = {
+        const newSettings: any = {
             ...settings,
-            [newSettingsKey]: {
-                ...currentStore,
-                [roleId]: updatedRolePerms
-            }
+            ...(isPurchase ? {
+                purchaseRolePermissions: {
+                    ...currentPurchaseStore,
+                    [roleId]: updatedRolePerms
+                },
+                rolePermissions: {
+                    ...currentGeneralStore,
+                    [roleId]: {
+                        ...(currentGeneralStore[roleId] || {}),
+                        ...updatedRolePerms
+                    }
+                }
+            } : {
+                rolePermissions: {
+                    ...currentGeneralStore,
+                    [roleId]: updatedRolePerms
+                }
+            })
         };
         onUpdateSettings(newSettings);
     };
@@ -471,8 +496,9 @@ const RolePermissionsEditor: React.FC<Props> = ({ settings, onUpdateSettings, us
                                              const GroupIcon = group.icon;
                                              // Check if ALL items in this group are checked
                                              const isPurchase = group.id === 'purchase' || group.id.startsWith('purchase_');
-                                             const currentStore = isPurchase ? (settings.purchaseRolePermissions || {}) : (settings.rolePermissions || {});
-                                             const rolePerms = currentStore[role.id] || {};
+                                             const rolePerms = isPurchase 
+                                                 ? { ...(settings.rolePermissions?.[role.id] || {}), ...(settings.purchaseRolePermissions?.[role.id] || {}) }
+                                                 : (settings.rolePermissions?.[role.id] || {});
                                              // @ts-ignore
                                              const isGroupAllChecked = group.items.every(item => rolePerms[item.id]);
 

@@ -114,6 +114,12 @@ export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     if (data.success === false) {
         throw new Error(data.error || data.message || 'خطای سرور سایان');
     }
+    
+    // Safety check: detect simulator mode response from Sayan proxy gateway
+    if (data.simulated === true || data.source === 'simulation' || (Array.isArray(data.data) && data.data[0]?.Status === 'شبیه‌سازی ارتباط فعال')) {
+        throw new Error('پایگاه داده سایان (MSSQL) متصل نیست و وب‌سرویس در حالت شبیه‌سازی قرار دارد. ثبت و استعلام اسناد تا زمان برقراری ارتباط با پایگاه داده سایان متوقف شد.');
+    }
+
     return data.data || [];
 };
 

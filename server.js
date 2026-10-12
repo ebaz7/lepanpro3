@@ -2258,16 +2258,44 @@ app.post('/api/sayan/cheque-receipts/dry-run', async (req, res) => {
 });
 
 // 10. Register approved Cheque Receipt directly in Sayan DB
-app.post('/api/sayan/cheque-receipts/register-in-sayan', async (req, res) => {
+app.post(['/api/sayan/cheque-receipts/register-in-sayan', '/api/sayan/cheque-receipts/:id/re-register'], async (req, res) => {
     try {
-        const { receiptId, currentUser } = req.body || {};
+        const receiptId = req.params.id || req.body?.receiptId;
+        const currentUser = req.body?.currentUser || req.user || { name: 'مدیر سیستم' };
         if (!receiptId) {
             return res.status(400).json({ success: false, error: 'شناسه رسید الزامی است.' });
         }
-        const result = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser);
+        const result = await sayanChequeService.registerChequeReceiptInSayan(receiptId, currentUser, true);
         res.json({ success: true, ...result });
     } catch (err) {
         console.error("Error registering cheque receipt in Sayan:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 10.1. Fix receipts with invalid Sanad 1 and prepare them for re-registration
+app.post(['/api/sayan/cheque-receipts/fix-invalid-sanad-one', '/api/sayan/cheque-receipts/fix-invalid-docs'], async (req, res) => {
+    try {
+        const fiscalYear = req.body?.fiscalYear || req.query?.fiscalYear || '4';
+        const autoReregister = req.body?.autoReregister === true;
+        const currentUser = req.body?.currentUser || req.user || { name: 'مدیر سیستم' };
+        const result = await sayanChequeService.fixInvalidSanadOneReceipts(fiscalYear, autoReregister, currentUser);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("Error fixing invalid Sanad 1 receipts:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 10.2. Reset a single receipt from Sayan status for re-registration
+app.post('/api/sayan/cheque-receipts/:id/reset-sayan', async (req, res) => {
+    try {
+        const receiptId = req.params.id || req.body?.receiptId;
+        const currentUser = req.body?.currentUser || req.user || { name: 'مدیر سیستم' };
+        const result = await sayanChequeService.resetReceiptForReRegistration(receiptId, currentUser);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("Error resetting receipt for Sayan:", err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -6847,6 +6875,61 @@ app.post('/api/chat', async (req, res) => {
                 null,
                 [msg.senderUsername] // Exclude sender
             );
+        }
+
+        // Targeted Mention / Tag Notifications (@username, @fullname, @all)
+        if (msg.message && typeof msg.message === 'string') {
+            const mentionMatches = msg.message.match(/@([a-zA-Z0-9_\.\-\u0600-\u06FF\u200c]+)/g) || [];
+            const mentionTokens = mentionMatches.map(m => m.slice(1).toLowerCase().trim());
+            const isAllMention = mentionTokens.includes('all') || mentionTokens.includes('همه');
+
+            let targetedMentionUsers = [];
+            if (isAllMention) {
+                if (msg.groupId) {
+                    const grp = (db.groups || []).find(g => g.id === msg.groupId) || (db.taskGroups || []).find(g => g.id === msg.groupId);
+                    if (grp) {
+                        const mList = Array.isArray(grp.members) ? [...grp.members] : [];
+                        if (grp.createdBy && !mList.includes(grp.createdBy)) mList.push(grp.createdBy);
+                        targetedMentionUsers = mList;
+                    }
+                } else {
+                    targetedMentionUsers = (db.users || []).map(u => u.username).filter(Boolean);
+                }
+            } else if (mentionTokens.length > 0) {
+                targetedMentionUsers = (db.users || []).filter(u => {
+                    if (!u.username) return false;
+                    const uName = u.username.toLowerCase();
+                    const fName = (u.fullName || '').toLowerCase();
+                    const fNameUnder = fName.replace(/\s+/g, '_');
+                    const fNameCompact = fName.replace(/[\s\u200c]+/g, '');
+                    return mentionTokens.some(tok => 
+                        tok === uName || 
+                        tok === fName || 
+                        tok === fNameUnder || 
+                        tok === fNameCompact
+                    );
+                }).map(u => u.username);
+            }
+
+            // Exclude message sender
+            const filteredTargets = targetedMentionUsers.filter(u => 
+                String(u).toLowerCase() !== String(msg.senderUsername).toLowerCase()
+            );
+
+            if (filteredTargets.length > 0) {
+                const channelTitle = msg.groupId 
+                    ? ((db.groups?.find(g => g.id === msg.groupId) || db.taskGroups?.find(g => g.id === msg.groupId))?.name || 'گروه')
+                    : (msg.recipient ? 'گفتگو' : 'کانال عمومی');
+
+                broadcastNotification(
+                    `📢 منشن جدید: ${msg.sender} در ${channelTitle}`,
+                    `${msg.sender}: ${msg.message}`,
+                    msg.groupId ? `/chat?group=${msg.groupId}` : (msg.recipient ? `/chat?pv=${msg.senderUsername}` : '/chat'),
+                    null,
+                    filteredTargets,
+                    [msg.senderUsername]
+                );
+            }
         }
     } catch (e) {
         console.error("Async broadcast notification error:", e);

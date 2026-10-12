@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js --dev",
-    "build": "node -e \"import('fs').then(fs => { if(fs.existsSync('dist')) fs.rmSync('dist', {recursive: true, force: true}); })\" && node --max-old-space-size=1024 ./node_modules/vite/bin/vite.js build",
+    "build": "node -e \"import('fs').then(fs => { if(fs.existsSync('dist')) fs.rmSync('dist', {recursive: true, force: true}); })\" && node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
-    "lint": "node --max-old-space-size=1024 ./node_modules/typescript/bin/tsc --noEmit --skipLibCheck",
+    "lint": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit --skipLibCheck",
     "start": "node server.js",
     "mobile": "npm run build && npx cap sync android && npx cap open android",
     "build:apk": "node build-android.js",
@@ -83,7 +83,7 @@
     "recharts": "^2.15.4",
     "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0",
-    "undici": "^8.10.0",
+    "undici": "^8.11.2",
     "web-push": "^3.6.7",
     "whatsapp-web.js": "^1.23.0",
     "xlsx": "^0.18.5"

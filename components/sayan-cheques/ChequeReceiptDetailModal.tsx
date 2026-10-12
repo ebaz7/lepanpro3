@@ -431,7 +431,33 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                     </div>
 
                     {/* Sayan Registered Info Banner (If Registered) */}
-                    {receipt.status === 'REGISTERED_IN_SAYAN' && receipt.archiveCode && (
+                    {(String(receipt.docNo) === '1' || String(receipt.archiveCode) === '1') ? (
+                        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center font-black">
+                                    !
+                                </div>
+                                <div>
+                                    <div className="font-black text-amber-900 dark:text-amber-300 text-sm flex items-center gap-2">
+                                        <span>شماره سند ۱ نامعتبر بوده و نیاز به ثبت مجدد در سایان دارد</span>
+                                    </div>
+                                    <div className="text-amber-700 dark:text-amber-400 mt-0.5">
+                                        این رسید جهت صدور سند رسمی در پایگاه‌داده سایان و دریافت کد بایگانی و شماره سند معتبر آماده است.
+                                    </div>
+                                </div>
+                            </div>
+                            {onApproveByCeo && (
+                                <button
+                                    type="button"
+                                    onClick={() => onApproveByCeo(receipt.id)}
+                                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0 cursor-pointer"
+                                >
+                                    <Zap className="w-4 h-4" />
+                                    <span>ثبت مجدد در سایان</span>
+                                </button>
+                            )}
+                        </div>
+                    ) : receipt.status === 'REGISTERED_IN_SAYAN' && receipt.archiveCode ? (
                         <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
                             <div className="flex items-center gap-3">
                                 <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
@@ -457,7 +483,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                                 <span>استعلام سند واقعی سایان</span>
                             </button>
                         </div>
-                    )}
+                    ) : null}
 
                     {/* Description */}
                     {receipt.description && (
