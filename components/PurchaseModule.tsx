@@ -205,6 +205,52 @@ export const canUserViewProformas = (
     return false;
 };
 
+export const normalizePurchaseStatus = (status: any): PurchaseRequestStatus | string => {
+    if (!status) return '';
+    const s = String(status).trim();
+    if (
+        s === PurchaseRequestStatus.PENDING_SHIFT_LEADER ||
+        s === 'در انتظار تایید سرپرست خط' ||
+        s === 'در انتظار تایید سرشیفت' ||
+        s === 'در انتظار تایید سرپرست' ||
+        s === 'PENDING_SHIFT_LEADER'
+    ) {
+        return PurchaseRequestStatus.PENDING_SHIFT_LEADER;
+    }
+    if (
+        s === PurchaseRequestStatus.PENDING_TECHNICAL ||
+        s === 'در انتظار تایید فنی واحد نت' ||
+        s === 'در انتظار بررسی واحد نت/تعمیرات' ||
+        s === 'در انتظار تایید فنی نت' ||
+        s === 'PENDING_TECHNICAL'
+    ) {
+        return PurchaseRequestStatus.PENDING_TECHNICAL;
+    }
+    if (
+        s === PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER ||
+        s === 'در انتظار بررسی انباردار کارخانه' ||
+        s === 'در انتظار بررسی موجودی انباردار کارخانه' ||
+        s === 'در انتظار بررسی موجودی انبار (سرشیفت)' ||
+        s === 'در انتظار بررسی انباردار' ||
+        s === 'در انتظار بررسی موجودی' ||
+        s === 'در انتظار مدیر کارخانه' ||
+        s === 'PENDING_WAREHOUSE_KEEPER' ||
+        s === 'PENDING_FACTORY'
+    ) {
+        return PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER;
+    }
+    if (
+        s === PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION ||
+        s === 'در انتظار تعیین مسیر خرید (مدیر کارخانه)' ||
+        s === 'در انتظار تصمیم مدیر کارخانه (تعیین مسیر خرید)' ||
+        s === 'PENDING_COMMERCIAL_DECISION' ||
+        s === 'PENDING_FACTORY_DECISION'
+    ) {
+        return PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION;
+    }
+    return s;
+};
+
 export const checkPurchasePermission = (
     user: User,
     permKey: string,
@@ -213,15 +259,27 @@ export const checkPurchasePermission = (
 ): boolean => {
     if (!user) return false;
 
+    // 1. Admin always has full access across the system
     const isAdmin = user.role === UserRole.ADMIN || (user.roles && user.roles.includes(UserRole.ADMIN));
     if (isAdmin) return true;
 
-    // Direct user-level boolean permission takes highest individual priority
-    if ((user as any)[permKey] === true) return true;
+    // 2. Direct user-level boolean permission explicitly configured on user object (highest individual priority)
+    const directUserVal = (user as any)[permKey] ?? (user as any).permissions?.[permKey] ?? (user as any).rolePermissions?.[permKey];
+    if (directUserVal === false) return false; // Explicit user revocation
+    if (directUserVal === true) return true;  // Explicit user grant
+
+    if (permKey === 'canCreate' && (user.canCreatePurchaseRequest === false || (user as any).canCreate === false)) return false;
     if (permKey === 'canCreate' && (user.canCreatePurchaseRequest === true || (user as any).canCreate === true)) return true;
+
+    if (permKey === 'canView' && (user.canManagePurchase === false || (user as any).canView === false)) return false;
     if (permKey === 'canView' && (user.canManagePurchase === true || (user as any).canView === true)) return true;
 
-    // Collect all role identifiers for this user (IDs, labels, lowercase, original)
+    // Check specific approver user lists configured in SystemSettings
+    if (permKey === 'canApproveWarehouseKeeper' && (settings?.purchaseWarehouseApproverUserIds || []).includes(user.id)) return true;
+    if (permKey === 'canApproveShiftLeader' && (settings?.purchaseLineSupervisorApproverUserIds || []).includes(user.id)) return true;
+    if (permKey === 'canApproveTechnical' && (settings?.purchaseTechnicalApproverUserIds || []).includes(user.id)) return true;
+
+    // Collect all role identifiers for this user
     const rolesList: string[] = [];
     if (user.role) {
         rolesList.push(String(user.role));
@@ -236,7 +294,6 @@ export const checkPurchasePermission = (
         });
     }
 
-    // Also include custom role IDs if user has the role label, or labels if user has the role ID
     if (settings?.customRoles && Array.isArray(settings.customRoles)) {
         settings.customRoles.forEach(cr => {
             const matchesId = rolesList.some(r => r.toLowerCase() === cr.id.toLowerCase());
@@ -250,36 +307,42 @@ export const checkPurchasePermission = (
         });
     }
 
-    // 1. Role permissions configured in Settings (take top priority over hardcoded defaults)
-    for (const r of rolesList) {
-        const pRolePerms = settings?.purchaseRolePermissions?.[r];
-        if (pRolePerms && (pRolePerms as any)[permKey] === true) return true;
-        const gRolePerms = settings?.rolePermissions?.[r];
-        if (gRolePerms && (gRolePerms as any)[permKey] === true) return true;
+    // 3. Settings Configured Role Permissions (strictly respects toggles in Settings)
+    let hasRoleConfiguredInSettings = false;
+    let isExplicitlyGrantedInSettings = false;
+    let isExplicitlyDeniedInSettings = false;
 
-        if (settings?.purchaseRolePermissions) {
-            const matchedEntry = Object.entries(settings.purchaseRolePermissions).find(
-                ([k]) => k.toLowerCase() === r.toLowerCase()
-            );
-            if (matchedEntry && (matchedEntry[1] as any)[permKey] === true) return true;
+    for (const r of rolesList) {
+        const pPerms = settings?.purchaseRolePermissions?.[r] || 
+            (settings?.purchaseRolePermissions ? Object.entries(settings.purchaseRolePermissions).find(([k]) => k.toLowerCase() === r.toLowerCase())?.[1] : undefined);
+        const gPerms = settings?.rolePermissions?.[r] ||
+            (settings?.rolePermissions ? Object.entries(settings.rolePermissions).find(([k]) => k.toLowerCase() === r.toLowerCase())?.[1] : undefined);
+
+        if (pPerms && (pPerms as any)[permKey] !== undefined) {
+            hasRoleConfiguredInSettings = true;
+            if ((pPerms as any)[permKey] === true) isExplicitlyGrantedInSettings = true;
+            if ((pPerms as any)[permKey] === false) isExplicitlyDeniedInSettings = true;
         }
 
-        if (settings?.rolePermissions) {
-            const matchedEntry = Object.entries(settings.rolePermissions).find(
-                ([k]) => k.toLowerCase() === r.toLowerCase()
-            );
-            if (matchedEntry && (matchedEntry[1] as any)[permKey] === true) return true;
+        if (gPerms && (gPerms as any)[permKey] !== undefined) {
+            hasRoleConfiguredInSettings = true;
+            if ((gPerms as any)[permKey] === true) isExplicitlyGrantedInSettings = true;
+            if ((gPerms as any)[permKey] === false) isExplicitlyDeniedInSettings = true;
         }
     }
 
+    if (isExplicitlyGrantedInSettings) return true;
+    if (hasRoleConfiguredInSettings && isExplicitlyDeniedInSettings && !isExplicitlyGrantedInSettings) {
+        return false;
+    }
+
+    // 4. Default Fallbacks (apply ONLY if no explicit role permission settings were configured)
     const checkRoleMatch = (snippet: string) => {
         const target = snippet.toLowerCase();
         return rolesList.some(r => r.includes(target));
     };
 
-    // 2. Specific permissions mapped to roles and designated users in settings
     switch (permKey) {
-        // --- TEHRAN COMMERCIAL BRANCH ---
         case 'canApproveCEO':
             if (checkRoleMatch('ceo') || checkRoleMatch('مدیرعامل')) return true;
             if ((settings?.purchaseTehranCeoApproverUserIds || []).includes(user.id)) return true;
@@ -312,33 +375,27 @@ export const checkPurchasePermission = (
             if (user.scopeTehranOnly || user.purchaseScope === 'TEHRAN_ONLY') return true;
             break;
 
-        // --- ZANJAN FACTORY BRANCH ---
         case 'canApproveFactoryDecision':
-            if (user.canApproveFactoryDecision === true) return true;
             if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
             if ((settings?.purchaseZanjanDecisionApproverUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canManageZanjanPurchasing':
-            if (user.canManageZanjanPurchasing === true) return true;
             if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه') || checkRoleMatch('خرید زنجان')) return true;
             if ((settings?.purchaseZanjanPurchasingUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canApproveFactory':
-            if (user.canApproveFactory === true) return true;
             if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
             if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canExecuteBuyerZanjan':
-            if (user.canExecuteBuyerZanjan === true) return true;
             if (checkRoleMatch('purchasing') || checkRoleMatch('کارپرداز') || checkRoleMatch('خرید') || checkRoleMatch('خرید کارخانه') || checkRoleMatch('خرید زنجان')) return true;
             if ((settings?.purchaseZanjanBuyerUserIds || []).includes(user.id)) return true;
             break;
 
         case 'canApproveFactoryFinal':
-            if (user.canApproveFactoryFinal === true) return true;
             if (checkRoleMatch('factory_manager') || checkRoleMatch('مدیر کارخانه')) return true;
             if ((settings?.purchaseZanjanFinalApproverUserIds || []).includes(user.id)) return true;
             if ((settings?.purchaseZanjanManagerApproverUserIds || []).includes(user.id)) return true;
@@ -348,55 +405,44 @@ export const checkPurchasePermission = (
             if (user.scopeZanjanOnly || user.purchaseScope === 'ZANJAN_ONLY') return true;
             break;
 
-        // --- COMMON STAGES ---
         case 'canView':
-            if (user.canManagePurchase === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('factory') || checkRoleMatch('کارخانه')) return true;
             break;
 
         case 'canCreate':
-            if (user.canCreatePurchaseRequest === true || (user as any).canCreate === true) return true;
-            if (user.canManagePurchase === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('factory') || checkRoleMatch('کارخانه')) return true;
             break;
 
         case 'canApproveTechnical':
-            if (user.canApproveTechnical === true) return true;
             if (checkRoleMatch('technical') || checkRoleMatch('فنی') || checkRoleMatch('نت')) return true;
             break;
 
         case 'canApproveShiftLeader':
-            if (user.canApproveShiftLeader === true) return true;
             if (checkRoleMatch('shift') || checkRoleMatch('سرشیفت') || checkRoleMatch('line') || checkRoleMatch('سرپرست') || checkRoleMatch('سرپرست خط')) return true;
             break;
 
         case 'canApproveWarehouseKeeper':
-            if (user.canApproveWarehouseKeeper === true || user.canManageWarehouse === true || user.canManageParts === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('warehouse_keeper') || checkRoleMatch('انباردار') || checkRoleMatch('قطعات')) return true;
             break;
 
         case 'canRegisterEntry':
-            if (user.canRegisterEntry === true) return true;
             if (checkRoleMatch('security') || checkRoleMatch('نگهبان') || checkRoleMatch('انتظامات')) return true;
             break;
 
         case 'canCheckQC':
-            if (user.canCheckQC === true) return true;
             if (checkRoleMatch('qc') || checkRoleMatch('کنترل کیفی')) return true;
             break;
 
         case 'canWarehouseFinalize':
-            if (user.canWarehouseFinalize === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
             break;
 
         case 'canManageParts':
-            if (user.canManageParts === true) return true;
             if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('factory') || checkRoleMatch('کارخانه')) return true;
             break;
 
         case 'canViewPricingAndInvoices':
-            if (user.canViewPricingAndInvoices === true || checkRoleMatch('ceo') || checkRoleMatch('commercial') || checkRoleMatch('financial')) return true;
+            if (checkRoleMatch('ceo') || checkRoleMatch('commercial') || checkRoleMatch('financial')) return true;
             break;
     }
 
@@ -751,20 +797,20 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
 // --- BPMN WORKFLOW DIAGRAM COMPONENT ---
 const BpmnWorkflowDiagram: React.FC<{ currentStatus?: PurchaseRequestStatus; location?: string }> = ({ currentStatus, location }) => {
     const isStepActive = (status: PurchaseRequestStatus) => {
-        if (currentStatus === status) return true;
-        if (status === PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER && currentStatus === PurchaseRequestStatus.PENDING_FACTORY) return true;
-        return false;
+        const normActual = normalizePurchaseStatus(currentStatus);
+        const normTarget = normalizePurchaseStatus(status);
+        return normActual === normTarget;
     };
 
     // Grouping steps into logical phases to be extremely precise and compact
     const phases = [
         {
-            title: '۱. بررسی اولیه',
+            title: '۱. ثبت و بررسی‌های اولیه کارخانه',
             steps: [
-                { status: PurchaseRequestStatus.PENDING_TECHNICAL, title: 'تایید فنی نت', role: 'واحد نت' },
-                { status: PurchaseRequestStatus.PENDING_SHIFT_LEADER, title: 'تایید سرشیفت', role: 'سرشیفت کارخانه' },
-                { status: PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, title: 'بررسی موجودی', role: 'انباردار کارخانه' },
-                { status: PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION, title: 'تایید مسیر تامین', role: 'مدیر کارخانه' },
+                { status: PurchaseRequestStatus.PENDING_SHIFT_LEADER, title: 'تایید سرپرست خط', role: 'سرپرست خط' },
+                { status: PurchaseRequestStatus.PENDING_TECHNICAL, title: 'تایید فنی و نت', role: 'واحد نت' },
+                { status: PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, title: 'بررسی موجودی انبار', role: 'انباردار قطعات' },
+                { status: PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION, title: 'تعیین مسیر تامین', role: 'مدیر کارخانه' },
             ]
         },
         {
@@ -884,12 +930,13 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
     const myTasks = requests.filter((r: any) => {
         if (isAdmin) return r.status !== PurchaseRequestStatus.COMPLETED && r.status !== PurchaseRequestStatus.REJECTED;
         
-        switch (r.status) {
-            case PurchaseRequestStatus.PENDING_TECHNICAL: return hasPurchasePerm('canApproveTechnical');
+        const normSt = normalizePurchaseStatus(r.status);
+        switch (normSt) {
             case PurchaseRequestStatus.PENDING_SHIFT_LEADER: return hasPurchasePerm('canApproveShiftLeader');
+            case PurchaseRequestStatus.PENDING_TECHNICAL: return hasPurchasePerm('canApproveTechnical');
             case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
             case PurchaseRequestStatus.PENDING_FACTORY:
-                return hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canApproveFactory');
+                return hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canManageParts');
             case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
             case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
                 return hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory');
@@ -1261,12 +1308,13 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
         if (isTehranReq && !canUserAccessTehranBranch(currentUser, settings)) return false;
         if (isZanjanReq && !canUserAccessZanjanBranch(currentUser, settings)) return false;
 
-        switch (r.status) {
-            case PurchaseRequestStatus.PENDING_TECHNICAL: return hasPurchasePerm('canApproveTechnical');
+        const normSt = normalizePurchaseStatus(r.status);
+        switch (normSt) {
             case PurchaseRequestStatus.PENDING_SHIFT_LEADER: return hasPurchasePerm('canApproveShiftLeader');
+            case PurchaseRequestStatus.PENDING_TECHNICAL: return hasPurchasePerm('canApproveTechnical');
             case PurchaseRequestStatus.PENDING_FACTORY:
             case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
-                return hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canApproveFactory');
+                return hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canManageParts');
             case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
             case PurchaseRequestStatus.PENDING_FACTORY_DECISION:
                 return hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory');
@@ -3264,7 +3312,11 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
         }
     };
 
-    const isCurrentStep = (step: PurchaseRequestStatus) => request.status === step;
+    const isCurrentStep = (step: PurchaseRequestStatus) => {
+        const normActual = normalizePurchaseStatus(request.status);
+        const normTarget = normalizePurchaseStatus(step);
+        return normActual === normTarget;
+    };
 
     const isRole = (roleName: string) => {
         if (currentUser.role === roleName) return true;
@@ -3990,8 +4042,39 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                 {/* Current Stage & Role Authority Notification Banner */}
                 {(() => {
-                    const getRoleInfo = (st: PurchaseRequestStatus) => {
-                        switch (st) {
+                    const getRoleInfo = (st: any) => {
+                        const normSt = normalizePurchaseStatus(st);
+                        switch (normSt) {
+                            case PurchaseRequestStatus.PENDING_SHIFT_LEADER:
+                                return {
+                                    title: 'تایید سرپرست خط و ارجاع به واحد فنی نت',
+                                    roleName: 'سرپرست خط',
+                                    icon: CheckSquare,
+                                    badgeClass: 'bg-indigo-600 text-white',
+                                    borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_TECHNICAL:
+                                return {
+                                    title: 'بررسی و تایید فنی واحد نت',
+                                    roleName: 'واحد فنی و نت',
+                                    icon: Sliders,
+                                    badgeClass: 'bg-indigo-700 text-white',
+                                    borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
+                            case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
+                                return {
+                                    title: 'بررسی موجودی انبار کارخانه و امکان تحویل کالا',
+                                    roleName: 'انباردار قطعات / کارخانه',
+                                    icon: Package,
+                                    badgeClass: 'bg-emerald-600 text-white',
+                                    borderClass: 'border-emerald-300 bg-emerald-50/80 text-emerald-950',
+                                    isCeoRole: false,
+                                    isCommercialRole: false
+                                };
                             case PurchaseRequestStatus.PENDING_CEO_INITIAL:
                                 return {
                                     title: 'تایید اولیه و مجوز اخذ استعلام',
@@ -4134,7 +4217,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         
                         {/* Step 3: Factory Warehouse Keeper Stock Check */}
                         {(isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY) || isCurrentStep(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER)) && (isAdmin || hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canManageParts')) && (
-                            <button onClick={() => setShowWarehouseCheckModal(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-2xl font-black transition-all hover:scale-105 text-xs shadow-lg shadow-emerald-100 cursor-pointer" disabled={actionLoading}>بررسی موجودی انبار (انباردار کارخانه)</button>
+                            <button onClick={() => setShowWarehouseCheckModal(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-2xl font-black transition-all hover:scale-105 text-xs shadow-lg shadow-emerald-100 cursor-pointer" disabled={actionLoading}>بررسی موجودی انبار (انباردار قطعات / کارخانه)</button>
                         )}
 
                         {/* Step 4: Factory Manager Purchase Route Decision */}
