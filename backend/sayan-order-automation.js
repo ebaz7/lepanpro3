@@ -71,7 +71,7 @@ export const executeSayanQuery = async (queryStr, timeoutMs = 60000) => {
     const db = getDb();
     const settings = db.settings || {};
     let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-    const serverSayanApiKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u').trim();
+    const serverSayanApiKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c').trim();
 
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
         throw new Error('تنظیمات آدرس وب‌سرویس و کلید امنیتی سایان در بخش تنظیمات وارد نشده است. لطفاً ابتدا در بخش تنظیمات، آدرس API و توکن سایان را وارد نمایید.');
@@ -745,7 +745,7 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         N'(@FiscalYear, @NextDocNo, N''366'', N''غیر رسمی'', 3); ' +
         
         N'BEGIN TRY IN' + N'SERT INTO STR_TBL_029 (Field_003, Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_050, Field_051, Field_052, Field_053) ' +
-        N'VALUES (${Number(doc53Id)}, @FiscalYear, ${doc53No}, 3, N''53'', CAST(''${docDateStr}'' AS DATETIME), @New57Id, CAST(''${docDateStr}'' AS DATETIME), @RowCnt, 0, 0); END TRY BEGIN CATCH END CATCH; ' +
+        N'VALUES (${Number(doc53Id)}, @FiscalYear, ${Number(doc53.DocNo || doc53.ArchiveCode || doc53Id)}, 3, N''53'', CAST(''${docDateStr}'' AS DATETIME), @New57Id, CAST(''${docDateStr}'' AS DATETIME), @RowCnt, 0, 0); END TRY BEGIN CATCH END CATCH; ' +
         
         ${endAction}
     );

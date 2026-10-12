@@ -300,7 +300,7 @@ const Settings: React.FC<SettingsProps> = ({
     googleCalendarId: "",
     whatsappNumber: "",
     sayanApiUrl: "http://80.210.31.176:5000/api/external/v1",
-    sayanApiKey: "s_gate_live_vzje5nkn7q4u",
+    sayanApiKey: "s_gate_live_73f08a91b2c",
     geminiApiKey: "",
     geminiBaseUrl: "",
     warehouseSequences: {},
@@ -1267,7 +1267,7 @@ const Settings: React.FC<SettingsProps> = ({
           normalizedSettings.sayanApiUrl = "http://80.210.31.176:5000/api/external/v1";
         }
         if (!normalizedSettings.sayanApiKey) {
-          normalizedSettings.sayanApiKey = "s_gate_live_vzje5nkn7q4u";
+          normalizedSettings.sayanApiKey = "s_gate_live_73f08a91b2c";
         }
 
         setSettings(normalizedSettings);
@@ -1410,7 +1410,7 @@ const Settings: React.FC<SettingsProps> = ({
         safeData.sayanApiUrl = "http://80.210.31.176:5000/api/external/v1";
       }
       if (!safeData.sayanApiKey) {
-        safeData.sayanApiKey = "s_gate_live_vzje5nkn7q4u";
+        safeData.sayanApiKey = "s_gate_live_73f08a91b2c";
       }
 
       setSettings(safeData);
@@ -7861,7 +7861,7 @@ const Settings: React.FC<SettingsProps> = ({
                         </label>
                         <button
                           type="button"
-                          onClick={() => setSettings({ ...settings, sayanApiKey: "s_gate_live_vzje5nkn7q4u" })}
+                          onClick={() => setSettings({ ...settings, sayanApiKey: "s_gate_live_73f08a91b2c" })}
                           className="text-[10px] font-mono px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 rounded text-emerald-700 dark:text-emerald-300 transition-colors border border-emerald-200 dark:border-emerald-800 cursor-pointer"
                           title="درج کلید جدید فعال"
                         >

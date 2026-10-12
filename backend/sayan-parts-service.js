@@ -69,7 +69,7 @@ const CACHE_TTL_MS = 180000;
 export const querySayanDirect = async (db, sqlQuery, timeoutMs = 25000) => {
     const settings = db.settings || {};
     const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-    const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
+    const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c';
 
     if (!sayanUrl || !sayanKey) {
         throw new Error('آدرس و کلید وب‌سرویس سایان در تنظیمات تعریف نشده است.');

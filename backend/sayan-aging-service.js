@@ -269,7 +269,7 @@ async function querySayan(sql) {
     const db = getDb();
     const settings = db.settings || {};
     const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-    const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
+    const sayanKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c';
 
     if (!sayanUrl || !sayanKey) {
         throw new Error('تنظیمات آدرس و کلید API سایان پیکربندی نشده است.');

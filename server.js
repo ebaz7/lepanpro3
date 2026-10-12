@@ -1709,7 +1709,7 @@ const parseJalaliStrToGregorian = (jalaliStr) => {
 const executeSayanQuery = async (db, queryStr, timeoutMs = 25000) => {
     const settings = db.settings || {};
     let serverSayanBaseUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u';
+    const serverSayanApiKey = settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c';
     if (!serverSayanBaseUrl || !serverSayanApiKey) {
         throw new Error('تنظیمات آدرس API و کلید امنیتی سایان در بخش تنظیمات سیستم وارد نشده است. لطفاً ابتدا از بخش تنظیمات، آدرس و کلید وب‌سرویس سایان را وارد نمایید.');
     }
@@ -2515,7 +2515,7 @@ const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
 const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearDateTo) => {
     const settings = db.settings || {};
     const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
-    const sayanKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_vzje5nkn7q4u').trim();
+    const sayanKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c').trim();
     const benchmark = generateBenchmarkData();
 
     if (!sayanUrl || !sayanKey) {
