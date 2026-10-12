@@ -218,64 +218,6 @@ export const PurchaseWorkflowApproversSettings: React.FC<Props> = ({ settings, o
                 </div>
             </div>
 
-            {/* INITIAL FACTORY WORKFLOW STEPS (Line Supervisor, Technical NET, Warehouse Stock Check) */}
-            <div className="bg-indigo-50/50 dark:bg-indigo-950/20 rounded-3xl p-5 border-2 border-indigo-200 dark:border-indigo-800/80 space-y-4 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-200 dark:border-indigo-800 pb-3">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-2.5 bg-indigo-600 text-white rounded-2xl shadow-sm">
-                            <CheckSquare size={22} />
-                        </div>
-                        <div>
-                            <h3 className="text-sm font-black text-indigo-950 dark:text-indigo-100 flex items-center gap-2">
-                                <span>۰. مراحل اولیه کارخانه (سرپرست خط، واحد فنی نت، انباردار قطعات)</span>
-                                <span className="bg-indigo-100 text-indigo-800 text-[10px] px-2 py-0.5 rounded-full border border-indigo-300">
-                                    تاییدات قبل از خرید
-                                </span>
-                            </h3>
-                            <p className="text-[11px] text-indigo-800 dark:text-indigo-300">
-                                تعیین افراد مجاز جهت تایید سرپرست خط، تایید فنی نت، و بررسی موجودی توسط انباردار قطعات
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px] text-indigo-900 dark:text-indigo-200 bg-indigo-100/70 dark:bg-indigo-900/40 px-3 py-1 rounded-xl border border-indigo-200">
-                        <ShieldCheck size={14} className="text-indigo-600" />
-                        <span>طبق تیک‌های تنظیمات و کاربران منتخب</span>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <UserSelectorList
-                        title="👷 افراد خاص تایید سرپرست خط (مرحله ۱)"
-                        description="تایید درخواست ثبت‌شده توسط سرشیفت و ارجاع به واحد فنی نت."
-                        icon={Users}
-                        color="indigo"
-                        selectedUserIds={settings.purchaseLineSupervisorApproverUserIds || []}
-                        allUsers={allUsers}
-                        onChange={(ids) => updateField('purchaseLineSupervisorApproverUserIds', ids)}
-                    />
-
-                    <UserSelectorList
-                        title="🔧 افراد خاص تایید فنی و نت (مرحله ۲)"
-                        description="بررسی فنی درخواست قطعه و ارجاع به انباردار جهت بررسی موجودی."
-                        icon={CheckSquare}
-                        color="purple"
-                        selectedUserIds={settings.purchaseTechnicalApproverUserIds || []}
-                        allUsers={allUsers}
-                        onChange={(ids) => updateField('purchaseTechnicalApproverUserIds', ids)}
-                    />
-
-                    <UserSelectorList
-                        title="📦 افراد خاص بررسی موجودی انباردار قطعات (مرحله ۳)"
-                        description="تایید وجود کالا در انبار یا اعلام عدم موجودی و نیاز به خرید."
-                        icon={Warehouse}
-                        color="emerald"
-                        selectedUserIds={settings.purchaseWarehouseApproverUserIds || []}
-                        allUsers={allUsers}
-                        onChange={(ids) => updateField('purchaseWarehouseApproverUserIds', ids)}
-                    />
-                </div>
-            </div>
-
             {/* TEHRAN COMMERCIAL BRANCH */}
             <div className="bg-sky-50/50 dark:bg-sky-950/20 rounded-3xl p-5 border-2 border-sky-200 dark:border-sky-800/80 space-y-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-sky-200 dark:border-sky-800 pb-3">

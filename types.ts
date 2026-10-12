@@ -581,11 +581,6 @@ export interface SystemSettings {
   purchaseZanjanBuyerUserIds?: string[]; // افراد خاص اجرای خرید و تسویه فاکتور کارپرداز زنجان
   purchaseZanjanFinalApproverUserIds?: string[]; // افراد خاص تایید نهایی مدیر کارخانه زنجان
 
-  // INITIAL FACTORY WORKFLOW APPROVERS
-  purchaseLineSupervisorApproverUserIds?: string[]; // افراد خاص تایید سرپرست خط
-  purchaseTechnicalApproverUserIds?: string[]; // افراد خاص بررسی و تایید فنی نت
-  purchaseWarehouseApproverUserIds?: string[]; // افراد خاص بررسی موجودی انبار (انباردار قطعات / کارخانه)
-
   prodReturnsTelegramGroupId?: string;
   prodReturnsBaleGroupId?: string;
   prodReturnsWhatsappGroupId?: string;
@@ -1674,8 +1669,8 @@ export interface MeetingMinutes {
 export enum PurchaseRequestStatus {
     PENDING_REPAIR_INSPECTION = 'در انتظار بررسی واحد نت/تعمیرات',
     PENDING_WAREHOUSE_CHECK = 'در انتظار بررسی موجودی انبار (سرشیفت)',
-    PENDING_TECHNICAL = 'در انتظار تایید فنی واحد نت',
-    PENDING_SHIFT_LEADER = 'در انتظار تایید سرپرست خط',
+    PENDING_TECHNICAL = 'در انتظار تایید فنی / ثبت درخواست فنی',
+    PENDING_SHIFT_LEADER = 'در انتظار تایید سرشیفت کارخانه',
     PENDING_WAREHOUSE_KEEPER = 'در انتظار بررسی انباردار کارخانه',
     PENDING_FACTORY = 'در انتظار مدیر کارخانه',
     PENDING_FACTORY_DECISION = 'در انتظار تصمیم مدیر کارخانه (تعیین مسیر خرید)',
@@ -1786,7 +1781,6 @@ export interface PurchaseRequest {
     requestNumber: string;
     date: string;
     requester: string;
-    shiftLeader?: string; // نام سرشیفت / سرپرست خط
     requestingUnit?: string; // واحد درخواست‌کننده
     machinery?: string; // دستگاه یا ماشین‌آلات
     installationLocation?: string; // محل نصب

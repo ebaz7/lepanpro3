@@ -11,7 +11,7 @@ import {
     Play, Pause, Loader2, Search, MoreVertical, File, Image as ImageIcon,
     Check, CheckCheck, DownloadCloud, Download, StopCircle, Share2, Copy, Forward, Eye, CornerUpLeft, Bell,
     Shield, UserMinus, UserPlus, BellOff, Camera, Clock, MessageCircle, RefreshCw, Smile,
-    FileText, Package, CreditCard, BellRing, Volume2, AtSign
+    FileText, Package, CreditCard, BellRing, Volume2
 } from 'lucide-react';
 import { FileViewerModal } from './FileViewerModal';
 import { StickerPicker } from './chat/StickerPicker';
@@ -47,7 +47,6 @@ interface ChannelItem {
     lastSeen?: number;
     lastMsg: ChatMessage | null;
     unread: number;
-    hasMention?: boolean;
 }
 
 const AudioPlayer: React.FC<{ url: string; isMe: boolean; duration?: number }> = ({ url, isMe, duration: propDuration }) => {
@@ -499,244 +498,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const [taskReplyText, setTaskReplyText] = useState('');
     const [userSearchText, setUserSearchText] = useState('');
 
-    // --- Mention / Tag State & Handlers ---
-    const [mentionQuery, setMentionQuery] = useState<{ query: string; index: number } | null>(null);
-    const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
-    const mentionMenuRef = useRef<HTMLDivElement>(null);
-
-    // Close mention autocomplete popup when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (e: MouseEvent) => {
-            if (
-                mentionMenuRef.current && 
-                !mentionMenuRef.current.contains(e.target as Node) && 
-                !inputAreaRef.current?.contains(e.target as Node)
-            ) {
-                setMentionQuery(null);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const checkIfMessageMentionsUser = (messageText: string | undefined, user: User | null): boolean => {
-        if (!messageText || !user) return false;
-        const lower = messageText.toLowerCase();
-        if (lower.includes('@all') || lower.includes('@همه')) return true;
-        if (user.username && lower.includes(`@${user.username.toLowerCase()}`)) return true;
-        if (user.fullName) {
-            const fLower = user.fullName.toLowerCase();
-            if (lower.includes(`@${fLower}`)) return true;
-            const fUnder = fLower.replace(/\s+/g, '_');
-            if (lower.includes(`@${fUnder}`)) return true;
-            const fCompact = fLower.replace(/[\s\u200c]+/g, '');
-            if (lower.includes(`@${fCompact}`)) return true;
-        }
-        return false;
-    };
-
-    const mentionCandidates = useMemo(() => {
-        if (!mentionQuery) return [];
-        const q = mentionQuery.query.trim().toLowerCase();
-        
-        const pool: { id: string; username: string; fullName: string; role?: string; avatar?: string | null; isAll?: boolean }[] = [];
-        const safeUsers = Array.isArray(users) ? users : [];
-
-        if (activeChannel?.type === 'group') {
-            const currentGroup = groups.find(g => g.id === activeChannel.id);
-            const memberUsernames = new Set(currentGroup?.members || []);
-            if (currentGroup?.createdBy) memberUsernames.add(currentGroup.createdBy);
-
-            pool.push({
-                id: 'ALL_MEMBERS',
-                username: 'all',
-                fullName: 'همه اعضای گروه (@all)',
-                role: 'اعلان به تمامی اعضای این گروه',
-                isAll: true
-            });
-
-            safeUsers.forEach(u => {
-                if (memberUsernames.has(u.username)) {
-                    pool.push({
-                        id: u.id,
-                        username: u.username,
-                        fullName: u.fullName,
-                        role: u.role,
-                        avatar: u.avatar || null
-                    });
-                }
-            });
-        } else if (activeChannel?.type === 'task_group') {
-            const currentGroup = taskGroups.find(g => g.id === activeChannel.id);
-            const memberUsernames = new Set(currentGroup?.members || []);
-            if (currentGroup?.createdBy) memberUsernames.add(currentGroup.createdBy);
-
-            pool.push({
-                id: 'ALL_MEMBERS',
-                username: 'all',
-                fullName: 'همه اعضای گروه تسک (@all)',
-                role: 'اعلان به تمامی اعضا',
-                isAll: true
-            });
-
-            safeUsers.forEach(u => {
-                if (memberUsernames.has(u.username)) {
-                    pool.push({
-                        id: u.id,
-                        username: u.username,
-                        fullName: u.fullName,
-                        role: u.role,
-                        avatar: u.avatar || null
-                    });
-                }
-            });
-        } else if (activeChannel?.type === 'public') {
-            pool.push({
-                id: 'ALL_MEMBERS',
-                username: 'all',
-                fullName: 'همه همکاران و کاربران (@all)',
-                role: 'اعلان عمومی به تمام سازمان',
-                isAll: true
-            });
-
-            safeUsers.forEach(u => {
-                pool.push({
-                    id: u.id,
-                    username: u.username,
-                    fullName: u.fullName,
-                    role: u.role,
-                    avatar: u.avatar || null
-                });
-            });
-        } else if (activeChannel?.type === 'private') {
-            const otherUser = safeUsers.find(u => u.username?.toLowerCase() === activeChannel.id?.toLowerCase());
-            if (otherUser) {
-                pool.push({
-                    id: otherUser.id,
-                    username: otherUser.username,
-                    fullName: otherUser.fullName,
-                    role: otherUser.role,
-                    avatar: otherUser.avatar || null
-                });
-            }
-            safeUsers.forEach(u => {
-                if (!otherUser || u.username !== otherUser.username) {
-                    pool.push({
-                        id: u.id,
-                        username: u.username,
-                        fullName: u.fullName,
-                        role: u.role,
-                        avatar: u.avatar || null
-                    });
-                }
-            });
-        }
-
-        if (!q) return pool.slice(0, 15);
-
-        return pool.filter(item => 
-            item.fullName.toLowerCase().includes(q) ||
-            item.username.toLowerCase().includes(q) ||
-            (item.role && item.role.toLowerCase().includes(q))
-        ).slice(0, 15);
-    }, [mentionQuery, activeChannel, groups, taskGroups, users]);
-
-    const insertMention = (cand: { username: string; fullName: string; isAll?: boolean }) => {
-        if (!mentionQuery) return;
-        const insertStr = cand.isAll ? '@all ' : `@${cand.username} `;
-        const before = inputText.slice(0, mentionQuery.index);
-        const after = inputText.slice(mentionQuery.index + 1 + mentionQuery.query.length);
-        const newFullText = `${before}${insertStr}${after}`;
-        
-        setInputText(newFullText);
-        setMentionQuery(null);
-        setMentionSelectedIndex(0);
-
-        setTimeout(() => {
-            if (inputAreaRef.current) {
-                inputAreaRef.current.focus();
-                const newPos = before.length + insertStr.length;
-                inputAreaRef.current.setSelectionRange(newPos, newPos);
-            }
-        }, 20);
-    };
-
-    const handleTriggerMentionButton = () => {
-        if (!inputAreaRef.current) return;
-        inputAreaRef.current.focus();
-        const cursorPos = inputAreaRef.current.selectionStart || inputText.length;
-        const before = inputText.slice(0, cursorPos);
-        const after = inputText.slice(cursorPos);
-        const needsSpace = before.length > 0 && !before.endsWith(' ') && !before.endsWith('\n');
-        const newText = `${before}${needsSpace ? ' ' : ''}@${after}`;
-        const newMentionIndex = before.length + (needsSpace ? 1 : 0);
-        
-        setInputText(newText);
-        setMentionQuery({
-            query: '',
-            index: newMentionIndex
-        });
-        setMentionSelectedIndex(0);
-        setTimeout(() => {
-            if (inputAreaRef.current) {
-                const pos = newMentionIndex + 1;
-                inputAreaRef.current.setSelectionRange(pos, pos);
-            }
-        }, 10);
-    };
-
-    const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const text = e.target.value;
-        setInputText(text);
-        e.target.style.height = 'auto';
-        e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
-
-        const cursorPos = e.target.selectionStart || text.length;
-        const textBeforeCursor = text.slice(0, cursorPos);
-        const match = /(?:^|\s)@([^\s@]*)$/.exec(textBeforeCursor);
-        if (match) {
-            setMentionQuery({
-                query: match[1],
-                index: match.index + (match[0].startsWith('@') ? 0 : 1)
-            });
-            setMentionSelectedIndex(0);
-        } else {
-            setMentionQuery(null);
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (mentionQuery && mentionCandidates.length > 0) {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setMentionSelectedIndex(prev => (prev + 1) % mentionCandidates.length);
-                return;
-            }
-            if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setMentionSelectedIndex(prev => (prev - 1 + mentionCandidates.length) % mentionCandidates.length);
-                return;
-            }
-            if (e.key === 'Enter' || e.key === 'Tab') {
-                e.preventDefault();
-                const chosen = mentionCandidates[mentionSelectedIndex];
-                if (chosen) {
-                    insertMention(chosen);
-                    return;
-                }
-            }
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                setMentionQuery(null);
-                return;
-            }
-        }
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
-        }
-    };
-
     useEffect(() => {
         if (!inputText && inputAreaRef.current) {
             inputAreaRef.current.style.height = 'auto';
@@ -1131,23 +892,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         const currentU = currentUsername.toLowerCase();
         const isAdmin = currentUser?.role === UserRole.ADMIN;
 
-        const checkChannelHasMention = (channelId: string, type: 'private' | 'group' | 'public' | 'task_group' | 'system'): boolean => {
-            if (!currentUser || !currentUser.username) return false;
-            return messages.some(m => {
-                if (!m.senderUsername || (m.senderUsername.toLowerCase() === currentU && type !== 'system')) return false;
-                const isRead = m.readBy?.some(u => u.toLowerCase() === currentU);
-                if (isRead) return false;
-                
-                let belongsToChannel = false;
-                if (type === 'public') belongsToChannel = !m.recipient && !m.groupId;
-                else if (type === 'group' || type === 'task_group') belongsToChannel = m.groupId === channelId;
-                else if (type === 'private') belongsToChannel = (m.senderUsername?.toLowerCase() === channelId?.toLowerCase() && m.recipient?.toLowerCase() === currentU);
-                
-                if (!belongsToChannel) return false;
-                return checkIfMessageMentionsUser(m.message, currentUser);
-            });
-        };
-
         if (activeTab === 'ALL') {
             // 1. System Channel (Cartable / approvals / notices)
             const lastSys = getLastMessage('system', 'system');
@@ -1157,8 +901,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 list.push({
                     type: 'system', id: 'system', name: 'پیام‌ها و اعلانات سیستم', 
                     avatar: null, isOnline: true, 
-                    lastMsg: lastSys, unread: unreadSys,
-                    hasMention: false
+                    lastMsg: lastSys, unread: unreadSys
                 });
             }
 
@@ -1167,8 +910,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             list.push({
                 type: 'public', id: 'public', name: 'کانال عمومی', 
                 avatar: null, isOnline: true, 
-                lastMsg: lastPub, unread: getUnreadCount('public', 'public'),
-                hasMention: checkChannelHasMention('public', 'public')
+                lastMsg: lastPub, unread: getUnreadCount('public', 'public')
             });
 
             // 3. Groups (with avatars)
@@ -1179,8 +921,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     list.push({
                         type: 'group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'group'),
-                        hasMention: checkChannelHasMention(g.id, 'group')
+                        lastMsg: last, unread: getUnreadCount(g.id, 'group')
                     });
                 }
             });
@@ -1193,8 +934,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     list.push({
                         type: 'task_group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'task_group'),
-                        hasMention: checkChannelHasMention(g.id, 'task_group')
+                        lastMsg: last, unread: getUnreadCount(g.id, 'task_group')
                     });
                 }
             });
@@ -1208,8 +948,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 list.push({
                     type: 'private', id: u.username, name: u.fullName || u.username,
                     avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: parseTimestamp(u.lastSeen),
-                    lastMsg: last, unread: getUnreadCount(u.username, 'private'),
-                    hasMention: checkChannelHasMention(u.username, 'private')
+                    lastMsg: last, unread: getUnreadCount(u.username, 'private')
                 });
             });
 
@@ -1221,8 +960,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                           list.push({
                              type: 'private', id: u.username, name: u.fullName,
                              avatar: u.avatar || null, isOnline: false,
-                             lastMsg: null, unread: 0,
-                             hasMention: false
+                             lastMsg: null, unread: 0
                           });
                      }
                  });
@@ -1236,8 +974,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 list.push({
                     type: 'system', id: 'system', name: 'پیام‌ها و اعلانات سیستم', 
                     avatar: null, isOnline: true, 
-                    lastMsg: lastSys, unread: unreadSys,
-                    hasMention: false
+                    lastMsg: lastSys, unread: unreadSys
                 });
             }
 
@@ -1245,8 +982,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             list.push({
                 type: 'public', id: 'public', name: 'کانال عمومی', 
                 avatar: null, isOnline: true, 
-                lastMsg: lastPub, unread: getUnreadCount('public', 'public'),
-                hasMention: checkChannelHasMention('public', 'public')
+                lastMsg: lastPub, unread: getUnreadCount('public', 'public')
             });
 
             // Include ALL groups that I am a member of, created, or if Admin
@@ -1257,8 +993,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     list.push({
                         type: 'group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'group'),
-                        hasMention: checkChannelHasMention(g.id, 'group')
+                        lastMsg: last, unread: getUnreadCount(g.id, 'group')
                     });
                 }
             });
@@ -1271,8 +1006,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     list.push({
                         type: 'task_group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'task_group'),
-                        hasMention: checkChannelHasMention(g.id, 'task_group')
+                        lastMsg: last, unread: getUnreadCount(g.id, 'task_group')
                     });
                 }
             });
@@ -1286,8 +1020,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 list.push({
                     type: 'private', id: u.username, name: u.fullName || u.username,
                     avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: parseTimestamp(u.lastSeen),
-                    lastMsg: last, unread: getUnreadCount(u.username, 'private'),
-                    hasMention: checkChannelHasMention(u.username, 'private')
+                    lastMsg: last, unread: getUnreadCount(u.username, 'private')
                 });
             });
 
@@ -1299,8 +1032,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                           list.push({
                              type: 'private', id: u.username, name: u.fullName,
                              avatar: resolveImageUrl(u.avatar), isOnline: false,
-                             lastMsg: null, unread: 0,
-                             hasMention: false
+                             lastMsg: null, unread: 0
                           });
                      }
                  });
@@ -1311,8 +1043,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 list.push({
                     type: 'group', id: g.id, name: g.name,
                     avatar: g.avatar || null, isOnline: false,
-                    lastMsg: last, unread: getUnreadCount(g.id, 'group'),
-                    hasMention: checkChannelHasMention(g.id, 'group')
+                    lastMsg: last, unread: getUnreadCount(g.id, 'group')
                 });
             });
         } else if (activeTab === 'TASKS') {
@@ -1321,8 +1052,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 list.push({
                     type: 'task_group', id: g.id, name: g.name,
                     avatar: g.avatar || null, isOnline: false,
-                    lastMsg: last, unread: getUnreadCount(g.id, 'task_group'),
-                    hasMention: checkChannelHasMention(g.id, 'task_group')
+                    lastMsg: last, unread: getUnreadCount(g.id, 'task_group')
                 });
             });
         }
@@ -2116,7 +1846,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
     const renderMessageWithMentions = (text: string) => {
         if (!text) return null;
-        const regex = /@([a-zA-Z0-9_\.\-\u0600-\u06FF\u200c]+)/g;
+        const regex = /@([a-zA-Z0-9_\.\-\u0600-\u06FF]+)/g;
         const parts = text.split(regex);
         if (parts.length === 1) {
             return <span>{text}</span>;
@@ -2124,38 +1854,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         
         return parts.map((part, i) => {
             if (i % 2 === 1) {
-                const token = part.trim();
-                const lowerToken = token.toLowerCase();
-
-                if (lowerToken === 'all' || lowerToken === 'همه') {
-                    const isMentioningMe = !!currentUser;
-                    return (
-                        <span 
-                            key={i} 
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-1 rounded-full text-[11px] font-black select-none align-middle shadow-xs ${
-                                isMentioningMe 
-                                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700' 
-                                    : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200'
-                            }`}
-                        >
-                            <span>📢</span>
-                            <span>@همه اعضا</span>
-                        </span>
-                    );
-                }
-
-                const u = users.find(user => 
-                    (user.username && user.username.toLowerCase() === lowerToken) ||
-                    (user.fullName && user.fullName.toLowerCase() === lowerToken) ||
-                    (user.fullName && user.fullName.toLowerCase().replace(/\s+/g, '_') === lowerToken) ||
-                    (user.fullName && user.fullName.toLowerCase().replace(/[\s\u200c]+/g, '') === lowerToken.replace(/[\s\u200c]+/g, ''))
-                );
-
+                const username = part;
+                const u = users.find(user => user.username.toLowerCase() === username.toLowerCase());
                 if (u) {
-                    const isMentioningMe = currentUser && (
-                        currentUser.username?.toLowerCase() === u.username?.toLowerCase() ||
-                        currentUser.fullName?.toLowerCase() === u.fullName?.toLowerCase()
-                    );
+                    const isMentioningMe = currentUser && currentUser.username.toLowerCase() === u.username.toLowerCase();
                     return (
                         <span 
                             key={i} 
@@ -2163,12 +1865,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                 e.stopPropagation();
                                 setShowContactInfo(u);
                             }}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-1 rounded-full text-[11px] font-black select-none align-middle transition-all duration-200 hover:scale-[1.03] cursor-pointer shadow-xs ${
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 mx-1 rounded-full text-[11px] font-black select-none align-middle transition-all duration-200 hover:scale-[1.03] cursor-pointer ${
                                 isMentioningMe 
-                                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-2 border-amber-400 dark:border-amber-600 ring-2 ring-amber-300/40' 
-                                    : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 hover:border-indigo-300'
+                                    ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 shadow-xs' 
+                                    : 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900'
                             }`}
-                            title={`کلیک برای مشاهده اطلاعات تماس ${u.fullName}`}
                         >
                             <div className="w-4 h-4 rounded-full overflow-hidden flex items-center justify-center bg-zinc-200 dark:bg-zinc-800 text-[8px] text-zinc-600 dark:text-zinc-300 shrink-0 font-black">
                                 {u.avatar ? (
@@ -2188,7 +1889,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                         </span>
                     );
                 } else {
-                    return <span key={i} className="text-blue-500 font-bold bg-blue-50/50 dark:bg-blue-950/30 px-1.5 py-0.2 rounded-md">@{token}</span>;
+                    return <span key={i} className="text-blue-500 font-bold">@{username}</span>;
                 }
             }
             return <span key={i}>{part}</span>;
@@ -2278,14 +1979,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         {item.type === 'system' ? (item.lastMsg?.message || 'اعلانات و هشدارهای کارتابل') : item.type === 'task_group' ? 'لیست تسک‌ها...' : item.lastMsg ? (item.lastMsg.audioUrl ? '🎤 پیام صوتی' : item.lastMsg.attachment ? '📎 فایل' : item.lastMsg.message) : 'پیامی نیست'}
                                     </p>
                                     <div className="flex items-center gap-1.5">
-                                        {item.hasMention && (
-                                            <span 
-                                                className="bg-amber-500 hover:bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-black shadow-xs flex items-center justify-center animate-bounce-subtle shrink-0"
-                                                title="شما در این گفتگو تگ (منشن) شده‌اید"
-                                            >
-                                                @
-                                            </span>
-                                        )}
                                         {item.unread > 0 && <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full min-w-[18px] text-center font-bold shadow-sm animate-pulse">{item.unread}</span>}
                                         {((item.type === 'group' || item.type === 'task_group') && (currentUser?.role === UserRole.ADMIN)) && (
                                             <button 
@@ -2684,7 +2377,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                             const isSystemMsg = msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم' || activeChannel.type === 'system';
                                             const isSelected = selectedMessages.has(msg.id);
                                             const isHighlighted = highlightedMessageId === msg.id;
-                                            const isMentionedInMsg = checkIfMessageMentionsUser(msg.message, currentUser);
 
                                             const bubbleStyles = isHighlighted 
                                                 ? `bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-400 dark:border-amber-500 text-amber-950 dark:text-amber-100 ring-4 ring-amber-300/60 dark:ring-amber-600/60 scale-[1.02] shadow-md transition-all duration-350 ${
@@ -2696,9 +2388,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                     ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm transition-all duration-350'
                                                     : isMe 
                                                         ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] dark:bg-[#1a2f16] dark:text-[#eeffde] rounded-xl rounded-tr-none shadow-sm transition-all duration-350'
-                                                        : isMentionedInMsg
-                                                            ? 'max-w-[75%] md:max-w-[70%] bg-amber-50/90 dark:bg-amber-950/40 border-r-4 border-amber-500 text-amber-950 dark:text-amber-100 rounded-xl rounded-tl-none shadow-sm transition-all duration-350 ring-1 ring-amber-300/30'
-                                                            : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm transition-all duration-350';
+                                                        : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm transition-all duration-350';
                                             
                                             return (
                                                 <div 
@@ -2726,14 +2416,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         
                                         <div className={`relative ${bubbleStyles} px-3.5 py-2.5 text-sm ${isSelected ? 'ring-2 ring-blue-400' : ''}`}>
                                             
-                                            {/* Mention Tag Banner if user was mentioned */}
-                                            {!isMe && !isSystemMsg && isMentionedInMsg && (
-                                                <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-800 dark:text-amber-200 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-lg mb-1.5 w-fit border border-amber-300 dark:border-amber-700 shadow-xs">
-                                                    <AtSign size={11} className="text-amber-600 dark:text-amber-400" />
-                                                    <span>شما در این پیام تگ شده‌اید</span>
-                                                </div>
-                                            )}
-
                                             {/* System Message Header */}
                                             {isSystemMsg && (
                                                 <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-indigo-200/60 dark:border-indigo-800/50">
@@ -3061,63 +2743,6 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         </div>
                                     )}
 
-                                    {/* Mention Autocomplete Dropdown */}
-                                    {mentionQuery && mentionCandidates.length > 0 && (
-                                        <div 
-                                            ref={mentionMenuRef}
-                                            className="absolute bottom-full mb-2 right-2 left-2 sm:right-10 sm:left-auto sm:w-84 max-h-64 overflow-y-auto glass-panel shadow-2xl rounded-2xl border border-blue-200/90 dark:border-blue-900/60 p-2 flex flex-col gap-1 z-50 backdrop-blur-xl bg-white/98 dark:bg-zinc-900/98 animate-scale-in custom-scrollbar"
-                                        >
-                                            <div className="px-2 py-1 text-[11px] font-black text-blue-600 dark:text-blue-400 flex items-center justify-between border-b border-gray-100 dark:border-zinc-800 pb-1.5">
-                                                <span className="flex items-center gap-1.5">
-                                                    <AtSign size={13} className="text-blue-500" />
-                                                    <span>انتخاب کاربر برای تگ و منشن</span>
-                                                </span>
-                                                <span className="text-[10px] text-gray-400 font-normal">کلیدهای ⬆️ ⬇️ و Enter</span>
-                                            </div>
-                                            <div className="flex flex-col gap-0.5 mt-1">
-                                                {mentionCandidates.map((cand, idx) => (
-                                                    <button
-                                                        key={cand.id + cand.username}
-                                                        type="button"
-                                                        onClick={() => insertMention(cand)}
-                                                        className={`w-full flex items-center gap-2.5 p-2 rounded-xl text-right transition-all cursor-pointer ${
-                                                            idx === mentionSelectedIndex
-                                                                ? 'bg-blue-50 dark:bg-blue-950/70 border border-blue-300 dark:border-blue-800 shadow-xs'
-                                                                : 'hover:bg-gray-100 dark:hover:bg-zinc-800/80 border border-transparent'
-                                                        }`}
-                                                    >
-                                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 overflow-hidden shadow-xs ${
-                                                            cand.isAll ? 'bg-gradient-to-br from-amber-500 to-rose-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                                                        }`}>
-                                                            {cand.isAll ? (
-                                                                <Users size={14} />
-                                                            ) : cand.avatar ? (
-                                                                <img src={resolveImageUrl(cand.avatar)} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                cand.fullName.charAt(0)
-                                                            )}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="font-bold text-xs text-gray-800 dark:text-gray-100 truncate">
-                                                                    {cand.fullName}
-                                                                </span>
-                                                                <span className="text-[10px] font-mono text-blue-600 dark:text-blue-400 dir-ltr font-semibold">
-                                                                    @{cand.username}
-                                                                </span>
-                                                            </div>
-                                                            {cand.role && (
-                                                                <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate block mt-0.5">
-                                                                    {cand.role}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
                                     <input type="file" ref={galleryInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileUpload}/>
                                     <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload}/>
                                     <input type="file" ref={pdfInputRef} className="hidden" accept=".pdf,application/pdf" onChange={handleFileUpload}/>
@@ -3169,28 +2794,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                             <Smile size={17} />
                                         </button>
 
-                                        {/* AtSign / Mention Button */}
-                                        <button 
-                                            type="button"
-                                            onClick={handleTriggerMentionButton}
-                                            className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-full transition-all shrink-0 active:scale-95 cursor-pointer ${
-                                                mentionQuery 
-                                                    ? 'text-blue-600 bg-blue-100/80 dark:bg-blue-950/70 font-bold' 
-                                                    : 'text-zinc-500 hover:text-blue-600 dark:text-zinc-400 dark:hover:text-blue-400 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60'
-                                            }`}
-                                            title="تگ و منشن کردن افراد (@)"
-                                        >
-                                            <AtSign size={17} />
-                                        </button>
-
                                         {/* Unified Seamless Auto-resizing Text Input */}
                                         <textarea 
                                             ref={inputAreaRef}
                                             value={inputText}
                                             onPaste={handlePaste}
-                                            onChange={handleTextareaChange}
-                                            onKeyDown={handleKeyDown}
-                                            placeholder="نوشتن پیام... (برای تگ افراد @ تایپ کنید)"
+                                            onChange={e => {
+                                                setInputText(e.target.value);
+                                                e.target.style.height = 'auto';
+                                                e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+                                            }}
+                                            onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+                                            placeholder="نوشتن پیام..."
                                             className="bg-transparent border-none outline-none w-full text-xs sm:text-sm resize-none custom-scrollbar relative z-10 placeholder-zinc-400 dark:placeholder-zinc-500 text-zinc-800 dark:text-zinc-100 font-medium leading-normal py-1 px-1"
                                             rows={1}
                                             style={{ height: 'auto', minHeight: '24px', maxHeight: '140px' }}

@@ -330,7 +330,7 @@ END:VCARD`;
   };
 
   return (
-    <div className={`w-full min-h-screen h-auto overflow-y-auto overscroll-y-contain -webkit-overflow-scrolling-touch dir-rtl font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-3 sm:py-8 px-2 sm:px-4 pb-32'}`}>
+    <div className={`w-full min-h-screen dir-rtl font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-3 sm:py-8 px-2 sm:px-4 pb-16'}`}>
       <Toaster position="top-center" />
       
       {/* Top Action Bar if in full screen */}
@@ -434,24 +434,6 @@ END:VCARD`;
 
         {/* Dynamic Blocks Container */}
         <div className="p-4 space-y-5 bg-slate-50/50 dark:bg-slate-950/40 min-h-[350px]">
-          
-          {/* Address & Location Info Card */}
-          {config.addressText && (
-            <div className="p-4 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/90 dark:border-amber-900/60 text-amber-950 dark:text-amber-100 flex items-start gap-3 shadow-sm transition-all hover:border-amber-300">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5 shadow-sm border border-amber-500/20">
-                <MapPin className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-extrabold text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between">
-                  <span>نشانی و آدرس کارخانه / دفتر مرکزی</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">ثبت رسمی</span>
-                </div>
-                <div className="text-xs font-semibold leading-relaxed mt-1.5 text-slate-800 dark:text-slate-100 whitespace-pre-line select-text">
-                  {config.addressText}
-                </div>
-              </div>
-            </div>
-          )}
           
           {/* 1. Telegram & Bale Bots Section */}
           {botBlocks.length > 0 && (

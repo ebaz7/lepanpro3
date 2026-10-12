@@ -2284,18 +2284,6 @@ app.post('/api/sayan/cheque-receipts/sync-accounting-docs', async (req, res) => 
     }
 });
 
-// 10.6. Repair corrupted receipt Archive Codes & Doc Numbers (if previously set to 1)
-app.post('/api/sayan/cheque-receipts/repair-archive-codes', async (req, res) => {
-    try {
-        const fiscalYear = req.body?.fiscalYear || req.query?.fiscalYear || '4';
-        const result = await sayanChequeService.repairCorruptedArchiveCodes(fiscalYear);
-        res.json({ success: true, ...result });
-    } catch (err) {
-        console.error("Error repairing corrupted receipt archive codes:", err);
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-
 // 11. Delete draft / cancel receipt
 app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
     try {
@@ -6859,61 +6847,6 @@ app.post('/api/chat', async (req, res) => {
                 null,
                 [msg.senderUsername] // Exclude sender
             );
-        }
-
-        // Targeted Mention / Tag Notifications (@username, @fullname, @all)
-        if (msg.message && typeof msg.message === 'string') {
-            const mentionMatches = msg.message.match(/@([a-zA-Z0-9_\.\-\u0600-\u06FF\u200c]+)/g) || [];
-            const mentionTokens = mentionMatches.map(m => m.slice(1).toLowerCase().trim());
-            const isAllMention = mentionTokens.includes('all') || mentionTokens.includes('همه');
-
-            let targetedMentionUsers = [];
-            if (isAllMention) {
-                if (msg.groupId) {
-                    const grp = (db.groups || []).find(g => g.id === msg.groupId) || (db.taskGroups || []).find(g => g.id === msg.groupId);
-                    if (grp) {
-                        const mList = Array.isArray(grp.members) ? [...grp.members] : [];
-                        if (grp.createdBy && !mList.includes(grp.createdBy)) mList.push(grp.createdBy);
-                        targetedMentionUsers = mList;
-                    }
-                } else {
-                    targetedMentionUsers = (db.users || []).map(u => u.username).filter(Boolean);
-                }
-            } else if (mentionTokens.length > 0) {
-                targetedMentionUsers = (db.users || []).filter(u => {
-                    if (!u.username) return false;
-                    const uName = u.username.toLowerCase();
-                    const fName = (u.fullName || '').toLowerCase();
-                    const fNameUnder = fName.replace(/\s+/g, '_');
-                    const fNameCompact = fName.replace(/[\s\u200c]+/g, '');
-                    return mentionTokens.some(tok => 
-                        tok === uName || 
-                        tok === fName || 
-                        tok === fNameUnder || 
-                        tok === fNameCompact
-                    );
-                }).map(u => u.username);
-            }
-
-            // Exclude message sender
-            const filteredTargets = targetedMentionUsers.filter(u => 
-                String(u).toLowerCase() !== String(msg.senderUsername).toLowerCase()
-            );
-
-            if (filteredTargets.length > 0) {
-                const channelTitle = msg.groupId 
-                    ? ((db.groups?.find(g => g.id === msg.groupId) || db.taskGroups?.find(g => g.id === msg.groupId))?.name || 'گروه')
-                    : (msg.recipient ? 'گفتگو' : 'کانال عمومی');
-
-                broadcastNotification(
-                    `📢 منشن جدید: ${msg.sender} در ${channelTitle}`,
-                    `${msg.sender}: ${msg.message}`,
-                    msg.groupId ? `/chat?group=${msg.groupId}` : (msg.recipient ? `/chat?pv=${msg.senderUsername}` : '/chat'),
-                    null,
-                    filteredTargets,
-                    [msg.senderUsername]
-                );
-            }
         }
     } catch (e) {
         console.error("Async broadcast notification error:", e);

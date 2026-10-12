@@ -1248,38 +1248,24 @@ tfoot th {
   }
   .printable-content, .printable-content *,
   .printable-area, .printable-area *,
-  .print-render-wrapper, .print-render-wrapper *,
-  .print-only-section, .print-only-section *,
-  #print-purchase-request-section, #print-purchase-request-section *,
-  #print-purchase-receipt-standalone, #print-purchase-receipt-standalone *,
-  #print-specific-proforma, #print-specific-proforma *,
   #cheque-receipt-printable-card, #cheque-receipt-printable-card *,
   #a5-cheque-receipt-print-area, #a5-cheque-receipt-print-area * {
     visibility: visible !important;
-    opacity: 1 !important;
   }
   .printable-content,
   .printable-area,
-  .print-render-wrapper,
-  .print-only-section,
-  #print-purchase-request-section,
-  #print-purchase-receipt-standalone,
-  #print-specific-proforma,
-  #cheque-receipt-printable-card,
-  #a5-cheque-receipt-print-area {
-    position: absolute !important;
+  #cheque-receipt-printable-card {
+    position: relative !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
     height: auto !important;
     min-height: auto !important;
     margin: 0 !important;
-    padding: 10px !important;
+    padding: 0 !important;
     overflow: visible !important;
     border: none !important;
     box-shadow: none !important;
-    z-index: 99999999 !important;
-    background: #ffffff !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
@@ -2504,20 +2490,9 @@ html[data-gpu-active="true"] * {
 
 /* Ensure root and app container allow scroll propagation */
 html, body, #root {
-  min-height: 100%;
+  height: 100%;
   width: 100%;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-}
-
-.public-bio-scroll-view {
-  min-height: 100vh;
-  height: auto !important;
-  max-height: none !important;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
-  overscroll-behavior-y: auto !important;
 }
 
 /* Global robust mouse wheel and touch scrolling */

@@ -138,11 +138,7 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
     perms.canAccessSayanPendingDocs === true;
 
   const canSeeChequeReceipts = currentUser.role === UserRole.ADMIN || perms.canAccessChequeReceipts === true;
-  const canSeeDigitalCard = currentUser.role === UserRole.ADMIN || 
-    perms.canAccessDigitalCard === true || 
-    perms.canManageDigitalCard === true || 
-    (currentUser as any).canAccessDigitalCard === true || 
-    (currentUser as any).canManageDigitalCard === true;
+  const canSeeDigitalCard = currentUser.role === UserRole.ADMIN || perms.canAccessDigitalCard !== false;
 
   const items: AppNavItem[] = [
     ALL_NAVIGATION_ITEMS['dashboard']
