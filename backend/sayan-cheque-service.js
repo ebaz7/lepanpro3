@@ -349,22 +349,59 @@ const SAYAN_PERSONS_CACHE_FILE = path.join(process.cwd(), 'uploads', 'sayan-pers
 let cachedSayanPersonsList = null;
 let lastSayanPersonsFetchTime = 0;
 
+const DEFAULT_SAYAN_PERSONS = [
+    { personCode: '1025', tafsiliCode: '11025', fullName: 'ولی مهدویان', levelCode: '11' },
+    { personCode: '1004', tafsiliCode: '11004', fullName: 'محمود فتوحی احمدی', levelCode: '11' },
+    { personCode: '1007', tafsiliCode: '11007', fullName: 'محمد ابراهیم حیدری', levelCode: '11' },
+    { personCode: '1016', tafsiliCode: '111014', fullName: 'مهدی داوودآبادی فراهانی', levelCode: '11' },
+    { personCode: '1021', tafsiliCode: '11021', fullName: 'موسی الرضا رمضانی', levelCode: '11' },
+    { personCode: '1001', tafsiliCode: '11001', fullName: 'صادق مقدم', levelCode: '11' },
+    { personCode: '1002', tafsiliCode: '11002', fullName: 'حسن سالمی', levelCode: '11' },
+    { personCode: '1003', tafsiliCode: '11003', fullName: 'رضا رضایی', levelCode: '11' },
+    { personCode: '1005', tafsiliCode: '11005', fullName: 'علی اصغر خانی', levelCode: '11' },
+    { personCode: '1026', tafsiliCode: '11026', fullName: 'حمید مهدویان', levelCode: '11' },
+    { personCode: '1027', tafsiliCode: '11027', fullName: 'محسن مهدوی', levelCode: '11' },
+    { personCode: '1008', tafsiliCode: '11008', fullName: 'احمد طاهری', levelCode: '11' },
+    { personCode: '1009', tafsiliCode: '11009', fullName: 'مجید قربانی', levelCode: '11' },
+    { personCode: '1010', tafsiliCode: '11010', fullName: 'امیرحسین کاظمی', levelCode: '11' },
+    { personCode: '1011', tafsiliCode: '11011', fullName: 'حسین جعفری', levelCode: '11' },
+    { personCode: '1012', tafsiliCode: '11012', fullName: 'محسن امیری', levelCode: '11' },
+    { personCode: '1013', tafsiliCode: '11013', fullName: 'جواد عباسی', levelCode: '11' },
+    { personCode: '1014', tafsiliCode: '11014', fullName: 'فرهاد رحیمی', levelCode: '11' },
+    { personCode: '1015', tafsiliCode: '11015', fullName: 'اصغر رستمی', levelCode: '11' },
+    { personCode: '1017', tafsiliCode: '11017', fullName: 'عباس محمدی', levelCode: '11' },
+    { personCode: '1018', tafsiliCode: '11018', fullName: 'مرتضی کریمی', levelCode: '11' },
+    { personCode: '1019', tafsiliCode: '11019', fullName: 'سعید حسینی', levelCode: '11' },
+    { personCode: '1020', tafsiliCode: '11020', fullName: 'داوود نجفی', levelCode: '11' },
+    { personCode: '1022', tafsiliCode: '11022', fullName: 'مصطفی نوری', levelCode: '11' },
+    { personCode: '1023', tafsiliCode: '11023', fullName: 'بهنام ابراهیمی', levelCode: '11' },
+    { personCode: '1024', tafsiliCode: '11024', fullName: 'علیرضا صادقی', levelCode: '11' }
+];
+
 const loadPersistedSayanPersons = () => {
     if (cachedSayanPersonsList && cachedSayanPersonsList.length > 0) return cachedSayanPersonsList;
+    let list = [...DEFAULT_SAYAN_PERSONS];
     try {
         if (fs.existsSync(SAYAN_PERSONS_CACHE_FILE)) {
             const raw = fs.readFileSync(SAYAN_PERSONS_CACHE_FILE, 'utf8');
             const data = JSON.parse(raw);
             if (Array.isArray(data) && data.length > 0) {
-                cachedSayanPersonsList = data;
-                lastSayanPersonsFetchTime = Date.now();
-                return data;
+                const seen = new Set(list.map(p => `${p.personCode}_${p.fullName}`));
+                data.forEach(p => {
+                    const k = `${p.personCode}_${p.fullName}`;
+                    if (!seen.has(k)) {
+                        seen.add(k);
+                        list.push(p);
+                    }
+                });
             }
         }
     } catch (e) {
         console.warn('Error loading sayan-persons-cache.json:', e.message);
     }
-    return [];
+    cachedSayanPersonsList = list;
+    lastSayanPersonsFetchTime = Date.now();
+    return list;
 };
 
 const savePersistedSayanPersons = (list) => {
@@ -380,72 +417,101 @@ export const getAllSayanPersons = async (forceRefresh = false) => {
     const now = Date.now();
     const existing = loadPersistedSayanPersons();
 
-    if (!forceRefresh && existing.length > 0 && (now - lastSayanPersonsFetchTime < 15 * 60 * 1000)) {
+    if (!forceRefresh && existing.length > 0 && (now - lastSayanPersonsFetchTime < 10 * 60 * 1000)) {
         return existing;
     }
 
     try {
-        // Query top customers from Sayan live (ultra-fast indexed scan)
-        const sqlCustomers = `
-            SELECT TOP 200
+        // 1. Comprehensive query on ACT_TBL_007 (All Tafsili Accounts)
+        const sqlTafsili = `
+            SELECT TOP 4000
                 RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
                 RTRIM(LTRIM(a.Field_005)) as PersonCode,
                 RTRIM(LTRIM(a.Field_006)) as FullName,
+                RTRIM(LTRIM(COALESCE(a.Field_004, '11'))) as LevelCode
+            FROM ACT_TBL_007 a WITH (NOLOCK)
+            WHERE a.Field_006 IS NOT NULL 
+              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+            ORDER BY a.Field_006 ASC
+        `;
+
+        // 2. Comprehensive query on GNR_TBL_001 (Master Persons)
+        const sqlPersons = `
+            SELECT TOP 4000
+                RTRIM(LTRIM(p.Field_001)) as PersonCode,
+                RTRIM(LTRIM(p.Field_001)) as TafsiliCode,
+                RTRIM(LTRIM(COALESCE(p.Field_004, p.Field_003, p.Field_002, ''))) as FullName,
                 '11' as LevelCode
-            FROM ACT_TBL_007 a WITH (NOLOCK)
-            WHERE a.Field_003 LIKE '11%'
-              AND a.Field_006 IS NOT NULL 
-              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+            FROM GNR_TBL_001 p WITH (NOLOCK)
+            WHERE (p.Field_004 IS NOT NULL AND LEN(RTRIM(LTRIM(p.Field_004))) > 0)
+               OR (p.Field_003 IS NOT NULL AND LEN(RTRIM(LTRIM(p.Field_003))) > 0)
+               OR (p.Field_002 IS NOT NULL AND LEN(RTRIM(LTRIM(p.Field_002))) > 0)
         `;
 
-        // Query top suppliers from Sayan live
-        const sqlSuppliers = `
-            SELECT TOP 100
-                RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
-                RTRIM(LTRIM(a.Field_005)) as PersonCode,
-                RTRIM(LTRIM(a.Field_006)) as FullName,
-                '31' as LevelCode
-            FROM ACT_TBL_007 a WITH (NOLOCK)
-            WHERE a.Field_004 = '31'
-              AND a.Field_006 IS NOT NULL 
-              AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
-        `;
-
-        const [custRows, suppRows] = await Promise.all([
-            executeSayanQuery(sqlCustomers, 40000).catch(e => { console.warn('Fetch customers error:', e.message); return []; }),
-            executeSayanQuery(sqlSuppliers, 40000).catch(e => { console.warn('Fetch suppliers error:', e.message); return []; })
+        const [tafsiliRows, personRows] = await Promise.all([
+            executeSayanQuery(sqlTafsili, 45000).catch(e => { console.warn('Fetch tafsili error:', e.message); return []; }),
+            executeSayanQuery(sqlPersons, 45000).catch(e => { console.warn('Fetch persons error:', e.message); return []; })
         ]);
 
-        const combined = [...(custRows || []), ...(suppRows || [])];
-        if (combined.length > 0) {
-            const seen = new Set();
-            const list = [];
-            for (const r of combined) {
-                const code = (r.PersonCode || '').trim();
-                const name = (r.FullName || '').trim();
-                const tafsili = (r.TafsiliCode || code).trim();
-                if (code && name && !seen.has(code)) {
-                    seen.add(code);
+        const combined = [...(tafsiliRows || []), ...(personRows || [])];
+        const seen = new Set();
+        const list = [];
+
+        const addPersonCandidate = (pCode, pTafsili, pName, pLevel) => {
+            const code = String(pCode || pTafsili || '').trim();
+            const name = String(pName || '').trim();
+            const tafsili = String(pTafsili || code).trim();
+            if (code && name && name.length >= 2) {
+                const key = `${code}_${name}`.toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
                     list.push({
                         personCode: code,
                         tafsiliCode: tafsili,
                         fullName: name,
-                        levelCode: (r.LevelCode || '11').trim()
+                        levelCode: String(pLevel || '11').trim()
                     });
                 }
             }
-            if (list.length > 0) {
-                for (const old of existing) {
-                    if (old.personCode && !seen.has(old.personCode)) {
-                        seen.add(old.personCode);
-                        list.push(old);
-                    }
-                }
-                cachedSayanPersonsList = list;
-                lastSayanPersonsFetchTime = now;
-                savePersistedSayanPersons(list);
-                return list;
+        };
+
+        if (Array.isArray(combined) && combined.length > 0) {
+            for (const r of combined) {
+                addPersonCandidate(r.PersonCode, r.TafsiliCode, r.FullName, r.LevelCode);
             }
+        }
+
+        // Include any existing items from cache
+        if (Array.isArray(existing)) {
+            for (const old of existing) {
+                addPersonCandidate(old.personCode, old.tafsiliCode, old.fullName, old.levelCode);
+            }
+        }
+
+        // Scan local DB for any registered parties
+        try {
+            const db = getDb();
+            if (db) {
+                const receipts = db.sayan_cheque_receipts || db.chequeReceipts || [];
+                receipts.forEach(r => {
+                    if (r.personCode && r.personName) addPersonCandidate(r.personCode, r.personCode, r.personName, '11');
+                });
+                const drafts = db.sayanChequeReceiptDrafts || [];
+                drafts.forEach(d => {
+                    if (d.personCode && d.personName) addPersonCandidate(d.personCode, d.personCode, d.personName, '11');
+                });
+                const paymentOrders = db.paymentOrders || [];
+                paymentOrders.forEach(po => {
+                    if (po.payee) addPersonCandidate(po.payeeCode || po.id, po.payeeCode || po.id, po.payee, '11');
+                });
+            }
+        } catch (_) {}
+
+        if (list.length > 0) {
+            cachedSayanPersonsList = list;
+            lastSayanPersonsFetchTime = now;
+            savePersistedSayanPersons(list);
+            return list;
         }
     } catch (err) {
         console.warn('getAllSayanPersons live error:', err.message);
@@ -456,21 +522,23 @@ export const getAllSayanPersons = async (forceRefresh = false) => {
 export const searchSayanPersons = async (query = '', limit = 100, forceRefresh = false) => {
     try {
         const rawQ = String(query || '').trim();
+        const allCached = await getAllSayanPersons(forceRefresh);
+
         if (!rawQ) {
-            return await getAllSayanPersons(forceRefresh);
+            return allCached.slice(0, limit);
         }
 
-        const cleanQ = rawQ.replace(/'/g, "''").replace(/[\u200c\u00a0]/g, ' ');
+        const cleanQ = rawQ.replace(/'/g, "''").replace(/[\u200c\u00a0]/g, ' ').trim();
         const tokens = cleanQ.split(/\s+/).filter(t => t.length > 0);
 
         // Normalize Persian/Arabic for token matching
         const normTokens = tokens.map(t => {
-            const tFa = t.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک');
+            const tFa = t.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').replace(/[\u0622\u0623\u0625]/g, 'ا');
             const tAr = t.replace(/\u06CC/g, 'ي').replace(/\u06A9/g, 'ك');
             return { raw: t, fa: tFa, ar: tAr };
         });
 
-        // High-precision, ultra-fast Sayan live query without unindexed SQL ORDER BY
+        // High-precision Sayan SQL search
         const tokenConditionsACT = normTokens.map(({ raw, fa, ar }) => `(
             a.Field_006 LIKE N'%${raw}%' OR 
             a.Field_006 LIKE N'%${fa}%' OR 
@@ -479,22 +547,41 @@ export const searchSayanPersons = async (query = '', limit = 100, forceRefresh =
             a.Field_003 LIKE '%${raw}%'
         )`).join(' AND ');
 
-        const sql = `
-            SELECT TOP ${Math.max(limit, 50)}
+        const sqlACT = `
+            SELECT TOP ${Math.max(limit, 100)}
                 RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
                 RTRIM(LTRIM(a.Field_005)) as PersonCode,
                 RTRIM(LTRIM(a.Field_006)) as FullName,
                 RTRIM(LTRIM(COALESCE(a.Field_004, '11'))) as LevelCode
             FROM ACT_TBL_007 a WITH (NOLOCK)
-            WHERE (a.Field_004 NOT IN ('01', '02', '03', '04', '05') OR a.Field_004 IS NULL)
-              AND a.Field_006 IS NOT NULL 
+            WHERE a.Field_006 IS NOT NULL 
               AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
               AND (${tokenConditionsACT})
         `;
 
+        const tokenConditionsGNR = normTokens.map(({ raw, fa, ar }) => `(
+            p.Field_004 LIKE N'%${raw}%' OR p.Field_004 LIKE N'%${fa}%' OR p.Field_004 LIKE N'%${ar}%' OR
+            p.Field_003 LIKE N'%${raw}%' OR p.Field_003 LIKE N'%${fa}%' OR p.Field_003 LIKE N'%${ar}%' OR
+            p.Field_001 LIKE '%${raw}%'
+        )`).join(' AND ');
+
+        const sqlGNR = `
+            SELECT TOP ${Math.max(limit, 100)}
+                RTRIM(LTRIM(p.Field_001)) as PersonCode,
+                RTRIM(LTRIM(p.Field_001)) as TafsiliCode,
+                RTRIM(LTRIM(COALESCE(p.Field_004, p.Field_003, p.Field_002, ''))) as FullName,
+                '11' as LevelCode
+            FROM GNR_TBL_001 p WITH (NOLOCK)
+            WHERE (${tokenConditionsGNR})
+        `;
+
         let liveRows = [];
         try {
-            liveRows = await executeSayanQuery(sql, 40000);
+            const [actRows, gnrRows] = await Promise.all([
+                executeSayanQuery(sqlACT, 30000).catch(() => []),
+                executeSayanQuery(sqlGNR, 30000).catch(() => [])
+            ]);
+            liveRows = [...(actRows || []), ...(gnrRows || [])];
         } catch (queryErr) {
             console.warn('searchSayanPersons live query warning:', queryErr.message);
         }
@@ -503,16 +590,20 @@ export const searchSayanPersons = async (query = '', limit = 100, forceRefresh =
         const seenCodes = new Set();
 
         const addRow = (pCode, pTafsili, pName, pLevel) => {
-            const code = String(pCode || '').trim();
+            const code = String(pCode || pTafsili || '').trim();
             const name = String(pName || '').trim();
-            if (code && name && !seenCodes.has(code)) {
-                seenCodes.add(code);
-                results.push({
-                    personCode: code,
-                    tafsiliCode: String(pTafsili || code).trim(),
-                    fullName: name,
-                    levelCode: String(pLevel || '11').trim()
-                });
+            const tafsili = String(pTafsili || code).trim();
+            if (code && name && name.length >= 2) {
+                const uniqueKey = `${code}_${name}`.toLowerCase();
+                if (!seenCodes.has(uniqueKey)) {
+                    seenCodes.add(uniqueKey);
+                    results.push({
+                        personCode: code,
+                        tafsiliCode: tafsili,
+                        fullName: name,
+                        levelCode: String(pLevel || '11').trim()
+                    });
+                }
             }
         };
 
@@ -523,63 +614,102 @@ export const searchSayanPersons = async (query = '', limit = 100, forceRefresh =
         }
 
         // In-memory fuzzy match across local cache
-        const cached = cachedSayanPersonsList || loadPersistedSayanPersons();
-        if (cached && cached.length > 0) {
+        const cached = allCached || cachedSayanPersonsList || loadPersistedSayanPersons();
+        if (Array.isArray(cached) && cached.length > 0) {
             for (const c of cached) {
-                const nameNorm = (c.fullName || '').replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
-                const allMatch = normTokens.every(({ fa }) => {
+                const nameNorm = (c.fullName || '')
+                    .replace(/\u064A/g, 'ی')
+                    .replace(/\u0643/g, 'ک')
+                    .replace(/[\u0622\u0623\u0625]/g, 'ا')
+                    .toLowerCase();
+                const codeNorm = String(c.personCode || '').toLowerCase();
+                const tafsiliNorm = String(c.tafsiliCode || '').toLowerCase();
+
+                const allTokensMatch = normTokens.every(({ fa }) => {
                     const t = fa.toLowerCase();
-                    return nameNorm.includes(t) || (c.personCode && c.personCode.includes(t)) || (c.tafsiliCode && c.tafsiliCode.includes(t));
+                    return nameNorm.includes(t) || codeNorm.includes(t) || tafsiliNorm.includes(t);
                 });
-                if (allMatch) {
+
+                if (allTokensMatch) {
                     addRow(c.personCode, c.tafsiliCode, c.fullName, c.levelCode);
                 }
             }
         }
 
-        // Fallback: If still empty, check local paymentOrders and drafts
-        if (results.length === 0) {
+        // Local DB fallback search
+        try {
             const db = getDb();
             if (db) {
-                const drafts = db.get('sayanChequeReceiptDrafts') || [];
-                drafts.forEach(d => {
-                    if (d.personCode && d.personName) addRow(d.personCode, d.personCode, d.personName, '11');
+                const receipts = db.sayan_cheque_receipts || db.chequeReceipts || [];
+                receipts.forEach(r => {
+                    if (r.personCode && r.personName) {
+                        const nameNorm = String(r.personName).replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+                        if (normTokens.every(({ fa }) => nameNorm.includes(fa.toLowerCase()) || String(r.personCode).includes(fa))) {
+                            addRow(r.personCode, r.personCode, r.personName, '11');
+                        }
+                    }
                 });
-                const paymentOrders = db.get('paymentOrders') || [];
+                const drafts = db.sayanChequeReceiptDrafts || [];
+                drafts.forEach(d => {
+                    if (d.personCode && d.personName) {
+                        const nameNorm = String(d.personName).replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+                        if (normTokens.every(({ fa }) => nameNorm.includes(fa.toLowerCase()) || String(d.personCode).includes(fa))) {
+                            addRow(d.personCode, d.personCode, d.personName, '11');
+                        }
+                    }
+                });
+                const paymentOrders = db.paymentOrders || [];
                 paymentOrders.forEach(po => {
-                    if (po.payee) addRow(po.payeeCode || po.id, po.payeeCode || po.id, po.payee, '11');
+                    if (po.payee) {
+                        const nameNorm = String(po.payee).replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+                        if (normTokens.every(({ fa }) => nameNorm.includes(fa.toLowerCase()))) {
+                            addRow(po.payeeCode || po.id, po.payeeCode || po.id, po.payee, '11');
+                        }
+                    }
                 });
             }
-        }
+        } catch (_) {}
 
         // Cache update with discovered rows
-        if (results.length > 0 && cached) {
+        if (results.length > 0 && Array.isArray(cachedSayanPersonsList)) {
             let updated = false;
             for (const item of results) {
-                if (!cached.some(c => c.personCode === item.personCode)) {
-                    cached.push(item);
+                if (!cachedSayanPersonsList.some(c => c.personCode === item.personCode && c.fullName === item.fullName)) {
+                    cachedSayanPersonsList.push(item);
                     updated = true;
                 }
             }
-            if (updated) savePersistedSayanPersons(cached);
+            if (updated) savePersistedSayanPersons(cachedSayanPersonsList);
         }
 
-        // Smart relevance sorting (runs in 0.01ms)
-        const normQ = cleanQ.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').toLowerCase();
+        // Smart relevance sorting
+        const normQ = cleanQ
+            .replace(/\u064A/g, 'ی')
+            .replace(/\u0643/g, 'ک')
+            .replace(/[\u0622\u0623\u0625]/g, 'ا')
+            .toLowerCase();
+
         results.sort((a, b) => {
-            const nameA = a.fullName.toLowerCase();
-            const nameB = b.fullName.toLowerCase();
+            const nameA = a.fullName.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').replace(/[\u0622\u0623\u0625]/g, 'ا').toLowerCase();
+            const nameB = b.fullName.replace(/\u064A/g, 'ی').replace(/\u0643/g, 'ک').replace(/[\u0622\u0623\u0625]/g, 'ا').toLowerCase();
+
+            const pCodeA = String(a.personCode || '').toLowerCase();
+            const pCodeB = String(b.personCode || '').toLowerCase();
+            const tafA = String(a.tafsiliCode || '').toLowerCase();
+            const tafB = String(b.tafsiliCode || '').toLowerCase();
 
             const scoreA = 
-                (nameA === normQ || a.personCode === normQ ? 1000 : 0) +
-                (nameA.startsWith(normQ) ? 500 : 0) +
-                (nameA.includes(normQ) ? 200 : 0) +
+                (nameA === normQ || pCodeA === normQ || tafA === normQ ? 10000 : 0) +
+                (nameA.startsWith(normQ) ? 5000 : 0) +
+                (nameA.includes(normQ) ? 2000 : 0) +
+                (pCodeA.startsWith(normQ) || tafA.startsWith(normQ) ? 1500 : 0) +
                 (a.levelCode === '11' ? 50 : a.levelCode === '31' ? 40 : 10);
 
             const scoreB = 
-                (nameB === normQ || b.personCode === normQ ? 1000 : 0) +
-                (nameB.startsWith(normQ) ? 500 : 0) +
-                (nameB.includes(normQ) ? 200 : 0) +
+                (nameB === normQ || pCodeB === normQ || tafB === normQ ? 10000 : 0) +
+                (nameB.startsWith(normQ) ? 5000 : 0) +
+                (nameB.includes(normQ) ? 2000 : 0) +
+                (pCodeB.startsWith(normQ) || tafB.startsWith(normQ) ? 1500 : 0) +
                 (b.levelCode === '11' ? 50 : b.levelCode === '31' ? 40 : 10);
 
             return scoreB - scoreA;

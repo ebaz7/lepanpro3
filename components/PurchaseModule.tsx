@@ -367,12 +367,12 @@ export const checkPurchasePermission = (
 
         case 'canApproveShiftLeader':
             if (user.canApproveShiftLeader === true) return true;
-            if (checkRoleMatch('shift') || checkRoleMatch('سرشیفت')) return true;
+            if (checkRoleMatch('shift') || checkRoleMatch('سرشیفت') || checkRoleMatch('line') || checkRoleMatch('سرپرست') || checkRoleMatch('سرپرست خط')) return true;
             break;
 
         case 'canApproveWarehouseKeeper':
-            if (user.canApproveWarehouseKeeper === true) return true;
-            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار')) return true;
+            if (user.canApproveWarehouseKeeper === true || user.canManageWarehouse === true || user.canManageParts === true) return true;
+            if (checkRoleMatch('warehouse') || checkRoleMatch('انبار') || checkRoleMatch('warehouse_keeper') || checkRoleMatch('انباردار') || checkRoleMatch('قطعات')) return true;
             break;
 
         case 'canRegisterEntry':
@@ -1664,8 +1664,8 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
 
             const newAuditLog: PurchaseAuditLog = {
                 id: generateUUID(),
-                stage: PurchaseRequestStatus.PENDING_TECHNICAL,
-                action: 'ثبت اولیه درخواست خرید',
+                stage: PurchaseRequestStatus.PENDING_SHIFT_LEADER,
+                action: 'ثبت اولیه درخواست خرید توسط سرشیفت',
                 performedBy: currentUser.fullName,
                 role: currentUser.role,
                 timestamp: nowIso,
@@ -1699,7 +1699,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                 attachments,
                 auditLogs: [newAuditLog],
 
-                status: PurchaseRequestStatus.PENDING_TECHNICAL,
+                status: PurchaseRequestStatus.PENDING_SHIFT_LEADER,
                 proformas: [],
                 createdAt: Date.now(),
                 updatedAt: Date.now()
@@ -2106,7 +2106,7 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                             <button type="button" onClick={onClose} className="w-full sm:w-auto px-6 py-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold rounded-xl sm:rounded-2xl text-xs transition-all text-center">انصراف</button>
                             <button type="submit" disabled={loading || uploading} className="w-full sm:w-auto px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl sm:rounded-2xl text-xs shadow-xl shadow-indigo-100 dark:shadow-none transition-all flex items-center justify-center gap-2">
                                 {loading ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle size={18}/>}
-                                ثبت و ارسال به کارشناس فنی کارخانه
+                                ثبت درخواست (ارسال به سرپرست خط کارخانه)
                             </button>
                         </div>
                     </form>
@@ -4108,36 +4108,38 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                 {/* Actions Footer */}
                 <div className="p-6 border-t glass-panel flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/80">
                     <div className="flex flex-wrap gap-2 justify-center md:justify-start">
-                        {/* Universal Return & Reject Buttons */}
+                        {/* Universal Return & Reject Buttons (Only visible to managers, approvers, and admin) */}
                         {request.status !== PurchaseRequestStatus.COMPLETED && request.status !== PurchaseRequestStatus.REJECTED && (
+                            (isAdmin || hasPurchasePerm('canApproveFactory') || hasPurchasePerm('canApproveCEO') || hasPurchasePerm('canApproveCommercialManager') || hasPurchasePerm('canApproveTechnical') || hasPurchasePerm('canApproveShiftLeader') || hasPurchasePerm('canApproveFactoryDecision'))
+                        ) && (
                             <>
-                                <button onClick={() => setShowReturnModal(true)} className="bg-amber-500/10 text-amber-700 border border-amber-300 hover:bg-amber-500 hover:text-white px-4 py-3 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 shadow-sm" disabled={actionLoading}>
+                                <button onClick={() => setShowReturnModal(true)} className="bg-amber-500/10 text-amber-700 border border-amber-300 hover:bg-amber-500 hover:text-white px-4 py-3 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer" disabled={actionLoading}>
                                     <CornerUpLeft size={16}/> عودت جهت اصلاح
                                 </button>
-                                <button onClick={() => setShowRejectModal(true)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-4 py-3 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 shadow-sm" disabled={actionLoading}>
+                                <button onClick={() => setShowRejectModal(true)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-4 py-3 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer" disabled={actionLoading}>
                                     <XCircle size={16}/> رد / توقف فرآیند
                                 </button>
                             </>
                         )}
 
-                        {/* Stage 1: Technical & Repair Inspection */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_TECHNICAL) && (isAdmin || hasPurchasePerm('canApproveTechnical')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_SHIFT_LEADER, {}, 'تایید فنی و ارجاع به سرشیفت')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-indigo-100 transition-all hover:-translate-y-0.5 text-xs" disabled={actionLoading}>تایید فنی و ارسال به سرشیفت کارخانه</button>
+                        {/* Step 1: Line Supervisor Approval */}
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_SHIFT_LEADER) && (isAdmin || hasPurchasePerm('canApproveShiftLeader')) && (
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TECHNICAL, {}, 'تایید سرپرست خط و ارجاع به واحد فنی نت')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg transition-all hover:scale-105 text-xs cursor-pointer" disabled={actionLoading}>تایید سرپرست خط و ارسال به واحد فنی نت</button>
                         )}
 
-                        {/* Stage 1.5: Shift Leader Approval */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_SHIFT_LEADER) && (isAdmin || hasPurchasePerm('canApproveShiftLeader')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, {}, 'تایید سرشیفت و ارجاع به انباردار')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg transition-all hover:scale-105 text-xs" disabled={actionLoading}>تایید سرشیفت و ارسال به انباردار کارخانه</button>
+                        {/* Step 2: NET / Maintenance Technical Unit Approval */}
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_TECHNICAL) && (isAdmin || hasPurchasePerm('canApproveTechnical')) && (
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, {}, 'تایید فنی نت و ارجاع به انباردار کارخانه')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-indigo-100 transition-all hover:scale-105 text-xs cursor-pointer" disabled={actionLoading}>تایید فنی نت و ارسال به انباردار کارخانه (بررسی موجودی)</button>
                         )}
                         
-                        {/* Stage 2: Warehouse Stock Check */}
-                        {(isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY) || isCurrentStep(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER)) && (isAdmin || hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => setShowWarehouseCheckModal(true)} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black transition-all hover:scale-105 text-xs shadow-lg" disabled={actionLoading}>بررسی موجودی انبار (انباردار کارخانه)</button>
+                        {/* Step 3: Factory Warehouse Keeper Stock Check */}
+                        {(isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY) || isCurrentStep(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER)) && (isAdmin || hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canManageParts')) && (
+                            <button onClick={() => setShowWarehouseCheckModal(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-2xl font-black transition-all hover:scale-105 text-xs shadow-lg shadow-emerald-100 cursor-pointer" disabled={actionLoading}>بررسی موجودی انبار (انباردار کارخانه)</button>
                         )}
 
-                        {/* Stage 3: Factory Manager Branch Selection */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION) && (isAdmin || hasPurchasePerm('canApproveFactoryDecision')) && (
-                            <button onClick={() => setShowFactoryBranchModal(true)} className="bg-amber-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-amber-100 text-xs hover:scale-105 transition-all" disabled={actionLoading}>تعیین و تایید مسیر تامین (مدیر کارخانه)</button>
+                        {/* Step 4: Factory Manager Purchase Route Decision */}
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION) && (isAdmin || hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory')) && (
+                            <button onClick={() => setShowFactoryBranchModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-amber-100 text-xs hover:scale-105 transition-all cursor-pointer" disabled={actionLoading}>تعیین و تایید مسیر تامین (مدیر کارخانه)</button>
                         )}
 
                         {/* Tehran Branch: CEO Initial Approval */}
