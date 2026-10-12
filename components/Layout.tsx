@@ -1590,7 +1590,7 @@ const Layout: React.FC<LayoutProps> = ({
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="relative w-full max-h-[88dvh] sm:max-h-[85vh] bg-white dark:bg-zinc-950 rounded-t-3xl border-t border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden z-10"
+                className="relative w-full h-[88vh] max-h-[88dvh] sm:max-h-[85vh] bg-white dark:bg-zinc-950 rounded-t-3xl border-t border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden z-10 touch-pan-y"
               >
                   {/* Drag Handle */}
                   <div className="w-full py-3 flex justify-center cursor-pointer shrink-0" onClick={() => setShowMobileMenu(false)}>
@@ -1608,8 +1608,8 @@ const Layout: React.FC<LayoutProps> = ({
                               <div className="text-[10px] text-zinc-500 font-medium">{getUserAllRolesDisplayName(currentUser)}</div>
                           </div>
                       </div>
-                      <button onClick={() => setShowMobileMenu(false)} className="p-1.5 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors">
-                          <X size={16} />
+                      <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors">
+                          <X size={18} />
                       </button>
                   </div>
                   
@@ -1628,12 +1628,15 @@ const Layout: React.FC<LayoutProps> = ({
                       </div>
                   )}
 
-                  {/* All other menu items in a clean, high-end visual grid (shadcn/ui style card elements) */}
-                  <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar space-y-6 pb-28">
+                  {/* All menu items in a clean, high-end visual grid with full mobile touch-scrolling support */}
+                  <div 
+                    className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar space-y-6 pb-36"
+                    style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                  >
                       <div>
-                          <h4 className="text-xs font-bold text-zinc-400 mb-3 block">بخش‌های تکمیلی سیستم</h4>
-                          <div className="grid grid-cols-3 gap-3">
-                              {menuItems.map((item) => {
+                          <h4 className="text-xs font-bold text-zinc-400 mb-3 block">تمام بخش‌ها و امکانات سیستم</h4>
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                              {sortedItems.map((item) => {
                                   const Icon = item.icon;
                                   const isActive = activeTab === item.id;
                                   return (
@@ -1642,11 +1645,11 @@ const Layout: React.FC<LayoutProps> = ({
                                         onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
                                         className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all border relative ${
                                             isActive 
-                                            ? 'bg-blue-50/50 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400' 
-                                            : 'bg-zinc-50/50 dark:bg-zinc-900/50 border-zinc-100 dark:border-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100'
+                                            ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold shadow-sm' 
+                                            : 'bg-zinc-50/80 dark:bg-zinc-900/60 border-zinc-200/60 dark:border-zinc-800/60 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                                         }`}
                                       >
-                                          <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800'}`}>
+                                          <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800'}`}>
                                               <Icon size={18} strokeWidth={2} />
                                           </div>
                                           <span className="text-[10px] font-bold text-center leading-tight truncate w-full">{item.label}</span>
