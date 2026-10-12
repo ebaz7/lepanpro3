@@ -9,7 +9,7 @@ import {
   Check, X, Sparkles, Navigation, Phone, Mail, Instagram, FileText, ShoppingBag, 
   Globe, Share2, Copy, Smartphone, Layers, Palette, RefreshCw, Loader2, PhoneCall,
   ExternalLink, Building2, UserCheck, MessageSquare, AlertCircle, Save, ShieldAlert, Lock, MapPin,
-  Upload, Image as ImageIcon, Camera, UploadCloud
+  Upload, Image as ImageIcon
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -56,73 +56,61 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const coverFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Compress and read uploaded image file into lightweight base64 data URL
-  const compressAndReadImage = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.85): Promise<string> => {
+  // Compress and read uploaded image into data URL
+  const compressAndReadImage = (file: File, maxWidth = 600, quality = 0.85): Promise<string> => {
     return new Promise((resolve, reject) => {
-      if (!file.type.startsWith('image/')) {
-        reject(new Error('لطفاً یک فایل تصویری انتخاب کنید'));
-        return;
-      }
       const reader = new FileReader();
       reader.onload = (e) => {
         const img = new Image();
         img.onload = () => {
+          const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
           if (width > maxWidth) {
             height = Math.round((height * maxWidth) / width);
             width = maxWidth;
           }
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-          const canvas = document.createElement('canvas');
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
-          if (!ctx) {
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } else {
             resolve(e.target?.result as string);
-            return;
           }
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', quality));
         };
-        img.onerror = () => resolve(e.target?.result as string);
+        img.onerror = () => reject(new Error('خطا در بارگذاری فایل تصویر'));
         img.src = e.target?.result as string;
       };
-      reader.onerror = reject;
+      reader.onerror = () => reject(new Error('خطا در خواندن فایل'));
       reader.readAsDataURL(file);
     });
   };
 
-  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !config) return;
     try {
-      const toastId = toast.loading('در حال پردازش و آپلود تصویر پروفایل...');
-      const base64 = await compressAndReadImage(file, 800, 800, 0.85);
-      setConfig({ ...config, avatarUrl: base64 });
-      toast.success('تصویر پروفایل با موفقیت آپلود شد! جهت اعمال نهایی دکمه ذخیره را بزنید.', { id: toastId });
+      toast.loading('در حال پردازش و آپلود لوگو...', { id: 'img_upload' });
+      const dataUrl = await compressAndReadImage(file, 400, 0.88);
+      setConfig({ ...config, avatarUrl: dataUrl });
+      toast.success('لوگو با موفقیت انتخاب شد.', { id: 'img_upload' });
     } catch (err: any) {
-      toast.error(err.message || 'خطا در بارگذاری تصویر پروفایل');
-    } finally {
-      if (e.target) e.target.value = '';
+      toast.error('خطا در آپلود لوگو: ' + (err.message || ''), { id: 'img_upload' });
     }
   };
 
-  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadCover = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !config) return;
     try {
-      const toastId = toast.loading('در حال پردازش و آپلود تصویر کاور...');
-      const base64 = await compressAndReadImage(file, 1200, 1200, 0.82);
-      setConfig({ ...config, coverUrl: base64 });
-      toast.success('تصویر کاور با موفقیت آپلود شد! جهت اعمال نهایی دکمه ذخیره را بزنید.', { id: toastId });
+      toast.loading('در حال پردازش و آپلود کاور...', { id: 'img_upload' });
+      const dataUrl = await compressAndReadImage(file, 900, 0.85);
+      setConfig({ ...config, coverUrl: dataUrl });
+      toast.success('تصویر کاور با موفقیت انتخاب شد.', { id: 'img_upload' });
     } catch (err: any) {
-      toast.error(err.message || 'خطا در بارگذاری تصویر کاور');
-    } finally {
-      if (e.target) e.target.value = '';
+      toast.error('خطا در آپلود کاور: ' + (err.message || ''), { id: 'img_upload' });
     }
   };
 
@@ -631,65 +619,70 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   />
                 </div>
 
+                {/* Hidden File Inputs */}
+                <input
+                  type="file"
+                  ref={avatarFileInputRef}
+                  onChange={handleUploadAvatar}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <input
+                  type="file"
+                  ref={coverFileInputRef}
+                  onChange={handleUploadCover}
+                  accept="image/*"
+                  className="hidden"
+                />
+
                 {/* Avatar / Logo Upload & URL Box */}
                 <div className="md:col-span-1 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <Camera className="w-4 h-4 text-blue-600" />
-                      <span>تصویر لوگو / پروفایل</span>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      لوگو / آواتار شرکت
                     </label>
-                    <span className="text-[10px] text-slate-400 font-medium">آپلود یا درج لینک</span>
+                    <button
+                      type="button"
+                      onClick={() => avatarFileInputRef.current?.click()}
+                      className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>آپلود تصویر...</span>
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="relative w-16 h-16 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 border-2 border-white dark:border-slate-800 shadow-md shrink-0">
+                    <div className="w-14 h-14 rounded-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900 shrink-0 shadow-sm flex items-center justify-center relative group">
                       <img
                         src={processBioImageUrl(config.avatarUrl, '/lepan-logo.png')}
-                        alt="Avatar Preview"
+                        alt="Logo"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = '/lepan-logo.png';
+                          const target = e.target as HTMLImageElement;
+                          target.onerror = null;
+                          target.src = '/lepan-logo.png';
                         }}
                       />
                     </div>
-
-                    <div className="flex-1 space-y-2">
-                      <input
-                        type="file"
-                        ref={avatarFileInputRef}
-                        onChange={handleAvatarFileChange}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {canManage && (
-                          <button
-                            type="button"
-                            onClick={() => avatarFileInputRef.current?.click()}
-                            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>آپلود مستقیم عکس</span>
-                          </button>
-                        )}
-                        {config.avatarUrl && canManage && (
-                          <button
-                            type="button"
-                            onClick={() => setConfig({ ...config, avatarUrl: '' })}
-                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-colors"
-                          >
-                            حذف عکس
-                          </button>
-                        )}
-                      </div>
+                    <div className="flex-1 min-w-0 space-y-1">
                       <input
                         type="text"
-                        value={config.avatarUrl || ''}
-                        onChange={(e) => setConfig({ ...config, avatarUrl: processBioImageUrl(e.target.value) })}
-                        placeholder="یا درج لینک مستقیم تصویر..."
-                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px] font-mono dir-ltr text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={config.avatarUrl}
+                        onChange={(e) => setConfig({ ...config, avatarUrl: e.target.value })}
+                        placeholder="آدرس اینترنتی تصویر لوگو..."
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 dir-ltr text-right"
                       />
+                      {config.avatarUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setConfig({ ...config, avatarUrl: '' })}
+                          className="text-[10px] text-rose-500 font-bold hover:underline flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>حذف عکس و بازگشت به پیش‌فرض</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -697,62 +690,51 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                 {/* Cover / Banner Upload & URL Box */}
                 <div className="md:col-span-1 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                      <ImageIcon className="w-4 h-4 text-purple-600" />
-                      <span>تصویر کاور / بنر بالای صفحه</span>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                      تصویر کاور / بنر بالایی
                     </label>
-                    <span className="text-[10px] text-slate-400 font-medium">آپلود یا درج لینک</span>
+                    <button
+                      type="button"
+                      onClick={() => coverFileInputRef.current?.click()}
+                      className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>آپلود تصویر...</span>
+                    </button>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="relative w-20 h-16 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-700 border-2 border-white dark:border-slate-800 shadow-md shrink-0">
+                    <div className="w-20 h-14 rounded-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-800 shrink-0 shadow-sm flex items-center justify-center relative group">
                       <img
                         src={processBioImageUrl(config.coverUrl, 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000')}
-                        alt="Cover Preview"
+                        alt="Cover"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000';
+                          const target = e.target as HTMLImageElement;
+                          target.onerror = null;
+                          target.src = 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000';
                         }}
                       />
                     </div>
-
-                    <div className="flex-1 space-y-2">
-                      <input
-                        type="file"
-                        ref={coverFileInputRef}
-                        onChange={handleCoverFileChange}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {canManage && (
-                          <button
-                            type="button"
-                            onClick={() => coverFileInputRef.current?.click()}
-                            className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all"
-                          >
-                            <Upload className="w-3.5 h-3.5" />
-                            <span>آپلود مستقیم کاور</span>
-                          </button>
-                        )}
-                        {config.coverUrl && canManage && (
-                          <button
-                            type="button"
-                            onClick={() => setConfig({ ...config, coverUrl: '' })}
-                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 transition-colors"
-                          >
-                            حذف کاور
-                          </button>
-                        )}
-                      </div>
+                    <div className="flex-1 min-w-0 space-y-1">
                       <input
                         type="text"
-                        value={config.coverUrl || ''}
-                        onChange={(e) => setConfig({ ...config, coverUrl: processBioImageUrl(e.target.value) })}
-                        placeholder="یا درج لینک مستقیم تصویر کاور..."
-                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px] font-mono dir-ltr text-right focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        value={config.coverUrl}
+                        onChange={(e) => setConfig({ ...config, coverUrl: e.target.value })}
+                        placeholder="آدرس اینترنتی بنر کاور..."
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 dir-ltr text-right"
                       />
+                      {config.coverUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setConfig({ ...config, coverUrl: '' })}
+                          className="text-[10px] text-rose-500 font-bold hover:underline flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>حذف عکس و بازگشت به پیش‌فرض</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

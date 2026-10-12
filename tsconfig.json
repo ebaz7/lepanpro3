@@ -16,5 +16,6 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "components", "services", "backend", "*.ts", "*.tsx"]
+  "include": ["src", "components", "services", "backend", "*.ts", "*.tsx"],
+  "exclude": ["node_modules", "dist", "android", "backups", "uploads", ".puppeteer", "coverage", "**/*.spec.ts", "server.js", "patch-dependencies.js", "build-android.js"]
 }

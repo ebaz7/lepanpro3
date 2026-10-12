@@ -65,6 +65,8 @@ export interface User {
   canManageZanjanPurchasing?: boolean;
   canExecuteBuyerZanjan?: boolean;
   canCreatePurchaseRequest?: boolean;
+  canView?: boolean;
+  canCreate?: boolean;
   canApproveWarehouseKeeper?: boolean;
   canWarehouseFinalize?: boolean;
   canApproveTechnical?: boolean;

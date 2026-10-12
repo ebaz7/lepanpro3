@@ -28,7 +28,9 @@ export default defineConfig({
     target: 'es2020',
     outDir: 'dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 3000,
+    chunkSizeWarningLimit: 5000,
+    reportCompressedSize: false,
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -38,7 +40,7 @@ export default defineConfig({
             if (id.includes('jspdf') || id.includes('pdf-lib') || id.includes('pdfjs-dist')) return 'vendor-pdf';
             if (id.includes('recharts') || id.includes('d3')) return 'vendor-charts';
             if (id.includes('lucide-react')) return 'vendor-icons';
-            if (id.includes('motion')) return 'vendor-motion';
+            if (id.includes('framer-motion') || id.includes('motion')) return 'vendor-motion';
             if (id.includes('quill') || id.includes('react-quill')) return 'vendor-editor';
             return 'vendor';
           }

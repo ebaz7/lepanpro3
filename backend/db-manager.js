@@ -99,9 +99,27 @@ export const robustFetch = async (url, options = {}) => {
                 socket.setKeepAlive(true, 1000);
             });
 
+            if (options.signal) {
+                if (options.signal.aborted) {
+                    req.destroy();
+                    const err = new Error('The operation was aborted');
+                    err.name = 'AbortError';
+                    return reject(err);
+                }
+                const onAbort = () => {
+                    req.destroy();
+                    const err = new Error('The operation was aborted');
+                    err.name = 'AbortError';
+                    reject(err);
+                };
+                options.signal.addEventListener('abort', onAbort, { once: true });
+            }
+
             req.on('timeout', () => {
                 req.destroy();
-                reject(new Error(`مهلت زمان برقراری ارتباط با وب‌سرویس (${timeoutMs / 1000} ثانیه) به پایان رسید.`));
+                const err = new Error(`مهلت زمان برقراری ارتباط با وب‌سرویس (${timeoutMs / 1000} ثانیه) به پایان رسید.`);
+                err.name = 'TimeoutError';
+                reject(err);
             });
             req.on('error', (e) => reject(e));
             if (options.body) {

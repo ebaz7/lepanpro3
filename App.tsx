@@ -58,6 +58,17 @@ import { playNotificationSound, playTaskAlarmSound } from './services/soundServi
 import { motion, AnimatePresence } from 'motion/react';
 import { initGraphicsEngine } from './services/graphicsEngine';
 
+const FALLBACK_BIO_CONFIG: BioLinkConfig = {
+    slug: 'lepanbaft',
+    companyTitle: 'شرکت تولیدی لپان بافت',
+    companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
+    avatarUrl: '/lepan-logo.png',
+    coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+    theme: 'lepan_light',
+    addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
+    blocks: []
+};
+
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [settings, setSettings] = useState<SystemSettings | undefined>(undefined);
@@ -98,17 +109,29 @@ function App() {
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
   const [isCalculatorMinimized, setIsCalculatorMinimized] = useState(false);
 
-  // Public Bio / QR Code Card Public Page View State
-  const [isPublicBioView, setIsPublicBioView] = useState<boolean>(() => {
+  // Helper to determine if current URL is a public bio / digital card page
+  const checkIsPublicBioRoute = (): boolean => {
     try {
-      const hash = window.location.hash;
-      const path = window.location.pathname;
-      const search = window.location.search;
-      return hash.startsWith('#p/') || path.startsWith('/p/') || search.includes('p=') || search.includes('public_bio');
+      const rawHash = (window.location.hash || '').toLowerCase();
+      const rawPath = (window.location.pathname || '').toLowerCase();
+      const rawSearch = (window.location.search || '').toLowerCase();
+      return (
+        rawHash.startsWith('#p/') ||
+        rawHash.startsWith('#/p/') ||
+        rawHash === '#p' ||
+        rawPath.startsWith('/p/') ||
+        rawSearch.includes('p=') ||
+        rawSearch.includes('public_bio') ||
+        rawHash.includes('bio') ||
+        rawHash.includes('lepanlink')
+      );
     } catch {
       return false;
     }
-  });
+  };
+
+  // Public Bio / QR Code Card Public Page View State
+  const [isPublicBioView, setIsPublicBioView] = useState<boolean>(() => checkIsPublicBioRoute());
   const [publicBioConfig, setPublicBioConfig] = useState<BioLinkConfig | null>(null);
 
   const activeTabRef = useRef(activeTab);
@@ -738,37 +761,22 @@ function App() {
   };
 
   useEffect(() => {
-    const isPublicCheck = () => {
-      try {
-        const rawHash = window.location.hash || '';
-        const rawPath = window.location.pathname || '';
-        const rawSearch = window.location.search || '';
-        return (
-          rawHash.startsWith('#p/') ||
-          rawHash.startsWith('#/p/') ||
-          rawHash === '#p' ||
-          rawPath.startsWith('/p/') ||
-          rawSearch.includes('p=') ||
-          rawSearch.includes('public_bio') ||
-          rawHash.includes('#bio') ||
-          rawHash.includes('#lepanlink')
-        );
-      } catch {
-        return false;
-      }
-    };
-
-    const isPublic = isPublicCheck();
+    const isPublic = checkIsPublicBioRoute();
     setIsPublicBioView(isPublic);
+
     if (isPublic) {
-      getBioLinkConfig().then(cfg => setPublicBioConfig(cfg)).catch(console.error);
+      getBioLinkConfig().then(cfg => {
+        if (cfg) setPublicBioConfig(cfg);
+      }).catch(console.error);
     }
 
     const handleRouteCheck = () => {
-      const stillPublic = isPublicCheck();
+      const stillPublic = checkIsPublicBioRoute();
       setIsPublicBioView(stillPublic);
       if (stillPublic) {
-        getBioLinkConfig().then(cfg => setPublicBioConfig(cfg)).catch(console.error);
+        getBioLinkConfig().then(cfg => {
+          if (cfg) setPublicBioConfig(cfg);
+        }).catch(console.error);
       }
     };
 
@@ -788,9 +796,10 @@ function App() {
         safePushState({ tab: 'dashboard', root: true }, '', '#dashboard');
     }
 
-    const defaultTab = window.location.hash.replace('#', '');
+    const defaultTab = (window.location.hash || '').replace(/^#\/?/, '') || 'dashboard';
+    const validTabs = ['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts', 'digital-card'];
 
-    if (['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'ccti', 'sayan', 'cheque-receipts', 'digital-card'].includes(defaultTab)) {
+    if (validTabs.includes(defaultTab)) {
         setActiveTabState(defaultTab); 
         safeReplaceState({ tab: defaultTab }, '', `#${defaultTab}`);
     } else { 
@@ -798,7 +807,7 @@ function App() {
     }
 
     const handlePopState = (event: PopStateEvent) => {
-        if (isPublicCheck()) return;
+        if (checkIsPublicBioRoute()) return;
         const handled = goBack(true);
         if (!handled && event.state?.tab) {
             setActiveTab(event.state.tab, false);
@@ -1896,16 +1905,7 @@ function App() {
         </AnimatePresence>
         {isPublicBioView ? (
             <PublicBioPage 
-                config={publicBioConfig || {
-                    slug: 'lepanbaft',
-                    companyTitle: 'شرکت تولیدی لپان بافت',
-                    companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
-                    avatarUrl: '/lepan-logo.png',
-                    coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
-                    theme: 'lepan_light',
-                    addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
-                    blocks: []
-                }}
+                config={publicBioConfig || FALLBACK_BIO_CONFIG}
             />
         ) : !currentUser ? (
             <Login onLogin={handleLogin} />

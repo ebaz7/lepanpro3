@@ -1726,7 +1726,8 @@ const executeSayanQuery = async (db, queryStr, timeoutMs = 25000) => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ query: queryStr }),
-            signal: controller.signal
+            signal: controller.signal,
+            timeout: timeoutMs
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
@@ -1735,7 +1736,7 @@ const executeSayanQuery = async (db, queryStr, timeoutMs = 25000) => {
         const data = await response.json();
         return data.data || [];
     } catch (err) {
-        if (err?.name === 'AbortError') {
+        if (err?.name === 'AbortError' || err?.name === 'TimeoutError' || err?.message?.includes('aborted')) {
             throw new Error(`مهلت زمان اجرای کوئری در سرور سایان (${timeoutMs / 1000} ثانیه) به پایان رسید.`);
         }
         throw err;

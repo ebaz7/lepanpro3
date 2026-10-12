@@ -1590,18 +1590,18 @@ const Layout: React.FC<LayoutProps> = ({
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
                 transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="relative w-full max-h-[85vh] bg-white dark:bg-zinc-950 rounded-t-3xl border-t border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden z-10"
+                className="relative w-full max-h-[88dvh] sm:max-h-[85vh] bg-white dark:bg-zinc-950 rounded-t-3xl border-t border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden z-10"
               >
                   {/* Drag Handle */}
-                  <div className="w-full py-3 flex justify-center cursor-pointer" onClick={() => setShowMobileMenu(false)}>
+                  <div className="w-full py-3 flex justify-center cursor-pointer shrink-0" onClick={() => setShowMobileMenu(false)}>
                       <div className="w-12 h-1.5 bg-zinc-300 dark:bg-zinc-800 rounded-full" />
                   </div>
 
                   {/* Header */}
-                  <div className="px-6 pb-4 border-b border-zinc-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-zinc-950">
+                  <div className="px-6 pb-4 border-b border-zinc-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-zinc-950 shrink-0">
                       <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center font-bold text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800">
-                              {currentUser.fullName.charAt(0)}
+                          <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center font-bold text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                              {currentUser.avatar ? <img src={resolveImageUrl(currentUser.avatar)} alt="" className="w-full h-full object-cover"/> : currentUser.fullName.charAt(0)}
                           </div>
                           <div>
                               <div className="font-bold text-zinc-900 dark:text-white text-sm">{currentUser.fullName}</div>
@@ -1615,7 +1615,7 @@ const Layout: React.FC<LayoutProps> = ({
                   
                   {/* Notification Alert in bottom-sheet if disabled */}
                   {canSeeNotifications && !notifEnabled && (
-                      <div className="px-6 mt-4">
+                      <div className="px-6 mt-3 shrink-0">
                           <div className="bg-red-50/80 border border-red-100 dark:bg-red-950/20 dark:border-red-950 p-3 rounded-xl flex items-center justify-between shadow-sm">
                               <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs font-bold">
                                   <Bell size={16} />
@@ -1629,65 +1629,68 @@ const Layout: React.FC<LayoutProps> = ({
                   )}
 
                   {/* All other menu items in a clean, high-end visual grid (shadcn/ui style card elements) */}
-                  <div className="px-6 py-4 flex-1 overflow-y-auto custom-scrollbar">
-                      <h4 className="text-xs font-bold text-zinc-400 mb-3 block">بخش‌های تکمیلی سیستم</h4>
-                      <div className="grid grid-cols-3 gap-3">
-                          {menuItems.map((item) => {
-                              const Icon = item.icon;
-                              const isActive = activeTab === item.id;
-                              return (
-                                  <button 
-                                    key={item.id} 
-                                    onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
-                                    className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all border relative ${
-                                        isActive 
-                                        ? 'bg-blue-50/50 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400' 
-                                        : 'bg-zinc-50/50 dark:bg-zinc-900/50 border-zinc-100 dark:border-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100'
-                                    }`}
-                                  >
-                                      <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800'}`}>
-                                          <Icon size={18} strokeWidth={2} />
-                                      </div>
-                                      <span className="text-[10px] font-bold text-center leading-tight truncate w-full">{item.label}</span>
-                                      {item.id === 'chat' && unreadChatCount > 0 && (
-                                          <span className="absolute top-2 left-2 bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded-full min-w-[14px] text-center font-bold shadow-sm">{unreadChatCount}</span>
-                                      )}
-                                  </button>
-                              );
-                          })}
+                  <div className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar space-y-6 pb-28">
+                      <div>
+                          <h4 className="text-xs font-bold text-zinc-400 mb-3 block">بخش‌های تکمیلی سیستم</h4>
+                          <div className="grid grid-cols-3 gap-3">
+                              {menuItems.map((item) => {
+                                  const Icon = item.icon;
+                                  const isActive = activeTab === item.id;
+                                  return (
+                                      <button 
+                                        key={item.id} 
+                                        onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
+                                        className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all border relative ${
+                                            isActive 
+                                            ? 'bg-blue-50/50 dark:bg-blue-950/10 border-blue-200 dark:border-blue-900 text-blue-600 dark:text-blue-400' 
+                                            : 'bg-zinc-50/50 dark:bg-zinc-900/50 border-zinc-100 dark:border-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100'
+                                        }`}
+                                      >
+                                          <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800'}`}>
+                                              <Icon size={18} strokeWidth={2} />
+                                          </div>
+                                          <span className="text-[10px] font-bold text-center leading-tight truncate w-full">{item.label}</span>
+                                          {item.id === 'chat' && unreadChatCount > 0 && (
+                                              <span className="absolute top-2 left-2 bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded-full min-w-[14px] text-center font-bold shadow-sm">{unreadChatCount}</span>
+                                          )}
+                                      </button>
+                                  );
+                              })}
+                          </div>
                       </div>
-                  </div>
-                  
-                  {/* Bottom sheet footer with settings and quick controls */}
-                  <div className="p-6 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-900 flex flex-col gap-2">
-                      <div className="grid grid-cols-2 gap-3">
-                          <button onClick={() => { setShowMobileMenu(false); setShowProfileModal(true); }} className="flex items-center justify-center gap-2 p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50">
-                              <Settings size={14} className="text-zinc-500" /> تنظیمات پروفایل
+
+                      {/* Footer controls inside scrollable view */}
+                      <div className="pt-4 border-t border-zinc-100 dark:border-zinc-900 flex flex-col gap-2 pb-10">
+                          <h4 className="text-xs font-bold text-zinc-400 mb-1 block">تنظیمات و دسترسی سریع</h4>
+                          <div className="grid grid-cols-2 gap-3">
+                              <button onClick={() => { setShowMobileMenu(false); setShowProfileModal(true); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100">
+                                  <Settings size={14} className="text-zinc-500" /> تنظیمات پروفایل
+                              </button>
+                              <button onClick={() => { setShowMobileMenu(false); toggleTheme(); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100">
+                                  <Sparkles size={14} className="text-purple-500 animate-pulse" /> تغییر پوسته UI
+                              </button>
+                          </div>
+                          <button 
+                            onClick={toggleLowSpecMode} 
+                            className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold transition-colors ${
+                              lowSpecMode 
+                                ? 'bg-amber-500/10 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300' 
+                                : 'bg-zinc-50 dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100'
+                            }`}
+                          >
+                              <Zap size={14} className={lowSpecMode ? "text-amber-500 fill-amber-500" : "text-zinc-500"} />
+                              <span>{lowSpecMode ? 'حالت سیستم ضعیف (فعال - بدون لگ)' : 'حالت سیستم‌های ضعیف (حذف کامل لگ)'}</span>
                           </button>
-                          <button onClick={() => { setShowMobileMenu(false); toggleTheme(); }} className="flex items-center justify-center gap-2 p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50">
-                              <Sparkles size={14} className="text-purple-500 animate-pulse" /> تغییر پوسته UI
+                          {onToggleDarkMode && (
+                              <button onClick={onToggleDarkMode} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100">
+                                  {isDarkMode ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
+                                  <span>{isDarkMode ? 'تغییر به حالت روشن (Light)' : 'تغییر به حالت تاریک (Dark)'}</span>
+                              </button>
+                          )}
+                          <button onClick={handleLogout} className="flex items-center justify-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30 border border-red-100 dark:border-red-950/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-colors">
+                              <LogOut size={14}/> خروج از سیستم
                           </button>
                       </div>
-                      <button 
-                        onClick={toggleLowSpecMode} 
-                        className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold transition-colors ${
-                          lowSpecMode 
-                            ? 'bg-amber-500/10 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300' 
-                            : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50'
-                        }`}
-                      >
-                          <Zap size={14} className={lowSpecMode ? "text-amber-500 fill-amber-500" : "text-zinc-500"} />
-                          <span>{lowSpecMode ? 'حالت سیستم ضعیف (فعال - بدون لگ)' : 'حالت سیستم‌های ضعیف (حذف کامل لگ)'}</span>
-                      </button>
-                      {onToggleDarkMode && (
-                          <button onClick={onToggleDarkMode} className="flex items-center justify-center gap-2 p-2.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50">
-                              {isDarkMode ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
-                              <span>{isDarkMode ? 'تغییر به حالت روشن (Light)' : 'تغییر به حالت تاریک (Dark)'}</span>
-                          </button>
-                      )}
-                      <button onClick={handleLogout} className="flex items-center justify-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30 border border-red-100 dark:border-red-950/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-colors">
-                          <LogOut size={14}/> خروج از سیستم
-                      </button>
                   </div>
               </motion.div>
           </div>
