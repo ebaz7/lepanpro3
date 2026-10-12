@@ -71,50 +71,13 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
   const canSeeMeetings = currentUser.role === UserRole.ADMIN || perms.canViewMeetings === true;
   const canSeePurchase = currentUser.role === UserRole.ADMIN || 
     perms.canView === true || 
-    perms.canCreate === true ||
     perms.canManagePurchase === true || 
     currentUser.canManagePurchase === true || 
     currentUser.canManageParts === true || 
     currentUser.canCreatePurchaseRequest === true ||
-    currentUser.canView === true ||
-    currentUser.canCreate === true ||
-    perms.canApproveWarehouseKeeper === true ||
-    currentUser.canApproveWarehouseKeeper === true ||
-    perms.canWarehouseFinalize === true ||
-    currentUser.canWarehouseFinalize === true ||
-    perms.canApproveTechnical === true ||
-    currentUser.canApproveTechnical === true ||
-    perms.canApproveShiftLeader === true ||
-    currentUser.canApproveShiftLeader === true ||
-    perms.canCheckQC === true ||
-    currentUser.canCheckQC === true ||
-    perms.canRegisterEntry === true ||
-    currentUser.canRegisterEntry === true ||
-    perms.canManageParts === true ||
-    perms.canApproveFactoryDecision === true ||
-    currentUser.canApproveFactoryDecision === true ||
-    perms.canApproveFactory === true ||
-    currentUser.canApproveFactory === true ||
-    perms.canApproveFactoryFinal === true ||
-    currentUser.canApproveFactoryFinal === true ||
-    perms.canManageZanjanPurchasing === true ||
-    currentUser.canManageZanjanPurchasing === true ||
-    perms.canExecuteBuyerZanjan === true ||
-    currentUser.canExecuteBuyerZanjan === true ||
-    perms.canApproveCEO === true ||
-    currentUser.canApproveCEO === true ||
-    perms.canApproveCommercialManager === true ||
-    currentUser.canApproveCommercialManager === true ||
-    perms.canManageProformas === true ||
-    currentUser.canManageProformas === true ||
-    perms.canSelectProforma === true ||
-    currentUser.canSelectProforma === true ||
-    perms.canCommercialFinalize === true ||
-    currentUser.canCommercialFinalize === true ||
     currentUser.role === UserRole.WAREHOUSE_KEEPER || 
     currentUser.role === UserRole.FACTORY_MANAGER || 
-    currentUser.role === UserRole.COMMERCIAL ||
-    currentUser.role === UserRole.QC;
+    currentUser.role === UserRole.COMMERCIAL;
   const canSeeCcti = true; // عمومی برای تمام کاربران (تبدیل عکس، PDF و ادغام)
   const canSeeSayan = currentUser.role === UserRole.ADMIN || 
     perms.canViewSayan === true || 

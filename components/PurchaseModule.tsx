@@ -96,8 +96,15 @@ export const canUserViewProformas = (
     }
 
     // Check direct user override or role permission for canViewPricingAndInvoices
-    if (user.canViewPricingAndInvoices === true || checkPurchasePermission(user, 'canViewPricingAndInvoices', settings)) {
+    if (user.canViewPricingAndInvoices === true) {
         return true;
+    }
+
+    for (const r of roles) {
+        const perms = (settings?.purchaseRolePermissions as any)?.[r] || {};
+        if (perms.canViewPricingAndInvoices === true) {
+            return true;
+        }
     }
 
     // 2. Unconditional Senior Managers: Commercial Manager, CEO, Financial Manager
@@ -216,60 +223,18 @@ export const checkPurchasePermission = (
     const isAdmin = user.role === UserRole.ADMIN || (user.roles && user.roles.includes(UserRole.ADMIN));
     if (isAdmin) return true;
 
-    // Direct user-level boolean permission takes highest individual priority
+    // Direct user-level boolean permission
     if ((user as any)[permKey] === true) return true;
-    if (permKey === 'canCreate' && (user.canCreatePurchaseRequest === true || (user as any).canCreate === true)) return true;
-    if (permKey === 'canView' && (user.canManagePurchase === true || (user as any).canView === true)) return true;
 
-    // Collect all role identifiers for this user (IDs, labels, lowercase, original)
     const rolesList: string[] = [];
-    if (user.role) {
-        rolesList.push(String(user.role));
-        rolesList.push(String(user.role).toLowerCase());
-    }
+    if (user.role) rolesList.push(String(user.role).toLowerCase());
     if (user.roles && Array.isArray(user.roles)) {
         user.roles.forEach(r => {
             if (r) {
-                rolesList.push(String(r));
-                rolesList.push(String(r).toLowerCase());
+                const s = String(r).toLowerCase();
+                if (!rolesList.includes(s)) rolesList.push(s);
             }
         });
-    }
-
-    // Also include custom role IDs if user has the role label, or labels if user has the role ID
-    if (settings?.customRoles && Array.isArray(settings.customRoles)) {
-        settings.customRoles.forEach(cr => {
-            const matchesId = rolesList.some(r => r.toLowerCase() === cr.id.toLowerCase());
-            const matchesLabel = rolesList.some(r => r.toLowerCase() === cr.label?.toLowerCase() || (cr.name && r.toLowerCase() === cr.name.toLowerCase()));
-            if (matchesId || matchesLabel) {
-                if (!rolesList.includes(cr.id)) rolesList.push(cr.id);
-                if (!rolesList.includes(cr.id.toLowerCase())) rolesList.push(cr.id.toLowerCase());
-                if (cr.label && !rolesList.includes(cr.label.toLowerCase())) rolesList.push(cr.label.toLowerCase());
-                if (cr.name && !rolesList.includes(cr.name.toLowerCase())) rolesList.push(cr.name.toLowerCase());
-            }
-        });
-    }
-
-    // 1. Role permissions configured in Settings (take top priority over hardcoded defaults)
-    for (const r of rolesList) {
-        const pRolePerms = settings?.purchaseRolePermissions?.[r];
-        if (pRolePerms && (pRolePerms as any)[permKey] === true) return true;
-        const gRolePerms = settings?.rolePermissions?.[r];
-        if (gRolePerms && (gRolePerms as any)[permKey] === true) return true;
-
-        if (settings?.purchaseRolePermissions) {
-            const matchedEntry = Object.entries(settings.purchaseRolePermissions).find(
-                ([k]) => k.toLowerCase() === r.toLowerCase()
-            );
-            if (matchedEntry && (matchedEntry[1] as any)[permKey] === true) return true;
-        }
-
-        if (settings?.rolePermissions) {
-            const matchedEntry = Object.entries(settings.rolePermissions).find(
-                ([k]) => k.toLowerCase() === r.toLowerCase()
-            );
-            if (matchedEntry && (matchedEntry[1] as any)[permKey] === true) return true;
-        }
     }
 
     const checkRoleMatch = (snippet: string) => {
@@ -277,7 +242,7 @@ export const checkPurchasePermission = (
         return rolesList.some(r => r.includes(target));
     };
 
-    // 2. Specific permissions mapped to roles and designated users in settings
+    // Specific permissions mapped to roles and designated users in settings
     switch (permKey) {
         // --- TEHRAN COMMERCIAL BRANCH ---
         case 'canApproveCEO':
@@ -400,6 +365,12 @@ export const checkPurchasePermission = (
             break;
     }
 
+    // Role permissions from settings
+    for (const r of rolesList) {
+        const rolePerms = settings?.purchaseRolePermissions?.[r] || {};
+        if (!!(rolePerms as any)[permKey]) return true;
+    }
+
     return false;
 };
 
@@ -409,15 +380,6 @@ export const canUserAccessTehranBranch = (user: User, settings?: SystemSettings 
     if (isAdmin) return true;
     if (user.scopeZanjanOnly || user.purchaseScope === 'ZANJAN_ONLY') return false;
     if (user.scopeTehranOnly || user.purchaseScope === 'TEHRAN_ONLY') return true;
-
-    if (
-        checkPurchasePermission(user, 'canApproveCEO', settings) ||
-        checkPurchasePermission(user, 'canApproveCommercialManager', settings) ||
-        checkPurchasePermission(user, 'canManageProformas', settings) ||
-        checkPurchasePermission(user, 'canSelectProforma', settings) ||
-        checkPurchasePermission(user, 'canCommercialFinalize', settings) ||
-        checkPurchasePermission(user, 'canViewPricingAndInvoices', settings)
-    ) return true;
 
     const rolesList: string[] = [];
     if (user.role) rolesList.push(String(user.role).toLowerCase());
@@ -445,25 +407,6 @@ export const canUserAccessZanjanBranch = (user: User, settings?: SystemSettings 
     if (isAdmin) return true;
     if (user.scopeTehranOnly || user.purchaseScope === 'TEHRAN_ONLY') return false;
     if (user.scopeZanjanOnly || user.purchaseScope === 'ZANJAN_ONLY') return true;
-
-    // Check if user has ANY factory or common purchase permissions
-    if (
-        checkPurchasePermission(user, 'canApproveFactoryDecision', settings) ||
-        checkPurchasePermission(user, 'canManageZanjanPurchasing', settings) ||
-        checkPurchasePermission(user, 'canApproveFactory', settings) ||
-        checkPurchasePermission(user, 'canExecuteBuyerZanjan', settings) ||
-        checkPurchasePermission(user, 'canApproveFactoryFinal', settings) ||
-        checkPurchasePermission(user, 'canApproveWarehouseKeeper', settings) ||
-        checkPurchasePermission(user, 'canWarehouseFinalize', settings) ||
-        checkPurchasePermission(user, 'canApproveTechnical', settings) ||
-        checkPurchasePermission(user, 'canApproveShiftLeader', settings) ||
-        checkPurchasePermission(user, 'canCheckQC', settings) ||
-        checkPurchasePermission(user, 'canRegisterEntry', settings) ||
-        checkPurchasePermission(user, 'canManageParts', settings) ||
-        checkPurchasePermission(user, 'canManagePurchase', settings) ||
-        checkPurchasePermission(user, 'canCreate', settings) ||
-        checkPurchasePermission(user, 'canView', settings)
-    ) return true;
 
     const rolesList: string[] = [];
     if (user.role) rolesList.push(String(user.role).toLowerCase());
@@ -915,7 +858,7 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
             case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
             case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
             case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
-                return hasPurchasePerm('canApproveFactory') || hasPurchasePerm('canApproveFactoryFinal');
+                return hasPurchasePerm('canApproveFactory');
 
             case PurchaseRequestStatus.PENDING_BUYER_EXECUTION:
                 return hasPurchasePerm('canExecuteBuyerZanjan') || hasPurchasePerm('canManageZanjanPurchasing');
@@ -2224,87 +2167,66 @@ const WarehouseCheckModal = ({
         const randomNum = Math.floor(1000 + Math.random() * 9000);
         return `OUT-${shamsi.year}/${randomNum}`;
     });
-    const [recipient, setRecipient] = useState(request.requester || '');
+    const [recipient, setRecipient] = useState('');
     const [notes, setNotes] = useState('');
 
     const manualItems = request.items?.filter((it: any) => !it.partId) || [];
 
     return createPortal(
         <div className="fixed inset-0 z-[100000008] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl animate-scale-in text-right dir-rtl">
-                <div className="flex items-center gap-3 mb-6 text-indigo-600 border-b dark:border-gray-800 pb-4">
-                    <div className="p-3 bg-indigo-50 dark:bg-indigo-950/50 rounded-2xl">
-                        <Warehouse size={28} />
-                    </div>
+            <div className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-md shadow-2xl animate-scale-in text-right dir-rtl">
+                <div className="flex items-center gap-3 mb-6 text-indigo-600 border-b pb-4">
+                    <Warehouse size={28} />
                     <div>
-                        <h3 className="font-black text-lg text-gray-800 dark:text-gray-100">بررسی موجودی توسط انباردار کارخانه</h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">تایید وجود موجودی و تحویل مستقیم، یا تایید عدم موجودی و ارجاع به فرآیند خرید</p>
+                        <h3 className="font-black text-lg text-gray-800">بررسی موجودی انبار توسط سرشیفت</h3>
+                        <p className="text-xs text-gray-500">بررسی امکان تحویل مستقیم کالا یا ارجاع جهت خرید</p>
                     </div>
                 </div>
                 <div className="space-y-5">
-                    {/* Choice Tabs */}
-                    <div className="grid grid-cols-2 gap-2 p-1.5 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
-                        <button 
-                            type="button"
-                            onClick={() => setInStock(true)} 
-                            className={`py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${inStock ? 'bg-emerald-600 text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
-                        >
-                            <span>✅ تحویل مستقیم از انبار</span>
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-2xl">
+                        <button onClick={() => setInStock(true)} className={`py-3 rounded-xl text-xs font-black transition-all ${inStock ? 'bg-emerald-600 text-white shadow-md' : 'text-gray-600'}`}>
+                            تحویل مستقیم از انبار
                         </button>
-                        <button 
-                            type="button"
-                            onClick={() => setInStock(false)} 
-                            className={`py-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${!inStock ? 'bg-amber-600 text-white shadow-md' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
-                        >
-                            <span>❌ عدم موجودی (خرید)</span>
+                        <button onClick={() => setInStock(false)} className={`py-3 rounded-xl text-xs font-black transition-all ${!inStock ? 'bg-amber-600 text-white shadow-md' : 'text-gray-600'}`}>
+                            عدم موجودی (خرید)
                         </button>
                     </div>
 
                     {inStock ? (
-                        <div className="space-y-3 bg-emerald-50/70 dark:bg-emerald-950/30 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800">
-                            <p className="text-xs text-emerald-800 dark:text-emerald-300 font-bold leading-relaxed">
-                                📦 اقلام در انبار موجود است و مستقیماً به تحویل‌گیرنده تحویل داده می‌شود (نیازی به خرید جدید نیست).
-                            </p>
+                        <div className="space-y-3 bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100">
                             <div>
-                                <label className="text-[10px] font-bold text-gray-700 dark:text-gray-300 block mb-1">شماره حواله خروج انبار (تولید خودکار):</label>
-                                <input className="w-full border dark:border-gray-700 rounded-xl p-2.5 text-xs font-mono font-bold bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300" value={exitNumber} onChange={e => setExitNumber(e.target.value)} />
+                                <label className="text-[10px] font-bold text-gray-600 block mb-1">شماره حواله خروج انبار (تولید خودکار):</label>
+                                <input className="w-full border rounded-xl p-2.5 text-xs font-mono font-bold bg-gray-100 cursor-not-allowed text-gray-500" value={exitNumber} readOnly />
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-gray-700 dark:text-gray-300 block mb-1">نام تحویل‌گیرنده:</label>
-                                <input className="w-full border dark:border-gray-700 rounded-xl p-2.5 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="نام واحد یا فرد تحویل‌گیرنده" />
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-700 dark:text-gray-300 block mb-1">توضیحات انباردار (اختیاری):</label>
-                                <input className="w-full border dark:border-gray-700 rounded-xl p-2.5 text-xs bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200" value={notes} onChange={e => setNotes(e.target.value)} placeholder="یادداشت محل نگهداری، قفسه یا تحویل..." />
+                                <label className="text-[10px] font-bold text-gray-600 block mb-1">نام تحویل‌گیرنده:</label>
+                                <input className="w-full border rounded-xl p-2.5 text-xs font-bold" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="نام واحد یا فرد تحویل گیرنده" />
                             </div>
                         </div>
                     ) : (
-                        <div className="space-y-3 bg-amber-50/70 dark:bg-amber-950/30 p-4 rounded-2xl border border-amber-200 dark:border-amber-800">
-                            <p className="text-xs text-amber-800 dark:text-amber-300 font-bold leading-relaxed">
-                                🛒 کالا در انبار موجود نیست و درخواست جهت تعیین مسیر تامین و خرید به مدیر کارخانه ارجاع می‌گردد.
-                            </p>
+                        <div className="space-y-3">
                             <div>
-                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">ملاحظات انبارداری و دلایل کسری:</label>
-                                <textarea className="w-full border dark:border-gray-700 rounded-xl p-3 text-xs h-24 focus:ring-2 focus:ring-amber-200 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200" value={notes} onChange={e => setNotes(e.target.value)} placeholder="توضیحات عدم وجود در انبار، حداقل موجودی یا ضرورت خرید فوری..." />
+                                <label className="text-xs font-bold text-gray-700 block mb-1">ملاحظات انبارداری:</label>
+                                <textarea className="w-full border rounded-xl p-3 text-xs h-24 focus:ring-2 focus:ring-indigo-100 outline-none" value={notes} onChange={e => setNotes(e.target.value)} placeholder="توضیحات عدم وجود در انبار یا حداقل موجودی..." />
                             </div>
                         </div>
                     )}
 
-                    {manualItems.length > 0 && inStock ? (
-                        <div className="space-y-2.5 bg-blue-50 dark:bg-blue-950/30 p-3.5 rounded-2xl border border-blue-200 dark:border-blue-800">
-                            <p className="text-[11px] font-bold text-blue-800 dark:text-blue-300 leading-relaxed">
-                                💡 راهنما: {manualItems.length} قلم کالا دارای کد سیستم نیست. در صورت تمایل می‌توانید آن‌ها را در شناسنامه کالا تعریف کنید (اختیاری):
+                    {manualItems.length > 0 ? (
+                        <div className="space-y-3 bg-red-50 p-4 rounded-2xl border border-red-200">
+                            <p className="text-[11px] font-black text-red-700 leading-relaxed">
+                                ⚠️ خطای انبارداری: {manualItems.length} قلم کالا به صورت دستی ثبت شده است. برای خروج کالا یا ارجاع به درخواست خرید، ابتدا باید کالا در شناسنامه کالاها تعریف شده و انتخاب شود:
                             </p>
-                            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
                                 {manualItems.map((it: any) => (
-                                    <div key={it.id} className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900 text-[10px]">
-                                        <div className="font-bold text-gray-800 dark:text-gray-200 truncate pl-2 max-w-[200px]">
+                                    <div key={it.id} className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-red-100 text-[10px]">
+                                        <div className="font-bold text-gray-800 truncate pl-2 max-w-[150px]">
                                             {it.itemName}
                                         </div>
                                         <button 
                                             type="button"
                                             onClick={() => onRegisterPart(it)}
-                                            className="px-2.5 py-1 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-black text-[9px] cursor-pointer"
+                                            className="px-2.5 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-black text-[9px]"
                                         >
                                             ➕ تعریف کالا
                                         </button>
@@ -2316,13 +2238,13 @@ const WarehouseCheckModal = ({
 
                     <div className="flex gap-3 pt-2">
                         <button 
-                            type="button"
+                            disabled={manualItems.length > 0} 
                             onClick={() => onConfirm(inStock, { warehouseExitVoucherNumber: exitNumber, warehouseRecipient: recipient, warehouseNotes: notes })} 
-                            className={`flex-1 font-black py-3.5 rounded-2xl shadow-lg active:scale-95 transition-all text-xs cursor-pointer ${inStock ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200' : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-200'}`}
+                            className={`flex-1 font-black py-3.5 rounded-2xl shadow-lg active:scale-95 transition-all text-xs ${(manualItems.length > 0) ? 'bg-gray-300 text-gray-400 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white'}`}
                         >
-                            {inStock ? '✅ تایید داشتن موجودی و تحویل از انبار' : '❌ تایید عدم موجودی و ارسال به فرآیند خرید'}
+                            ثبت و ادامه فرآیند
                         </button>
-                        <button type="button" onClick={onClose} className="px-6 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-600 dark:text-gray-300 font-bold text-xs rounded-2xl cursor-pointer">انصراف</button>
+                        <button onClick={onClose} className="px-6 bg-gray-100 text-gray-600 font-bold text-xs rounded-2xl">انصراف</button>
                     </div>
                 </div>
             </div>
@@ -4261,7 +4183,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         )}
 
                         {/* Factory Manager Final Approve */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE) && (isAdmin || hasPurchasePerm('canApproveFactory') || hasPurchasePerm('canApproveFactoryFinal')) && (
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
                             <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT, {}, 'تایید نهایی تحویل و ارسال به انبار')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-xs flex items-center gap-2" disabled={actionLoading}>
                                 <Warehouse size={16} className="text-indigo-200" />
                                 <span>تایید نهایی تحویل و ارسال به انبار (مدیر کارخانه)</span>
@@ -4274,7 +4196,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         )}
 
                         {/* Factory Manager Final Sign */}
-                        {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN) && (isAdmin || hasPurchasePerm('canApproveFactory') || hasPurchasePerm('canApproveFactoryFinal')) && (
+                        {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
                             <button onClick={() => handleAction(PurchaseRequestStatus.COMPLETED, {}, 'امضای الکترونیکی و بایگانی پرونده')} className="bg-indigo-900 text-white px-8 py-3 rounded-2xl font-black shadow-2xl transition-all hover:bg-black text-xs flex items-center gap-2">
                                 <Warehouse size={16} className="text-amber-400" />
                                 <span>امضا، تکمیل و بایگانی نهایی پرونده (مدیر کارخانه)</span>

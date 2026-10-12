@@ -226,20 +226,14 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     }
 
     // 3. APPLY DATABASE SETTINGS (MERGE)
-    const userRoles = Array.from(new Set([
-        userRole,
-        ...(userObject?.roles || []),
-        ...(userObject?.role ? [userObject.role] : [])
-    ])).filter(Boolean) as (UserRole | string)[];
-
     if (settings) {
-        for (const r of userRoles) {
-            if (settings.rolePermissions && settings.rolePermissions[r]) {
-                perms = { ...perms, ...settings.rolePermissions[r] };
-            }
-            if (settings.purchaseRolePermissions && settings.purchaseRolePermissions[r]) {
-                perms = { ...perms, ...settings.purchaseRolePermissions[r] };
-            }
+        if (settings.rolePermissions && settings.rolePermissions[userRole]) {
+            console.log(`DEBUG: Applying settings for role ${userRole}:`, settings.rolePermissions[userRole]);
+            perms = { ...perms, ...settings.rolePermissions[userRole] };
+        }
+        if (settings.purchaseRolePermissions && settings.purchaseRolePermissions[userRole]) {
+            console.log(`DEBUG: Applying purchase settings for role ${userRole}:`, settings.purchaseRolePermissions[userRole]);
+            perms = { ...perms, ...settings.purchaseRolePermissions[userRole] };
         }
     }
 
@@ -247,8 +241,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
     // If not a system role, force sensitive permissions off UNLESS explicitly enabled in settings
     const systemRoleIds = Object.values(UserRole);
     if (!systemRoleIds.includes(userRole as any)) {
-        const hasWarehouseRole = userRoles.some(r => r === UserRole.WAREHOUSE_KEEPER || String(r).includes('warehouse') || String(r).includes('انبار'));
-        if (!settings?.rolePermissions?.[userRole]?.canManageWarehouse && !hasWarehouseRole) {
+        if (!settings?.rolePermissions?.[userRole]?.canManageWarehouse) {
             perms.canManageWarehouse = false;
         }
         if (!settings?.rolePermissions?.[userRole]?.canAccessChequeReceipts) {
@@ -283,6 +276,8 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         }
     }
 
+    console.log(`DEBUG: Final permissions for ${userRole}:`, perms);
+
     // 4. FORCE SYSTEM DEFAULTS AGAIN (SAFETY NET)
     // Ensure critical approvals for system roles aren't accidentally disabled by empty settings
     const hasRoleConfig = settings?.rolePermissions && settings.rolePermissions[userRole];
@@ -307,12 +302,6 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
 
     // 5. USER SPECIFIC OVERRIDES
     if (userObject) {
-        if (userObject.canView !== undefined) {
-            perms.canView = userObject.canView;
-        }
-        if (userObject.canCreate !== undefined) {
-            perms.canCreate = userObject.canCreate;
-        }
         if (userObject.canManageTrade !== undefined) {
             perms.canManageTrade = userObject.canManageTrade;
         }
@@ -362,15 +351,6 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         }
         if (userObject.canApproveFactoryFinal !== undefined) {
             perms.canApproveFactoryFinal = userObject.canApproveFactoryFinal;
-        }
-        if (userObject.canApproveCEO !== undefined) {
-            perms.canApproveCEO = userObject.canApproveCEO;
-        }
-        if (userObject.canApproveCommercialManager !== undefined) {
-            perms.canApproveCommercialManager = userObject.canApproveCommercialManager;
-        }
-        if (userObject.canCommercialFinalize !== undefined) {
-            perms.canCommercialFinalize = userObject.canCommercialFinalize;
         }
         if (userObject.canViewPricingAndInvoices !== undefined) {
             perms.canViewPricingAndInvoices = userObject.canViewPricingAndInvoices;
