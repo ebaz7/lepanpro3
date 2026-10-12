@@ -2284,6 +2284,18 @@ app.post('/api/sayan/cheque-receipts/sync-accounting-docs', async (req, res) => 
     }
 });
 
+// 10.6. Repair corrupted receipt Archive Codes & Doc Numbers (if previously set to 1)
+app.post('/api/sayan/cheque-receipts/repair-archive-codes', async (req, res) => {
+    try {
+        const fiscalYear = req.body?.fiscalYear || req.query?.fiscalYear || '4';
+        const result = await sayanChequeService.repairCorruptedArchiveCodes(fiscalYear);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error("Error repairing corrupted receipt archive codes:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // 11. Delete draft / cancel receipt
 app.post('/api/sayan/cheque-receipts/delete-draft', async (req, res) => {
     try {

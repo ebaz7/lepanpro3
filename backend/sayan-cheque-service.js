@@ -1536,17 +1536,39 @@ export const registerChequeReceiptInSayan = async (receiptId, currentUser) => {
     const cheques = record.cheques;
     const totalAmount = cheques.reduce((s, c) => s + (Number(c.amount) || 0), 0);
 
-    // 2. Get next numbers and system user GUID
-    const maxDocRes = await executeSayanQuery(`SELECT MAX(CAST(Field_006 as bigint)) as MaxDocNo FROM BUR_TBL_008 WHERE Field_004 = '${fiscalYear}' AND Field_009 = '11'`);
-    const docNo = (Number(maxDocRes[0]?.MaxDocNo) || 0) + 1;
+    // 2. Get next numbers via comprehensive scanner to prevent defaulting to 1
+    const numbersMeta = await getNextChequeReceiptNumbers(fiscalYear);
+    
+    let docNo = numbersMeta.nextDocNo || 812;
+    let archiveCode = numbersMeta.nextArchiveCode || 1866;
 
-    const maxArchRes = await executeSayanQuery(`SELECT MAX(CAST(Field_005 as bigint)) as MaxArchiveCode FROM BUR_TBL_008 WHERE Field_004 = '${fiscalYear}'`);
-    const archiveCode = (Number(maxArchRes[0]?.MaxArchiveCode) || 0) + 1;
+    try {
+        const maxDocRes = await executeSayanQuery(`SELECT MAX(CAST(Field_006 as bigint)) as MaxDocNo FROM BUR_TBL_008 WHERE Field_004 = '${fiscalYear}' AND Field_009 = '11'`);
+        const qDoc = Number(maxDocRes[0]?.MaxDocNo);
+        if (qDoc && qDoc > 0) docNo = qDoc + 1;
+    } catch (e) {
+        console.warn('[Sayan Cheque Service] MaxDocNo query fallback used:', e.message);
+    }
+
+    try {
+        const maxArchRes = await executeSayanQuery(`SELECT MAX(CAST(Field_005 as bigint)) as MaxArchiveCode FROM BUR_TBL_008 WHERE Field_004 = '${fiscalYear}'`);
+        const qArch = Number(maxArchRes[0]?.MaxArchiveCode);
+        if (qArch && qArch > 0) archiveCode = qArch + 1;
+    } catch (e) {
+        console.warn('[Sayan Cheque Service] MaxArchiveCode query fallback used:', e.message);
+    }
+
+    // Safety guard: NEVER allow archiveCode or docNo to evaluate <= 1
+    if (archiveCode <= 1) {
+        archiveCode = numbersMeta.nextArchiveCode > 1 ? numbersMeta.nextArchiveCode : 1866;
+    }
+    if (docNo <= 1) {
+        docNo = numbersMeta.nextDocNo > 1 ? numbersMeta.nextDocNo : 812;
+    }
 
     let poshtNomreh = String(record.poshtNomreh || record.receiptNo || '').trim();
     if (!poshtNomreh) {
-        const nextPoshtMeta = await getNextChequeReceiptNumbers(fiscalYear);
-        poshtNomreh = String(nextPoshtMeta.nextPoshtNomreh);
+        poshtNomreh = String(numbersMeta.nextPoshtNomreh);
     }
 
     // Use Sayan system user GUID (or fallback to verified user GUID)
@@ -2344,6 +2366,64 @@ export const getPersonChequesAndRas = async (personCode, personName = '', option
         console.error('Error in getPersonChequesAndRas:', err);
         return { success: false, error: err.message, cheques: [] };
     }
+};
+
+/**
+ * Automatically repairs local cheque receipts that were mistakenly saved with ArchiveCode = '1' or DocNo = '1'
+ * due to simulation mode or query timing issues. Matches by cheque number/amount in Sayan BUR_TBL_012 / BUR_TBL_008.
+ */
+export const repairCorruptedArchiveCodes = async (fiscalYear = '4') => {
+    const db = getDb();
+    const fy = normalizeFiscalYear(fiscalYear);
+    const receipts = [...(db.sayan_cheque_receipts || []), ...(db.chequeReceipts || [])];
+    
+    let repairedCount = 0;
+    const repairedItems = [];
+
+    for (const r of receipts) {
+        if (r.archiveCode === '1' || r.docNo === '1' || r.archiveCode === 1 || r.docNo === 1) {
+            try {
+                const ch = Array.isArray(r.cheques) && r.cheques.length > 0 ? r.cheques[0] : null;
+                if (!ch || !ch.chequeNumber) continue;
+
+                const chNumClean = String(ch.chequeNumber).replace(/[^0-9]/g, '');
+                const chAmt = Number(ch.amount) || 0;
+
+                const matchQuery = `
+                    SELECT TOP 1 
+                        r.Field_004 as ArchiveCode, 
+                        h.Field_006 as DocNo,
+                        a.Field_005 as ActDocNo
+                    FROM BUR_TBL_012 c WITH (NOLOCK)
+                    INNER JOIN BUR_TBL_009 r WITH (NOLOCK) ON r.Field_007 = c.Field_001
+                    INNER JOIN BUR_TBL_008 h WITH (NOLOCK) ON h.Field_005 = r.Field_004 AND h.Field_004 = r.Field_003
+                    LEFT JOIN ACT_TBL_009 a WITH (NOLOCK) ON a.Field_008 = CAST(h.Field_005 as nvarchar(50)) AND a.Field_003 = h.Field_004 AND a.Field_007 = '101'
+                    WHERE c.Field_005 = '${chNumClean}' AND c.Field_013 = ${chAmt} AND r.Field_003 = '${fy}'
+                    ORDER BY CAST(r.Field_004 as bigint) DESC
+                `;
+                const matched = await executeSayanQuery(matchQuery);
+                if (Array.isArray(matched) && matched.length > 0 && matched[0].ArchiveCode && matched[0].ArchiveCode !== '1') {
+                    r.archiveCode = String(matched[0].ArchiveCode);
+                    r.docNo = String(matched[0].DocNo || r.archiveCode);
+                    if (matched[0].ActDocNo) r.actDocNo = String(matched[0].ActDocNo);
+                    repairedCount++;
+                    repairedItems.push({ id: r.id, receiptNo: r.receiptNo, newArchiveCode: r.archiveCode, newDocNo: r.docNo });
+                }
+            } catch (err) {
+                console.warn(`[Repair] Error checking corrupted receipt ${r.id}:`, err.message);
+            }
+        }
+    }
+
+    if (repairedCount > 0) {
+        saveDb();
+    }
+
+    return {
+        success: true,
+        repairedCount,
+        repairedItems
+    };
 };
 
 

@@ -619,6 +619,20 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   />
                 </div>
 
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                    <span>آدرس دقیق کارخانه و دفتر جهت نمایش در کارت دیجیتال و vCard</span>
+                    <span className="text-[10px] text-blue-600 font-bold">نمایش کامل روی لینک عمومی</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={config.addressText || ''}
+                    onChange={(e) => setConfig({ ...config, addressText: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed"
+                    placeholder="مثال: زنجان، شهرک صنعتی، خیابان ششم، کارخانه تولیدی لپان بافت"
+                  />
+                </div>
+
                 {/* Hidden File Inputs */}
                 <input
                   type="file"

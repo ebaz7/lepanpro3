@@ -128,7 +128,7 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         canAccessSayanRegistrations: false, canSayanPreInvoices: false,
         canSayanRegisterCheque: false, canSayanEditReceipt: false, canSayanApproveAccounting: false, canSayanApproveCeo: false, canSayanFinalApprove: false, canSayanDeleteReceipt: false,
         canAccessChequeReceipts: false,
-        canAccessDigitalCard: true,
+        canAccessDigitalCard: false,
         canManageDigitalCard: false
     };
 

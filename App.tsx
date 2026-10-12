@@ -1904,9 +1904,11 @@ function App() {
             )}
         </AnimatePresence>
         {isPublicBioView ? (
-            <PublicBioPage 
-                config={publicBioConfig || FALLBACK_BIO_CONFIG}
-            />
+            <div className="w-full min-h-screen h-auto overflow-y-auto overscroll-y-contain -webkit-overflow-scrolling-touch bg-slate-50 dark:bg-slate-950">
+              <PublicBioPage 
+                  config={publicBioConfig || FALLBACK_BIO_CONFIG}
+              />
+            </div>
         ) : !currentUser ? (
             <Login onLogin={handleLogin} />
         ) : (

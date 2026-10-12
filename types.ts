@@ -1786,6 +1786,7 @@ export interface PurchaseRequest {
     requestNumber: string;
     date: string;
     requester: string;
+    shiftLeader?: string; // نام سرشیفت / سرپرست خط
     requestingUnit?: string; // واحد درخواست‌کننده
     machinery?: string; // دستگاه یا ماشین‌آلات
     installationLocation?: string; // محل نصب

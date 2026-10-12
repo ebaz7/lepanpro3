@@ -709,7 +709,7 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
 };
 
 // --- BPMN WORKFLOW DIAGRAM COMPONENT ---
-const BpmnWorkflowDiagram: React.FC<{ currentStatus?: PurchaseRequestStatus; location?: string }> = ({ currentStatus, location }) => {
+const BpmnWorkflowDiagram: React.FC<{ currentStatus?: PurchaseRequestStatus; location?: string; request?: PurchaseRequest }> = ({ currentStatus, location, request }) => {
     const isStepActive = (status: PurchaseRequestStatus) => {
         const normActual = normalizePurchaseStatus(currentStatus);
         const normTarget = normalizePurchaseStatus(status);
@@ -721,7 +721,7 @@ const BpmnWorkflowDiagram: React.FC<{ currentStatus?: PurchaseRequestStatus; loc
         {
             title: '۱. ثبت و بررسی‌های اولیه کارخانه',
             steps: [
-                { status: PurchaseRequestStatus.PENDING_SHIFT_LEADER, title: 'تایید سرپرست خط', role: 'سرپرست خط' },
+                { status: PurchaseRequestStatus.PENDING_SHIFT_LEADER, title: request?.shiftLeader ? `تایید سرشیفت (${request.shiftLeader})` : 'تایید سرپرست خط', role: 'سرپرست خط / سرشیفت' },
                 { status: PurchaseRequestStatus.PENDING_TECHNICAL, title: 'تایید فنی و نت', role: 'واحد نت' },
                 { status: PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, title: 'بررسی موجودی انبار', role: 'انباردار قطعات' },
                 { status: PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION, title: 'تعیین مسیر تامین', role: 'مدیر کارخانه' },
@@ -755,14 +755,21 @@ const BpmnWorkflowDiagram: React.FC<{ currentStatus?: PurchaseRequestStatus; loc
     ];
 
     return (
-        <div className="bg-white text-gray-800 p-4 rounded-2xl border border-gray-200 shadow-sm text-right dir-rtl">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-2 mb-3">
+        <div className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm text-right dir-rtl">
+            <div className="flex flex-wrap justify-between items-center border-b border-gray-100 dark:border-gray-800 pb-2 mb-3 gap-2">
                 <div className="flex items-center gap-2">
-                    <GitFork className="text-indigo-600" size={14} />
-                    <span className="text-xs font-black text-gray-800">رهگیری الکترونیک فرآیند خرید (BPMN Workflow Tracker)</span>
+                    <GitFork className="text-indigo-600 dark:text-indigo-400" size={14} />
+                    <span className="text-xs font-black text-gray-800 dark:text-gray-200">رهگیری الکترونیک فرآیند خرید (BPMN Workflow Tracker)</span>
                 </div>
+                {request && (
+                    <div className="flex items-center gap-3 text-[10px] bg-indigo-50/70 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 px-3 py-1 rounded-xl border border-indigo-100 dark:border-indigo-900">
+                        <span>ثبت‌کننده: <strong className="font-black text-gray-900 dark:text-gray-100">{request.requester}</strong></span>
+                        <span>|</span>
+                        <span>سرشیفت: <strong className="font-black text-indigo-700 dark:text-indigo-300">{request.shiftLeader || 'ثبت نشده'}</strong></span>
+                    </div>
+                )}
                 {currentStatus && (
-                    <span className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-full text-[9px] font-black">
+                    <span className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900 px-2 py-0.5 rounded-full text-[9px] font-black">
                         مرحله فعلی: {currentStatus}
                     </span>
                 )}
@@ -770,18 +777,18 @@ const BpmnWorkflowDiagram: React.FC<{ currentStatus?: PurchaseRequestStatus; loc
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {phases.map((phase, pIdx) => (
-                    <div key={pIdx} className="space-y-2 bg-gray-50/50 p-2.5 rounded-xl border border-gray-100">
-                        <span className="text-[9px] font-black text-indigo-600 block border-b pb-1 border-gray-200">{phase.title}</span>
+                    <div key={pIdx} className="space-y-2 bg-gray-50/50 dark:bg-gray-800/40 p-2.5 rounded-xl border border-gray-100 dark:border-gray-800">
+                        <span className="text-[9px] font-black text-indigo-600 dark:text-indigo-400 block border-b pb-1 border-gray-200 dark:border-gray-700">{phase.title}</span>
                         <div className="space-y-1.5">
                             {phase.steps.map((step, sIdx) => {
                                 const active = isStepActive(step.status);
                                 return (
-                                    <div key={sIdx} className={`p-1.5 rounded-lg border flex items-center justify-between transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm scale-[1.01]' : 'bg-white border-gray-100'}`}>
+                                    <div key={sIdx} className={`p-1.5 rounded-lg border flex items-center justify-between transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm scale-[1.01]' : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700'}`}>
                                         <div className="flex items-center gap-1">
-                                            <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white animate-ping' : 'bg-gray-300'}`}></span>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white animate-ping' : 'bg-gray-300 dark:bg-gray-600'}`}></span>
                                             <span className="text-[10px] font-bold">{step.title}</span>
                                         </div>
-                                        <span className={`text-[8px] px-1 py-0.2 rounded font-black ${active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>{step.role}</span>
+                                        <span className={`text-[8px] px-1 py-0.2 rounded font-black ${active ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300'}`}>{step.role}</span>
                                     </div>
                                 );
                             })}
@@ -1424,6 +1431,8 @@ const RequestCard = ({ req, currentUser, onClick, settings }: { req: PurchaseReq
 // --- MODALS ---
 const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => {
     const [loading, setLoading] = useState(false);
+    const [requesterName, setRequesterName] = useState(currentUser?.fullName || '');
+    const [shiftLeader, setShiftLeader] = useState('');
     const [requestingUnit, setRequestingUnit] = useState('واحد نت و فنی');
     const [urgency, setUrgency] = useState<'عادی' | 'فوری' | 'اضطراری'>('عادی');
     const [targetBranch, setTargetBranch] = useState<'AUTO' | 'Tehran' | 'Factory'>(() => {
@@ -1650,17 +1659,18 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                 id: generateUUID(),
                 stage: PurchaseRequestStatus.PENDING_SHIFT_LEADER,
                 action: 'ثبت اولیه درخواست خرید توسط سرشیفت',
-                performedBy: currentUser.fullName,
+                performedBy: requesterName || currentUser.fullName,
                 role: currentUser.role,
                 timestamp: nowIso,
-                comment: `ثبت درخواست با ${validItems.length} قلم کالا (${urgency})${sayanSummaryList.length > 0 ? ` [موجودی سایان: ${sayanSummaryList.join(' | ')}]` : ''}`
+                comment: `ثبت درخواست توسط ${requesterName || currentUser.fullName}${shiftLeader ? ` (سرشیفت: ${shiftLeader})` : ''} با ${validItems.length} قلم کالا (${urgency})${sayanSummaryList.length > 0 ? ` [موجودی سایان: ${sayanSummaryList.join(' | ')}]` : ''}`
             };
 
             const newRequest: PurchaseRequest = {
                 id: generateUUID(),
                 requestNumber: nextNum,
                 date: nowIso.split('T')[0],
-                requester: currentUser.fullName,
+                requester: requesterName || currentUser.fullName,
+                shiftLeader: shiftLeader.trim() || undefined,
                 requestingUnit,
                 urgency,
                 location: targetBranch === 'Tehran' ? 'Tehran' : targetBranch === 'Factory' ? 'Factory' : undefined,
@@ -1719,34 +1729,38 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-4 bg-indigo-50/60 dark:bg-indigo-950/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5 bg-indigo-50/60 dark:bg-indigo-950/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
+                            <div>
+                                <label className="text-xs font-black text-indigo-900 dark:text-indigo-200 block mb-1">ثبت‌کننده درخواست *</label>
+                                <input className="w-full border border-indigo-200 dark:border-indigo-800 rounded-xl p-2 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={requesterName} onChange={e => setRequesterName(e.target.value)} placeholder="نام ثبت‌کننده" required />
+                            </div>
+                            <div>
+                                <label className="text-xs font-black text-indigo-900 dark:text-indigo-200 block mb-1">سرشیفت / سرپرست خط *</label>
+                                <input className="w-full border border-indigo-200 dark:border-indigo-800 rounded-xl p-2 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={shiftLeader} onChange={e => setShiftLeader(e.target.value)} placeholder="نام سرشیفت مربوطه" required />
+                            </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">واحد درخواست‌کننده</label>
-                                <input className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={requestingUnit} onChange={e => setRequestingUnit(e.target.value)} required />
+                                <input className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={requestingUnit} onChange={e => setRequestingUnit(e.target.value)} required />
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">شاخه تامین و فرآیند خرید</label>
-                                <select className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-black bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={targetBranch} onChange={e => setTargetBranch(e.target.value as any)}>
-                                    <option value="AUTO">⚖️ تعیین مسیر در مرحله ۳ (مدیر کارخانه)</option>
-                                    <option value="Tehran">🏢 بازرگانی تهران (دفتر مرکزی)</option>
-                                    <option value="Factory">🏭 کارخانه زنجان (خرید محلی)</option>
+                                <select className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2 text-xs font-black bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={targetBranch} onChange={e => setTargetBranch(e.target.value as any)}>
+                                    <option value="AUTO">⚖️ تعیین مسیر (مدیر کارخانه)</option>
+                                    <option value="Tehran">🏢 بازرگانی تهران</option>
+                                    <option value="Factory">🏭 کارخانه زنجان</option>
                                 </select>
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">درجه فوریت تامین</label>
-                                <select className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-black bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={urgency} onChange={e => setUrgency(e.target.value as any)}>
-                                    <option value="عادی">🟢 عادی (روتین)</option>
-                                    <option value="فوری">🟡 فوری (تامین سریع)</option>
-                                    <option value="اضطراری">🔴 اضطراری (توقف خط)</option>
+                                <select className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2 text-xs font-black bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={urgency} onChange={e => setUrgency(e.target.value as any)}>
+                                    <option value="عادی">🟢 عادی</option>
+                                    <option value="فوری">🟡 فوری</option>
+                                    <option value="اضطراری">🔴 اضطراری</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">دستگاه / ماشین‌آلات مربوطه</label>
-                                <input className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={machinery} onChange={e => setMachinery(e.target.value)} placeholder="مثلاً: پرس اکستروژن ۳۰۰۰ تن" />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">محل نصب / مصرف</label>
-                                <input className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={installationLocation} onChange={e => setInstallationLocation(e.target.value)} placeholder="مثلاً: خط انودایز / کارگاه ۲" />
+                                <label className="text-xs font-bold text-gray-700 dark:text-gray-300 block mb-1">دستگاه / ماشین‌آلات</label>
+                                <input className="w-full border border-gray-200 dark:border-gray-700 rounded-xl p-2 text-xs font-bold bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 outline-none" value={machinery} onChange={e => setMachinery(e.target.value)} placeholder="دستگاه مربوطه" />
                             </div>
                         </div>
 
@@ -4034,8 +4048,8 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     </div>
 
                     {/* Compact BPMN tracker placed at the bottom of the request info */}
-                    <div className="pt-4 border-t border-gray-100">
-                        <BpmnWorkflowDiagram currentStatus={request.status} location={request.location} />
+                    <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                        <BpmnWorkflowDiagram currentStatus={request.status} location={request.location} request={request} />
                     </div>
                 </div>
                 )}
