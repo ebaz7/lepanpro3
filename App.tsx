@@ -742,14 +742,18 @@ function App() {
                       }
                   }
                   if (targetUser && targetUser.phoneNumber && base64) {
-                      await apiCall('/send-whatsapp', 'POST', { 
-                          number: targetUser.phoneNumber, 
-                          message: caption, 
-                          mediaData: { data: base64, mimeType: 'image/jpeg', filename: `Order_${order.trackingNumber}.jpg` } 
-                      });
+                      try {
+                          await apiCall('/send-whatsapp', 'POST', { 
+                              number: targetUser.phoneNumber, 
+                              message: caption, 
+                              mediaData: { data: base64, mimeType: 'image/jpeg', filename: `Order_${order.trackingNumber}.jpg` } 
+                          });
+                      } catch (waErr) {
+                          console.warn("Non-blocking background WhatsApp notification skipped:", waErr);
+                      }
                   }
               } catch (e) { 
-                  console.error("Background Job Execution Error", e); 
+                  console.warn("Background Job execution warning:", e); 
               }
           }
       } catch (globalErr) {

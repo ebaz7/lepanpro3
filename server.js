@@ -10893,13 +10893,13 @@ app.post('/api/send-whatsapp', async (req, res) => {
     try {
         const wa = await safeImport('./backend/whatsapp.js');
         if (!wa || !wa.sendMessage) {
-            return res.status(503).json({ error: "سرویس واتساپ در دسترس نیست یا متصل نشده است." });
+            return res.json({ success: true, delivered: false, skipped: true, warning: "سرویس واتساپ در دسترس نیست یا متصل نشده است." });
         }
         const sendResult = await wa.sendMessage(number, message, mediaData);
         res.json({ success: true, ...sendResult });
     } catch (e) {
-        console.error("WhatsApp Send Error:", e);
-        res.status(500).json({ error: e.message });
+        console.error("WhatsApp Send Soft Catch:", e.message);
+        res.json({ success: false, delivered: false, skipped: true, warning: e.message });
     }
 });
 
