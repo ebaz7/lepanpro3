@@ -330,7 +330,7 @@ END:VCARD`;
   };
 
   return (
-    <div className={`w-full min-h-screen h-auto overflow-y-auto overscroll-y-contain -webkit-overflow-scrolling-touch dir-rtl font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-3 sm:py-8 px-2 sm:px-4 pb-32'}`}>
+    <div className={`w-full min-h-screen h-auto overflow-y-auto overscroll-y-auto -webkit-overflow-scrolling-touch touch-pan-y dir-rtl font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-4 sm:py-8 px-2 sm:px-4 pb-40'}`}>
       <Toaster position="top-center" />
       
       {/* Top Action Bar if in full screen */}
@@ -379,8 +379,7 @@ END:VCARD`;
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
           
           {/* Lepan Link Badge */}
-          <div className="absolute top-3 left-3 bg-white/20 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-sm">
-            <Sparkles className="w-3 h-3 text-amber-300" />
+          <div className="absolute top-3 left-3 bg-white/20 backdrop-blur-md border border-white/30 text-white text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
             <span>لپان لینک اختصاصی</span>
           </div>
         </div>
