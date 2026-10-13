@@ -10895,8 +10895,8 @@ app.post('/api/send-whatsapp', async (req, res) => {
         if (!wa || !wa.sendMessage) {
             return res.status(503).json({ error: "سرویس واتساپ در دسترس نیست یا متصل نشده است." });
         }
-        await wa.sendMessage(number, message, mediaData);
-        res.json({ success: true });
+        const sendResult = await wa.sendMessage(number, message, mediaData);
+        res.json({ success: true, ...sendResult });
     } catch (e) {
         console.error("WhatsApp Send Error:", e);
         res.status(500).json({ error: e.message });

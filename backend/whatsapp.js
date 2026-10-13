@@ -233,10 +233,20 @@ export const initWhatsApp = (authDir) => {
             addDiagnosticLog('warn', 'PUPPETEER', 'مسیر صریح کروم یافت نشد، پپتیر از مرورگر پیش‌فرض استفاده خواهد کرد.');
         }
 
+        // Common realistic desktop Chrome User-Agent to prevent WhatsApp Web from dropping session
+        const chromeUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+
+        puppeteerArgs.push(
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding'
+        );
+
         const puppeteerConfig = {
             headless: true,
             args: puppeteerArgs,
-            authTimeoutMs: 60000,
+            authTimeoutMs: 120000,
+            takeoverOnConflict: false
         };
         if (executablePath) {
             puppeteerConfig.executablePath = executablePath;
@@ -245,6 +255,7 @@ export const initWhatsApp = (authDir) => {
         client = new Client({ 
             authStrategy: new LocalAuth({ clientId: 'main_session', dataPath: absoluteAuthDir }), 
             puppeteer: puppeteerConfig,
+            userAgent: chromeUserAgent,
             webVersionCache: {
                 type: 'remote',
                 remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1045115170-alpha.html',
@@ -304,7 +315,15 @@ export const initWhatsApp = (authDir) => {
             qrDataUrl = null;
             clientInfo = null;
             isInitializing = false;
-            addDiagnosticLog('warn', 'CLIENT', `ارتباط واتساپ قطع شد. دلیل: ${reason}`);
+            addDiagnosticLog('warn', 'CLIENT', `ارتباط واتساپ قطع شد. دلیل: ${reason}. تلاش برای اتصال مجدد خودکار در ۵ ثانیه...`);
+            
+            // Auto-reconnect without clearing stored session files
+            setTimeout(() => {
+                if (!isReady && !isInitializing) {
+                    console.log(">>> Attempting auto-reconnect to preserved session...");
+                    initWhatsApp(currentAuthDir);
+                }
+            }, 5000);
         });
 
         client.on('change_state', (state) => {
@@ -545,7 +564,29 @@ export const sendMessage = async (number, text, mediaData) => {
         addDiagnosticLog('warn', 'MESSAGE', msg);
         return;
     }
-    let chatId = number.trim();
+    // Ensure active page reference
+    let page = client?.pupPage;
+    if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+        try {
+            if (client?.pupBrowser && client.pupBrowser.isConnected()) {
+                const pages = await client.pupBrowser.pages();
+                if (pages && pages.length > 0) {
+                    client.pupPage = pages[0];
+                    page = client.pupPage;
+                    console.log(">>> [WhatsApp] Recovered active pupPage from browser pages.");
+                }
+            }
+        } catch (e) {
+            console.warn(">>> [WhatsApp] Could not recover pupPage from browser:", e.message);
+        }
+    }
+
+    if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
+        const err = new Error("صفحه مرورگر واتساپ بسته شده یا هنوز لود نشده است. لطفاً وضعیت اتصال را در صفحه پیام‌رسان‌ها بررسی نمایید.");
+        addDiagnosticLog('error', 'MESSAGE', `خطا در دسترسی به صفحه مرورگر برای ${number}`, err.message);
+        throw err;
+    }
+
     if (!chatId.includes('@')) {
         const digits = chatId.replace(/\D/g, '');
         if (digits.length < 10) {
@@ -558,7 +599,6 @@ export const sendMessage = async (number, text, mediaData) => {
              chatId = `${digits}@g.us`;
         } else {
              const cleanDigits = digits.replace(/^0/, '98');
-             // Pre-resolve JID using Official WhatsApp Web API
              try {
                  const numId = await client.getNumberId(cleanDigits);
                  if (numId && numId._serialized) {
@@ -572,10 +612,6 @@ export const sendMessage = async (number, text, mediaData) => {
         }
     }
     try {
-        const page = client?.pupPage;
-        if (!client || !page || page.isClosed()) {
-            throw new Error("صفحه مرورگر واتساپ بسته شده یا در دسترس نیست (PupPage is null/closed)");
-        }
         if (mediaData && mediaData.data) {
             const media = new MessageMedia(mediaData.mimeType, mediaData.data, mediaData.filename);
             await client.sendMessage(chatId, media, { caption: text || '' });
@@ -583,6 +619,7 @@ export const sendMessage = async (number, text, mediaData) => {
             await client.sendMessage(chatId, text);
         }
         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${chatId} ارسال شد.`);
+        return { success: true, chatId };
     } catch (err) {
         // Fallback for WhatsApp Web internal memoize/id getter mismatch or null page execution context
         const isKnownError = err.message && (
@@ -621,7 +658,7 @@ export const sendMessage = async (number, text, mediaData) => {
                             await chat.sendMessage(text);
                         }
                         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش متغیر Chat) ارسال شد.`);
-                        return;
+                        return { success: true, chatId: targetJid };
                     }
                 } catch (chatErr) {
                     console.warn(`[WhatsApp] Chat object fallback failed: ${chatErr.message}. Trying direct page evaluate...`);
@@ -637,12 +674,30 @@ export const sendMessage = async (number, text, mediaData) => {
                         return await window.WWebJS.sendMessage(chat, msgText);
                     }, targetJid, text);
                     addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش تزریق مستقیم) ارسال شد.`);
-                    return;
+                    return { success: true, chatId: targetJid };
                 }
             } catch (retryErr) {
                 console.error("[WhatsApp] All fallback send methods failed:", retryErr.message);
             }
         }
+
+        // Check if error is due to group non-membership or invalid recipient
+        const isGroupOrRecipientError = chatId.endsWith('@g.us') || (err.message && (
+            err.message.includes('not a participant') ||
+            err.message.includes('not found') ||
+            err.message.includes('Chat not found') ||
+            err.message.includes('Evaluation failed') ||
+            err.message.includes('No LID')
+        ));
+
+        if (isGroupOrRecipientError) {
+            const warningMsg = `ارسال پیام به گروه یا مخاطب ${chatId} ناموفق بود (احتمالاً شماره متصل عضو این گروه نیست). گردش کار و ثبت سند با موفقیت ادامه یافت.`;
+            console.warn(`>>> [WhatsApp Soft Warning] ${warningMsg}:`, err.message);
+            addDiagnosticLog('warn', 'MESSAGE', warningMsg, err.message);
+            // Return soft failure so main business workflow (payment, exit, etc.) never breaks!
+            return { success: false, warning: warningMsg, error: err.message, skipped: true };
+        }
+
         addDiagnosticLog('error', 'MESSAGE', `خطا در ارسال پیام به ${chatId}: ${err.message}`, err.stack);
         throw err;
     }
