@@ -19,7 +19,7 @@ interface DigitalCardModuleProps {
 }
 
 export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUser, settings }) => {
-  const [activeTab, setActiveTab] = useState<'editor' | 'qr_print' | 'orders'>('editor');
+  const [activeTab, setActiveTab] = useState<'editor' | 'qr_print' | 'orders' | 'surveys'>('editor');
   const [config, setConfig] = useState<BioLinkConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -567,6 +567,23 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
           {config.orders && config.orders.filter(o => o.status === 'pending').length > 0 && (
             <span className="w-5 h-5 rounded-full bg-rose-500 text-white font-mono text-[10px] flex items-center justify-center font-bold">
               {config.orders.filter(o => o.status === 'pending').length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('surveys')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all relative ${
+            activeTab === 'surveys'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span>نظرسنجی‌های دریافتی مشتریان</span>
+          {config.surveys && config.surveys.length > 0 && (
+            <span className="w-5 h-5 rounded-full bg-indigo-500 text-white font-mono text-[10px] flex items-center justify-center font-bold">
+              {config.surveys.length}
             </span>
           )}
         </button>
@@ -1187,6 +1204,65 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 4: RECEIVED SURVEYS LIST */}
+      {activeTab === 'surveys' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-black text-sm text-slate-900 dark:text-white">
+                نظرسنجی‌ها و ارزیابی‌های ثبت‌شده از مشتریان ({config.surveys?.length || 0} نظر)
+              </h3>
+            </div>
+          </div>
+          {(!config.surveys || config.surveys.length === 0) ? (
+            <div className="py-16 text-center text-slate-400 text-xs font-bold">
+              هنوز هیچ نظرسنجی ثبت نشده است. (مشتریان پس از خروج بار یا اسکن QR کد می‌توانند نظر خود را ثبت کنند)
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {config.surveys.map((srv) => (
+                <div key={srv.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-extrabold text-xs text-slate-900 dark:text-white">{srv.customerName || 'مشتری ناشناس'}</h4>
+                      {srv.customerPhone && (
+                        <span className="text-[11px] font-mono text-blue-600 font-bold dir-ltr block mt-0.5">{srv.customerPhone}</span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {new Date(srv.createdAt).toLocaleDateString('fa-IR')}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 py-2 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/80 text-center">
+                    <div>
+                      <span className="block text-[10px] text-slate-500 font-bold">کیفیت محصول</span>
+                      <span className="text-xs font-black text-amber-500">{srv.qualityRating} / ۵ ⭐</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-500 font-bold">سرعت تحویل</span>
+                      <span className="text-xs font-black text-amber-500">{srv.deliveryRating} / ۵ ⭐</span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] text-slate-500 font-bold">پشتیبانی</span>
+                      <span className="text-xs font-black text-amber-500">{srv.supportRating} / ۵ ⭐</span>
+                    </div>
+                  </div>
+
+                  {srv.comment && (
+                    <div className="text-xs text-slate-700 dark:text-slate-300 bg-amber-50/50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200/50 dark:border-amber-900/50">
+                      <span className="font-bold text-[10px] text-amber-800 dark:text-amber-400 block mb-0.5">نظر / پیشنهاد:</span>
+                      <p className="leading-relaxed">{srv.comment}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </div>

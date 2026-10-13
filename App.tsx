@@ -1904,7 +1904,7 @@ function App() {
             )}
         </AnimatePresence>
         {isPublicBioView ? (
-            <div className="absolute inset-0 z-[99999999] w-full min-h-full h-auto overflow-y-scroll overscroll-y-auto bg-slate-50 dark:bg-slate-950" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+            <div className="fixed inset-0 z-[99999999] w-full h-full overflow-y-auto overscroll-y-contain bg-slate-50 dark:bg-slate-950" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
               <PublicBioPage 
                   config={publicBioConfig || FALLBACK_BIO_CONFIG}
               />

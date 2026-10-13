@@ -2130,6 +2130,16 @@ export interface BioLinkConfig {
     addressText?: string;
     blocks: BioLinkBlock[];
     orders?: BioLinkOrder[];
+    surveys?: {
+        id: string;
+        customerName?: string;
+        customerPhone?: string;
+        qualityRating: number;
+        deliveryRating: number;
+        supportRating: number;
+        comment?: string;
+        createdAt: number;
+    }[];
     updatedAt?: number;
 }
 
