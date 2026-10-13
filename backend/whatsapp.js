@@ -247,7 +247,7 @@ export const initWhatsApp = (authDir) => {
             puppeteer: puppeteerConfig,
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1018942205-alpha.html',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
             }
         });
 
@@ -557,7 +557,18 @@ export const sendMessage = async (number, text, mediaData) => {
         if (digits.length > 15) {
              chatId = `${digits}@g.us`;
         } else {
-             chatId = `${digits.replace(/^0/, '98')}@c.us`;
+             const cleanDigits = digits.replace(/^0/, '98');
+             // Pre-resolve JID using Official WhatsApp Web API
+             try {
+                 const numId = await client.getNumberId(cleanDigits);
+                 if (numId && numId._serialized) {
+                     chatId = numId._serialized;
+                 } else {
+                     chatId = `${cleanDigits}@c.us`;
+                 }
+             } catch(e) {
+                 chatId = `${cleanDigits}@c.us`;
+             }
         }
     }
     try {
@@ -569,11 +580,27 @@ export const sendMessage = async (number, text, mediaData) => {
         }
         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${chatId} ارسال شد.`);
     } catch (err) {
-        // Fallback for WhatsApp Web internal memoize/id update mismatch
-        if (err.message && err.message.includes('Data passed to getter must include an id property')) {
-            console.warn(`[WhatsApp] Web JS memoize error caught for ${chatId}, retrying with format/getChat fallback...`);
+        // Fallback for WhatsApp Web internal memoize/id getter mismatch
+        const isGetterErr = err.message && (
+            err.message.includes('Data passed to getter must include an id property') ||
+            err.message.includes('memoize') ||
+            err.message.includes('Cannot read properties of undefined')
+        );
+
+        if (isGetterErr) {
+            console.warn(`[WhatsApp] Web JS getter error caught for ${chatId}, attempting chat object fallback...`);
             try {
-                const chat = await client.getChatById(chatId);
+                // Try resolving contact JID officially via getNumberId
+                let targetJid = chatId;
+                try {
+                    const numberOnly = chatId.replace(/\D/g, '');
+                    const numId = await client.getNumberId(numberOnly);
+                    if (numId && numId._serialized) {
+                        targetJid = numId._serialized;
+                    }
+                } catch(e) {}
+
+                const chat = await client.getChatById(targetJid);
                 if (chat) {
                     if (mediaData && mediaData.data) {
                         const media = new MessageMedia(mediaData.mimeType, mediaData.data, mediaData.filename);
@@ -581,7 +608,7 @@ export const sendMessage = async (number, text, mediaData) => {
                     } else if (text) {
                         await chat.sendMessage(text);
                     }
-                    addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${chatId} (روش متغیر Chat) ارسال شد.`);
+                    addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش متغیر Chat) ارسال شد.`);
                     return;
                 }
             } catch (retryErr) {
