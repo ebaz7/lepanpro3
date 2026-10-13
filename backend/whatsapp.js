@@ -195,8 +195,8 @@ export const initWhatsApp = (authDir) => {
             '--disable-gpu',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
-            '--disable-extensions'
+            '--disable-extensions',
+            '--disable-features=site-per-process,AudioServiceOutOfProcess'
         ];
 
         let db = null;

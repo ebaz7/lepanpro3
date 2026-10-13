@@ -170,7 +170,7 @@ const getBrowser = async () => {
           "--no-first-run",
           "--safebrowsing-disable-auto-update",
           "--no-zygote",
-          "--single-process",
+          "--disable-features=site-per-process",
         ],
         timeout: 60000,
       };
