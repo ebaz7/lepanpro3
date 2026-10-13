@@ -3303,21 +3303,40 @@ const Settings: React.FC<SettingsProps> = ({
                   <Warehouse size={20} /> انبار و لجستیک
                 </h3>
                 <div className="space-y-4 font-bold text-sm text-gray-600">
-                  <div>
-                    <label className="text-sm font-bold text-gray-700 block mb-1">
-                      شماره مدیر فروش (پیش‌فرض)
-                    </label>
-                    <input
-                      className="w-full border rounded-lg p-3 dir-ltr text-left"
-                      value={settings.defaultSalesManager || ""}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          defaultSalesManager: e.target.value,
-                        })
-                      }
-                      placeholder="98912..."
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-bold text-gray-700 block mb-1">
+                        شماره مدیر فروش (پیش‌فرض)
+                      </label>
+                      <input
+                        className="w-full border rounded-lg p-3 dir-ltr text-left"
+                        value={settings.defaultSalesManager || ""}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            defaultSalesManager: e.target.value,
+                          })
+                        }
+                        placeholder="98912..."
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-gray-700 block mb-1 flex items-center gap-1.5">
+                        <MessageCircle size={15} className="text-emerald-600" />
+                        <span>لینک یا شماره واتساپ مدیر فروش</span>
+                      </label>
+                      <input
+                        className="w-full border rounded-lg p-3 dir-ltr text-left"
+                        value={settings.salesManagerWhatsapp || ""}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            salesManagerWhatsapp: e.target.value,
+                          })
+                        }
+                        placeholder="https://wa.me/98... یا شماره"
+                      />
+                    </div>
                   </div>
                 </div>
 

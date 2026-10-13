@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BioLinkConfig, BioLinkBlock, BioLinkOrder, User, SystemSettings, UserRole } from '../types';
-import { getBioLinkConfig, saveBioLinkConfig } from '../services/storageService';
+import { getBioLinkConfig, saveBioLinkConfig, uploadFileChunked } from '../services/storageService';
 import { getRolePermissions } from '../services/authService';
 import { PublicBioPage, processBioImageUrl } from './PublicBioPage';
 import QRCode from 'qrcode';
@@ -278,6 +278,17 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
         iconName: 'instagram',
         colorTheme: 'purple',
         badge: 'شبکه اجتماعی',
+        isActive: true
+      });
+    } else if (presetCategory === 'whatsapp') {
+      setBlockForm({
+        category: 'socials',
+        title: 'ارتباط در واتساپ',
+        subtitle: 'چت مستقیم با مدیر فروش',
+        value: 'https://wa.me/989120000000',
+        iconName: 'whatsapp',
+        colorTheme: 'emerald',
+        badge: 'واتساپ',
         isActive: true
       });
     } else {
@@ -786,10 +797,10 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                       + تلفن
                     </button>
                     <button
-                      onClick={() => handleOpenAddBlock('instagram')}
-                      className="px-2.5 py-1 rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 text-[11px] font-bold hover:bg-purple-100"
+                      onClick={() => handleOpenAddBlock('whatsapp')}
+                      className="px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 text-[11px] font-bold hover:bg-emerald-100 cursor-pointer"
                     >
-                      + اینستاگرام
+                      + واتساپ
                     </button>
                     <button
                       onClick={() => handleOpenAddBlock()}
@@ -1248,16 +1259,47 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  مقدار / شماره تلفن / آدرس لینک *
+                  مقدار / آدرس لینک {blockForm.category === 'catalog' ? 'یا آپلود مستقیم فایل PDF / کاتالوگ' : '*'}
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={blockForm.value}
-                  onChange={(e) => setBlockForm({ ...blockForm, value: e.target.value })}
-                  placeholder="مثال: 09125088474 یا https://nshn.ir"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 dir-ltr text-right"
-                />
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    required={blockForm.category !== 'catalog'}
+                    value={blockForm.value}
+                    onChange={(e) => setBlockForm({ ...blockForm, value: e.target.value })}
+                    placeholder="مثال: https://... یا آپلود فایل زیر"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-blue-500 dir-ltr text-right"
+                  />
+                  {blockForm.category === 'catalog' && (
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 rounded-xl text-xs font-bold border border-amber-200 dark:border-amber-800 flex items-center justify-center gap-2 cursor-pointer transition-all">
+                        <Upload size={15} />
+                        <span>انتخاب و آپلود مستقیم فایل کاتالوگ (PDF / تصویر)</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            try {
+                              toast.info('در حال آپلود فایل کاتالوگ...');
+                              const result = await uploadFileChunked(file, () => {});
+                              setBlockForm({ 
+                                ...blockForm, 
+                                value: result.url,
+                                title: blockForm.title || file.name.replace(/\.[^/.]+$/, "")
+                              });
+                              toast.success('فایل با موفقیت آپلود و لینک شد.');
+                            } catch (err: any) {
+                              toast.error('خطا در آپلود فایل: ' + (err.message || ''));
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
