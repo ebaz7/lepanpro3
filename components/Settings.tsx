@@ -7919,7 +7919,7 @@ const Settings: React.FC<SettingsProps> = ({
                       <div className="relative">
                         <input 
                           type="checkbox" 
-                          className="sr-only" 
+                          className="sr-only"
                           checked={settings.sayanOnlineExitPermitsEnabled || false}
                           onChange={(e) => setSettings({ ...settings, sayanOnlineExitPermitsEnabled: e.target.checked })}
                         />
@@ -7931,12 +7931,11 @@ const Settings: React.FC<SettingsProps> = ({
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">در صورت فعال بودن، در بخش خروج کارخانه و تاییدات انبار با وب‌سرویس سایان تبادل آنلاین انجام می‌شود.</div>
                       </div>
                     </label>
-
                     <label className="flex items-center gap-3 cursor-pointer p-3.5 bg-white dark:bg-gray-800/80 border border-rose-100 dark:border-gray-700 rounded-xl shadow-xs hover:border-rose-300 transition-colors">
                       <div className="relative">
                         <input 
                           type="checkbox" 
-                          className="sr-only" 
+                          className="sr-only"
                           checked={settings.sayanYearClosed || false}
                           onChange={(e) => setSettings({ ...settings, sayanYearClosed: e.target.checked })}
                         />
@@ -7948,6 +7947,19 @@ const Settings: React.FC<SettingsProps> = ({
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">سیستم موجودی اول دوره را از ابتدای سال جدید محاسبه می‌کند تا آمار سال قبل تکرار نشود.</div>
                       </div>
                     </label>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-indigo-100 dark:border-gray-700">
+                    <label className="block text-xs font-bold text-gray-800 dark:text-gray-200 mb-1">
+                      لینک نظرسنجی رضایت مشتریان پس از خروج بار (ارسال خودکار در پیام واتساپ و ربات‌ها)
+                    </label>
+                    <input
+                      type="url"
+                      value={settings.customerSurveyUrl || ''}
+                      onChange={(e) => setSettings({ ...settings, customerSurveyUrl: e.target.value })}
+                      placeholder="مثال: https://survey.porsline.ir/s/lepan-baft-survey"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-xs font-mono dir-ltr text-right outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
 

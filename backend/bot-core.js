@@ -3206,7 +3206,10 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
             `\n📦 *اقلام و کالاهای بارگیری شده:*\n${goodsListFormatted}\n` +
             (totalAmount > 0 ? `\n💵 *مبلغ فاکتور:* ${totalAmount.toLocaleString()} ریال\n` : '') +
             (p.description ? `\n📝 *توضیحات:* ${p.description}\n` : '') +
-            `\n✅ محموله شما با مشخصات فوق با موفقیت بارگیری و از کارخانه خارج گردید. تصویر فاکتور رسمی خروج کالا نیز پیوست می‌باشد.\n\nبا سپاس از اعتماد و خرید شما 🙏`;
+            `\n✅ محموله شما با مشخصات فوق با موفقیت بارگیری و از کارخانه خارج گردید. تصویر فاکتور رسمی خروج کالا نیز پیوست می‌باشد.\n\n` +
+            `شرکت تولیدی و صنعتی ضمن تشکر از همراهی شما، با تکمیل لینک زیر جهت ارزیابی کیفیت محصولات و خدمات، ما را در ارائه خدمات بهتر یاری نمایید 🧵:\n` +
+            `${settings.customerSurveyUrl || 'https://survey.porsline.ir/s/lepan-baft-survey'}\n\n` +
+            `با سپاس از اعتماد و خرید شما 🙏`;
 
         let channelResults = { phone: targetPhone, name: destName, wa: false, tg: false, bale: false };
 

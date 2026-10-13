@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BioLinkConfig, BioLinkBlock, BioLinkOrder } from '../types';
-import { submitBioLinkOrder, getBioLinkConfig } from '../services/storageService';
+import { submitBioLinkOrder, submitBioLinkSurvey, getBioLinkConfig } from '../services/storageService';
 import { resolveImageUrl } from '../services/apiService';
 import { 
   MapPin, Phone, Mail, Instagram, Send, Globe, FileText, ShoppingBag, 
@@ -61,6 +61,18 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({ config: initialCon
   });
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
+
+  const [activeSurveyModal, setActiveSurveyModal] = useState(false);
+  const [surveyForm, setSurveyForm] = useState({
+    customerName: '',
+    customerPhone: '',
+    qualityRating: 5,
+    deliveryRating: 5,
+    supportRating: 5,
+    comment: ''
+  });
+  const [submittingSurvey, setSubmittingSurvey] = useState(false);
+  const [surveySuccess, setSurveySuccess] = useState(false);
 
   useEffect(() => {
     if (initialConfig) {
@@ -162,6 +174,10 @@ END:VCARD`;
   const handleBlockClick = (block: BioLinkBlock) => {
     if (block.category === 'order_form') {
       setActiveOrderModal(true);
+      return;
+    }
+    if (block.category === 'survey') {
+      setActiveSurveyModal(true);
       return;
     }
 
@@ -317,6 +333,13 @@ END:VCARD`;
       return (
         <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
           <ShoppingBag className="w-5 h-5" />
+        </div>
+      );
+    }
+    if (block.category === 'survey' || iconName === 'survey') {
+      return (
+        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+          <Sparkles className="w-5 h-5" />
         </div>
       );
     }
@@ -855,6 +878,171 @@ END:VCARD`;
         </div>
       )}
 
+      {/* Survey Modal */}
+      {activeSurveyModal && (
+        <div className="fixed inset-0 z-[999999999] flex items-center justify-center p-3 bg-black/80 backdrop-blur-sm overflow-y-auto animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-right dir-rtl">
+            {surveySuccess ? (
+              <div className="text-center py-8 space-y-4">
+                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                  <Check className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100">سپاس از ثبت نظرسنجی</h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400">نظر ارزشمند شما با موفقیت ثبت شد و در ارتقای کیفیت خدمات ما منظور گردید.</p>
+                <button
+                  onClick={() => { setActiveSurveyModal(false); setSurveySuccess(false); }}
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs"
+                >
+                  بازگشت
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setSubmittingSurvey(true);
+                  try {
+                    const res = await submitBioLinkSurvey(surveyForm);
+                    if (res && res.success) {
+                      setSurveySuccess(true);
+                      toast.success(res.message || 'ثبت نظر با موفقیت انجام شد.');
+                    } else {
+                      toast.error(res?.error || 'خطا در ثبت نظرسنجی');
+                    }
+                  } catch (err: any) {
+                    toast.error('خطا در ارتباط با سرور: ' + (err.message || ''));
+                  } finally {
+                    setSubmittingSurvey(false);
+                  }
+                }}
+                className="space-y-4"
+              >
+                <div className="flex justify-between items-center border-b pb-3 border-slate-100 dark:border-slate-800">
+                  <div>
+                    <h3 className="font-black text-sm text-slate-900 dark:text-slate-100">فرم نظرسنجی کیفیت محصولات و خدمات</h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">شرکت تولیدی و صنعتی لپان بافت</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSurveyModal(false)}
+                    className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">نام مشتری یا شرکت (اختیاری)</label>
+                    <input
+                      type="text"
+                      value={surveyForm.customerName}
+                      onChange={(e) => setSurveyForm({ ...surveyForm, customerName: e.target.value })}
+                      placeholder="مثال: شرکت بافتینه"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">شماره تماس (اختیاری)</label>
+                    <input
+                      type="tel"
+                      value={surveyForm.customerPhone}
+                      onChange={(e) => setSurveyForm({ ...surveyForm, customerPhone: e.target.value })}
+                      placeholder="09123456789"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs font-mono dir-ltr text-right"
+                    />
+                  </div>
+
+                  {/* Rating 1: Quality */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">۱. کیفیت محصول و نخ تحویلی (از ۱ تا ۵)</label>
+                    <div className="flex items-center justify-between gap-1 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          type="button"
+                          key={star}
+                          onClick={() => setSurveyForm({ ...surveyForm, qualityRating: star })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-colors ${surveyForm.qualityRating === star ? 'bg-amber-500 text-white shadow-sm' : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                        >
+                          {star} ⭐
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Rating 2: Delivery */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">۲. سرعت بارگیری و تحویل (از ۱ تا ۵)</label>
+                    <div className="flex items-center justify-between gap-1 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          type="button"
+                          key={star}
+                          onClick={() => setSurveyForm({ ...surveyForm, deliveryRating: star })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-colors ${surveyForm.deliveryRating === star ? 'bg-amber-500 text-white shadow-sm' : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                        >
+                          {star} ⭐
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Rating 3: Support */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">۳. پاسخگویی و پشتیبانی فروش (از ۱ تا ۵)</label>
+                    <div className="flex items-center justify-between gap-1 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          type="button"
+                          key={star}
+                          onClick={() => setSurveyForm({ ...surveyForm, supportRating: star })}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-black transition-colors ${surveyForm.supportRating === star ? 'bg-amber-500 text-white shadow-sm' : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}
+                        >
+                          {star} ⭐
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">نظرات، انتقادات و پیشنهادات</label>
+                    <textarea
+                      rows={2}
+                      value={surveyForm.comment}
+                      onChange={(e) => setSurveyForm({ ...surveyForm, comment: e.target.value })}
+                      placeholder="پیشنهادی برای بهبود کیفیت..."
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-xs resize-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveSurveyModal(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold"
+                  >
+                    انصراف
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingSurvey}
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+                  >
+                    {submittingSurvey ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
+                    <span>ثبت نهایی نظرسنجی</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

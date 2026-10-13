@@ -791,6 +791,14 @@ export interface ExitPermit {
   sayanSyncedAt?: number;
   sayanRemittanceDoc?: any;
   sayanRemittanceDocs?: any[];
+  customerSurvey?: {
+    sentAt?: number;
+    submittedAt?: number;
+    qualityRating?: number; // 1 to 5
+    deliveryRating?: number; // 1 to 5
+    supportRating?: number; // 1 to 5
+    comment?: string;
+  };
 }
 
 export interface WarehouseItem {
@@ -2089,7 +2097,7 @@ export interface ChequeReceipt {
 
 export interface BioLinkBlock {
     id: string;
-    category: 'maps' | 'phones' | 'emails' | 'socials' | 'bots' | 'links' | 'catalog' | 'order_form' | 'custom';
+    category: 'maps' | 'phones' | 'emails' | 'socials' | 'bots' | 'links' | 'catalog' | 'order_form' | 'survey' | 'custom';
     title: string;
     subtitle?: string;
     value: string; // URL, Phone Number, Address, Email

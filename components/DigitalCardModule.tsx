@@ -1226,6 +1226,7 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   <option value="socials">📸 شبکه اجتماعی (اینستاگرام، تلگرام، ایتا، بله)</option>
                   <option value="catalog">📄 فایل / کاتالوگ محصولات (PDF)</option>
                   <option value="order_form">🛒 فرم ثبت سفارش آنلاین</option>
+                  <option value="survey">⭐ فرم نظرسنجی رضایت مشتری</option>
                   <option value="custom">🌐 لینک دلخواه / وب‌سایت</option>
                 </select>
               </div>

@@ -1097,6 +1097,17 @@ export const submitBioLinkOrder = async (orderData: {
     return await apiCall<{ success: boolean; message?: string; error?: string; order?: BioLinkOrder }>('/bio-link/order', 'POST', orderData);
 };
 
+export const submitBioLinkSurvey = async (surveyData: {
+    customerName?: string;
+    customerPhone?: string;
+    qualityRating: number;
+    deliveryRating: number;
+    supportRating: number;
+    comment?: string;
+}): Promise<{ success: boolean; message?: string; error?: string }> => {
+    return await apiCall<{ success: boolean; message?: string; error?: string }>('/bio-link/survey', 'POST', surveyData);
+};
+
 
 
 

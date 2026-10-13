@@ -7314,6 +7314,46 @@ app.post('/api/bio-link', (req, res) => {
     res.json({ success: true, config: db.bioLinkConfig });
 });
 
+app.post('/api/bio-link/survey', (req, res) => {
+    const db = getDb();
+    if (!db.bioLinkConfig) {
+        db.bioLinkConfig = DEFAULT_BIO_LINK_CONFIG;
+    }
+    const { customerName, customerPhone, qualityRating, deliveryRating, supportRating, comment } = req.body;
+    if (!qualityRating || !deliveryRating || !supportRating) {
+        return res.status(400).json({ success: false, error: 'لطفاً امتیازات را کامل ثبت کنید.' });
+    }
+    const newSurvey = {
+        id: `srv_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        customerName: String(customerName || 'مشتری عزیز').trim(),
+        customerPhone: String(customerPhone || '').trim(),
+        qualityRating: Number(qualityRating) || 5,
+        deliveryRating: Number(deliveryRating) || 5,
+        supportRating: Number(supportRating) || 5,
+        comment: String(comment || '').trim(),
+        createdAt: Date.now()
+    };
+    if (!Array.isArray(db.bioLinkConfig.surveys)) {
+        db.bioLinkConfig.surveys = [];
+    }
+    db.bioLinkConfig.surveys.unshift(newSurvey);
+    // Create system notification
+    if (!Array.isArray(db.notifications)) {
+        db.notifications = [];
+    }
+    db.notifications.unshift({
+        id: `notif_survey_${Date.now()}`,
+        title: '⭐ ثبت نظرسنجی جدید رضایت مشتری',
+        message: `نظرسنجی جدید از ${newSurvey.customerName} (کیفیت: ${newSurvey.qualityRating}/5، تحویل: ${newSurvey.deliveryRating}/5، پشتیبانی: ${newSurvey.supportRating}/5)`,
+        type: 'info',
+        createdAt: Date.now(),
+        read: false,
+        url: 'digital-card'
+    });
+    saveDb(db);
+    res.json({ success: true, message: 'نظر ارزشمند شما با موفقیت ثبت شد. از همراهی شما سپاسگزاریم.' });
+});
+
 app.post('/api/bio-link/order', (req, res) => {
     const db = getDb();
     if (!db.bioLinkConfig) {
