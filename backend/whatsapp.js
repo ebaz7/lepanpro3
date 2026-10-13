@@ -247,7 +247,7 @@ export const initWhatsApp = (authDir) => {
             puppeteer: puppeteerConfig,
             webVersionCache: {
                 type: 'remote',
-                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1045115170-alpha.html',
             }
         });
 
@@ -572,6 +572,10 @@ export const sendMessage = async (number, text, mediaData) => {
         }
     }
     try {
+        const page = client?.pupPage;
+        if (!client || !page || page.isClosed()) {
+            throw new Error("صفحه مرورگر واتساپ بسته شده یا در دسترس نیست (PupPage is null/closed)");
+        }
         if (mediaData && mediaData.data) {
             const media = new MessageMedia(mediaData.mimeType, mediaData.data, mediaData.filename);
             await client.sendMessage(chatId, media, { caption: text || '' });
@@ -580,16 +584,22 @@ export const sendMessage = async (number, text, mediaData) => {
         }
         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${chatId} ارسال شد.`);
     } catch (err) {
-        // Fallback for WhatsApp Web internal memoize/id getter mismatch
-        const isGetterErr = err.message && (
+        // Fallback for WhatsApp Web internal memoize/id getter mismatch or null page execution context
+        const isKnownError = err.message && (
             err.message.includes('Data passed to getter must include an id property') ||
             err.message.includes('memoize') ||
-            err.message.includes('Cannot read properties of undefined')
+            err.message.includes('Cannot read properties of undefined') ||
+            err.message.includes('Cannot read properties of null')
         );
 
-        if (isGetterErr) {
-            console.warn(`[WhatsApp] Web JS getter error caught for ${chatId}, attempting chat object fallback...`);
+        if (isKnownError) {
+            console.warn(`[WhatsApp] Web JS error caught for ${chatId}: ${err.message}. Retrying via fallback...`);
             try {
+                const page = client?.pupPage;
+                if (!client || !page || page.isClosed()) {
+                    throw new Error("مرورگر واتساپ بسته شده یا نیاز به اتصال مجدد دارد.");
+                }
+
                 // Try resolving contact JID officially via getNumberId
                 let targetJid = chatId;
                 try {
@@ -600,19 +610,37 @@ export const sendMessage = async (number, text, mediaData) => {
                     }
                 } catch(e) {}
 
-                const chat = await client.getChatById(targetJid);
-                if (chat) {
-                    if (mediaData && mediaData.data) {
-                        const media = new MessageMedia(mediaData.mimeType, mediaData.data, mediaData.filename);
-                        await chat.sendMessage(media, { caption: text || '' });
-                    } else if (text) {
-                        await chat.sendMessage(text);
+                // Fallback attempt 1: Get chat object and send through it
+                try {
+                    const chat = await client.getChatById(targetJid);
+                    if (chat) {
+                        if (mediaData && mediaData.data) {
+                            const media = new MessageMedia(mediaData.mimeType, mediaData.data, mediaData.filename);
+                            await chat.sendMessage(media, { caption: text || '' });
+                        } else if (text) {
+                            await chat.sendMessage(text);
+                        }
+                        addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش متغیر Chat) ارسال شد.`);
+                        return;
                     }
-                    addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش متغیر Chat) ارسال شد.`);
+                } catch (chatErr) {
+                    console.warn(`[WhatsApp] Chat object fallback failed: ${chatErr.message}. Trying direct page evaluate...`);
+                }
+
+                // Fallback attempt 2: Send directly via WWebJS in page context
+                if (text && (!mediaData || !mediaData.data)) {
+                    await page.evaluate(async (jid, msgText) => {
+                        const chatWid = window.require('WAWebWidFactory').createWid(jid);
+                        const chat = window.require('WAWebCollections').Chat.get(chatWid) ||
+                            (await window.require('WAWebFindChatAction').findOrCreateLatestChat(chatWid))?.chat;
+                        if (!chat) throw new Error('چت یافت نشد.');
+                        return await window.WWebJS.sendMessage(chat, msgText);
+                    }, targetJid, text);
+                    addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش تزریق مستقیم) ارسال شد.`);
                     return;
                 }
             } catch (retryErr) {
-                console.error("[WhatsApp] Chat fallback send error:", retryErr.message);
+                console.error("[WhatsApp] All fallback send methods failed:", retryErr.message);
             }
         }
         addDiagnosticLog('error', 'MESSAGE', `خطا در ارسال پیام به ${chatId}: ${err.message}`, err.stack);
