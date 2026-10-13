@@ -330,7 +330,7 @@ END:VCARD`;
   };
 
   return (
-    <div className={`w-full min-h-screen h-auto overflow-y-auto overscroll-y-auto -webkit-overflow-scrolling-touch touch-pan-y dir-rtl font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-4 sm:py-8 px-2 sm:px-4 pb-40'}`}>
+    <div className={`w-full min-h-full h-auto overflow-y-auto overscroll-y-auto -webkit-overflow-scrolling-touch touch-auto dir-rtl font-sans bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 flex flex-col items-center justify-start ${isEmbeddedPreview ? 'p-0 min-h-0' : 'py-6 sm:py-10 px-3 sm:px-4 pb-48'}`}>
       <Toaster position="top-center" />
       
       {/* Top Action Bar if in full screen */}
