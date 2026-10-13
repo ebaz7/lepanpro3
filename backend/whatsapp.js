@@ -245,7 +245,10 @@ export const initWhatsApp = (authDir) => {
         client = new Client({ 
             authStrategy: new LocalAuth({ clientId: 'main_session', dataPath: absoluteAuthDir }), 
             puppeteer: puppeteerConfig,
-            webVersionCache: { type: 'none' }
+            webVersionCache: {
+                type: 'remote',
+                remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1018942205-alpha.html',
+            }
         });
 
         client.on('qr', async (qr) => { 
@@ -566,6 +569,25 @@ export const sendMessage = async (number, text, mediaData) => {
         }
         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${chatId} ارسال شد.`);
     } catch (err) {
+        // Fallback for WhatsApp Web internal memoize/id update mismatch
+        if (err.message && err.message.includes('Data passed to getter must include an id property')) {
+            console.warn(`[WhatsApp] Web JS memoize error caught for ${chatId}, retrying with format/getChat fallback...`);
+            try {
+                const chat = await client.getChatById(chatId);
+                if (chat) {
+                    if (mediaData && mediaData.data) {
+                        const media = new MessageMedia(mediaData.mimeType, mediaData.data, mediaData.filename);
+                        await chat.sendMessage(media, { caption: text || '' });
+                    } else if (text) {
+                        await chat.sendMessage(text);
+                    }
+                    addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${chatId} (روش متغیر Chat) ارسال شد.`);
+                    return;
+                }
+            } catch (retryErr) {
+                console.error("[WhatsApp] Chat fallback send error:", retryErr.message);
+            }
+        }
         addDiagnosticLog('error', 'MESSAGE', `خطا در ارسال پیام به ${chatId}: ${err.message}`, err.stack);
         throw err;
     }
