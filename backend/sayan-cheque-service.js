@@ -422,7 +422,7 @@ export const getAllSayanPersons = async (forceRefresh = false) => {
     }
 
     try {
-        // 1. Comprehensive query on ACT_TBL_007 (All Tafsili Accounts)
+        // 1. Comprehensive query on ACT_TBL_007 restricted strictly to person/tafsili codes starting with 11, 12, 13, 14, 15, 16
         const sqlTafsili = `
             SELECT TOP 4000
                 RTRIM(LTRIM(a.Field_003)) as TafsiliCode,
@@ -432,6 +432,17 @@ export const getAllSayanPersons = async (forceRefresh = false) => {
             FROM ACT_TBL_007 a WITH (NOLOCK)
             WHERE a.Field_006 IS NOT NULL 
               AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+              AND (
+                  a.Field_003 LIKE '11%' OR a.Field_003 LIKE '12%' OR 
+                  a.Field_003 LIKE '13%' OR a.Field_003 LIKE '14%' OR 
+                  a.Field_003 LIKE '15%' OR a.Field_003 LIKE '16%' OR
+                  a.Field_005 LIKE '11%' OR a.Field_005 LIKE '12%' OR 
+                  a.Field_005 LIKE '13%' OR a.Field_005 LIKE '14%' OR 
+                  a.Field_005 LIKE '15%' OR a.Field_005 LIKE '16%' OR
+                  a.Field_004 LIKE '11%' OR a.Field_004 LIKE '12%' OR 
+                  a.Field_004 LIKE '13%' OR a.Field_004 LIKE '14%' OR 
+                  a.Field_004 LIKE '15%' OR a.Field_004 LIKE '16%'
+              )
             ORDER BY a.Field_006 ASC
         `;
 
@@ -562,6 +573,14 @@ export const searchSayanPersons = async (query = '', limit = 100, forceRefresh =
             FROM ACT_TBL_007 a WITH (NOLOCK)
             WHERE a.Field_006 IS NOT NULL 
               AND LEN(RTRIM(LTRIM(a.Field_006))) > 0
+              AND (
+                  a.Field_003 LIKE '11%' OR a.Field_003 LIKE '12%' OR 
+                  a.Field_003 LIKE '13%' OR a.Field_003 LIKE '14%' OR 
+                  a.Field_003 LIKE '15%' OR a.Field_003 LIKE '16%' OR
+                  a.Field_005 LIKE '11%' OR a.Field_005 LIKE '12%' OR 
+                  a.Field_005 LIKE '13%' OR a.Field_005 LIKE '14%' OR 
+                  a.Field_005 LIKE '15%' OR a.Field_005 LIKE '16%'
+              )
               AND (${tokenConditionsACT})
         `;
 
