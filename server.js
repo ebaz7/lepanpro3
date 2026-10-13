@@ -7585,8 +7585,10 @@ app.get('/api/next-purchase-request-number', (req, res) => {
     const reqs = db.purchaseRequests || [];
     let maxNum = 1000;
     reqs.forEach(r => {
-        if (r.number && r.number.startsWith('PR-')) {
-            const num = parseInt(r.number.replace('PR-', ''));
+        const numStr = r.requestNumber || r.number || '';
+        if (numStr) {
+            const clean = numStr.toString().replace('PR-', '');
+            const num = parseInt(clean);
             if (!isNaN(num) && num > maxNum) maxNum = num;
         }
     });

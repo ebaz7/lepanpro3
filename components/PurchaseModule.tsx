@@ -1092,11 +1092,18 @@ const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, is
 
     const filtered = requests.filter((r: PurchaseRequest) => {
         const search = searchTerm.toLowerCase();
+        const itemsText = (r.items || []).map(it => `${it.itemName || ''} ${it.specifications || ''} ${it.unit || ''}`).join(' ');
+        const logsText = (r.auditLogs || []).map(l => `${l.action || ''} ${l.comment || ''} ${l.performedBy || ''}`).join(' ');
+        
         const matchesSearch = 
             (r.itemName?.toLowerCase() || '').includes(search) || 
             (r.requestNumber?.toLowerCase() || '').includes(search) ||
             (r.requester?.toLowerCase() || '').includes(search) ||
-            (r.specifications?.toLowerCase() || '').includes(search);
+            (r.specifications?.toLowerCase() || '').includes(search) ||
+            (r.purchaseReason?.toLowerCase() || '').includes(search) ||
+            (r.warehouseReceiptNumber?.toLowerCase() || '').includes(search) ||
+            itemsText.toLowerCase().includes(search) ||
+            logsText.toLowerCase().includes(search);
 
         if (!matchesSearch) return false;
 
@@ -6912,18 +6919,49 @@ const KardexTab = ({ parts, selectedPart, setSelectedPart, kardexEntries, loadKa
 
 const AdminEditRequestModal = ({ request, onClose, onSuccess, parts }: any) => {
     const [loading, setLoading] = useState(false);
-    const [quantity, setQuantity] = useState(request.quantity);
-    const [description, setDescription] = useState(request.specifications);
+    const [items, setItems] = useState<any[]>(request.items && request.items.length > 0 ? request.items : [{
+        id: '1',
+        itemName: request.itemName || '',
+        quantity: request.quantity || 1,
+        unit: request.unit || 'عدد',
+        specifications: request.specifications || ''
+    }]);
     const [status, setStatus] = useState(request.status);
+
+    const handleItemChange = (itemId: string, field: string, val: any) => {
+        setItems(prev => prev.map(it => it.id === itemId ? { ...it, [field]: val } : it));
+    };
+
+    const handleAddItem = () => {
+        setItems(prev => [...prev, {
+            id: Date.now().toString(),
+            itemName: '',
+            quantity: 1,
+            unit: 'عدد',
+            specifications: ''
+        }]);
+    };
+
+    const handleDeleteItem = (itemId: string) => {
+        if (items.length <= 1) {
+            alert('درخواست خرید باید حداقل دارای یک قلم کالا باشد.');
+            return;
+        }
+        setItems(prev => prev.filter(it => it.id !== itemId));
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         try {
+            const primaryItem = items[0] || {};
             const updated = { 
                 ...request, 
-                quantity, 
-                specifications: description,
+                items,
+                itemName: items.length === 1 ? primaryItem.itemName : `${primaryItem.itemName} (+${items.length - 1} قلم دیگر)`,
+                quantity: primaryItem.quantity,
+                unit: primaryItem.unit,
+                specifications: primaryItem.specifications,
                 status,
                 updatedAt: Date.now() 
             };
@@ -6939,37 +6977,130 @@ const AdminEditRequestModal = ({ request, onClose, onSuccess, parts }: any) => {
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000010] flex items-start justify-center p-4 bg-black/90 backdrop-blur-2xl transition-all pt-20 md:pt-24 overflow-y-auto">
-            <div className="bg-white rounded-[3rem] w-full max-w-lg p-10 animate-scale-in shadow-2xl border-4 border-indigo-600/30 relative mb-10">
+        <div className="fixed inset-0 z-[100000010] flex items-start justify-center p-4 bg-black/90 backdrop-blur-2xl transition-all pt-10 md:pt-16 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-3xl p-6 md:p-10 animate-scale-in shadow-2xl border-4 border-indigo-600/30 relative mb-10 text-right" dir="rtl">
                 <div className="absolute -top-3 -right-3">
-                    <button onClick={onClose} className="w-12 h-12 bg-red-600 text-white rounded-2xl shadow-xl flex items-center justify-center hover:rotate-90 transition-all hover:bg-red-700">
+                    <button onClick={onClose} className="w-12 h-12 bg-red-600 text-white rounded-2xl shadow-xl flex items-center justify-center hover:rotate-90 transition-all hover:bg-red-700 cursor-pointer">
                         <X size={28} strokeWidth={3} />
                     </button>
                 </div>
-                <div className="flex items-center gap-4 mb-10 border-b-2 border-gray-100 pb-8">
-                    <div className="p-4 bg-indigo-50 text-indigo-700 rounded-[1.5rem] italic font-black text-xl shadow-inner">ADM</div>
+                
+                <div className="flex items-center gap-4 mb-8 border-b border-slate-100 dark:border-slate-800 pb-6">
+                    <div className="p-4 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 rounded-2xl italic font-black text-xl shadow-inner">
+                        ADM
+                    </div>
                     <div>
-                        <h2 className="text-2xl font-black text-gray-900 tracking-tight">ویرایش سیستمی</h2>
-                        <p className="text-[10px] text-indigo-500 font-black uppercase tracking-widest">مدیریت مستقیم دیتا‌بیس</p>
+                        <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">ویرایش خط‌به‌خط اقلام و وضعیت درخواست</h2>
+                        <p className="text-[10px] text-indigo-500 font-black uppercase tracking-widest">شماره: {request.requestNumber}</p>
                     </div>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-6 text-right" dir="rtl">
-                    <div>
-                        <label className="text-xs font-black text-gray-400 block mb-2 uppercase tracking-widest">تعداد مورد نیاز</label>
-                        <input type="number" className="w-full border-2 border-gray-100 rounded-2xl p-4 text-lg font-black focus:border-indigo-500 outline-none transition-all" value={quantity} onChange={e => setQuantity(+e.target.value)} />
+
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                <Package size={16} className="text-indigo-600" />
+                                <span>اقلام کالای درخواست خرید (ویرایش مجزای هر سطر)</span>
+                            </label>
+                            <button
+                                type="button"
+                                onClick={handleAddItem}
+                                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-400 font-bold text-xs rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                                <Plus size={14} />
+                                <span>افزودن قلم جدید</span>
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                            {items.map((it, idx) => (
+                                <div key={it.id || idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 space-y-3 relative group">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-mono text-xs font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-2.5 py-0.5 rounded-lg">
+                                            قلم #{idx + 1}
+                                        </span>
+                                        {items.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteItem(it.id)}
+                                                className="text-red-500 hover:text-red-700 p-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                                                title="حذف این قلم"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                                        <div className="md:col-span-6">
+                                            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">نام و مشخصات کالا *</label>
+                                            <input
+                                                type="text"
+                                                required
+                                                className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                                                value={it.itemName}
+                                                onChange={e => handleItemChange(it.id, 'itemName', e.target.value)}
+                                                placeholder="مثال: بلبرینگ 6204"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">تعداد *</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                required
+                                                className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-black text-center bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 outline-none focus:border-indigo-500"
+                                                value={it.quantity}
+                                                onChange={e => handleItemChange(it.id, 'quantity', Number(e.target.value))}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">واحد</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold text-center bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                                                value={it.unit || 'عدد'}
+                                                onChange={e => handleItemChange(it.id, 'unit', e.target.value)}
+                                                placeholder="عدد / کیلو / متر"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">مشخصات فنی و توضیحات این قلم</label>
+                                        <input
+                                            type="text"
+                                            className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-2 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                                            value={it.specifications || ''}
+                                            onChange={e => handleItemChange(it.id, 'specifications', e.target.value)}
+                                            placeholder="توضیحات تکمیلی یا ابعاد..."
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
+
                     <div>
-                        <label className="text-xs font-black text-gray-400 block mb-2 uppercase tracking-widest">توضیحات و مشخصات فنی</label>
-                        <textarea className="w-full border-2 border-gray-100 rounded-2xl p-4 text-sm h-32 focus:border-indigo-500 outline-none transition-all font-medium" value={description} onChange={e => setDescription(e.target.value)} />
-                    </div>
-                    <div>
-                        <label className="text-xs font-black text-gray-400 block mb-2 uppercase tracking-widest">تغییر وضعیت مرحله کاری</label>
-                        <select className="w-full border-2 border-gray-100 rounded-2xl p-4 text-sm font-bold focus:border-indigo-500 outline-none appearance-none bg-gray-50" value={status} onChange={e => setStatus(e.target.value as PurchaseRequestStatus)}>
-                            {Object.values(PurchaseRequestStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                        <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-2">
+                            تعیین مرحله و وضعیت جاری گردش کار
+                        </label>
+                        <select
+                            className="w-full border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs font-bold focus:border-indigo-500 outline-none bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+                            value={status}
+                            onChange={e => setStatus(e.target.value as PurchaseRequestStatus)}
+                        >
+                            {Object.values(PurchaseRequestStatus).map(s => (
+                                <option key={s} value={s}>{s}</option>
+                            ))}
                         </select>
                     </div>
-                    <button disabled={loading} className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50">
-                        {loading ? <Loader2 className="animate-spin"/> : <ShieldCheck size={20}/>} ثبت تغییرات سیستمی (مدیریت)
+
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-700 hover:to-purple-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                        {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <ShieldCheck size={20} />}
+                        <span>ذخیره تغییرات خط‌به‌خط اقلام و وضعیت</span>
                     </button>
                 </form>
             </div>
