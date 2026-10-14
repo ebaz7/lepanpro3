@@ -1398,10 +1398,53 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
             return isGroup ? getSayanGroupSum(itemKey, isLastYear, field) : getSayanItemValue(itemKey, isLastYear, field);
         }
         return '';
-    };
+        };
 
-    const calculateTotalSayanSum = (isLastYear: boolean, field: 'cartons' | 'weight' | 'containers' | 'dollars') => {
-        const sumYarns = alignedYarns.reduce((sum, item) => sum + getItemValue(item.code, isLastYear, field, true), 0);
+        const calculateCustomTableSum = (items, field) => {
+            if (!items || !Array.isArray(items)) return 0;
+            return items.reduce((sum, item) => {
+                let val = item[field];
+                if (val === undefined && field === 'container') val = item['containers'];
+                if (val === undefined && field === 'containers') val = item['container'];
+                const num = parseFloat(String(val || 0));
+                return sum + (isNaN(num) ? 0 : num);
+            }, 0);
+        };
+
+        const getItemCategory = (code) => {
+            return itemCategories[code] || 'raw';
+        };
+
+        const handleCategoryChange = (code, cat) => {
+            setItemCategories(prev => ({ ...prev, [code]: cat }));
+        };
+
+        const handleCellChange = (itemName, isLastYear, field, value) => {
+            const numVal = parseFloat(value) || 0;
+            if (isLastYear) {
+                setLastYearOverrides(prev => ({
+                    ...prev,
+                    [itemName]: {
+                        ...(prev[itemName] || {}),
+                        [field]: numVal
+                    }
+                }));
+            } else {
+                setCurrentOverrides(prev => ({
+                    ...prev,
+                    [itemName]: {
+                        ...(prev[itemName] || {}),
+                        [field]: numVal
+                    }
+                }));
+            }
+        };
+
+        const allActiveRawItems = alignedImported || [];
+        const allActiveFactoryItems = alignedYarns || [];
+
+        const calculateTotalSayanSum = (isLastYear, field) => {
+            const sumYarns = alignedYarns.reduce((sum, item) => sum + getItemValue(item.code, isLastYear, field, true), 0);
         const sumImported = alignedImported.reduce((sum, item) => sum + getItemValue(item.code, isLastYear, field, true), 0);
         return sumYarns + sumImported;
     };
