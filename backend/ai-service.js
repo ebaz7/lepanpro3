@@ -110,7 +110,7 @@ export const testAiConnection = async (customKey, customBaseUrl) => {
         contents: [
             {
                 role: 'user',
-                parts: [{ text: 'سلام! اتصال آزمایشی سیستم ERP لپان بافت به هوش مصنوعی را در یک جمله کوتاه تایید کن.' }]
+                parts: [{ text: 'سلام! اتصال آزمایشی سیستم ERP لیان بافت به هوش مصنوعی را در یک جمله کوتاه تایید کن.' }]
             }
         ]
     });
@@ -180,7 +180,7 @@ export const getSystemContextSnapshot = () => {
                 ratioAllWeight: meta.ratioAllWeight !== undefined ? meta.ratioAllWeight : -4.1,
                 totalPositiveWeight: meta.totalPositiveWeight !== undefined ? meta.totalPositiveWeight : 45000,
                 totalNegativeWeight: meta.totalNegativeWeight !== undefined ? meta.totalNegativeWeight : -75000,
-                allowedCompanies: meta.allowedCompanies || ['شرکت لپان بافت', 'KOZA']
+                allowedCompanies: meta.allowedCompanies || ['شرکت لیان بافت', 'KOZA']
             },
             goodsInTransit: {
                 totalCount: goodsInTransit.length,
@@ -240,7 +240,7 @@ export const processVoiceAudio = async (audioBuffer, mimeType = 'audio/ogg', cus
     const systemContext = JSON.stringify(getSystemContextSnapshot(), null, 2);
 
     const prompt = `
-شما «دستیار هوشمند و ایجنت صوتی مدیر ارشد ERP» گروه صنعتی لپان بافت هستید.
+شما «دستیار هوشمند و ایجنت صوتی مدیر ارشد ERP» گروه صنعتی لیان بافت هستید.
 وظیفه شما:
 ۱. پیام صوتی فارسی ارسال شده را دقیقاً بشنوید و متن آن را رونویسی (Transcribe) کنید.
 ۲. بر اساس متن و دستور کاربر، اطلاعات مربوطه را از سیستم تحلیل کرده یا پاسخ جامع، مؤدبانه و دقیق مدیریتی بدهید.
@@ -303,7 +303,7 @@ export const askAiAssistant = async ({ message, contextData, history = [], custo
     const ai = getGeminiClient(customKey);
     const systemSnapshot = getSystemContextSnapshot();
     const systemInstruction = `
-شما «ایجنت هوش مصنوعی و مشاور ارشد سیستم ERP لپان بافت» هستید.
+شما «ایجنت هوش مصنوعی و مشاور ارشد سیستم ERP لیان بافت» هستید.
 شما به تمام داده‌های زنده سیستم شامل تراز انبار سایان (موجودی‌ها، کسری‌ها و تراز وزنی)، بارهای در راه (Transit)، بارهای گمرک (Customs)، خریدهای در حال انجام (Purchasing)، فروش و مرجوعی‌ها، اسناد و چک‌های خزانه، برگه‌های خروج و وضعیت بارگیری دسترسی کامل دارید.
 
 دستورالعمل‌های حیاتی:
@@ -732,7 +732,7 @@ export const searchSuppliersWithAi = async ({ item, items = [], additionalNotes 
         : '';
 
     const prompt = `
-شما «مشاور و متخصص ارشد خرید، تدارکات صنعتی و منبع‌یابی (Procurement & Sourcing AI Specialist)» گروه صنعتی و کارخانجات نساجی و تولیدی «لپان بافت» هستید.
+شما «مشاور و متخصص ارشد خرید، تدارکات صنعتی و منبع‌یابی (Procurement & Sourcing AI Specialist)» گروه صنعتی و کارخانجات نساجی و تولیدی «لیان بافت» هستید.
 
 اطلاعات درخواست خرید:
 ${itemsContext}
@@ -779,7 +779,7 @@ ${deepSearchNote}
       "pros": "مزیت خرید از این فروشگاه (قیمت مناسب، سابقه، گارانتی)"
     }
   ],
-  "rfqTemplate": "متن رسمی استعلام قیمت و پیش‌فاکتور برای تامین‌کننده به نام شرکت لپان بافت"
+  "rfqTemplate": "متن رسمی استعلام قیمت و پیش‌فاکتور برای تامین‌کننده به نام شرکت لیان بافت"
 }
 `;
 
@@ -818,7 +818,7 @@ ${deepSearchNote}
                     summary: text.slice(0, 300) + '...',
                     suppliers: [],
                     technicalTips: ["بررسی دقیق مشخصات ابعادی و فنی پیش از خرید"],
-                    rfqTemplate: `احتراماً خواهشمند است پیش‌فاکتور رسمی برای کالای ${itemName} به تعداد ${quantity} ${unit} به نام شرکت لپان بافت صادر و ارسال فرمایید.`
+                    rfqTemplate: `احتراماً خواهشمند است پیش‌فاکتور رسمی برای کالای ${itemName} به تعداد ${quantity} ${unit} به نام شرکت لیان بافت صادر و ارسال فرمایید.`
                 };
             }
         } catch (searchErr) {
@@ -1050,7 +1050,7 @@ ${deepSearchNote}
                                 estimatedPrice: prof.unitPrice ? `${Number(prof.unitPrice).toLocaleString('fa-IR')} ریال` : 'استعلام جدید',
                                 stockStatus: 'دارای سابقه معامله',
                                 brand: prof.brand || '',
-                                description: prof.description || `سابقه پیش‌فاکتور قبلی در سیستم ERP لپان بافت`,
+                                description: prof.description || `سابقه پیش‌فاکتور قبلی در سیستم ERP لیان بافت`,
                                 pros: 'تامین‌کننده تاییدشده در خریدهای قبلی کارخانه'
                             });
                         }
@@ -1089,7 +1089,7 @@ ${deepSearchNote}
     }
 
     // Default RFQ template if empty
-    const defaultRfq = `با سلام و احترام\nاحتراماً پیرو نیاز فنی واحد تولید و مهندسی گروه صنعتی «لپان بافت»، خواهشمند است پیش‌فاکتور رسمی و قیمت همکاری برای قلم زیر را صادر و ارسال فرمایید:\n\n📦 نام کالا: ${itemName}\n🔢 تعداد / مقدار: ${quantity} ${unit}\n📐 مشخصات فنی: ${specifications || 'مطابق استاندارد رایج'}\n${itemCode ? `🏷️ کد قطعه: ${itemCode}\n` : ''}\nلطفاً شرایط پرداخت، مدت اعتبار پیش‌فاکتور و کوتاه‌ترین زمان تحویل را قید بفرمایید.\nبا تشکر - واحد بازرگانی و تدارکات لپان بافت`;
+    const defaultRfq = `با سلام و احترام\nاحتراماً پیرو نیاز فنی واحد تولید و مهندسی گروه صنعتی «لیان بافت»، خواهشمند است پیش‌فاکتور رسمی و قیمت همکاری برای قلم زیر را صادر و ارسال فرمایید:\n\n📦 نام کالا: ${itemName}\n🔢 تعداد / مقدار: ${quantity} ${unit}\n📐 مشخصات فنی: ${specifications || 'مطابق استاندارد رایج'}\n${itemCode ? `🏷️ کد قطعه: ${itemCode}\n` : ''}\nلطفاً شرایط پرداخت، مدت اعتبار پیش‌فاکتور و کوتاه‌ترین زمان تحویل را قید بفرمایید.\nبا تشکر - واحد بازرگانی و تدارکات لیان بافت`;
 
     return {
         success: true,

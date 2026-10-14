@@ -2438,143 +2438,70 @@ const getItemNamesMap = async (db) => {
 };
 
 const getFyCodeForDate = (dateStr) => {
-    if (dateStr <= '2025-03-20') return 2; // FY 1403
-    if (dateStr <= '2026-03-20') return 3; // FY 1404
-    if (dateStr <= '2027-03-20') return 4; // FY 1405
+    if (dateStr <= '2025-03-20') return 2;
+    if (dateStr <= '2026-03-20') return 3;
+    if (dateStr <= '2027-03-20') return 4;
     if (dateStr <= '2028-03-20') return 5;
     if (dateStr <= '2029-03-20') return 6;
     const year = parseInt(dateStr.substring(0, 4));
     return Math.max(2, year - 2022);
 };
 
-const getWarehouseInventoryForDate = async (db, targetDate, fromDate = null) => {
-    const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
-    const sqlStockAndNames = `
-        WITH GroupedStock AS (
-            SELECT 
-                t11.Field_005 as ItemCode,
-                SUM(CASE 
-                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '13', '14', '24', '26', '28', '40', '44', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
-                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '25', '27', '30', '37', '42', '46', '62', '68', '71', '74', '80', '84') THEN -t11.Field_006 
-                    ELSE 0 
-                END) as StockQty,
-                SUM(CASE 
-                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '13', '14', '24', '26', '28', '40', '44', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
-                    ELSE 0 
-                END) as InflowQty,
-                SUM(CASE 
-                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '25', '27', '30', '37', '42', '46', '62', '68', '71', '74', '80', '84') THEN t11.Field_006 
-                    ELSE 0 
-                END) as OutflowQty
-            FROM STR_TBL_011 t11 WITH (NOLOCK)
-            INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
-                                      AND t11.Field_003 = t10.Field_004 
-                                      AND t11.Field_012 = t10.Field_018
-            WHERE t10.Field_008 <= '${targetDate}T23:59:59.000Z'
-              ${dateFromFilter}
-            GROUP BY t11.Field_005
-        )
-        SELECT 
-            gs.ItemCode,
-            gs.StockQty,
-            gs.InflowQty,
-            gs.OutflowQty,
-            COALESCE(
-                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
-                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
-                NULLIF(RTRIM(LTRIM(t02_exact.Field_003)), ''),
-                NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
-                NULLIF(RTRIM(LTRIM(t_group.GroupName)), ''),
-                NULLIF(RTRIM(LTRIM(c01.Field_003)), ''),
-                RTRIM(LTRIM(gs.ItemCode)),
-                N'کالای بدون نام'
-            ) as ItemName,
-            t_group.GroupName,
-            t_group.SubGroupName
-        FROM GroupedStock gs
-        LEFT JOIN STR_TBL_004 s04 WITH (NOLOCK) ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(gs.ItemCode))
-        LEFT JOIN IND_TBL_022 t22 WITH (NOLOCK) ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(gs.ItemCode))
-        LEFT JOIN IND_TBL_002 t02_exact WITH (NOLOCK) ON RTRIM(LTRIM(t02_exact.Field_008)) = RTRIM(LTRIM(gs.ItemCode))
-        LEFT JOIN COM_TBL_001 c01 WITH (NOLOCK) ON RTRIM(LTRIM(c01.Field_004)) = RTRIM(LTRIM(gs.ItemCode))
-        LEFT JOIN (
-            SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, MIN(t02_sub.Field_003) as ItemName
-            FROM IND_TBL_021 t21_sub WITH (NOLOCK)
-            LEFT JOIN IND_TBL_002 t02_sub WITH (NOLOCK) ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
-            GROUP BY t21_sub.Field_004
-        ) t_name ON RTRIM(LTRIM(gs.ItemCode)) = RTRIM(LTRIM(t_name.ItemCode))
-        LEFT JOIN (
-            SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, 
-                   MIN(t02_sub.Field_003) as SubGroupName,
-                   MIN(COALESCE(t02_grandparent.Field_003, t02_parent.Field_003, t02_sub.Field_003)) as GroupName
-            FROM IND_TBL_021 t21_sub WITH (NOLOCK)
-            LEFT JOIN IND_TBL_002 t02_sub WITH (NOLOCK) ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
-            LEFT JOIN IND_TBL_002 t02_parent WITH (NOLOCK) ON RTRIM(LTRIM(t02_sub.Field_009)) = RTRIM(LTRIM(t02_parent.Field_008))
-            LEFT JOIN IND_TBL_002 t02_grandparent WITH (NOLOCK) ON RTRIM(LTRIM(t02_parent.Field_009)) = RTRIM(LTRIM(t02_grandparent.Field_008))
-            GROUP BY t21_sub.Field_004
-        ) t_group ON RTRIM(LTRIM(gs.ItemCode)) = RTRIM(LTRIM(t_group.ItemCode))
-    `;
-
-    const sqlCartonsOnly = `
+const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
+    const fyCode = getFyCodeForDate(targetDate);
+    const sql = `
         SELECT 
             t11.Field_005 as ItemCode,
             SUM(CASE 
-                WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN
-                    TRY_CAST(
-                        LEFT(
-                            LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)),
-                            PATINDEX('%[^0-9]%', LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)) + 'X') - 1
-                        ) as float
-                    )
-                WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN
-                    -TRY_CAST(
-                        LEFT(
-                            LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)),
-                            PATINDEX('%[^0-9]%', LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)) + 'X') - 1
-                        ) as float
-                    )
+                WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '81') THEN t11.Field_006
+                WHEN s06.Field_010 = 1 THEN t11.Field_006
+                WHEN s06.Field_010 = -1 THEN -t11.Field_006
+                ELSE 0 
+            END) as StockQty,
+            SUM(CASE 
+                WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '81') THEN t11.Field_006
                 ELSE 0
-            END) as CartonsQty
+            END) as OpeningQty,
+            SUM(CASE 
+                WHEN RTRIM(LTRIM(t10.Field_009)) NOT IN ('10', '81') AND s06.Field_010 = 1 THEN t11.Field_006
+                ELSE 0 
+            END) as InflowQty,
+            SUM(CASE 
+                WHEN RTRIM(LTRIM(t10.Field_009)) NOT IN ('10', '81') AND s06.Field_010 = -1 THEN t11.Field_006
+                ELSE 0 
+            END) as OutflowQty
         FROM STR_TBL_011 t11 WITH (NOLOCK)
         INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
-                                  AND t11.Field_003 = t10.Field_004 
-                                  AND t11.Field_012 = t10.Field_018
-        WHERE t10.Field_008 <= '${targetDate}T23:59:59.000Z'
-          ${dateFromFilter}
-          AND t11.Field_031 LIKE N'%تعداد کارتن:%'
+                                   AND t11.Field_003 = t10.Field_004 
+                                   AND t11.Field_012 = t10.Field_018
+        INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
+        WHERE t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'
+          AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+          AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
         GROUP BY t11.Field_005
     `;
-
-    const [resStock, resCartons] = await Promise.all([
-        executeSayanQuery(db, sqlStockAndNames, 20000),
-        executeSayanQuery(db, sqlCartonsOnly, 20000)
-    ]);
-
-    const stockRows = resStock || [];
-    const cartonRows = resCartons || [];
-
-    const cartonsMap = {};
-    cartonRows.forEach(r => {
-        if (r.ItemCode) {
-            cartonsMap[r.ItemCode.trim()] = parseFloat(r.CartonsQty || 0);
-        }
-    });
-
-    return stockRows.map(r => {
+    const rows = await executeSayanQuery(db, sql, 20000);
+    return (rows || []).map(r => {
         const code = String(r.ItemCode || '').trim();
         const grpCode = code.substring(0, 4);
+        const mapped = nameMap[code] || {};
+        const defaultGrp = standardGroupNames[grpCode] || `گروه ${grpCode}`;
         const weight = parseFloat((r.StockQty || 0).toFixed(3));
-        let cartons = cartonsMap[code] || 0;
-        if (!cartons && cartonRatios[grpCode] && weight > 0) {
+        const opening = parseFloat((r.OpeningQty || 0).toFixed(3));
+        const inflow = parseFloat((r.InflowQty || 0).toFixed(3));
+        const outflow = parseFloat((r.OutflowQty || 0).toFixed(3));
+        let cartons = 0;
+        if (cartonRatios[grpCode] && weight > 0) {
             cartons = Math.round(weight / cartonRatios[grpCode]);
         }
-        const defaultGrp = standardGroupNames[grpCode] || `گروه ${grpCode}`;
         return {
             itemCode: code,
-            itemName: r.ItemName ? String(r.ItemName).trim() : `${defaultGrp} - کد ${code.substring(4) || code}`,
-            groupName: r.GroupName ? String(r.GroupName).trim() : (standardGroupNames[grpCode] || defaultGrp),
-            subGroupName: r.SubGroupName ? String(r.SubGroupName).trim() : '',
-            inflowQty: parseFloat((r.InflowQty || 0).toFixed(3)),
-            outflowQty: parseFloat((r.OutflowQty || 0).toFixed(3)),
+            itemName: mapped.name || `${defaultGrp} - کد ${code.substring(4) || code}`,
+            groupName: standardGroupNames[grpCode] || mapped.group || defaultGrp,
+            subGroupName: mapped.subGroup || '',
+            openingQty: opening,
+            inflowQty: inflow,
+            outflowQty: outflow,
             stockQty: weight,
             cartonsQty: cartons
         };
@@ -2598,6 +2525,13 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
         };
     }
 
+    if (forceRefresh) {
+        if (db.warehouseOverview) {
+            db.warehouseOverview.sayanCache = null;
+            saveDb(db);
+        }
+    }
+
     // Return cached stock if valid and not forcing refresh (cache duration: 5 minutes)
     const cached = db.warehouseOverview?.sayanCache;
     if (!forceRefresh && cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0 && Array.isArray(cached.currentStock) && cached.currentStock.length > 0) {
@@ -2618,9 +2552,10 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
     let isLiveSayan = false;
 
     try {
+        const nameMap = await getItemNamesMap(db);
         const [lyResult, currResult] = await Promise.all([
-            getWarehouseInventoryForDate(db, lastYearDateTo),
-            getWarehouseInventoryForDate(db, currentYearDateTo)
+            getWarehouseInventoryForDate(db, lastYearDateTo, nameMap),
+            getWarehouseInventoryForDate(db, currentYearDateTo, nameMap)
         ]);
 
         lastYearStock = lyResult || [];
@@ -2673,11 +2608,8 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
             currentYearDateTo = new Date().toISOString().split('T')[0];
         }
 
-        const force = req.query.refresh === '1' || req.query.force === '1' || req.query.bypass === '1' || req.query.refresh === 'true' || req.query.force === 'true';
+        const force = req.query.force === '1' || req.query.force === 'true' || req.query.refresh === '1' || req.query.refresh === 'true';
         const result = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo, force);
-        if (force) {
-            await calculateWarehouseLiveStatus(db, true);
-        }
         res.json(result);
     } catch (err) {
         console.error("Warehouse Inventory Fetch Error:", err);
@@ -2777,7 +2709,7 @@ const calculateWarehouseLiveStatus = async (db, force = false, queryExcluded = n
         const lastYearDateTo = meta.report1Miladi || '2026-03-20';
         const currentYearDateTo = meta.report2Miladi || new Date().toISOString().split('T')[0];
 
-        const invResult = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo);
+        const invResult = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo, force);
         const lastYearStock = invResult.lastYearStock || [];
         const currentStock = invResult.currentStock || [];
 
@@ -3609,7 +3541,7 @@ app.post('/api/warehouse-overview/send-ai-advisor-report', async (req, res) => {
         msg += `➖➖➖➖➖➖➖➖➖➖➖➖\n`;
         msg += `👤 *تنظیم گزارش:* ${signature}\n`;
         msg += `📎 *فایل گزارش استراتژیک ۲ صفحه‌ای مصور ضمیمه گردید.*\n`;
-        msg += `🤖 *سیستم مانیتورینگ هوش مصنوعی کارخانجات لپان بافت*`;
+        msg += `🤖 *سیستم مانیتورینگ هوش مصنوعی کارخانجات لیان بافت*`;
 
         // Generate PDF
         let pdfBuffer = null;
@@ -7187,7 +7119,7 @@ app.delete('/api/chat/:id', async (req, res) => {
 // --- BIO-LINK & DIGITAL CARD ENDPOINTS (LEPAN LINK STYLE) ---
 const DEFAULT_BIO_LINK_CONFIG = {
     slug: 'lepanbaft',
-    companyTitle: 'شرکت تولیدی لپان بافت',
+    companyTitle: 'شرکت تولیدی لیان بافت',
     companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
     avatarUrl: '/lepan-logo.png',
     coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
@@ -7270,7 +7202,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
         {
             id: 'block_telegram_bot',
             category: 'bots',
-            title: 'ربات تلگرام لپان بافت',
+            title: 'ربات تلگرام لیان بافت',
             subtitle: 'ارتباط مستقیم و پشتیبانی هوشمند در تلگرام (@lepanbaft_bot)',
             value: 'https://t.me/lepanbaft_bot',
             iconName: 'telegram_bot',
@@ -7282,7 +7214,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
         {
             id: 'block_bale_bot',
             category: 'bots',
-            title: 'بازوی بله لپان بافت',
+            title: 'بازوی بله لیان بافت',
             subtitle: 'ارتباط هوشمند و استعلام قیمت در پیام‌رسان بله (ble.ir/lepanbaft_bot)',
             value: 'https://ble.ir/lepanbaft_bot',
             iconName: 'bale_bot',
@@ -7307,7 +7239,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
             id: 'block_instagram',
             category: 'socials',
             title: 'اینستاگرام',
-            subtitle: 'صفحه رسمی شرکت لپان بافت',
+            subtitle: 'صفحه رسمی شرکت لیان بافت',
             value: 'https://instagram.com/lepanbaft',
             iconName: 'instagram',
             badge: 'اینستاگرام',
@@ -7374,7 +7306,7 @@ app.get('/api/bio-link', (req, res) => {
     // Public view: completely sanitize and protect internal customer orders and private data
     const publicConfig = {
         slug: db.bioLinkConfig.slug || 'lepanbaft',
-        companyTitle: db.bioLinkConfig.companyTitle || 'شرکت تولیدی لپان بافت',
+        companyTitle: db.bioLinkConfig.companyTitle || 'شرکت تولیدی لیان بافت',
         companySubtitle: db.bioLinkConfig.companySubtitle || '',
         avatarUrl: db.bioLinkConfig.avatarUrl || '/lepan-logo.png',
         coverUrl: db.bioLinkConfig.coverUrl || '',

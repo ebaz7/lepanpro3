@@ -60,7 +60,7 @@ import { initGraphicsEngine } from './services/graphicsEngine';
 
 const FALLBACK_BIO_CONFIG: BioLinkConfig = {
     slug: 'lepanbaft',
-    companyTitle: 'شرکت تولیدی لپان بافت',
+    companyTitle: 'شرکت تولیدی لیان بافت',
     companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
     avatarUrl: '/lepan-logo.png',
     coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',

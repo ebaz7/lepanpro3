@@ -2939,7 +2939,7 @@ export const WarehouseOverviewTab: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                    <h3 className="font-extrabold text-slate-800 text-base">مدیریت محترم لپان بافت جناب آقای محمد امین فتوت احمدی</h3>
+                    <h3 className="font-extrabold text-slate-800 text-base">مدیریت محترم لیان بافت جناب آقای محمد امین فتوت احمدی</h3>
                     <p className="text-xs text-slate-500 font-medium">
                         با سلام، احتراما گزارش موجودی {report1Label} (مورخ {report1Jalali}) و مقایسه آن با {report2Label} (مورخ {report2Jalali}) مستخرج از سامانه یکپارچه سایان به همراه جزئیات بارهای در راه و گمرک به شرح ذیل تقدیم حضور می‌گردد:
                     </p>

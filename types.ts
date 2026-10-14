@@ -2121,7 +2121,7 @@ export interface BioLinkOrder {
 
 export interface BioLinkConfig {
     slug: string; // e.g. "lepanbaft"
-    companyTitle: string; // "شرکت تولیدی لپان بافت"
+    companyTitle: string; // "شرکت تولیدی لیان بافت"
     companySubtitle: string; // "تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت"
     avatarUrl: string; // Logo
     coverUrl: string; // Banner
