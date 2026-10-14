@@ -694,7 +694,7 @@ export const WarehouseOverviewTab: React.FC = () => {
     };
 
     // Helper to fetch Sayan warehouse inventory using dynamic start and end dates
-    const fetchSayanData = async (r1Miladi: string, r2Miladi: string, r1Jalali: string, r2Jalali: string, isCumulative: boolean) => {
+    const fetchSayanData = async (r1Miladi: string, r2Miladi: string, r1Jalali: string, r2Jalali: string, isCumulative: boolean, forceRefresh = false) => {
         try {
             const y1 = getJalaliYear(r1Jalali);
             const y2 = getJalaliYear(r2Jalali);
@@ -702,7 +702,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             const r1From = getJalaliYearStartMiladi(y1);
             const r2From = isCumulative ? getJalaliYearStartMiladi(y1) : getJalaliYearStartMiladi(y2);
             
-            const url = `/api/sayan/warehouse-inventory?lastYearDateFrom=${r1From}&lastYearDateTo=${r1Miladi}&currentYearDateFrom=${r2From}&currentYearDateTo=${r2Miladi}`;
+            const url = `/api/sayan/warehouse-inventory?lastYearDateFrom=${r1From}&lastYearDateTo=${r1Miladi}&currentYearDateFrom=${r2From}&currentYearDateTo=${r2Miladi}${forceRefresh ? '&refresh=1&force=1' : ''}`;
             const sayanRes = await fetch(url);
             if (!sayanRes.ok) {
                 console.error("Sayan API response not ok:", sayanRes.status);
@@ -726,10 +726,10 @@ export const WarehouseOverviewTab: React.FC = () => {
 
     // Load everything on mount
     useEffect(() => {
-        loadSavedData();
+        loadSavedData(false);
     }, []);
 
-    const loadSavedData = async () => {
+    const loadSavedData = async (forceRefresh = false) => {
         setIsLoading(true);
         try {
             // 1. Fetch our custom DB data first to read labels/dates and allowed companies
@@ -884,7 +884,15 @@ export const WarehouseOverviewTab: React.FC = () => {
             const finalR2Jalali = dbData?.meta?.report2Jalali || (activeYearLabel === "1405" ? "۱۴۰۵/۰۵/۳۱" : "۱۴۰۴/۰۸/۲۲");
             const finalCumulative = dbData?.meta?.cumulativeFromLastYear !== undefined ? dbData.meta.cumulativeFromLastYear : true;
 
-            await fetchSayanData(r1Date, r2Date, finalR1Jalali, finalR2Jalali, finalCumulative);
+            await fetchSayanData(r1Date, r2Date, finalR1Jalali, finalR2Jalali, finalCumulative, forceRefresh);
+            
+            if (forceRefresh) {
+                try {
+                    await fetch('/api/warehouse-overview/live-status?force=true');
+                } catch (e) {
+                    console.error("Failed to refresh live status widget:", e);
+                }
+            }
         } catch (err) {
             console.error("Failed to load warehouse overview data", err);
         } finally {
@@ -2514,7 +2522,7 @@ export const WarehouseOverviewTab: React.FC = () => {
 
                         <button
                             type="button"
-                            onClick={loadSavedData}
+                            onClick={() => loadSavedData(true)}
                             disabled={isLoading}
                             className="bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl px-3 py-2 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
                         >

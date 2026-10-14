@@ -2438,72 +2438,141 @@ const getItemNamesMap = async (db) => {
 };
 
 const getFyCodeForDate = (dateStr) => {
-    if (dateStr <= '2025-03-20') return 2;
-    if (dateStr <= '2026-03-20') return 3;
-    if (dateStr <= '2027-03-20') return 4;
+    if (dateStr <= '2025-03-20') return 2; // FY 1403
+    if (dateStr <= '2026-03-20') return 3; // FY 1404
+    if (dateStr <= '2027-03-20') return 4; // FY 1405
     if (dateStr <= '2028-03-20') return 5;
     if (dateStr <= '2029-03-20') return 6;
     const year = parseInt(dateStr.substring(0, 4));
     return Math.max(2, year - 2022);
 };
 
-const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
-    const fyCode = getFyCodeForDate(targetDate);
+const getWarehouseInventoryForDate = async (db, targetDate, fromDate = null) => {
+    const dateFromFilter = fromDate ? `AND t10.Field_008 >= '${fromDate}T00:00:00.000Z'` : '';
+    const sqlStockAndNames = `
+        WITH GroupedStock AS (
+            SELECT 
+                t11.Field_005 as ItemCode,
+                SUM(CASE 
+                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '13', '14', '24', '26', '28', '40', '44', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
+                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '25', '27', '30', '37', '42', '46', '62', '68', '71', '74', '80', '84') THEN -t11.Field_006 
+                    ELSE 0 
+                END) as StockQty,
+                SUM(CASE 
+                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '13', '14', '24', '26', '28', '40', '44', '61', '65', '67', '70', '73', '79', '83') THEN t11.Field_006 
+                    ELSE 0 
+                END) as InflowQty,
+                SUM(CASE 
+                    WHEN RTRIM(LTRIM(t10.Field_009)) IN ('12', '25', '27', '30', '37', '42', '46', '62', '68', '71', '74', '80', '84') THEN t11.Field_006 
+                    ELSE 0 
+                END) as OutflowQty
+            FROM STR_TBL_011 t11 WITH (NOLOCK)
+            INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
+                                      AND t11.Field_003 = t10.Field_004 
+                                      AND t11.Field_012 = t10.Field_018
+            WHERE t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+              ${dateFromFilter}
+            GROUP BY t11.Field_005
+        )
+        SELECT 
+            gs.ItemCode,
+            gs.StockQty,
+            gs.InflowQty,
+            gs.OutflowQty,
+            COALESCE(
+                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
+                NULLIF(RTRIM(LTRIM(t02_exact.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
+                NULLIF(RTRIM(LTRIM(t_group.GroupName)), ''),
+                NULLIF(RTRIM(LTRIM(c01.Field_003)), ''),
+                RTRIM(LTRIM(gs.ItemCode)),
+                N'کالای بدون نام'
+            ) as ItemName,
+            t_group.GroupName,
+            t_group.SubGroupName
+        FROM GroupedStock gs
+        LEFT JOIN STR_TBL_004 s04 WITH (NOLOCK) ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(gs.ItemCode))
+        LEFT JOIN IND_TBL_022 t22 WITH (NOLOCK) ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(gs.ItemCode))
+        LEFT JOIN IND_TBL_002 t02_exact WITH (NOLOCK) ON RTRIM(LTRIM(t02_exact.Field_008)) = RTRIM(LTRIM(gs.ItemCode))
+        LEFT JOIN COM_TBL_001 c01 WITH (NOLOCK) ON RTRIM(LTRIM(c01.Field_004)) = RTRIM(LTRIM(gs.ItemCode))
+        LEFT JOIN (
+            SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, MIN(t02_sub.Field_003) as ItemName
+            FROM IND_TBL_021 t21_sub WITH (NOLOCK)
+            LEFT JOIN IND_TBL_002 t02_sub WITH (NOLOCK) ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
+            GROUP BY t21_sub.Field_004
+        ) t_name ON RTRIM(LTRIM(gs.ItemCode)) = RTRIM(LTRIM(t_name.ItemCode))
+        LEFT JOIN (
+            SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, 
+                   MIN(t02_sub.Field_003) as SubGroupName,
+                   MIN(COALESCE(t02_grandparent.Field_003, t02_parent.Field_003, t02_sub.Field_003)) as GroupName
+            FROM IND_TBL_021 t21_sub WITH (NOLOCK)
+            LEFT JOIN IND_TBL_002 t02_sub WITH (NOLOCK) ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
+            LEFT JOIN IND_TBL_002 t02_parent WITH (NOLOCK) ON RTRIM(LTRIM(t02_sub.Field_009)) = RTRIM(LTRIM(t02_parent.Field_008))
+            LEFT JOIN IND_TBL_002 t02_grandparent WITH (NOLOCK) ON RTRIM(LTRIM(t02_parent.Field_009)) = RTRIM(LTRIM(t02_grandparent.Field_008))
+            GROUP BY t21_sub.Field_004
+        ) t_group ON RTRIM(LTRIM(gs.ItemCode)) = RTRIM(LTRIM(t_group.ItemCode))
+    `;
 
-    let hasOpening = false;
-    try {
-        const openingCheck = await executeSayanQuery(db, `
-            SELECT TOP 1 Field_001 
-            FROM STR_TBL_010 WITH (NOLOCK) 
-            WHERE Field_004 = '${fyCode}' AND Field_009 IN ('10', '81')
-        `, 4000);
-        hasOpening = Array.isArray(openingCheck) && openingCheck.length > 0;
-    } catch (e) {
-        hasOpening = fyCode <= 4;
-    }
-
-    let fyFilter = '';
-    if (hasOpening) {
-        fyFilter = `t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'`;
-    } else {
-        const prevFy = Math.max(2, fyCode - 1);
-        fyFilter = `t11.Field_003 IN ('${prevFy}', '${fyCode}') AND t10.Field_004 IN ('${prevFy}', '${fyCode}')`;
-    }
-
-    const sql = `
+    const sqlCartonsOnly = `
         SELECT 
             t11.Field_005 as ItemCode,
-            SUM(CASE WHEN s06.Field_010 = 1 THEN t11.Field_006 ELSE 0 END) as InflowQty,
-            SUM(CASE WHEN s06.Field_010 = -1 THEN t11.Field_006 ELSE 0 END) as OutflowQty,
-            SUM(CASE WHEN s06.Field_010 = 1 THEN t11.Field_006 WHEN s06.Field_010 = -1 THEN -t11.Field_006 ELSE 0 END) as StockQty
+            SUM(CASE 
+                WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '24', '26', '29', '40', '44', '46', '83') THEN
+                    TRY_CAST(
+                        LEFT(
+                            LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)),
+                            PATINDEX('%[^0-9]%', LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)) + 'X') - 1
+                        ) as float
+                    )
+                WHEN RTRIM(LTRIM(t10.Field_009)) IN ('23', '25', '30', '37', '42', '84', '62', '68', '71', '74', '80') THEN
+                    -TRY_CAST(
+                        LEFT(
+                            LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)),
+                            PATINDEX('%[^0-9]%', LTRIM(SUBSTRING(t11.Field_031, CHARINDEX(N'تعداد کارتن:', t11.Field_031) + 12, 10)) + 'X') - 1
+                        ) as float
+                    )
+                ELSE 0
+            END) as CartonsQty
         FROM STR_TBL_011 t11 WITH (NOLOCK)
         INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
                                   AND t11.Field_003 = t10.Field_004 
                                   AND t11.Field_012 = t10.Field_018
-        INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
-        WHERE ${fyFilter}
-          AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
-          AND t10.Field_009 NOT IN ('19', '82')
-          AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
+        WHERE t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+          ${dateFromFilter}
+          AND t11.Field_031 LIKE N'%تعداد کارتن:%'
         GROUP BY t11.Field_005
     `;
 
-    const rows = await executeSayanQuery(db, sql, 12000);
-    return (rows || []).map(r => {
+    const [resStock, resCartons] = await Promise.all([
+        executeSayanQuery(db, sqlStockAndNames, 20000),
+        executeSayanQuery(db, sqlCartonsOnly, 20000)
+    ]);
+
+    const stockRows = resStock || [];
+    const cartonRows = resCartons || [];
+
+    const cartonsMap = {};
+    cartonRows.forEach(r => {
+        if (r.ItemCode) {
+            cartonsMap[r.ItemCode.trim()] = parseFloat(r.CartonsQty || 0);
+        }
+    });
+
+    return stockRows.map(r => {
         const code = String(r.ItemCode || '').trim();
         const grpCode = code.substring(0, 4);
-        const mapped = nameMap[code] || {};
-        const defaultGrp = standardGroupNames[grpCode] || `گروه ${grpCode}`;
         const weight = parseFloat((r.StockQty || 0).toFixed(3));
-        let cartons = 0;
-        if (cartonRatios[grpCode] && weight > 0) {
+        let cartons = cartonsMap[code] || 0;
+        if (!cartons && cartonRatios[grpCode] && weight > 0) {
             cartons = Math.round(weight / cartonRatios[grpCode]);
         }
+        const defaultGrp = standardGroupNames[grpCode] || `گروه ${grpCode}`;
         return {
             itemCode: code,
-            itemName: mapped.name || `${defaultGrp} - کد ${code.substring(4) || code}`,
-            groupName: standardGroupNames[grpCode] || mapped.group || defaultGrp,
-            subGroupName: mapped.subGroup || '',
+            itemName: r.ItemName ? String(r.ItemName).trim() : `${defaultGrp} - کد ${code.substring(4) || code}`,
+            groupName: r.GroupName ? String(r.GroupName).trim() : (standardGroupNames[grpCode] || defaultGrp),
+            subGroupName: r.SubGroupName ? String(r.SubGroupName).trim() : '',
             inflowQty: parseFloat((r.InflowQty || 0).toFixed(3)),
             outflowQty: parseFloat((r.OutflowQty || 0).toFixed(3)),
             stockQty: weight,
@@ -2512,7 +2581,7 @@ const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
     });
 };
 
-const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearDateTo) => {
+const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearDateTo, forceRefresh = false) => {
     const settings = db.settings || {};
     const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
     const sayanKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c').trim();
@@ -2529,15 +2598,29 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
         };
     }
 
+    // Return cached stock if valid and not forcing refresh (cache duration: 5 minutes)
+    const cached = db.warehouseOverview?.sayanCache;
+    if (!forceRefresh && cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0 && Array.isArray(cached.currentStock) && cached.currentStock.length > 0) {
+        const cacheAge = Date.now() - (cached.timestamp || 0);
+        if (cacheAge < 5 * 60 * 1000) {
+            return {
+                success: true,
+                isLive: true,
+                fromCache: true,
+                lastYearStock: cached.lastYearStock,
+                currentStock: cached.currentStock
+            };
+        }
+    }
+
     let lastYearStock = [];
     let currentStock = [];
     let isLiveSayan = false;
 
     try {
-        const nameMap = await getItemNamesMap(db);
         const [lyResult, currResult] = await Promise.all([
-            getWarehouseInventoryForDate(db, lastYearDateTo, nameMap),
-            getWarehouseInventoryForDate(db, currentYearDateTo, nameMap)
+            getWarehouseInventoryForDate(db, lastYearDateTo),
+            getWarehouseInventoryForDate(db, currentYearDateTo)
         ]);
 
         lastYearStock = lyResult || [];
@@ -2559,10 +2642,10 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
     }
 
     if (!isLiveSayan || !lastYearStock.length || !currentStock.length) {
-        const cached = db.warehouseOverview?.sayanCache;
         if (cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0) {
             lastYearStock = cached.lastYearStock;
             currentStock = cached.currentStock;
+            isLiveSayan = true;
         } else {
             lastYearStock = benchmark.lastYearStock;
             currentStock = benchmark.currentStock;
@@ -2590,7 +2673,11 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
             currentYearDateTo = new Date().toISOString().split('T')[0];
         }
 
-        const result = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo);
+        const force = req.query.refresh === '1' || req.query.force === '1' || req.query.bypass === '1' || req.query.refresh === 'true' || req.query.force === 'true';
+        const result = await fetchSayanWarehouseInventoryData(db, lastYearDateTo, currentYearDateTo, force);
+        if (force) {
+            await calculateWarehouseLiveStatus(db, true);
+        }
         res.json(result);
     } catch (err) {
         console.error("Warehouse Inventory Fetch Error:", err);

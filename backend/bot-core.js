@@ -3510,7 +3510,7 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
             }
         }
 
-        // --- Customer Notification when Cargo Exits Factory (Weight, Plate, Driver details to Customer WhatsApp & Bots) ---
+        // --- Customer & Driver Notification when Cargo Exits Factory (Weight, Plate, Driver details to Customer & Driver WhatsApp & Bots) ---
         if ((p.status === 'خارج شده (بایگانی)' || p.status === 'خارج شد') && !isEdit && !isDelete) {
             (async () => {
                 try {
@@ -3519,6 +3519,30 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
                     console.error("❌ Customer cargo exit notification failed:", cErr.message);
                 }
             })();
+
+            if (p.driverPhone && settings.whatsappEnabled !== false) {
+                const driverCaption = `🚛 *تایید نهایی خروج بار از کارخانه*\n` +
+                    `راننده گرامی جناب آقای *${p.driverName || 'راننده محترم'}* (خودرو: *${p.plateNumber || '-'}*)\n` +
+                    `مجوز خروج شماره *${p.permitNumber}* مربوط به شرکت *${p.company || '-'}* تایید و بارگیری تکمیل گردید.\n` +
+                    `📍 مقصد: ${p.destinationAddress || '-'}\n` +
+                    `سفر بی‌خطری را برای شما آرزومندیم.`;
+
+                const driverImg = imgNoPrice || imgPrice;
+                import('./whatsapp.js').then(async (mod) => {
+                    if (mod && mod.sendMessage) {
+                        if (driverImg) {
+                            const b64 = Buffer.from(driverImg).toString('base64');
+                            await mod.sendMessage(p.driverPhone, driverCaption, {
+                                data: b64,
+                                mimeType: 'image/png',
+                                filename: `exit_permit_${p.permitNumber}.png`
+                            }).catch(() => {});
+                        } else {
+                            await mod.sendMessage(p.driverPhone, driverCaption).catch(() => {});
+                        }
+                    }
+                }).catch(() => {});
+            }
         }
 
         // Distinctly and separately fire off to all targets with bulletproof fallbacks
@@ -3669,29 +3693,88 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
         const attachFiles = o.attachments && o.attachments.length > 0;
         if (attachFiles) caption += `\n📎 همراه با ${o.attachments.length} فایل/سند الحاقی`;
 
-        // Fire Telegram
+        let paymentOrderImgBuffer = null;
+        try {
+            if (Renderer && Renderer.generateRecordImage) {
+                paymentOrderImgBuffer = await Renderer.generateRecordImage(o, 'PAYMENT', { isEdit, isDelete, forceHidePrices: false });
+            }
+        } catch (imgErr) {
+            console.warn("[notifyPaymentOrderStep] Payment order card render warning:", imgErr.message);
+        }
+
+        // Fire Telegram Group
         if (tgGroupId && settings.telegramBotToken) {
             const cleanId = sanitizeGroupId(tgGroupId);
-            import('./telegram.js').then(mod => {
-                if (mod?.sendBotMessage) mod.sendBotMessage(cleanId, caption).catch(e => console.error("TG Payment Notify Error:", e));
+            import('./telegram.js').then(async mod => {
+                if (!mod) return;
+                if (paymentOrderImgBuffer && mod.sendBotPhoto) {
+                    await mod.sendBotPhoto(cleanId, paymentOrderImgBuffer, caption).catch(async () => {
+                        if (mod.sendBotMessage) await mod.sendBotMessage(cleanId, caption).catch(e => console.error("TG Payment Text Error:", e));
+                    });
+                } else if (mod.sendBotMessage) {
+                    await mod.sendBotMessage(cleanId, caption).catch(e => console.error("TG Payment Notify Error:", e));
+                }
             }).catch(e => console.error("TG Import Error", e));
         }
 
-        // Fire Bale
+        // Fire Bale Group
         if (baleGroupId && settings.baleBotToken) {
             const cleanId = sanitizeGroupId(baleGroupId);
-            import('./bale.js').then(mod => {
-                if (mod?.sendBotMessage) mod.sendBotMessage(cleanId, caption).catch(e => console.error("Bale Payment Notify Error:", e));
+            import('./bale.js').then(async mod => {
+                if (!mod) return;
+                if (paymentOrderImgBuffer && mod.sendBotPhoto) {
+                    await mod.sendBotPhoto(cleanId, paymentOrderImgBuffer, caption).catch(async () => {
+                        if (mod.sendBotMessage) await mod.sendBotMessage(cleanId, caption).catch(e => console.error("Bale Payment Text Error:", e));
+                    });
+                } else if (mod.sendBotMessage) {
+                    await mod.sendBotMessage(cleanId, caption).catch(e => console.error("Bale Payment Notify Error:", e));
+                }
             }).catch(e => console.error("Bale Import Error", e));
         }
 
-        // Fire WhatsApp
+        // Fire WhatsApp Group
         if (waGroupId && settings.whatsappEnabled) {
-            import('./whatsapp.js').then(mod => {
-                if (mod?.sendMessage) {
-                    mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Payment Notify Error:", e));
+            import('./whatsapp.js').then(async mod => {
+                if (!mod || !mod.sendMessage) return;
+                if (paymentOrderImgBuffer) {
+                    const b64 = paymentOrderImgBuffer.toString('base64');
+                    await mod.sendMessage(waGroupId, caption, {
+                        data: b64,
+                        mimeType: 'image/png',
+                        filename: `payment_order_${o.id || o.trackingNumber}.png`
+                    }).catch(async () => {
+                        await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Payment Notify Error:", e));
+                    });
+                } else {
+                    await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Payment Notify Error:", e));
                 }
             }).catch(e => console.error("WA Import Error", e));
+        }
+
+        // Send simultaneously to responsible individuals for each stage (CEO, Finance Manager, Accountant)
+        const responsibleUsers = (db.users || []).filter(u => {
+            if (isFinal) return u.role === 'financial' || u.role === 'accountant' || u.role === 'admin';
+            if (o.status === 'APPROVED_FINANCE') return u.role === 'manager' || u.role === 'admin';
+            if (o.status === 'APPROVED_MANAGER') return u.role === 'ceo' || u.role === 'admin';
+            return u.role === 'ceo' || u.role === 'financial' || u.role === 'manager' || u.role === 'admin';
+        });
+
+        for (const user of responsibleUsers) {
+            if (user.phoneNumber && settings.whatsappEnabled) {
+                import('./whatsapp.js').then(async mod => {
+                    if (!mod || !mod.sendMessage) return;
+                    if (paymentOrderImgBuffer) {
+                        const b64 = paymentOrderImgBuffer.toString('base64');
+                        await mod.sendMessage(user.phoneNumber, caption, {
+                            data: b64,
+                            mimeType: 'image/png',
+                            filename: `payment_order_${o.id || o.trackingNumber}.png`
+                        }).catch(() => {});
+                    } else {
+                        await mod.sendMessage(user.phoneNumber, caption).catch(() => {});
+                    }
+                }).catch(() => {});
+            }
         }
     } catch (e) { console.error("Payment Notification Helper Error:", e); }
 };
@@ -3909,7 +3992,7 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE', options 
             }).catch(e => console.error("Bale Import Error", e));
         }
 
-        // Fire WhatsApp
+        // Fire WhatsApp Group
         if (waGroupId && settings.whatsappEnabled) {
             import('./whatsapp.js').then(async (mod) => {
                 if (mod?.sendMessage) {
@@ -3939,6 +4022,51 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE', options 
                     }
                 }
             }).catch(e => console.error("WA Import Error", e));
+        }
+
+        // Direct WhatsApp to Driver (if driver phone provided)
+        if (dp.driverPhone && settings.whatsappEnabled && !isDelete) {
+            const driverCaption = `🚚 *رسید واریز کرایه راننده*\n` +
+                `جناب آقای ${dp.driverName || 'راننده محترم'}، مبلغ ${formattedAmount} بابت کرایه مسیر ${dp.origin || ''} به ${dp.destination || ''} واریز گردید.\n` +
+                `📅 تاریخ: ${dateStr}\n` +
+                (dp.cardNumber ? `💳 شماره کارت: ${dp.cardNumber}\n` : '') +
+                `✅ وضعیت: ${stage === 'factory' ? 'تایید نهایی و واریز شد' : 'در حال پردازش و تایید'}`;
+
+            import('./whatsapp.js').then(async (mod) => {
+                if (mod?.sendMessage) {
+                    if (formImageBuffer) {
+                        const b64 = formImageBuffer.toString('base64');
+                        await mod.sendMessage(dp.driverPhone, driverCaption, {
+                            data: b64,
+                            mimeType: 'image/png',
+                            filename: `driver_receipt_${dp.id}.png`
+                        }).catch(() => {});
+                    } else {
+                        await mod.sendMessage(dp.driverPhone, driverCaption).catch(() => {});
+                    }
+                }
+            }).catch(() => {});
+        }
+
+        // Send to Responsible Stage Users (Supervisor / Factory Manager / Accounting)
+        const responsibleStageRoles = stage === 'factory' 
+            ? ['factory_manager', 'financial', 'accountant', 'admin'] 
+            : ['security_supervisor', 'security', 'factory_manager', 'admin'];
+        const stageUsers = (db?.users || []).filter(u => responsibleStageRoles.includes(u.role) && u.phoneNumber);
+
+        for (const sUser of stageUsers) {
+            if (settings.whatsappEnabled) {
+                import('./whatsapp.js').then(async (mod) => {
+                    if (mod?.sendMessage && formImageBuffer) {
+                        const b64 = formImageBuffer.toString('base64');
+                        await mod.sendMessage(sUser.phoneNumber, caption, {
+                            data: b64,
+                            mimeType: 'image/png',
+                            filename: `driver_payment_${dp.id}.png`
+                        }).catch(() => {});
+                    }
+                }).catch(() => {});
+            }
         }
 
         return { success: true, count: loadedAttachments.length };
@@ -4092,13 +4220,20 @@ export const notifyWarehouseBijak = async (tx, db, stepName, eventType = 'STEP')
             if (stepName === 'ثبت اولیه' && companyConfig.salesManagerTelegram) sendToTarget({ type: 'tg', id: companyConfig.salesManagerTelegram }, true);
         }
 
-        // 3. If Pending, Notify CEO/Managers (Private) -> WITH PRICE
+        // 3. If Pending, Notify CEO/Managers/Warehouse Supervisors (Private) -> WITH PRICE
         if (tx.status === 'PENDING' && stepName === 'ثبت اولیه') {
-            const managers = (db.users || []).filter(u => u.role === 'ceo' || u.role === 'admin');
+            const managers = (db.users || []).filter(u => u.role === 'ceo' || u.role === 'admin' || u.role === 'warehouse_manager' || u.role === 'warehouse');
             for (const mgr of managers) {
                 if (mgr.telegramId) sendToTarget({ type: 'tg', id: mgr.telegramId }, true);
                 if (mgr.baleId) sendToTarget({ type: 'bale', id: mgr.baleId }, true);
+                if (mgr.phoneNumber) sendToTarget({ type: 'wa', id: mgr.phoneNumber }, true);
             }
+        }
+
+        // 4. Send directly to Driver on WhatsApp upon approval (if driver mobile present)
+        if (tx.status === 'APPROVED' && (tx.driverPhone || tx.driverMobile) && settings.whatsappEnabled) {
+            const driverPhone = tx.driverPhone || tx.driverMobile;
+            sendToTarget({ type: 'wa', id: driverPhone }, false);
         }
 
     } catch (e) {

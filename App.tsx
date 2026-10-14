@@ -752,6 +752,18 @@ function App() {
                           console.warn("Non-blocking background WhatsApp notification skipped:", waErr);
                       }
                   }
+
+                  if (settings?.botAccountingGroupIdWhatsApp && base64) {
+                      try {
+                          await apiCall('/send-whatsapp', 'POST', { 
+                              number: settings.botAccountingGroupIdWhatsApp, 
+                              message: caption, 
+                              mediaData: { data: base64, mimeType: 'image/jpeg', filename: `Order_${order.trackingNumber}.jpg` } 
+                          });
+                      } catch (gErr) {
+                          console.warn("Non-blocking background group WhatsApp notification skipped:", gErr);
+                      }
+                  }
               } catch (e) { 
                   console.warn("Background Job execution warning:", e); 
               }

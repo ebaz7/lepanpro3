@@ -612,6 +612,10 @@ export const getGroups = async () => {
     }
 };
 
+export const sendMediaMessage = async (number, caption, mediaData) => {
+    return await sendMessage(number, caption, mediaData);
+};
+
 export const sendMessage = async (number, text, mediaData) => {
     // 1. Validation of target recipient
     if (!number || typeof number !== 'string' || !number.trim() || number === 'undefined' || number === 'null') {
@@ -638,14 +642,14 @@ export const sendMessage = async (number, text, mediaData) => {
         }
     }
 
-    // 2. Check client readiness and active browser page
+    // 2. Check client readiness and active browser page safely
     let page = client?.pupPage;
     if (!page || (typeof page.isClosed === 'function' && page.isClosed())) {
         page = await recoverActivePage();
     }
 
-    const browserAlive = client?.pupBrowser && client.pupBrowser.isConnected();
-    if (!client || !isReady || !browserAlive || !page || page.isClosed()) {
+    const browserAlive = client?.pupBrowser && (typeof client.pupBrowser.isConnected === 'function' ? client.pupBrowser.isConnected() : true);
+    if (!client || !isReady || !browserAlive || !page || (typeof page.isClosed === 'function' && page.isClosed())) {
         const warningMsg = `سرویس واتساپ در حال حاضر متصل یا آماده نیست. روال سیستم و ثبت سند با موفقیت انجام شد.`;
         console.warn(`>>> [WhatsApp Soft Warning] ${warningMsg} (مقصد: ${chatId})`);
         addDiagnosticLog('warn', 'MESSAGE', warningMsg, `مقصد: ${chatId} - کلاینت آماده نیست.`);
@@ -657,7 +661,7 @@ export const sendMessage = async (number, text, mediaData) => {
     if (chatId.endsWith('@c.us')) {
         try {
             const numberOnly = chatId.replace(/\D/g, '');
-            const numId = await client.getNumberId(numberOnly);
+            const numId = await client.getNumberId(numberOnly).catch(() => null);
             if (numId && numId._serialized) {
                 targetJid = numId._serialized;
             } else if (numId === null) {
@@ -671,33 +675,49 @@ export const sendMessage = async (number, text, mediaData) => {
         }
     }
 
-    // 4. Prepare MediaData if provided
+    // 4. Prepare MediaData if provided (Direct Photo with Caption standard)
     let media = null;
-    if (mediaData && mediaData.data) {
+    if (mediaData && (mediaData.data || mediaData.buffer)) {
         try {
-            let cleanBase64 = String(mediaData.data).trim();
-            if (cleanBase64.includes(';base64,')) {
-                cleanBase64 = cleanBase64.split(';base64,')[1];
-            } else if (cleanBase64.startsWith('data:')) {
-                cleanBase64 = cleanBase64.replace(/^data:[^,]+,/, '');
+            let cleanBase64 = '';
+            if (Buffer.isBuffer(mediaData.data)) {
+                cleanBase64 = mediaData.data.toString('base64');
+            } else if (Buffer.isBuffer(mediaData.buffer)) {
+                cleanBase64 = mediaData.buffer.toString('base64');
+            } else if (typeof mediaData.data === 'string') {
+                cleanBase64 = mediaData.data.trim();
+                if (cleanBase64.includes(';base64,')) {
+                    cleanBase64 = cleanBase64.split(';base64,')[1];
+                } else if (cleanBase64.startsWith('data:')) {
+                    cleanBase64 = cleanBase64.replace(/^data:[^,]+,/, '');
+                }
+                cleanBase64 = cleanBase64.replace(/\s+/g, '');
             }
-            cleanBase64 = cleanBase64.replace(/\s+/g, '');
-            const mimeType = mediaData.mimetype || mediaData.mimeType || 'image/jpeg';
-            const filename = mediaData.filename || 'file.jpg';
-            media = new MessageMedia(mimeType, cleanBase64, filename);
+
+            if (cleanBase64 && cleanBase64.length % 4 !== 0) {
+                cleanBase64 += '='.repeat(4 - (cleanBase64.length % 4));
+            }
+
+            if (cleanBase64) {
+                const mimeType = mediaData.mimetype || mediaData.mimeType || 'image/jpeg';
+                const filename = mediaData.filename || 'document.jpg';
+                media = new MessageMedia(mimeType, cleanBase64, filename);
+            }
         } catch (mediaPrepErr) {
             console.warn("[WhatsApp] Media preparation warning:", mediaPrepErr.message);
+            addDiagnosticLog('warn', 'MESSAGE', `هشدار در آماده‌سازی مدیا: ${mediaPrepErr.message}`);
         }
     }
 
-    // 5. Tier 1 Send Attempt
+    // 5. Tier 1 Send Attempt (Direct Photo with Caption or Direct Text)
     try {
         if (media) {
-            await client.sendMessage(targetJid, media, { caption: text || '' });
+            // sendMediaAsDocument: false guarantees it is rendered inline as a photo with caption underneath
+            await client.sendMessage(targetJid, media, { caption: text || '', sendMediaAsDocument: false });
         } else if (text) {
             await client.sendMessage(targetJid, text);
         }
-        addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} ارسال شد.`);
+        addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} ارسال شد (عکس و کپشن مستقیم).`);
         return { success: true, chatId: targetJid };
     } catch (err) {
         console.warn(`[WhatsApp] Send attempt 1 failed for ${targetJid}: ${err.message}`);
@@ -728,7 +748,7 @@ export const sendMessage = async (number, text, mediaData) => {
                     const chat = await client.getChatById(targetJid);
                     if (chat) {
                         if (media) {
-                            await chat.sendMessage(media, { caption: text || '' });
+                            await chat.sendMessage(media, { caption: text || '', sendMediaAsDocument: false });
                         } else if (text) {
                             await chat.sendMessage(text);
                         }
@@ -739,7 +759,7 @@ export const sendMessage = async (number, text, mediaData) => {
                     console.warn(`[WhatsApp] Chat object fallback failed: ${chatErr.message}`);
                 }
 
-                // Try direct in-page script injection
+                // Try direct in-page script injection for text
                 if (text && (!media || !media.data)) {
                     await page.evaluate(async (jid, msgText) => {
                         const chatWid = window.require('WAWebWidFactory').createWid(jid);
@@ -760,7 +780,7 @@ export const sendMessage = async (number, text, mediaData) => {
         if (media && text) {
             try {
                 console.log(`[WhatsApp] Falling back to text-only send for ${targetJid}...`);
-                await client.sendMessage(targetJid, `📎 [فایل الحاقی]\n${text}`);
+                await client.sendMessage(targetJid, `📎 [تصویر برگه رسمی پیوست شد]\n${text}`);
                 addDiagnosticLog('success', 'MESSAGE', `متن اطلاعیه با موفقیت به ${targetJid} ارسال شد (ارسال خودکار متن به جای فایل).`);
                 return { success: true, chatId: targetJid, mediaFallbackToText: true };
             } catch (textErr) {

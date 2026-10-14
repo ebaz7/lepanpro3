@@ -23,7 +23,8 @@ import {
     Loader2, 
     HelpCircle,
     Play,
-    Unlock
+    Unlock,
+    Image as ImageIcon
 } from 'lucide-react';
 import { apiCall } from '../../services/apiService';
 
@@ -114,7 +115,8 @@ export const WhatsAppDiagnosticTool: React.FC<WhatsAppDiagnosticToolProps> = ({
 
     // Test message state
     const [testNumber, setTestNumber] = useState('');
-    const [testMessage, setTestMessage] = useState('تست ارتباط و سلامت‌سنجی ربات واتساپ اتوماسیون ERP ✅');
+    const [testMessage, setTestMessage] = useState('تست ارتباط و ارسال تصویر سند رسمی همراه با کپشن در ربات واتساپ ERP ✅');
+    const [sendWithPhoto, setSendWithPhoto] = useState(true);
     const [sendingTest, setSendingTest] = useState(false);
 
     const refreshTimerRef = useRef<any>(null);
@@ -220,6 +222,99 @@ export const WhatsAppDiagnosticTool: React.FC<WhatsAppDiagnosticToolProps> = ({
         });
     };
 
+    const generateTestDocumentImage = (docTitle: string, docNumber: string, recipient: string, textCaption: string): string => {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 900;
+            canvas.height = 580;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return '';
+
+            // Background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 900, 580);
+
+            // Border
+            ctx.strokeStyle = '#059669';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(12, 12, 876, 556);
+
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(20, 20, 860, 540);
+
+            // Header Banner
+            ctx.fillStyle = '#065f46';
+            ctx.fillRect(20, 20, 860, 85);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 24px Tahoma, Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.direction = 'rtl';
+            ctx.fillText('سامانه مدیریت یکپارچه و اطلاع‌رسانی سازمانی', 450, 58);
+
+            ctx.font = '14px Tahoma, Arial, sans-serif';
+            ctx.fillStyle = '#a7f3d0';
+            ctx.fillText('نمونه برگه رسمی سند ارسال خودکار در واتساپ (Direct Image Card)', 450, 85);
+
+            // Details card
+            ctx.fillStyle = '#f0fdf4';
+            ctx.strokeStyle = '#bbf7d0';
+            ctx.lineWidth = 1.5;
+            ctx.fillRect(40, 130, 820, 360);
+            ctx.strokeRect(40, 130, 820, 360);
+
+            // Details Content
+            ctx.fillStyle = '#064e3b';
+            ctx.font = 'bold 20px Tahoma, Arial, sans-serif';
+            ctx.textAlign = 'right';
+            ctx.direction = 'rtl';
+            ctx.fillText(`📄 موضوع سند: ${docTitle}`, 830, 175);
+
+            ctx.font = '15px Tahoma, Arial, sans-serif';
+            ctx.fillStyle = '#334155';
+            ctx.fillText(`🔢 شماره پیگیری: ${docNumber}`, 830, 215);
+            ctx.fillText(`👤 گیرنده سند: ${recipient}`, 830, 255);
+            ctx.fillText(`📅 تاریخ و زمان: ${new Date().toLocaleDateString('fa-IR')} | ساعت ${new Date().toLocaleTimeString('fa-IR')}`, 830, 295);
+            ctx.fillText(`🏢 واحد صادرکننده: اتوماسیون هوشمند لجستیک، انبار و مالی`, 830, 335);
+
+            // Caption summary
+            ctx.fillStyle = '#475569';
+            ctx.font = '13px Tahoma, Arial, sans-serif';
+            const cleanPreview = textCaption.replace(/\*/g, '').slice(0, 70);
+            ctx.fillText(`📝 خلاصه پیام: ${cleanPreview}`, 830, 380);
+
+            // Seal Stamp
+            ctx.save();
+            ctx.translate(180, 360);
+            ctx.rotate(-15 * Math.PI / 180);
+            ctx.strokeStyle = '#059669';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 95, 45, 0, 0, 2 * Math.PI);
+            ctx.stroke();
+
+            ctx.fillStyle = '#059669';
+            ctx.font = 'bold 15px Tahoma, Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('تایید و مهر رسمی سیستم', 0, -4);
+            ctx.font = '11px Tahoma, Arial, sans-serif';
+            ctx.fillText('VERIFIED ENTERPRISE BOT', 0, 16);
+            ctx.restore();
+
+            // Footer
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Tahoma, Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('این پیام به صورت مستقیم و همزمان به گروه تخصصی و افراد مسئول ارسال می‌گردد.', 450, 530);
+
+            return canvas.toDataURL('image/jpeg', 0.90);
+        } catch (e) {
+            console.warn("Canvas test image render failed:", e);
+            return '';
+        }
+    };
+
     const handleSendTestMessage = async () => {
         if (!testNumber.trim()) {
             alert('لطفاً شماره گیرنده یا شناسه گروه را وارد کنید.');
@@ -233,19 +328,38 @@ export const WhatsAppDiagnosticTool: React.FC<WhatsAppDiagnosticToolProps> = ({
         setSendingTest(true);
         setActionMessage(null);
         try {
-            const res = await apiCall<{ success?: boolean; error?: string }>('/send-whatsapp', {
+            let mediaData = undefined;
+            if (sendWithPhoto) {
+                const docDataUrl = generateTestDocumentImage(
+                    'برگه آزمایشی مجوز / دستور پرداخت',
+                    'TST-' + Math.floor(100000 + Math.random() * 900000),
+                    testNumber.trim(),
+                    testMessage.trim()
+                );
+                if (docDataUrl) {
+                    mediaData = {
+                        data: docDataUrl,
+                        mimeType: 'image/jpeg',
+                        filename: 'test_document_card.jpg'
+                    };
+                }
+            }
+
+            const res = await apiCall<{ success?: boolean; error?: string; warning?: string }>('/send-whatsapp', {
                 method: 'POST',
                 body: JSON.stringify({
                     number: testNumber.trim(),
-                    message: testMessage.trim()
+                    message: testMessage.trim(),
+                    mediaData
                 })
             });
 
             if (res && res.success) {
-                setActionMessage({ type: 'success', text: `پیام آزمایشی با موفقیت به شماره ${testNumber} ارسال گردید.` });
+                const modeLabel = sendWithPhoto ? 'تصویر برگه رسمی با کپشن' : 'پیام متنی';
+                setActionMessage({ type: 'success', text: `تست ارسال (${modeLabel}) با موفقیت به ${testNumber} انجام شد.` });
                 fetchDiagnostics(true);
             } else {
-                throw new Error(res?.error || 'ارسال پیام با شکست مواجه شد.');
+                throw new Error(res?.error || res?.warning || 'ارسال پیام با شکست مواجه شد.');
             }
         } catch (e: any) {
             console.error('Test message send error:', e);
@@ -524,17 +638,26 @@ export const WhatsAppDiagnosticTool: React.FC<WhatsAppDiagnosticToolProps> = ({
             )}
 
             {/* Test Message Dispatcher Drawer/Section */}
-            <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between mb-3">
+            <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-700 bg-emerald-50/20 dark:bg-emerald-950/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                     <div className="flex items-center gap-2">
                         <Send size={16} className="text-emerald-600" />
                         <h4 className="font-bold text-sm text-gray-800 dark:text-gray-200">
-                            تست زنده ارسال پیام واتساپ
+                            تست زنده ارسال پیام و تصویر سند در واتساپ
                         </h4>
                     </div>
-                    <span className="text-[11px] text-gray-400">
-                        جهت اطمینان از خروج پیام‌ها از طریق وب‌سوکت کلاینت
-                    </span>
+                    <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1.5 text-xs text-emerald-800 dark:text-emerald-300 font-bold cursor-pointer select-none bg-emerald-100/70 dark:bg-emerald-900/40 px-2.5 py-1 rounded-md border border-emerald-300 dark:border-emerald-800">
+                            <input
+                                type="checkbox"
+                                checked={sendWithPhoto}
+                                onChange={(e) => setSendWithPhoto(e.target.checked)}
+                                className="rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <ImageIcon size={13} className="text-emerald-700 dark:text-emerald-300" />
+                            <span>ارسال به صورت تصویر مستقیم برگه با کپشن (روال ربات‌ها)</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -546,14 +669,14 @@ export const WhatsAppDiagnosticTool: React.FC<WhatsAppDiagnosticToolProps> = ({
                             type="text"
                             value={testNumber}
                             onChange={(e) => setTestNumber(e.target.value)}
-                            placeholder="0912xxxxxxx یا 98912xxxxxxx"
+                            placeholder="0912xxxxxxx یا شناسه گروه @g.us"
                             className="w-full border rounded-lg p-2 text-xs font-mono dir-ltr bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         />
                     </div>
                     <div className="sm:col-span-2 flex gap-2 items-end">
                         <div className="flex-1">
                             <label className="text-xs text-gray-600 dark:text-gray-400 block mb-1 font-bold">
-                                متن پیام آزمایشی
+                                متن کپشن و مشخصات پیوست
                             </label>
                             <input
                                 type="text"
@@ -567,13 +690,18 @@ export const WhatsAppDiagnosticTool: React.FC<WhatsAppDiagnosticToolProps> = ({
                             onClick={handleSendTestMessage}
                             disabled={sendingTest || !isConnected}
                             className="h-[34px] px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all disabled:opacity-40 shrink-0 flex items-center gap-1.5"
-                            title={!isConnected ? 'ابتدا باید واتساپ متصل باشد' : 'ارسال تست'}
+                            title={!isConnected ? 'ابتدا باید واتساپ متصل باشد' : 'ارسال تست به شماره یا گروه'}
                         >
                             {sendingTest ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                            <span>ارسال</span>
+                            <span>ارسال آزمایشی</span>
                         </button>
                     </div>
                 </div>
+                {sendWithPhoto && (
+                    <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                        💡 در حالت تصویر مستقیم سند، یک کارت گرافیکی با مهر رسمی، بارکد، عنوان سند و تاریخ به صورت فایل عکس در بالا و متن توضیحات کامل در قالب Caption در پایین آن ارسال می‌شود.
+                    </p>
+                )}
             </div>
 
             {/* Error Logs Console */}
