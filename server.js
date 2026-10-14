@@ -2477,6 +2477,7 @@ const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
         INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
         WHERE t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'
           AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+          AND t10.Field_009 NOT IN ('19', '82')
           AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
         GROUP BY t11.Field_005
     `;

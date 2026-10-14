@@ -1360,7 +1360,7 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                             const file = e.target.files?.[0];
                             if (!file) return;
                             try {
-                              toast.info('در حال آپلود فایل کاتالوگ...');
+                              toast('در حال آپلود فایل کاتالوگ...');
                               const result = await uploadFileChunked(file, () => {});
                               setBlockForm({ 
                                 ...blockForm, 

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    FileText, X, CheckCircle2, AlertCircle, Clock, ShieldCheck,
+    Zap, FileText, X, CheckCircle2, AlertCircle, Clock, ShieldCheck,
     CreditCard, Building2, User, Hash, Layers, Eye, Download, Printer,
     ArrowRight, Check, Sparkles, CornerUpLeft, Edit3, Trash2, MessageSquare, Send,
     Upload, Plus, Loader2

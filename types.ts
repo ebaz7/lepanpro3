@@ -356,6 +356,8 @@ export interface UnionExitBotUser {
 export type AppSettings = SystemSettings;
 
 export interface SystemSettings {
+  salesManagerWhatsapp?: string;
+  customerSurveyUrl?: string;
   appName?: string;
   currentTrackingNumber: number;
   currentExitPermitNumber: number;
