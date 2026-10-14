@@ -2513,31 +2513,17 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
     const settings = db.settings || {};
     const sayanUrl = sanitizeSayanUrl(settings.sayanApiUrl || process.env.SAYAN_API_URL || 'http://80.210.31.176:5000/api/external/v1');
     const sayanKey = (settings.sayanApiKey || process.env.SAYAN_API_KEY || 's_gate_live_73f08a91b2c').trim();
-    const benchmark = generateBenchmarkData();
 
-    if (!sayanUrl || !sayanKey) {
-        return {
-            success: true,
-            isLive: false,
-            fromBenchmark: true,
-            warning: 'تنظیمات ارتباط دیتابیس سایان ثبت نشده؛ بارگذاری داده‌های معیار انبار',
-            lastYearStock: benchmark.lastYearStock,
-            currentStock: benchmark.currentStock
-        };
+    if (forceRefresh && db.warehouseOverview) {
+        db.warehouseOverview.sayanCache = null;
+        saveDb(db);
     }
 
-    if (forceRefresh) {
-        if (db.warehouseOverview) {
-            db.warehouseOverview.sayanCache = null;
-            saveDb(db);
-        }
-    }
-
-    // Return cached stock if valid and not forcing refresh (cache duration: 5 minutes)
+    // Return cached live stock if valid, confirmed live, and not forcing refresh (cache TTL: 3 minutes)
     const cached = db.warehouseOverview?.sayanCache;
-    if (!forceRefresh && cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0 && Array.isArray(cached.currentStock) && cached.currentStock.length > 0) {
+    if (!forceRefresh && cached && cached.isLive === true && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0 && Array.isArray(cached.currentStock) && cached.currentStock.length > 0) {
         const cacheAge = Date.now() - (cached.timestamp || 0);
-        if (cacheAge < 5 * 60 * 1000) {
+        if (cacheAge < 3 * 60 * 1000) {
             return {
                 success: true,
                 isLive: true,
@@ -2559,30 +2545,32 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
             getWarehouseInventoryForDate(db, currentYearDateTo, nameMap)
         ]);
 
-        lastYearStock = lyResult || [];
-        currentStock = currResult || [];
-
-        if (Array.isArray(lastYearStock) && lastYearStock.length > 0 && Array.isArray(currentStock) && currentStock.length > 0) {
+        if (Array.isArray(lyResult) && lyResult.length > 0 && Array.isArray(currResult) && currResult.length > 0) {
+            lastYearStock = lyResult;
+            currentStock = currResult;
             isLiveSayan = true;
+
             const overview = db.warehouseOverview || {};
             overview.sayanCache = {
                 lastYearStock,
                 currentStock,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                isLive: true
             };
             db.warehouseOverview = overview;
             saveDb(db);
         }
     } catch (sayanErr) {
-        console.warn('[Warehouse Inventory] Sayan live query failed or timed out:', sayanErr.message);
+        console.warn('[Warehouse Inventory] Sayan live query error:', sayanErr.message);
     }
 
     if (!isLiveSayan || !lastYearStock.length || !currentStock.length) {
-        if (cached && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0) {
+        if (cached && cached.isLive === true && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0) {
             lastYearStock = cached.lastYearStock;
             currentStock = cached.currentStock;
             isLiveSayan = true;
         } else {
+            const benchmark = generateBenchmarkData();
             lastYearStock = benchmark.lastYearStock;
             currentStock = benchmark.currentStock;
         }
