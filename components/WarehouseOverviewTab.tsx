@@ -1376,88 +1376,29 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
     ): any => {
         // For weight and cartons, directly return live Sayan ERP inventory stock when available
         if (field === 'weight' || field === 'cartons') {
+            const liveList = isLastYear ? sayanLastYear : sayanCurrent;
             const liveStockVal = isGroup ? getSayanGroupSum(itemKey, isLastYear, field) : getSayanItemValue(itemKey, isLastYear, field);
-            // Return live Sayan value if loaded or if no manual override is active
-            if (sayanLastYear.length > 0 || sayanCurrent.length > 0 || liveStockVal !== 0) {
-                const overrides = isLastYear ? lastYearOverrides : currentOverrides;
-                const itemOverride = overrides[itemKey];
-                // If user manually edited in edit mode, allow override, otherwise prefer live Sayan DB value
-                if (isEditMode && itemOverride && itemOverride[field] !== undefined && itemOverride[field] !== '') {
-                    return itemOverride[field];
-                }
+            if (liveList && liveList.length > 0) {
                 return liveStockVal;
             }
         }
-
         const overrides = isLastYear ? lastYearOverrides : currentOverrides;
-        
         let itemOverride = overrides[itemKey];
         if (!itemOverride) {
-            // Backward compatibility: check if there's an override under the item's Persian name
             const allItems = [...sayanLastYear, ...sayanCurrent];
             const foundItem = allItems.find(r => String(r.itemCode || r.ItemCode || '') === itemKey);
             if (foundItem && foundItem.itemName) {
                 itemOverride = overrides[foundItem.itemName];
             }
         }
-
         if (itemOverride && itemOverride[field] !== undefined && itemOverride[field] !== '') {
             return itemOverride[field];
         }
-
-        // Sayan fallback for weight and cartons
         if (field === 'weight' || field === 'cartons') {
-            if (isGroup) {
-                return getSayanGroupSum(itemKey, isLastYear, field);
-            } else {
-                return getSayanItemValue(itemKey, isLastYear, field);
-            }
+            return isGroup ? getSayanGroupSum(itemKey, isLastYear, field) : getSayanItemValue(itemKey, isLastYear, field);
         }
-
-        // Defaults
-        if (field === 'proforma') return '';
-        return 0;
+        return '';
     };
-
-    // Helper to update override values in state
-    const handleCellChange = (itemName: string, isLastYear: boolean, field: string, value: any) => {
-        const setOverrides = isLastYear ? setLastYearOverrides : setCurrentOverrides;
-        const overrides = isLastYear ? lastYearOverrides : currentOverrides;
-
-        const val = (field === 'proforma') ? value : parseFloat(value || '0');
-
-        setOverrides({
-            ...overrides,
-            [itemName]: {
-                ...(overrides[itemName] || {}),
-                [field]: val
-            }
-        });
-    };
-
-    const handleCategoryChange = (itemName: string, category: 'raw' | 'factory' | 'other') => {
-        setItemCategories(prev => ({
-            ...prev,
-            [itemName]: category
-        }));
-    };
-
-    // Calculate sum of custom tables
-    const calculateCustomTableSum = (list: any[], field: string) => {
-        return list.reduce((sum, item) => sum + (parseFloat(item[field]) || 0), 0);
-    };
-
-    // Support getting custom category overrides
-    const getItemCategory = (itemName: string): 'raw' | 'factory' | 'other' => {
-        if (itemCategories[itemName]) {
-            return itemCategories[itemName];
-        }
-        return 'raw'; // Default is active/visible
-    };
-
-    // Backward compatibility variables for total calculations
-    const allActiveRawItems = alignedImported;
-    const allActiveFactoryItems = alignedYarns;
 
     const calculateTotalSayanSum = (isLastYear: boolean, field: 'cartons' | 'weight' | 'containers' | 'dollars') => {
         const sumYarns = alignedYarns.reduce((sum, item) => sum + getItemValue(item.code, isLastYear, field, true), 0);
@@ -3219,29 +3160,31 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full min-w-[600px] text-xs text-center border-collapse">
                             <thead>
-                                <tr className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200 text-xs">
-                                    <th className="py-3 px-3 text-right whitespace-nowrap">سرفصل / کد و نام کالا</th>
-                                    <th className="py-3 px-2 text-center whitespace-nowrap text-slate-700">موجودی اول دوره (افتتاحیه)</th>
-                                    <th className="py-3 px-2 text-center whitespace-nowrap text-emerald-700">وارده (رسید طی دوره)</th>
-                                    <th className="py-3 px-2 text-center whitespace-nowrap text-rose-700">صادره (حواله طی دوره)</th>
-                                    <th className="py-3 px-2 text-center font-black whitespace-nowrap text-blue-900 bg-blue-50/50">مانده نهایی (پایان دوره)</th>
+                                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                                    <th className="py-3 px-2 text-right whitespace-nowrap">نوع کالا / نخ</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">دسته‌بندی</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">پروفرم</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">کارتن</th>
+                                    <th className="py-3 px-2 font-bold text-slate-900 whitespace-nowrap">وزن (kg)</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">کانتینر</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">ارزش دلاری</th>
                                 </tr>
                             </thead>
                             {renderTableBody(true)}
                             <tfoot>
                                 <tr className="bg-slate-900 !text-white font-extrabold border-t-2 border-slate-700" style={{ backgroundColor: '#0f172a' }}>
-                                    <td className="py-3 px-3 text-right font-extrabold !text-white" style={{ color: '#ffffff', fontWeight: 900 }}>جمع کل انبارها (سایان)</td>
-                                    <td className="py-3 px-2 font-mono text-center !text-slate-200 font-bold">
-                                        {calculateTotalSayanOpeningSum(true).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-3 text-right font-extrabold !text-white" style={{ color: '#ffffff', fontWeight: 900 }} colSpan={3}>جمع کل انبارها (سایان)</td>
+                                    <td className="py-3 px-2 font-mono text-center !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>
+                                        {calculateTotalSayanSum(true, 'cartons').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center !text-emerald-300 font-bold">
-                                        {calculateTotalSayanInflowSum(true).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-2 font-mono text-center !text-amber-300 font-bold" style={{ color: '#fcd34d', fontWeight: 900 }}>
+                                        {calculateTotalSayanSum(true, 'weight').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center !text-rose-300 font-bold">
-                                        {calculateTotalSayanOutflowSum(true).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-2 font-mono text-center !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>
+                                        {calculateTotalSayanSum(true, 'containers').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center !text-amber-300 font-extrabold text-sm">
-                                        {calculateTotalSayanEndingSum(true).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-2 font-mono text-center !text-emerald-300 font-bold" style={{ color: '#6ee7b7', fontWeight: 900 }}>
+                                        ${calculateTotalSayanSum(true, 'dollars').toLocaleString('en-US')}
                                     </td>
                                 </tr>
                             </tfoot>
@@ -3262,29 +3205,31 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
                     <div className="overflow-x-auto flex-1">
                         <table className="w-full min-w-[600px] text-xs text-center border-collapse">
                             <thead>
-                                <tr className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200 text-xs">
-                                    <th className="py-3 px-3 text-right whitespace-nowrap">سرفصل / کد و نام کالا</th>
-                                    <th className="py-3 px-2 text-center whitespace-nowrap text-slate-700">موجودی اول دوره (افتتاحیه)</th>
-                                    <th className="py-3 px-2 text-center whitespace-nowrap text-emerald-700">وارده (رسید طی دوره)</th>
-                                    <th className="py-3 px-2 text-center whitespace-nowrap text-rose-700">صادره (حواله طی دوره)</th>
-                                    <th className="py-3 px-2 text-center font-black whitespace-nowrap text-blue-900 bg-blue-50/50">مانده نهایی (پایان دوره)</th>
+                                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                                    <th className="py-3 px-2 text-right whitespace-nowrap">نوع کالا / نخ</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">دسته‌بندی</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">پروفرم</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">کارتن</th>
+                                    <th className="py-3 px-2 font-bold text-slate-900 whitespace-nowrap">وزن (kg)</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">کانتینر</th>
+                                    <th className="py-3 px-2 whitespace-nowrap">ارزش دلاری</th>
                                 </tr>
                             </thead>
                             {renderTableBody(false)}
                             <tfoot>
                                 <tr className="bg-blue-950 !text-white font-extrabold border-t-2 border-blue-700" style={{ backgroundColor: '#172554' }}>
-                                    <td className="py-3 px-3 text-right font-extrabold !text-white" style={{ color: '#ffffff', fontWeight: 900 }}>جمع کل انبارها (سایان)</td>
-                                    <td className="py-3 px-2 font-mono text-center !text-slate-200 font-bold">
-                                        {calculateTotalSayanOpeningSum(false).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-3 text-right font-extrabold !text-white" style={{ color: '#ffffff', fontWeight: 900 }} colSpan={3}>جمع کل انبارها (سایان)</td>
+                                    <td className="py-3 px-2 font-mono text-center !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>
+                                        {calculateTotalSayanSum(false, 'cartons').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center !text-emerald-300 font-bold">
-                                        {calculateTotalSayanInflowSum(false).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-2 font-mono text-center !text-amber-300 font-bold" style={{ color: '#fcd34d', fontWeight: 900 }}>
+                                        {calculateTotalSayanSum(false, 'weight').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center !text-rose-300 font-bold">
-                                        {calculateTotalSayanOutflowSum(false).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-2 font-mono text-center !text-white" style={{ color: '#ffffff', fontWeight: 800 }}>
+                                        {calculateTotalSayanSum(false, 'containers').toLocaleString('fa-IR')}
                                     </td>
-                                    <td className="py-3 px-2 font-mono text-center !text-amber-300 font-extrabold text-sm">
-                                        {calculateTotalSayanEndingSum(false).toLocaleString('fa-IR', { maximumFractionDigits: 3 })}
+                                    <td className="py-3 px-2 font-mono text-center !text-emerald-300 font-bold" style={{ color: '#6ee7b7', fontWeight: 900 }}>
+                                        ${calculateTotalSayanSum(false, 'dollars').toLocaleString('en-US')}
                                     </td>
                                 </tr>
                             </tfoot>
