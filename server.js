@@ -2462,21 +2462,15 @@ const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
                 WHEN RTRIM(LTRIM(t10.Field_009)) IN ('10', '81') THEN t11.Field_006
                 ELSE 0
             END) as OpeningQty,
-            SUM(CASE 
-                WHEN RTRIM(LTRIM(t10.Field_009)) NOT IN ('10', '81') AND s06.Field_010 = 1 THEN t11.Field_006
-                ELSE 0 
-            END) as InflowQty,
-            SUM(CASE 
-                WHEN RTRIM(LTRIM(t10.Field_009)) NOT IN ('10', '81') AND s06.Field_010 = -1 THEN t11.Field_006
-                ELSE 0 
-            END) as OutflowQty
+            SUM(CASE WHEN RTRIM(LTRIM(t10.Field_009)) NOT IN ('10', '81', '12', '14', '16', '53', '57') AND s06.Field_010 = 1 THEN t11.Field_006 ELSE 0 END) as InflowQty,
+            SUM(CASE WHEN RTRIM(LTRIM(t10.Field_009)) NOT IN ('10', '81', '12', '14', '16', '53', '57') AND s06.Field_010 = -1 THEN t11.Field_006 ELSE 0 END) as OutflowQty
         FROM STR_TBL_011 t11 WITH (NOLOCK)
         INNER JOIN STR_TBL_010 t10 WITH (NOLOCK) ON t11.Field_004 = t10.Field_005 
                                    AND t11.Field_003 = t10.Field_004 
                                    AND t11.Field_012 = t10.Field_018
         INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
         WHERE t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'
-          AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+          AND t10.Field_008 >= '2026-03-21T00:00:00.000Z' AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
           AND t10.Field_009 NOT IN ('19', '82')
           AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
         GROUP BY t11.Field_005
@@ -2586,6 +2580,7 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
 };
 
 app.get('/api/sayan/warehouse-inventory', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     try {
         const db = getDb();
         let lastYearDateTo = req.query.lastYearDateTo;
@@ -2614,6 +2609,7 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
 });
 
 app.get('/api/warehouse-overview/data', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     try {
         const db = getDb();
         res.json(db.warehouseOverview || {});
