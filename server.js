@@ -2565,12 +2565,16 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
             isLiveSayan = true;
 
             const overview = db.warehouseOverview || {};
-            overview.sayanCache = {
-                lastYearStock,
-                currentStock,
-                timestamp: Date.now(),
-                isLive: true
-            };
+            if (isLiveSayan) {
+      overview.sayanCache = {
+          lastYearStock,
+          currentStock,
+          timestamp: Date.now(),
+          isLive: true
+      };
+      db.warehouseOverview = overview;
+      saveDb(db);
+  }
             db.warehouseOverview = overview;
             saveDb(db);
         }

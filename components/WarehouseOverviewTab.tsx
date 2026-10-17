@@ -331,7 +331,6 @@ export const WarehouseOverviewTab: React.FC = () => {
             return '';
         }
     });
-    const [ceoSignature, setCeoSignature] = useState("");
 
     // Configurable Labels and Query Dates
     const [report1Label, setReport1Label] = useState("منتهی به سال ۱۴۰۴");
@@ -852,7 +851,6 @@ export const WarehouseOverviewTab: React.FC = () => {
                 if (dbData.meta) {
                     if (dbData.meta.reportDate) setReportDate(dbData.meta.reportDate);
                     if (dbData.meta.signature) setSignature(dbData.meta.signature);
-                    if (dbData.meta.ceoSignature) setCeoSignature(dbData.meta.ceoSignature);
                     
                     if (dbData.meta.report1Label) setReport1Label(dbData.meta.report1Label);
                     if (dbData.meta.report1Jalali) setReport1Jalali(dbData.meta.report1Jalali);
@@ -979,7 +977,6 @@ export const WarehouseOverviewTab: React.FC = () => {
                 meta: {
                     reportDate,
                     signature,
-                    ceoSignature,
                     report1Label,
                     report1Jalali,
                     report1Miladi,
@@ -1765,7 +1762,6 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
             report1Label,
             report2Label,
             signature,
-            ceoSignature,
             lastYearYarnsWeight: totalLastYearYarnsWeight,
             currentYarnsWeight: totalCurrentYarnsWeight,
             yarnsDiffWeight: diffYarnsWeight,
@@ -4314,23 +4310,7 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
                         </div>
                     </div>
                     
-                    <div className="flex flex-col gap-1 items-start sm:items-end">
-                        <div>تایید نهایی:</div>
-                        <div className="flex items-center gap-1 text-slate-800 mt-1">
-                            <span>مدیریت عامل:</span>
-                            {isEditMode ? (
-                                <input 
-                                    type="text"
-                                    value={ceoSignature}
-                                    onChange={(e) => setCeoSignature(e.target.value)}
-                                    placeholder="نام تاییدکننده..."
-                                    className="bg-transparent border-b border-blue-400 font-bold focus:outline-none w-44 text-right"
-                                />
-                            ) : (
-                                <span className="font-black text-slate-900">{ceoSignature || '—'}</span>
-                            )}
-                        </div>
-                    </div>
+                    
                 </div>
             </div>
 

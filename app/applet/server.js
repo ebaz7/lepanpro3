@@ -2565,12 +2565,16 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
             isLiveSayan = true;
 
             const overview = db.warehouseOverview || {};
-            overview.sayanCache = {
-                lastYearStock,
-                currentStock,
-                timestamp: Date.now(),
-                isLive: true
-            };
+            if (isLiveSayan) {
+      overview.sayanCache = {
+          lastYearStock,
+          currentStock,
+          timestamp: Date.now(),
+          isLive: true
+      };
+      db.warehouseOverview = overview;
+      saveDb(db);
+  }
             db.warehouseOverview = overview;
             saveDb(db);
         }
@@ -13727,42 +13731,6 @@ app.post('/api/ai/sayan-send-bot', async (req, res) => {
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
 const isExplicitDev = process.argv.includes("--dev") || process.env.NODE_ENV === "development";
 
-if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
-    console.log("Starting in Development mode with Vite Middleware...");
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: false },
-        appType: "spa",
-    });
-    app.use(vite.middlewares);
-} else {
-    let buildTime = "Unknown";
-    try {
-        const stats = fs.statSync(path.join(DIST_DIR, 'index.html'));
-        buildTime = stats.mtime.toLocaleString('fa-IR');
-    } catch(e){}
-    console.log(`Starting in Production mode serving built assets from dist (Build Date: ${buildTime})...`);
-    app.use(express.static(DIST_DIR, {
-        maxAge: '1d',
-        setHeaders: (res, filePath) => {
-            // Never cache HTML, Service Worker, JS or Manifest files to ensure instant updates
-            if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.endsWith('manifest.json') || filePath.endsWith('.js')) {
-                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
-            }
-        }
-    }));
-    app.get('*', (req, res) => {
-        if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.sendFile(path.join(DIST_DIR, 'index.html'));
-    });
-}
-
-
 // --- PUBLIC CUSTOMER SURVEY ENDPOINTS ---
 app.get('/api/public/survey/:id', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -13961,3 +13929,41 @@ server.on('error', (err) => {
         console.error(`[Server Error]:`, err);
     }
 });
+
+
+if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
+    console.log("Starting in Development mode with Vite Middleware...");
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+        server: { middlewareMode: true, hmr: false },
+        appType: "spa",
+    });
+    app.use(vite.middlewares);
+} else {
+    let buildTime = "Unknown";
+    try {
+        const stats = fs.statSync(path.join(DIST_DIR, 'index.html'));
+        buildTime = stats.mtime.toLocaleString('fa-IR');
+    } catch(e){}
+    console.log(`Starting in Production mode serving built assets from dist (Build Date: ${buildTime})...`);
+    app.use(express.static(DIST_DIR, {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+            // Never cache HTML, Service Worker, JS or Manifest files to ensure instant updates
+            if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.endsWith('manifest.json') || filePath.endsWith('.js')) {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            }
+        }
+    }));
+    app.get('*', (req, res) => {
+        if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.sendFile(path.join(DIST_DIR, 'index.html'));
+    });
+}
+
+

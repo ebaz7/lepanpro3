@@ -3189,7 +3189,6 @@ export const generateWarehouseOverviewReportPDF = async (reportData = {}) => {
     const reportDate = summary.reportDate || '۱۴۰۵/۰۵/۳۱';
     const r1Label = summary.report1Label || 'منتهی به سال ۱۴۰۴';
     const r2Label = summary.report2Label || 'وضعیت فعلی سال ۱۴۰۵';
-    const ceoSignature = summary.ceoSignature || '';
 
     // Summary calculations
     const yLast = summary.lastYearYarnsWeight || 0;
@@ -3591,10 +3590,7 @@ export const generateWarehouseOverviewReportPDF = async (reportData = {}) => {
                         <div class="sig-title">مدیریت بازرگانی و تامین خارجی</div>
                         <div class="sig-name">سرپرستی تامین و زنجیره کالا</div>
                     </td>
-                    <td class="sig-box">
-                        <div class="sig-title">رویت و تاییدیه مدیریت عامل</div>
-                        <div class="sig-name">${ceoSignature || '—'}</div>
-                    </td>
+                    
                 </tr>
             </table>
 
@@ -3654,7 +3650,6 @@ export const generateAiWarehouseAdvisorReportPDF = async (advisorData = {}) => {
       report1Label = 'سال قبل',
       report2Label = 'سال جاری',
       signature = '',
-      ceoSignature = ''
     } = advisorData;
 
     const execSummaryHtml = executiveSummary.map((point, idx) => `
@@ -3812,10 +3807,7 @@ export const generateAiWarehouseAdvisorReportPDF = async (advisorData = {}) => {
                     <div class="sig-title">بخش عملیاتی و پشتیبانی لجستیک</div>
                     <div class="sig-name">سامانه مدیریت زنجیره تامین سایان</div>
                 </td>
-                <td style="width: 33%; text-align: left;">
-                    <div class="sig-title">رویت و تاییدیه مدیریت عامل</div>
-                    <div class="sig-name">${ceoSignature || '—'}</div>
-                </td>
+                
             </tr>
         </table>
 
@@ -3876,7 +3868,6 @@ export const generateSayanAiReportPDF = async (reportData = {}) => {
       riskAlerts = [],
       actionPlan = [],
       generatedAt = new Date().toISOString(),
-      ceoSignature = ''
     } = reportData;
 
     const jalaliDateStr = new Date().toLocaleDateString('fa-IR');
@@ -4037,10 +4028,7 @@ export const generateSayanAiReportPDF = async (reportData = {}) => {
                     <div style="font-size: 8.5pt; font-weight: bold; color: #64748b; margin-bottom: 25px;">تحلیل‌گر هوش مصنوعی سازمانی سایان ERP</div>
                     <div style="font-size: 9pt; font-weight: bold; color: #0f172a;">هسته پردازش هوشمند Gemini</div>
                 </td>
-                <td style="width: 50%; border: none; text-align: center; vertical-align: top;">
-                    <div style="font-size: 8.5pt; font-weight: bold; color: #64748b; margin-bottom: 25px;">تایید مدیریت ارشد کارخانه و مالی</div>
-                    <div style="font-size: 9pt; font-weight: bold; color: #0f172a;">${ceoSignature || '—'}</div>
-                </td>
+                
             </tr>
         </table>
 

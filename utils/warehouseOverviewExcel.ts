@@ -9,7 +9,6 @@ export interface WarehouseExcelDataset {
         report2Label?: string;
         report2Jalali?: string;
         signature?: string;
-        ceoSignature?: string;
         lastYearYarnsWeight?: number;
         currentYarnsWeight?: number;
         yarnsDiffWeight?: number;
@@ -94,7 +93,6 @@ export const exportWarehouseOverviewToExcel = async (
     const r2Label = summary.report2Label || 'وضعیت فعلی سال ۱۴۰۵';
     const r2Date = summary.report2Jalali || '۱۴۰۵/۰۵/۳۱';
     const manager = summary.signature || 'محمد ابراهیم حیدری';
-    const ceo = summary.ceoSignature || 'جناب آقای محمد امین فتوت احمدی';
 
     // Summary calculations
     const yLast = n(summary.lastYearYarnsWeight) || yarnItems.reduce((s, i) => s + n(i.lastYearWeight), 0);

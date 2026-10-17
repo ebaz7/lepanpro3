@@ -13,7 +13,6 @@ export interface WarehousePrintDataset {
         currentTotalWeight?: number;
         containersTotal?: number | string;
         dollarsTotal?: number | string;
-        ceoSignature?: string;
     };
     yarnItems: any[];
     rawItems: any[];
@@ -50,7 +49,6 @@ export const buildWarehouseOverviewPrintHtml = (
     const reportDate = summary.reportDate || '۱۴۰۵/۰۵/۳۱';
     const r1Label = summary.report1Label || 'منتهی به سال ۱۴۰۴';
     const r2Label = summary.report2Label || 'وضعیت فعلی سال ۱۴۰۵';
-    const ceoSignature = summary.ceoSignature || '';
 
     // Summary calculations
     const yLast = summary.lastYearYarnsWeight || 0;
@@ -615,10 +613,7 @@ export const buildWarehouseOverviewPrintHtml = (
                         <div class="sig-title">مدیریت بازرگانی و تامین خارجی</div>
                         <div class="sig-name">سرپرستی تامین و زنجیره کالا</div>
                     </td>
-                    <td class="sig-box">
-                        <div class="sig-title">رویت و تاییدیه مدیریت عامل</div>
-                        <div class="sig-name">${ceoSignature || '—'}</div>
-                    </td>
+                    
                 </tr>
             </table>
 
