@@ -6,6 +6,7 @@ import { generateUUID } from '../constants';
 import { lookupSayanSalesRemittance, fetchSayanSalesRemittances, SayanSalesRemittanceResult, captureElementToDataUrl } from '../services/sayanExitService';
 import SayanSalesRemittanceDoc, { SayanRemittanceData } from './SayanSalesRemittanceDoc';
 import { getSettings } from '../services/storageService';
+import { apiCall } from '../services/apiService';
 import * as jalaali from 'jalaali-js';
 
 interface Props {
@@ -326,35 +327,46 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
   const totalRequestedWeight = items.reduce((sum, i) => sum + (Number(i.weight) || 0), 0);
   const totalDeliveredWeight = items.reduce((sum, i) => sum + (Number(i.deliveredWeight) || 0), 0);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (items.some(i => !i.goodsName)) return alert("نام کالا نمی‌تواند خالی باشد.");
     if (items.some(i => i.deliveredCartonCount === undefined || i.deliveredCartonCount === null || i.deliveredCartonCount <= 0)) {
       return alert("وارد کردن تعداد کارتن خروجی معتبر برای تمامی ردیف‌ها الزامی است.");
     }
     if (items.some(i => !i.deliveredWeight || i.deliveredWeight <= 0)) return alert("وارد کردن وزن خروجی برای تمامی ردیف‌ها الزامی است.");
-    
-    setIsSubmitting(true);
-    let attachmentDataUrl: string | undefined = undefined;
 
-    // Capture Sayan Sales Remittance Doc image if active
-    if (settings?.sayanOnlineExitPermitsEnabled || sayanRemittance) {
-      try {
-        const elId = 'hidden-sayan-remittance-capture';
-        attachmentDataUrl = await captureElementToDataUrl(elId);
-      } catch (err) {
-        console.warn('Could not generate Sayan remittance image attachment:', err);
-      }
-    }
+    setIsSubmitting(true);
 
     const finalizedItems = items.map(i => ({
-        ...i,
-        cartonCount: Number(i.cartonCount), 
-        weight: Number(i.weight),
-        deliveredCartonCount: Number(i.deliveredCartonCount),
-        deliveredWeight: Number(i.deliveredWeight)
+      ...i,
+      cartonCount: Number(i.cartonCount), 
+      weight: Number(i.weight),
+      deliveredCartonCount: Number(i.deliveredCartonCount),
+      deliveredWeight: Number(i.deliveredWeight)
     }));
 
-    onConfirm(finalizedItems, sayanRemittance, attachmentDataUrl, attachedRemittances);
+    // ⚡ INSTANT CONFIRMATION & MODAL CLOSE (0ms delay)
+    onConfirm(finalizedItems, sayanRemittance, undefined, attachedRemittances);
+
+    // 🚀 BACKGROUND NON-BLOCKING REMITTANCE CAPTURE & ATTACHMENT
+    if (settings?.sayanOnlineExitPermitsEnabled || sayanRemittance) {
+      const permitId = permit.id;
+      const remNum = sayanRemittance?.remittanceNumber || permit.permitNumber;
+      setTimeout(async () => {
+        try {
+          const elId = 'hidden-sayan-remittance-capture';
+          const bgDataUrl = await captureElementToDataUrl(elId);
+          if (bgDataUrl) {
+            const docName = `حواله_فروش_سایان_${remNum}.png`;
+            const bgAttachment = { fileName: docName, data: bgDataUrl };
+            await apiCall(`/exit-permits/${permitId}`, 'PUT', {
+              attachments: [...(permit.attachments || []), bgAttachment]
+            }).catch(() => {});
+          }
+        } catch (err) {
+          console.warn('Background Sayan remittance capture warning:', err);
+        }
+      }, 100);
+    }
   };
 
   // Prepare data for Sayan Document Rendering
