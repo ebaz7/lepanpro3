@@ -567,6 +567,26 @@ const setupAutoBackup = () => {
     activeBackupJob = cron.schedule(`0 */${intervalHours} * * *`, performAutoBackup);
 };
 
+
+// Auto sync warehouse inventory from Sayan daily at 00:05 and every 4 hours
+const setupWarehouseInventoryDailySync = () => {
+    // Run daily at 00:05 Tehran time (20:35 UTC) and at 08:05, 12:05, 16:05, 20:05
+    cron.schedule('5 0,4,8,12,16,20 * * *', async () => {
+        try {
+            console.log('[Warehouse Auto-Sync] Refreshing live stock cache from Sayan DB...');
+            const db = getDb();
+            const nowObj = new Date();
+            const todayMiladi = nowObj.toISOString().split('T')[0];
+            await fetchSayanWarehouseInventoryData(db, '2026-03-20', todayMiladi, true);
+            console.log('[Warehouse Auto-Sync] Successfully refreshed live stock from Sayan ERP.');
+        } catch (e) {
+            console.warn('[Warehouse Auto-Sync] Failed to refresh live stock:', e.message);
+        }
+    }, {
+        timezone: 'Asia/Tehran'
+    });
+};
+
 const setupLegacyDailyReports = () => {
     // Schedule daily reports for 23:45 Tehran time
     // Cron runs in UTC. Tehran is UTC+3:30. So 23:45 Tehran is 20:15 UTC.
@@ -2470,7 +2490,7 @@ const getWarehouseInventoryForDate = async (db, targetDate, nameMap) => {
                                    AND t11.Field_012 = t10.Field_018
         INNER JOIN STR_TBL_006 s06 WITH (NOLOCK) ON t10.Field_009 = s06.Field_003
         WHERE t11.Field_003 = '${fyCode}' AND t10.Field_004 = '${fyCode}'
-          AND t10.Field_008 >= '2026-03-21T00:00:00.000Z' AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
+          AND t10.Field_008 <= '${targetDate}T23:59:59.000Z'
           AND t10.Field_009 NOT IN ('19', '82')
           AND (t11.Field_005 LIKE '01%' OR t11.Field_005 LIKE '04%')
         GROUP BY t11.Field_005
@@ -2517,7 +2537,7 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
     const cached = db.warehouseOverview?.sayanCache;
     if (!forceRefresh && cached && cached.isLive === true && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0 && Array.isArray(cached.currentStock) && cached.currentStock.length > 0) {
         const cacheAge = Date.now() - (cached.timestamp || 0);
-        if (cacheAge < 3 * 60 * 1000) {
+        if (cacheAge < 60 * 1000) {
             return {
                 success: true,
                 isLive: true,
@@ -13770,6 +13790,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         setupAutoBackup();
         setupDailyReports();
         setupLegacyDailyReports();
+        setupWarehouseInventoryDailySync();
         setupTaskRecurringReminders();
         sayanOrderAuto.initAutomationCron();
     }, 1000);
