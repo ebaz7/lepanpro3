@@ -3189,6 +3189,59 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
 
         const sayanAccountInfo = (sTafsili || sCode) ? `\n🔗 *حساب سایان:* کد تفصیلی ${sTafsili || sCode}` : '';
 
+        // Assemble Bot Links for Customer Notification
+        const botLinksList = [];
+        const rawBale = (settings.customerExitBaleBotUrl || '').trim();
+        const rawTele = (settings.customerExitTelegramBotUrl || '').trim();
+        const rawOther = (settings.customerExitOtherBotUrl || '').trim();
+
+        if (rawBale) {
+            let baleUrl = rawBale;
+            if (!baleUrl.startsWith('http://') && !baleUrl.startsWith('https://')) {
+                const cleanHandle = baleUrl.replace(/^@/, '').trim();
+                baleUrl = `https://ble.ir/${cleanHandle}`;
+            }
+            botLinksList.push(`🔹 *ربات بله:* ${baleUrl}`);
+        } else if (settings.baleBotUsername) {
+            const cleanHandle = String(settings.baleBotUsername).replace(/^@/, '').trim();
+            botLinksList.push(`🔹 *ربات بله:* https://ble.ir/${cleanHandle}`);
+        }
+
+        if (rawTele) {
+            let teleUrl = rawTele;
+            if (!teleUrl.startsWith('http://') && !teleUrl.startsWith('https://')) {
+                const cleanHandle = teleUrl.replace(/^@/, '').trim();
+                teleUrl = `https://t.me/${cleanHandle}`;
+            }
+            botLinksList.push(`🔹 *ربات تلگرام:* ${teleUrl}`);
+        } else if (settings.telegramBotUsername) {
+            const cleanHandle = String(settings.telegramBotUsername).replace(/^@/, '').trim();
+            botLinksList.push(`🔹 *ربات تلگرام:* https://t.me/${cleanHandle}`);
+        }
+
+        if (rawOther) {
+            botLinksList.push(`🔹 *سامانه / سایر پیام‌رسان‌ها:* ${rawOther}`);
+        }
+
+        // Fallback to botStoreLinks if defined and no explicit links
+        if (botLinksList.length === 0 && Array.isArray(settings.botStoreLinks) && settings.botStoreLinks.length > 0) {
+            settings.botStoreLinks.filter(b => b.title && b.url).forEach(b => {
+                botLinksList.push(`🔹 *${b.title}:* ${b.url}`);
+            });
+        }
+
+        const inviteHeading = (settings.customerExitBotInviteText || '').trim() || 
+            'جهت پیگیری آنلاین بار، دریافت فاکتورها، مانده حساب و ثبت سفارشات، می‌توانید از ربات‌های هوشمند ما استفاده فرمایید:';
+
+        const botLinksBlock = botLinksList.length > 0
+            ? `\n\n🤖 *${inviteHeading}*\n${botLinksList.join('\n')}`
+            : '';
+
+        const effectiveSurveyUrl = (settings.customerSurveyUrl || '').trim() || 
+            `${(settings.appBaseUrl || 'https://dlkam.ir').replace(/\/+$/, '')}/#customer-survey?id=${p.permitNumber}`;
+
+        const surveyBlock = `\n\n⭐ *فرم نظرسنجی و ارزیابی کیفیت محصولات و خدمات:*\n${effectiveSurveyUrl}`;
+
         // Formulate customer message with all requested details
         const customerCaption = 
             `🚚 *اعلام بارگیری و خروج بار کارخانه*\n\n` +
@@ -3206,10 +3259,10 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
             `\n📦 *اقلام و کالاهای بارگیری شده:*\n${goodsListFormatted}\n` +
             (totalAmount > 0 ? `\n💵 *مبلغ فاکتور:* ${totalAmount.toLocaleString()} ریال\n` : '') +
             (p.description ? `\n📝 *توضیحات:* ${p.description}\n` : '') +
-            `\n✅ محموله شما با مشخصات فوق با موفقیت بارگیری و از کارخانه خارج گردید. تصویر فاکتور رسمی خروج کالا نیز پیوست می‌باشد.\n\n` +
-            `شرکت تولیدی و صنعتی ضمن تشکر از همراهی شما، با تکمیل لینک زیر جهت ارزیابی کیفیت محصولات و خدمات، ما را در ارائه خدمات بهتر یاری نمایید 🧵:\n` +
-            `${(settings.appBaseUrl || 'https://dlkam.ir').replace(/\/+$/, '') + '/#customer-survey?id=' + p.permitNumber}\n\n` +
-            `با سپاس از اعتماد و خرید شما 🙏`;
+            `\n✅ محموله شما با مشخصات فوق با موفقیت بارگیری و از کارخانه خارج گردید. تصویر فاکتور رسمی خروج کالا نیز پیوست می‌باشد.` +
+            botLinksBlock +
+            surveyBlock +
+            `\n\nبا سپاس از اعتماد و خرید شما 🙏`;
 
         let channelResults = { phone: targetPhone, name: destName, wa: false, tg: false, bale: false };
 

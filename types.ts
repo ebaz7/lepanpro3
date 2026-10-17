@@ -358,6 +358,11 @@ export type AppSettings = SystemSettings;
 export interface SystemSettings {
   salesManagerWhatsapp?: string;
   customerSurveyUrl?: string;
+  customerExitTelegramBotUrl?: string; // لینک یا یوزرنیم ربات تلگرام در پیام خروج مشتری
+  customerExitBaleBotUrl?: string; // لینک یا یوزرنیم ربات بله در پیام خروج مشتری
+  customerExitOtherBotUrl?: string; // لینک سامانه/سایر پیام‌رسان‌ها (ایتا، روبیکا، وب) در پیام خروج مشتری
+  customerExitBotInviteText?: string; // متن دعوت به ربات در پیام خروج کارخانه
+  appBaseUrl?: string;
   appName?: string;
   currentTrackingNumber: number;
   currentExitPermitNumber: number;

@@ -116,6 +116,7 @@ import RolePermissionsEditor from "./settings/RolePermissionsEditor";
 import PurchaseWorkflowApproversSettings from "./settings/PurchaseWorkflowApproversSettings";
 import BackupManager from "./settings/BackupManager";
 import BotManager from "./settings/BotManager";
+import { CustomerExitNotificationConfig } from "./settings/CustomerExitNotificationConfig";
 import { WhatsAppDiagnosticTool } from "./settings/WhatsAppDiagnosticTool";
 import { DigitalCardModule } from "./DigitalCardModule";
 
@@ -318,6 +319,10 @@ const Settings: React.FC<SettingsProps> = ({
     botDriverPaymentGroupIdBale: "",
     botDriverPaymentGroupIdWhatsApp: "",
     botDriverPaymentAutoSendEnabled: true,
+    customerExitTelegramBotUrl: "",
+    customerExitBaleBotUrl: "",
+    customerExitOtherBotUrl: "",
+    customerExitBotInviteText: "",
     purchaseRolePermissions: {},
   });
 
@@ -3294,6 +3299,12 @@ const Settings: React.FC<SettingsProps> = ({
                     ))}
                   </div>
                 </div>
+
+                {/* Customer Exit Notification & Bot Links */}
+                <CustomerExitNotificationConfig
+                  settings={settings}
+                  setSettings={setSettings}
+                />
               </div>
             )}
 
@@ -3583,6 +3594,12 @@ const Settings: React.FC<SettingsProps> = ({
                       })}
                   </div>
                 </div>
+
+                {/* Customer Exit WhatsApp Notification & Bot Links Configuration */}
+                <CustomerExitNotificationConfig
+                  settings={settings}
+                  setSettings={setSettings}
+                />
 
                 <SecondExitGroupSettings
                   title="گروه اول (پیش‌فرض سیستم)"
@@ -4816,6 +4833,12 @@ const Settings: React.FC<SettingsProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Customer Exit Notification & Bot Links */}
+                <CustomerExitNotificationConfig
+                  settings={settings}
+                  setSettings={setSettings}
+                />
 
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
                   <h4 className="font-bold text-sm text-gray-700">
