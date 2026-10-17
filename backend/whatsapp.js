@@ -780,7 +780,7 @@ export const sendMessage = async (number, text, mediaData) => {
         if (media && text) {
             try {
                 console.log(`[WhatsApp] Falling back to text-only send for ${targetJid}...`);
-                await client.sendMessage(targetJid, `📎 [تصویر برگه رسمی پیوست شد]\n${text}`);
+                await client.sendMessage(targetJid, text);
                 addDiagnosticLog('success', 'MESSAGE', `متن اطلاعیه با موفقیت به ${targetJid} ارسال شد (ارسال خودکار متن به جای فایل).`);
                 return { success: true, chatId: targetJid, mediaFallbackToText: true };
             } catch (textErr) {

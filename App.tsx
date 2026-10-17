@@ -39,6 +39,7 @@ import { SplitViewDragOverlay } from './components/SplitViewDragOverlay';
 import { FloatingCalculator } from './components/FloatingCalculator';
 import { DigitalCardModule } from './components/DigitalCardModule';
 import { PublicBioPage } from './components/PublicBioPage';
+import { PublicCustomerSurveyPage } from './components/PublicCustomerSurveyPage';
 import { AppNavItem, getAppNavItems, getSidebarLabel } from './utils/navigationItems';
 import { getOrders, getSettings, getMessages, saveSettings, getSystemAnnouncements, getGroups, getTaskGroups, getTasks, getBioLinkConfig } from './services/storageService'; 
 import { getCurrentUser, getUsers, getRolePermissions, logout as authLogout } from './services/authService';
@@ -110,6 +111,25 @@ function App() {
   const [isCalculatorMinimized, setIsCalculatorMinimized] = useState(false);
 
   // Helper to determine if current URL is a public bio / digital card page
+  
+  // Helper to determine if current URL is a public customer survey page
+  const checkIsPublicSurveyRoute = (): boolean => {
+    try {
+      const rawHash = (window.location.hash || '').toLowerCase();
+      const rawPath = (window.location.pathname || '').toLowerCase();
+      const rawSearch = (window.location.search || '').toLowerCase();
+      return (
+        rawHash.startsWith('#customer-survey') ||
+        rawHash.startsWith('#survey') ||
+        rawPath.startsWith('/survey') ||
+        rawSearch.includes('customer-survey') ||
+        rawSearch.includes('survey=')
+      );
+    } catch {
+      return false;
+    }
+  };
+
   const checkIsPublicBioRoute = (): boolean => {
     try {
       const rawHash = (window.location.hash || '').toLowerCase();
@@ -132,6 +152,7 @@ function App() {
 
   // Public Bio / QR Code Card Public Page View State
   const [isPublicBioView, setIsPublicBioView] = useState<boolean>(() => checkIsPublicBioRoute());
+  const [isPublicSurveyView, setIsPublicSurveyView] = useState<boolean>(() => checkIsPublicSurveyRoute());
   const [publicBioConfig, setPublicBioConfig] = useState<BioLinkConfig | null>(null);
 
   const activeTabRef = useRef(activeTab);
@@ -789,6 +810,8 @@ function App() {
     const handleRouteCheck = () => {
       const stillPublic = checkIsPublicBioRoute();
       setIsPublicBioView(stillPublic);
+      const stillSurvey = checkIsPublicSurveyRoute();
+      setIsPublicSurveyView(stillSurvey);
       if (stillPublic) {
         getBioLinkConfig().then(cfg => {
           if (cfg) setPublicBioConfig(cfg);
@@ -823,7 +846,7 @@ function App() {
     }
 
     const handlePopState = (event: PopStateEvent) => {
-        if (checkIsPublicBioRoute()) return;
+        if (checkIsPublicBioRoute() || checkIsPublicSurveyRoute()) return;
         const handled = goBack(true);
         if (!handled && event.state?.tab) {
             setActiveTab(event.state.tab, false);
@@ -1924,6 +1947,10 @@ function App() {
               <PublicBioPage 
                   config={publicBioConfig || FALLBACK_BIO_CONFIG}
               />
+            </div>
+        ) : isPublicSurveyView ? (
+            <div className="fixed inset-0 z-[99999999] w-full h-full overflow-y-auto overscroll-y-contain bg-slate-950 text-white" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+              <PublicCustomerSurveyPage />
             </div>
         ) : !currentUser ? (
             <Login onLogin={handleLogin} />

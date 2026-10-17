@@ -2402,7 +2402,7 @@ export function generateBenchmarkData() {
         "subGroupName": "",
         "inflowQty": 1224642.163,
         "outflowQty": 960761.778,
-        "stockQty": 263880.385,
+        "stockQty": 164436.058,
         "cartonsQty": 0
     },
     {
