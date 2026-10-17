@@ -3377,7 +3377,9 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
 
             const countLine = `🔢 تعداد درخواستی: ${totalReqCount} واحد/کارتن ${totalReqWeight > 0 ? `(${totalReqWeight} کیلوگرم)` : ''} ${showDeliv ? `\n✅ ارسالی از انبار: ${totalDelivCount} واحد/کارتن ${totalDelivWeight > 0 ? `(${totalDelivWeight} کیلوگرم)` : ''}` : ''}`;
             
-            return `${header}\n🏢 شرکت: ${p.company || '-'}\n🔢 شماره: ${p.permitNumber}\n📅 تاریخ: ${toShamsiFull(p.date)}\n👤 گیرنده: ${p.recipientName || '-'}\n📦 کالاها:\n${goodsList}\n${countLine}\n👤 ثبت کننده: ${p.requester || '-'}\n📍 مقصد: ${p.destinationAddress || '-'}\n🚛 راننده: ${p.driverName || '-'} (پلاک: ${p.plateNumber || '-'}) | تماس: ${p.driverPhone || '-'}${p.status === 'خارج شده (بایگانی)' && p.exitTime ? `\n🕒 ساعت خروج نهایی: ${p.exitTime}` : (p.exitTime ? `\n🕒 ساعت خروج: ${p.exitTime}` : '')}${approversLine}\n📝 توضیحات: ${p.description || '-'}\n\n✅ *مرحله:* ${stepName}\n🔄 *وضعیت:* ${p.status}${isEdit ? '\n⚠️ *این یک پیام ویرایشی است*' : ''}${isDelete ? '\n⚠️ *این سند حذف شده است*' : ''}`;
+            const surveyUrl = `${(settings.appBaseUrl || 'https://dlkam.ir').replace(/\/+$/, '')}/#customer-survey?id=${p.permitNumber}`;
+            const surveyBlock = (isFinalStep || p.status === 'خارج شده (بایگانی)' || p.status === 'خارج شد') ? `\n\n⭐ *فرم نظرسنجی و ارزیابی کیفیت خدمات مشتریان:*\n${surveyUrl}` : '';
+            return `${header}\n🏢 شرکت: ${p.company || '-'}\n🔢 شماره: ${p.permitNumber}\n📅 تاریخ: ${toShamsiFull(p.date)}\n👤 گیرنده: ${p.recipientName || '-'}\n📦 کالاها:\n${goodsList}\n${countLine}\n👤 ثبت کننده: ${p.requester || '-'}\n📍 مقصد: ${p.destinationAddress || '-'}\n🚛 راننده: ${p.driverName || '-'} (پلاک: ${p.plateNumber || '-'}) | تماس: ${p.driverPhone || '-'}${p.status === 'خارج شده (بایگانی)' && p.exitTime ? `\n🕒 ساعت خروج نهایی: ${p.exitTime}` : (p.exitTime ? `\n🕒 ساعت خروج: ${p.exitTime}` : '')}${approversLine}\n📝 توضیحات: ${p.description || '-'}\n\n✅ *مرحله:* ${stepName}\n🔄 *وضعیت:* ${p.status}${isEdit ? '\n⚠️ *این یک پیام ویرایشی است*' : ''}${isDelete ? '\n⚠️ *این سند حذف شده است*' : ''}${surveyBlock}`;
         };
 
         // Notify the user who did the action (if possible)
@@ -3521,11 +3523,34 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
             })();
 
             if (p.driverPhone && settings.whatsappEnabled !== false) {
-                const driverCaption = `🚛 *تایید نهایی خروج بار از کارخانه*\n` +
+                const surveyUrl = `${(settings.appBaseUrl || 'https://dlkam.ir').replace(/\/+$/, '')}/#customer-survey?id=${p.permitNumber}`;
+                
+                let driverGoodsList = '';
+                if (p.items && p.items.length > 0) {
+                    driverGoodsList = p.items.map((it, idx) => {
+                        const cartons = it.cartonCount || it.deliveredCartons || it.cartons || 0;
+                        const w = it.deliveredWeight || it.weight || 0;
+                        return `${idx + 1}. ${it.goodsName || 'کالا'} ${cartons ? `(${cartons} کارتن)` : ''} ${w ? `- ${Number(w).toLocaleString()} kg` : ''}`;
+                    }).join('\n');
+                } else if (p.goodsName) {
+                    driverGoodsList = `1. ${p.goodsName} (${p.cartonCount || 0} کارتن) ${p.netWeight ? `- ${Number(p.netWeight).toLocaleString()} kg` : ''}`;
+                } else {
+                    driverGoodsList = 'ثبت نشده';
+                }
+
+                const driverWeight = totalDelivWeight > 0 ? totalDelivWeight : (totalReqWeight > 0 ? totalReqWeight : (Number(p.netWeight || p.totalWeight || 0)));
+                const driverCartons = totalDelivCount > 0 ? totalDelivCount : (totalReqCount > 0 ? totalReqCount : (Number(p.cartonCount || p.totalCartons || 0)));
+
+                const driverCaption = `🚛 *تایید نهایی خروج بار از کارخانه*\n\n` +
                     `راننده گرامی جناب آقای *${p.driverName || 'راننده محترم'}* (خودرو: *${p.plateNumber || '-'}*)\n` +
-                    `مجوز خروج شماره *${p.permitNumber}* مربوط به شرکت *${p.company || '-'}* تایید و بارگیری تکمیل گردید.\n` +
-                    `📍 مقصد: ${p.destinationAddress || '-'}\n` +
-                    `سفر بی‌خطری را برای شما آرزومندیم.`;
+                    `مجوز خروج شماره *‎#${p.permitNumber}* مربوط به شرکت *${p.company || '-'}* تایید و بارگیری تکمیل گردید.\n\n` +
+                    `⚖️ *وزن کل خروجی بار:* *${driverWeight > 0 ? driverWeight.toLocaleString() : '-'} کیلوگرم*\n` +
+                    `📦 *تعداد کارتن / بسته‌ها:* *${driverCartons > 0 ? driverCartons.toLocaleString() : '-'} عدد*\n\n` +
+                    `📦 *اقلام و کالاهای بارگیری شده:*\n${driverGoodsList}\n\n` +
+                    `📍 *مقصد:* ${p.destinationAddress || 'تحویل مشتری'}\n` +
+                    `سفر بی‌خطری را برای شما آرزومندیم. 🛣️\n\n` +
+                    `⭐ *فرم نظرسنجی و ارزیابی کیفیت خدمات مشتریان:*\n` +
+                    `${surveyUrl}`;
 
                 const driverImg = imgNoPrice || imgPrice;
                 import('./whatsapp.js').then(async (mod) => {

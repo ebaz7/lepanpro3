@@ -13787,7 +13787,11 @@ app.post('/api/public/survey/submit', (req, res) => {
             qualityRating,
             deliveryRating,
             courtesyRating,
+            supportRating,
             overallRating,
+            whyBuyFromUs,
+            wouldRecommend,
+            positivePoints,
             comment
         } = req.body;
 
@@ -13801,7 +13805,11 @@ app.post('/api/public/survey/submit', (req, res) => {
             qualityRating: Number(qualityRating) || 5,
             deliveryRating: Number(deliveryRating) || 5,
             courtesyRating: Number(courtesyRating) || 5,
+            supportRating: Number(supportRating) || 5,
             overallRating: Number(overallRating) || 5,
+            whyBuyFromUs: String(whyBuyFromUs || ''),
+            wouldRecommend: String(wouldRecommend || ''),
+            positivePoints: Array.isArray(positivePoints) ? positivePoints : [],
             comment: String(comment || '').trim(),
             submittedAt: new Date().toISOString()
         };
@@ -13809,8 +13817,13 @@ app.post('/api/public/survey/submit', (req, res) => {
         db.customerFeedbacks.unshift(feedback);
         saveDb(db);
 
-        console.log(`[Customer Survey] New feedback submitted for Permit #${feedback.permitNumber} by ${feedback.customerName}`);
+        console.log(`[Customer Survey] New detailed feedback submitted for Permit #${feedback.permitNumber} by ${feedback.customerName}`);
         return res.json({ success: true, message: 'نظرسنجی شما با موفقیت ثبت شد.' });
+    } catch (err) {
+        console.error("Public survey submit error:", err);
+        return res.status(500).json({ error: 'خطا در ثبت نظرسنجی' });
+    }
+});
     } catch (err) {
         console.error("Public survey submit error:", err);
         return res.status(500).json({ error: 'خطا در ثبت نظرسنجی' });
