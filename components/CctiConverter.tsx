@@ -536,47 +536,110 @@ ${xmlTxLines.join('\\n')}
         setNewPersonId(''); setNewPersonName(''); setNewPersonAccount('');
     }
 
+    const savedPersonsCount = Object.keys(savedPersons).length;
+
     return (
-        <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 pt-24 md:pt-8 animate-fade-in pb-32 h-full flex flex-col">
-            <div className="flex items-center gap-3 mb-2 shrink-0">
-                <div className="bg-gradient-to-tr from-blue-500 to-indigo-600 p-3 rounded-2xl text-white shadow-lg">
-                    <FileText size={24} />
+        <div className="p-3 sm:p-5 md:p-6 max-w-6xl mx-auto w-full space-y-5 pt-20 md:pt-6 animate-fade-in pb-32 h-full flex flex-col">
+            {/* Unified Executive Hero Header */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5 sm:p-6 shadow-xl border border-white/10 shrink-0">
+                <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0 border border-white/20">
+                            <FileText className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+                        </div>
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[10px] font-black">
+                                    ابزارهای مالی و اسنادی
+                                </span>
+                                <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/10 text-slate-300 text-[10px] font-bold">
+                                    استاندارد بانکی پایا / ساتنا (CCTI)
+                                </span>
+                            </div>
+                            <h2 className="text-lg sm:text-2xl font-black text-white tracking-tight mt-1">
+                                مبدل فایل حقوق (CCTI) و ادغام اسناد PDF
+                            </h2>
+                            <p className="text-xs text-slate-300/90 mt-0.5 font-medium">
+                                تبدیل هوشمند اکسل حقوق به فرمت XML بانک مرکزی، مدیریت شبا پرسنل و یکپارچه‌سازی اسناد PDF
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Sub-Tabs Switcher */}
+                    <div className="flex flex-wrap gap-1.5 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 w-full lg:w-auto">
+                        <button 
+                            onClick={() => setActiveTab('pdf-merge')}
+                            className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === 'pdf-merge' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
+                        >
+                            <ArrowLeftRight size={15} className={activeTab === 'pdf-merge' ? 'text-blue-600' : ''}/>
+                            <span>تبدیل عکس و ادغام PDF</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('convert')}
+                            className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === 'convert' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
+                        >
+                            <Upload size={15} className={activeTab === 'convert' ? 'text-indigo-600' : ''}/>
+                            <span>صدور فایل CCTI</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('manage')}
+                            className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
+                        >
+                            <Users size={15} className={activeTab === 'manage' ? 'text-emerald-600' : ''}/>
+                            <span>حافظه پرسنل ({savedPersonsCount})</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('archive')}
+                            className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === 'archive' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
+                        >
+                            <Archive size={15} className={activeTab === 'archive' ? 'text-amber-600' : ''}/>
+                            <span>بایگانی ماه‌ها ({archives.length})</span>
+                        </button>
+                    </div>
                 </div>
-                <div>
-                    <h2 className="text-xl md:text-2xl font-black text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                        مبدل فایل حقوق (CCTI)
-                    </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 font-bold line-clamp-1">
-                        تبدیل هوشمند اکسل حقوق به فرمت بانک
-                    </p>
+
+                {/* 4-Column KPI Strip */}
+                <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-4 pt-4 border-t border-white/10">
+                    <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] text-slate-300 font-bold">پرسنل ثبت‌شده در حافظه</p>
+                            <p className="text-lg font-black text-white font-mono mt-0.5">{savedPersonsCount} نفر</p>
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
+                            <Users size={18} />
+                        </div>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] text-indigo-200 font-bold">دوره‌های حقوق بایگانی</p>
+                            <p className="text-lg font-black text-indigo-300 font-mono mt-0.5">{archives.length} دوره</p>
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+                            <Archive size={18} />
+                        </div>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] text-emerald-200 font-bold">فایل‌های آماده ادغام PDF</p>
+                            <p className="text-lg font-black text-emerald-300 font-mono mt-0.5">{pdfMergeFiles.length} فایل</p>
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300">
+                            <Layers size={18} />
+                        </div>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+                        <div>
+                            <p className="text-[11px] text-amber-200 font-bold">سال مالی فعال</p>
+                            <p className="text-lg font-black text-amber-300 font-mono mt-0.5">{financialYear || '۱۴۰۴'}</p>
+                        </div>
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300">
+                            <FileText size={18} />
+                        </div>
+                    </div>
                 </div>
-            </div>
-            
-            <div className="flex flex-wrap md:flex-nowrap bg-gray-100 dark:bg-gray-800 p-1 rounded-2xl shrink-0 gap-1 md:gap-0">
-                <button 
-                    onClick={() => setActiveTab('pdf-merge')}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'pdf-merge' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <div className="flex items-center justify-center gap-2"><ArrowLeftRight size={18}/> تبدیل عکس و ادغام PDF</div>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('convert')}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'convert' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <div className="flex items-center justify-center gap-2"><Upload size={18}/> صدور فایل CCTI</div>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('manage')}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'manage' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <div className="flex items-center justify-center gap-2"><Users size={18}/> حافظه پرسنل</div>
-                </button>
-                <button 
-                    onClick={() => setActiveTab('archive')}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'archive' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <div className="flex items-center justify-center gap-2"><Archive size={18}/> بایگانی ماه‌ها</div>
-                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-white/80 dark:bg-gray-900/60 p-6 rounded-3xl border border-white/50 shadow-xl custom-scrollbar">

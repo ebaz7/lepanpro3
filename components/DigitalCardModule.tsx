@@ -468,125 +468,177 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
 
   if (!config) return null;
 
+  const activeBlocksCount = (config.blocks || []).filter(b => b.isActive !== false).length;
+  const pendingOrdersCount = (config.orders || []).filter(o => o.status === 'pending').length;
+  const totalSurveysCount = (config.surveys || []).length;
+
   return (
-    <div className="w-full flex flex-col flex-1 dir-rtl font-sans space-y-6 p-2 md:p-6">
+    <div className="w-full flex flex-col flex-1 dir-rtl font-sans space-y-5 p-3 sm:p-5 md:p-6">
       
-      {/* Header Banner & Navigation Tabs */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20 shrink-0">
-            <QrCode className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-slate-900 dark:text-white">
-                کارت دیجیتال و QR کد (زیلینک اختصاصی)
-              </h2>
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                لینک عمومی فعال
-              </span>
-              {!canManage && (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 flex items-center gap-1">
-                  <Lock className="w-3 h-3" />
-                  حالت فقط مشاهده
-                </span>
-              )}
+      {/* Unified Executive Hero Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5 sm:p-6 shadow-xl border border-white/10">
+        <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/30 shrink-0 border border-white/20">
+              <QrCode className="w-6 h-6 sm:w-7 sm:h-7" />
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              صفحه اختصاصی شرکت، مسیریاب‌ها، راه‌های ارتباطی و کیو آر کد جهت چاپ روی کارت ویزیت
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  لینک عمومی فعال
+                </span>
+                {!canManage && (
+                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    حالت فقط مشاهده
+                  </span>
+                )}
+              </div>
+              <h2 className="text-lg sm:text-2xl font-black text-white mt-1">
+                کارت دیجیتال، زیلینک اختصاصی و نظرسنجی مشتریان
+              </h2>
+              <p className="text-xs text-slate-300/90 mt-0.5">
+                صفحه اختصاصی شرکت، مسیریاب‌ها، راه‌های ارتباطی، کیو آر کد کارت ویزیت و مدیریت نظرسنجی‌های خروج بار
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handleCopyLink}
+              className="px-3.5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="کپی لینک عمومی"
+            >
+              <Copy className="w-4 h-4 text-blue-300" />
+              <span className="hidden sm:inline">کپی لینک:</span>
+              <span className="font-mono text-[11px] text-blue-300">{config.slug}</span>
+            </button>
+
+            {canManage ? (
+              <button
+                onClick={handleSaveConfig}
+                disabled={saving}
+                className="px-5 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-500/30 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>ذخیره تغییرات</span>
+              </button>
+            ) : (
+              <div className="px-3 py-2 rounded-2xl bg-white/10 border border-white/10 text-slate-300 text-xs font-bold flex items-center gap-1.5" title="دسترسی تغییرات فقط برای نقش‌های مجاز در تنظیمات فعال است">
+                <Lock className="w-3.5 h-3.5" />
+                <span>تغییرات قفل است</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Tab Buttons & Save Action */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* 4-Column KPI Strip */}
+        <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-5 pt-4 border-t border-white/10">
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-slate-300 font-bold">بلوک‌های ارتباطی فعال</p>
+              <p className="text-lg font-black text-white font-mono mt-0.5">{activeBlocksCount} بلوک</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
+              <Edit3 className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-rose-200 font-bold">سفارشات منتظر بررسی</p>
+              <p className="text-lg font-black text-rose-300 font-mono mt-0.5">{pendingOrdersCount} مورد</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300">
+              <ShoppingBag className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-amber-200 font-bold">پاسخ‌های نظرسنجی مشتریان</p>
+              <p className="text-lg font-black text-amber-300 font-mono mt-0.5">{totalSurveysCount} ثبت</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300">
+              <Sparkles className="w-4 h-4" />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] text-emerald-200 font-bold">شناسه صفحه اختصاصی</p>
+              <p className="text-sm font-black text-emerald-300 font-mono mt-0.5 truncate">/{config.slug}</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shrink-0">
+              <QrCode className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation Sub-Tabs inside Hero */}
+        <div className="relative z-10 flex items-center gap-2 flex-wrap mt-4 pt-3 border-t border-white/10">
           <button
-            onClick={handleCopyLink}
-            className="px-3.5 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
-            title="کپی لینک عمومی"
+            onClick={() => setActiveTab('editor')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'editor'
+                ? 'bg-white text-slate-900 shadow-lg'
+                : 'bg-white/10 text-slate-200 hover:bg-white/20'
+            }`}
           >
-            <Copy className="w-4 h-4 text-blue-600" />
-            <span className="hidden sm:inline">کپی لینک:</span>
-            <span className="font-mono text-[11px] text-blue-600">{config.slug}</span>
+            <Edit3 className={`w-4 h-4 ${activeTab === 'editor' ? 'text-blue-600' : ''}`} />
+            <span>ویرایشگر زیلینک و بلوک‌ها</span>
           </button>
 
-          {canManage ? (
-            <button
-              onClick={handleSaveConfig}
-              disabled={saving}
-              className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              <span>ذخیره تغییرات</span>
-            </button>
-          ) : (
-            <div className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 text-xs font-bold flex items-center gap-1.5" title="دسترسی تغییرات فقط برای نقش‌های مجاز در تنظیمات فعال است">
-              <Lock className="w-3.5 h-3.5" />
-              <span>تغییرات قفل است</span>
-            </div>
-          )}
+          <button
+            onClick={() => setActiveTab('qr_print')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'qr_print'
+                ? 'bg-white text-slate-900 shadow-lg'
+                : 'bg-white/10 text-slate-200 hover:bg-white/20'
+            }`}
+          >
+            <QrCode className={`w-4 h-4 ${activeTab === 'qr_print' ? 'text-blue-600' : ''}`} />
+            <span>کیو آر کد و چاپ کارت ویزیت</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all relative cursor-pointer ${
+              activeTab === 'orders'
+                ? 'bg-white text-slate-900 shadow-lg'
+                : 'bg-white/10 text-slate-200 hover:bg-white/20'
+            }`}
+          >
+            <ShoppingBag className={`w-4 h-4 ${activeTab === 'orders' ? 'text-blue-600' : ''}`} />
+            <span>سفارشات دریافتی از کارت</span>
+            {pendingOrdersCount > 0 && (
+              <span className="w-5 h-5 rounded-full bg-rose-500 text-white font-mono text-[10px] flex items-center justify-center font-bold">
+                {pendingOrdersCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('surveys')}
+            className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all relative cursor-pointer ${
+              activeTab === 'surveys'
+                ? 'bg-white text-slate-900 shadow-lg'
+                : 'bg-white/10 text-slate-200 hover:bg-white/20'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>نظرسنجی‌های دریافتی مشتریان</span>
+            {totalSurveysCount > 0 && (
+              <span className="w-5 h-5 rounded-full bg-indigo-500 text-white font-mono text-[10px] flex items-center justify-center font-bold">
+                {totalSurveysCount}
+              </span>
+            )}
+          </button>
         </div>
-      </div>
-
-      {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
-        <button
-          onClick={() => setActiveTab('editor')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all ${
-            activeTab === 'editor'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Edit3 className="w-4 h-4" />
-          <span>ویرایشگر زیلینک و بلوک‌ها</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('qr_print')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all ${
-            activeTab === 'qr_print'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <QrCode className="w-4 h-4" />
-          <span>کیو آر کد و چاپ کارت ویزیت</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('orders')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all relative ${
-            activeTab === 'orders'
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <ShoppingBag className="w-4 h-4" />
-          <span>سفارشات دریافتی از کارت</span>
-          {config.orders && config.orders.filter(o => o.status === 'pending').length > 0 && (
-            <span className="w-5 h-5 rounded-full bg-rose-500 text-white font-mono text-[10px] flex items-center justify-center font-bold">
-              {config.orders.filter(o => o.status === 'pending').length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('surveys')}
-          className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all relative ${
-            activeTab === 'surveys'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>نظرسنجی‌های دریافتی مشتریان</span>
-          {config.surveys && config.surveys.length > 0 && (
-            <span className="w-5 h-5 rounded-full bg-indigo-500 text-white font-mono text-[10px] flex items-center justify-center font-bold">
-              {config.surveys.length}
-            </span>
-          )}
-        </button>
       </div>
 
       {/* TAB 1: ZILINK EDITOR & LIVE PREVIEW */}

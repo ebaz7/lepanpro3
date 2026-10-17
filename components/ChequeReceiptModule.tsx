@@ -1593,57 +1593,144 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
   });
 
   const totalTreasuryAmount = filteredCheques.reduce((sum, item) => sum + item.cheque.amount, 0);
+  const pendingApprovalReceiptsCount = receipts.filter(r => r.status === 'pending_sales' || r.status === 'pending_ceo').length;
+  const approvedReceiptsCount = receipts.filter(r => r.status === 'approved' || r.status === 'archived').length;
+  const activeBoxChequesCount = getAllCheques().filter(i => (i.cheque.chequeStatus || 'box') === 'box').length;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6 text-right" dir="rtl">
-      {/* Header section with clean display typography */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-gray-200 dark:border-white/10 pb-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
-            <Coins className="text-emerald-500 animate-pulse" size={28} />
-            سامانه دریافت و مدیریت چک‌های صیادی
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-semibold">
-            مدیریت امن جریان وصول چک، خزانه‌داری متمرکز، گردش تاییدات و انطباق با سیستم مالی سایان
-          </p>
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 text-right space-y-5" dir="rtl">
+      {/* Unified Executive Hero Header */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white p-5 sm:p-6 shadow-xl border border-white/10">
+        <div className="absolute -top-24 -left-24 w-72 h-72 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0 border border-white/20">
+              <Coins className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-black tracking-wide">
+                  خزانه‌داری و اسناد تجاری
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/10 text-slate-300 text-[10px] font-bold">
+                  انطباق صیاد و سایان ERP
+                </span>
+              </div>
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight mt-1 text-white">
+                سامانه دریافت و مدیریت چک‌های صیادی
+              </h1>
+              <p className="text-xs text-slate-300/90 mt-0.5 font-medium max-w-2xl">
+                مدیریت امن جریان وصول چک، خزانه‌داری متمرکز، خوانش هوشمند OCR و گردش تاییدات سلسله‌مراتبی
+              </p>
+            </div>
+          </div>
+
+          {/* Navigation Sub-Tabs */}
+          <div className="flex flex-wrap gap-1.5 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 w-full lg:w-auto">
+            <button
+              onClick={() => { setActiveSubTab('list'); setSelectedReceipt(null); }}
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeSubTab === 'list'
+                  ? 'bg-white text-slate-900 shadow-lg'
+                  : 'text-slate-200 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <List size={15} className={activeSubTab === 'list' ? 'text-emerald-600' : ''} />
+              <span>رسیدهای چک</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${activeSubTab === 'list' ? 'bg-emerald-100 text-emerald-700' : 'bg-white/15 text-white'}`}>
+                {receipts.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setActiveSubTab('treasury'); setSelectedReceipt(null); }}
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeSubTab === 'treasury'
+                  ? 'bg-white text-slate-900 shadow-lg'
+                  : 'text-slate-200 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Archive size={15} className={activeSubTab === 'treasury' ? 'text-indigo-600' : ''} />
+              <span>صندوق خزانه‌داری</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${activeSubTab === 'treasury' ? 'bg-indigo-100 text-indigo-700' : 'bg-white/15 text-white'}`}>
+                {activeBoxChequesCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setActiveSubTab('calendar'); setSelectedReceipt(null); }}
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeSubTab === 'calendar'
+                  ? 'bg-white text-slate-900 shadow-lg'
+                  : 'text-slate-200 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Calendar size={15} className={activeSubTab === 'calendar' ? 'text-purple-600' : ''} />
+              <span>تقویم سررسید</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveSubTab('create');
+                fetchNextNumber(selectedCompany);
+              }}
+              className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                activeSubTab === 'create'
+                  ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30'
+                  : 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 hover:bg-emerald-500/30'
+              }`}
+            >
+              <PlusCircle size={15} />
+              <span>ثبت رسید جدید</span>
+            </button>
+          </div>
         </div>
-        
-        {/* Navigation sub-tabs */}
-        <div className="flex flex-wrap gap-2 bg-gray-100 dark:bg-gray-800/80 p-1.5 rounded-2xl w-full md:w-auto">
-          <button 
-            onClick={() => { setActiveSubTab('list'); setSelectedReceipt(null); }}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'list' ? 'bg-white dark:bg-gray-900 text-blue-600 shadow-md' : 'text-gray-600 hover:text-blue-500'}`}
-          >
-            <List size={16} />
-            رسیدهای چک ({receipts.length})
-          </button>
-          
-          <button 
-            onClick={() => { setActiveSubTab('treasury'); setSelectedReceipt(null); }}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'treasury' ? 'bg-white dark:bg-gray-900 text-indigo-600 shadow-md' : 'text-gray-600 hover:text-indigo-500'}`}
-          >
-            <Archive size={16} />
-            صندوق و خزانه‌داری چک ({getAllCheques().length})
-          </button>
 
-          <button 
-            onClick={() => { setActiveSubTab('calendar'); setSelectedReceipt(null); }}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'calendar' ? 'bg-white dark:bg-gray-900 text-purple-600 shadow-md' : 'text-gray-600 hover:text-purple-500'}`}
-          >
-            <Calendar size={16} />
-            تقویم سررسید چک‌ها
-          </button>
+        {/* 4-Column Executive KPI Strip */}
+        <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mt-5 pt-4 border-t border-white/10">
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-slate-300 font-bold">کل رسیدهای ثبت‌شده</p>
+              <p className="text-lg sm:text-xl font-black text-white font-mono mt-0.5">{receipts.length}</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300">
+              <FileText size={18} />
+            </div>
+          </div>
 
-          <button 
-            onClick={() => {
-              setActiveSubTab('create');
-              fetchNextNumber(selectedCompany);
-            }}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSubTab === 'create' ? 'bg-white dark:bg-gray-900 text-emerald-600 shadow-md' : 'text-gray-600 hover:text-emerald-500'}`}
-          >
-            <PlusCircle size={16} />
-            ثبت رسید جدید
-          </button>
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-amber-200 font-bold">منتظر تایید مدیریت</p>
+              <p className="text-lg sm:text-xl font-black text-amber-300 font-mono mt-0.5">{pendingApprovalReceiptsCount}</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300">
+              <FileClock size={18} />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-emerald-200 font-bold">چک‌های موجود در صندوق</p>
+              <p className="text-lg sm:text-xl font-black text-emerald-300 font-mono mt-0.5">{activeBoxChequesCount} فقره</p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300">
+              <Archive size={18} />
+            </div>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] text-teal-200 font-bold">ارزش صندوق خزانه</p>
+              <p className="text-sm sm:text-base font-black text-teal-300 font-mono mt-0.5 truncate" title={formatCurrency(totalTreasuryAmount)}>
+                {new Intl.NumberFormat('fa-IR').format(totalTreasuryAmount)} <span className="text-[10px]">ریال</span>
+              </p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-teal-500/20 border border-teal-400/30 flex items-center justify-center text-teal-300 shrink-0">
+              <TrendingUp size={18} />
+            </div>
+          </div>
         </div>
       </div>
 

@@ -93,6 +93,7 @@ export const exportWarehouseOverviewToExcel = async (
     const r2Label = summary.report2Label || 'وضعیت فعلی سال ۱۴۰۵';
     const r2Date = summary.report2Jalali || '۱۴۰۵/۰۵/۳۱';
     const manager = summary.signature || 'محمد ابراهیم حیدری';
+    const ceo = (summary as any).ceo || 'مدیریت عامل';
 
     // Summary calculations
     const yLast = n(summary.lastYearYarnsWeight) || yarnItems.reduce((s, i) => s + n(i.lastYearWeight), 0);

@@ -122,17 +122,33 @@ const FaxModule: React.FC<Props> = ({ currentUser, settings }) => {
     };
 
     return (
-        <div className="flex flex-col flex-1 h-full min-h-0 gap-6 p-6 animate-fade-in relative">
-            
-            {/* Input Form */}
-            <div className="glass-panel p-6 rounded-2xl shadow-sm border border-gray-200/50 dark:border-white/10 max-w-4xl mx-auto w-full z-10">
-                <div className="flex items-center gap-3 mb-6 pb-4 border-b">
-                    <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600"><Printer size={24}/></div>
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-800">ارسال فکس آنلاین (بدون هزینه)</h2>
-                        <p className="text-xs text-gray-500">تولید خودکار نامه و ارسال به کارتابل تلگرام مدیریت جهت فکس فیزیکی/دیجیتال</p>
+        <div className="flex flex-col flex-1 h-full min-h-0 gap-5 p-3 sm:p-5 md:p-6 animate-fade-in relative max-w-5xl mx-auto w-full">
+            {/* Unified Executive Hero Header */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 shadow-xl border border-white/10 shrink-0">
+                <div className="absolute -top-24 -left-24 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/30 border border-white/20 shrink-0">
+                            <Printer size={26} className="text-white" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-[10px] font-black">
+                                    مکاتبات و دبیرخانه
+                                </span>
+                                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-bold">
+                                    سربرگ رسمی A4
+                                </span>
+                            </div>
+                            <h2 className="text-lg sm:text-2xl font-black text-white mt-1">ارسال فکس آنلاین و مکاتبه فوری</h2>
+                            <p className="text-xs text-slate-300/90 mt-0.5">تولید خودکار نامه با سربرگ رسمی و ارسال مستقیم به کارتابل مدیریت و گفتگوی سازمانی</p>
+                        </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Input Form */}
+            <div className="glass-panel p-5 sm:p-6 rounded-3xl shadow-sm border border-gray-200/60 dark:border-white/10 w-full z-10">
 
                 {success && (
                     <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl flex items-center gap-3">

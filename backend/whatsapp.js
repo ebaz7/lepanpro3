@@ -1,4 +1,5 @@
 
+import '../patch-dependencies.js';
 import wwebjs from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import QRCodeLib from 'qrcode';
@@ -285,6 +286,154 @@ export const initWhatsApp = (authDir) => {
             }
         });
 
+        const toEnglishDigits = (str) => {
+            if (!str) return '';
+            return String(str)
+                .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+                .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+        };
+
+        // Helper to normalize phone numbers (convert 989..., +989..., 09... to standard 09...)
+        const normalizePhoneNumber = (phone) => {
+            if (!phone) return '';
+            let digits = toEnglishDigits(phone).replace(/\D/g, '');
+            if (digits.startsWith('0098') && digits.length === 14) {
+                digits = '0' + digits.substring(4);
+            } else if (digits.startsWith('989') && digits.length === 12) {
+                digits = '0' + digits.substring(2);
+            } else if (digits.startsWith('9') && digits.length === 10) {
+                digits = '0' + digits;
+            }
+            return digits;
+        };
+
+        const ensurePageReadyAndPatched = async () => {
+            try {
+                const page = client?.pupPage || await recoverActivePage();
+                if (!page || (typeof page.isClosed === 'function' && page.isClosed())) return false;
+
+                const stateResult = await page.evaluate(async () => {
+                    try {
+                        if (typeof window.require !== 'function') return { synced: false, wwebReady: false };
+
+                        // 1. Check if WhatsApp Web store & user session are synced
+                        let hasSynced = false;
+                        let meUser = null;
+                        try {
+                            const SocketModel = window.require('WAWebSocketModel');
+                            hasSynced = !!(SocketModel && SocketModel.Socket && SocketModel.Socket.hasSynced);
+                        } catch (e) {}
+                        try {
+                            const UserPrefs = window.require('WAWebUserPrefsMeUser');
+                            const wid = UserPrefs && UserPrefs.getMaybeMePnUser ? UserPrefs.getMaybeMePnUser() : (UserPrefs && UserPrefs.getMaybeMeUser ? UserPrefs.getMaybeMeUser() : null);
+                            if (wid) meUser = wid.user || wid._serialized || String(wid);
+                        } catch (e) {}
+
+                        // If synced and onAppStateHasSyncedEvent was registered by whatsapp-web.js but missed the event, trigger it
+                        if ((hasSynced || meUser) && typeof window.onAppStateHasSyncedEvent === 'function' && !window.__wwebSyncedTriggered) {
+                            window.__wwebSyncedTriggered = true;
+                            try { window.onAppStateHasSyncedEvent(); } catch (e) {}
+                        }
+
+                        // 2. Patch window.WWebJS helpers if present
+                        if (window.WWebJS) {
+                            if (!window.WWebJS.__patchedFor2026) {
+                                window.WWebJS.__patchedFor2026 = true;
+
+                                // Safe sendSeen that never crashes message sending
+                                window.WWebJS.sendSeen = async (chatId) => {
+                                    try {
+                                        const chat = await window.WWebJS.getChat(chatId, { getAsModel: false });
+                                        if (chat) {
+                                            try { window.require('WAWebStreamModel').Stream.markAvailable(); } catch (e) {}
+                                            await window.require('WAWebUpdateUnreadChatAction').sendSeen({
+                                                chat: chat,
+                                                threadId: undefined,
+                                            });
+                                            try { window.require('WAWebStreamModel').Stream.markUnavailable(); } catch (e) {}
+                                            return true;
+                                        }
+                                    } catch (e) {}
+                                    return false;
+                                };
+
+                                // Resilient getChat for both direct contacts (@c.us / @lid) and groups (@g.us)
+                                const origGetChat = window.WWebJS.getChat;
+                                window.WWebJS.getChat = async (chatId, { getAsModel = true } = {}) => {
+                                    try {
+                                        const chatWid = window.require('WAWebWidFactory').createWid(chatId);
+                                        const ChatCol = window.require('WAWebCollections').Chat;
+                                        let chat = ChatCol.get(chatWid);
+                                        if (!chat) {
+                                            try {
+                                                const found = await window.require('WAWebFindChatAction').findOrCreateLatestChat(chatWid);
+                                                chat = found?.chat || found;
+                                            } catch (e) {}
+                                        }
+                                        if (!chat && typeof ChatCol.find === 'function') {
+                                            try { chat = await ChatCol.find(chatWid); } catch (e) {}
+                                        }
+                                        if (chat && typeof chatWid.isGroup === 'function' && chatWid.isGroup()) {
+                                            try { await window.require('WAWebCollections').GroupMetadata.update(chatWid); } catch (e) {}
+                                        }
+                                        if (chat) {
+                                            return getAsModel ? await window.WWebJS.getChatModel(chat) : chat;
+                                        }
+                                    } catch (e) {}
+                                    if (typeof origGetChat === 'function') {
+                                        try { return await origGetChat(chatId, { getAsModel }); } catch (e) {}
+                                    }
+                                    return null;
+                                };
+
+                                // Resilient getMessageModel so serialization hiccups never fail sendMessage
+                                const origGetMessageModel = window.WWebJS.getMessageModel;
+                                if (typeof origGetMessageModel === 'function') {
+                                    window.WWebJS.getMessageModel = (message) => {
+                                        try {
+                                            return origGetMessageModel(message);
+                                        } catch (e) {
+                                            return {
+                                                id: message?.id ? (message.id._serialized ? message.id : { _serialized: String(message.id), fromMe: true }) : { _serialized: 'sent_' + Date.now(), fromMe: true },
+                                                body: message?.body || '',
+                                                type: message?.type || 'chat',
+                                                timestamp: message?.t || Math.floor(Date.now() / 1000),
+                                                fromMe: true
+                                            };
+                                        }
+                                    };
+                                }
+                            }
+                        }
+
+                        return {
+                            synced: hasSynced || !!meUser,
+                            wwebReady: !!window.WWebJS,
+                            meUser
+                        };
+                    } catch (e) {
+                        return { synced: false, wwebReady: false, error: e.message };
+                    }
+                });
+
+                if (stateResult && stateResult.wwebReady && stateResult.synced && !isReady) {
+                    isReady = true;
+                    qrCode = null;
+                    qrDataUrl = null;
+                    isInitializing = false;
+                    lastError = null;
+                    if (!connectedAt) connectedAt = new Date().toISOString();
+                    clientInfo = (client.info && client.info.wid && client.info.wid.user) || stateResult.meUser || 'Connected';
+                    console.log(`>>> WhatsApp Ready (Verified via Store Sync)! User: ${clientInfo} ✅`);
+                    addDiagnosticLog('success', 'CLIENT', `واتساپ به طور کامل همگام‌سازی و آماده ارسال پیام شد (کاربر: ${clientInfo}) ✅`);
+                }
+
+                return !!(stateResult && stateResult.wwebReady);
+            } catch (e) {
+                return false;
+            }
+        };
+
         const monitorBrowser = () => {
             try {
                 if (client?.pupBrowser && typeof client.pupBrowser.on === 'function') {
@@ -344,9 +493,11 @@ export const initWhatsApp = (authDir) => {
             isInitializing = false;
             lastError = null;
             monitorBrowser();
+            setTimeout(() => { ensurePageReadyAndPatched(); }, 2500);
+            setTimeout(() => { ensurePageReadyAndPatched(); }, 6500);
         });
 
-        client.on('ready', () => { 
+        client.on('ready', async () => { 
             isReady = true; 
             qrCode = null; 
             qrDataUrl = null;
@@ -357,6 +508,7 @@ export const initWhatsApp = (authDir) => {
             console.log(`>>> WhatsApp Ready! User: ${clientInfo} ✅`); 
             addDiagnosticLog('success', 'CLIENT', `واتساپ به طور کامل متصل و آنلاین شد (کاربر: ${clientInfo}) ✅`);
             monitorBrowser();
+            await ensurePageReadyAndPatched();
         });
 
         client.on('auth_failure', (msg) => {
@@ -388,23 +540,17 @@ export const initWhatsApp = (authDir) => {
 
         client.on('change_state', (state) => {
             addDiagnosticLog('info', 'CLIENT', `وضعیت کلاینت واتساپ به ${state} تغییر یافت.`);
+            if (state === 'CONNECTED') {
+                setTimeout(() => { ensurePageReadyAndPatched(); }, 1500);
+            }
         });
 
         client.on('loading_screen', (percent, message) => {
             addDiagnosticLog('info', 'CLIENT', `بارگذاری صفحه وب واتساپ: ${percent}% ${message || ''}`);
-        });
-
-        // Helper to normalize phone numbers (convert 989..., +989..., 09... to standard 09...)
-        const normalizePhoneNumber = (phone) => {
-            if (!phone) return '';
-            let digits = String(phone).replace(/\D/g, '');
-            if (digits.startsWith('989') && digits.length === 12) {
-                digits = '0' + digits.substring(2);
-            } else if (digits.startsWith('9') && digits.length === 10) {
-                digits = '0' + digits;
+            if (Number(percent) >= 100) {
+                setTimeout(() => { ensurePageReadyAndPatched(); }, 2000);
             }
-            return digits;
-        };
+        });
 
         // Check if a sender is authorized to receive reports or execute commands
         const getAuthorizedUser = (db, msg) => {
@@ -599,8 +745,18 @@ export const logout = async () => {
 };
 
 export const getGroups = async () => { 
-    if (!client || !isReady) return []; 
+    if (!client) return []; 
     try {
+        if (!isReady && client.pupPage) {
+            const page = client.pupPage;
+            await page.evaluate(() => {
+                if (typeof window.onAppStateHasSyncedEvent === 'function' && !window.__wwebSyncedTriggered) {
+                    window.__wwebSyncedTriggered = true;
+                    try { window.onAppStateHasSyncedEvent(); } catch (e) {}
+                }
+            }).catch(() => {});
+        }
+        if (!isReady) return [];
         const chats = await client.getChats(); 
         const groups = chats.filter(c => c.isGroup).map(c => ({ id: c.id._serialized, name: c.name }));
         addDiagnosticLog('info', 'CLIENT', `تعداد ${groups.length} گروه واتساپ دریافت شد.`);
@@ -617,15 +773,19 @@ export const sendMediaMessage = async (number, caption, mediaData) => {
 };
 
 export const sendMessage = async (number, text, mediaData) => {
-    // 1. Validation of target recipient
-    if (!number || typeof number !== 'string' || !number.trim() || number === 'undefined' || number === 'null') {
+    // 1. Validation & Persian/Arabic digit normalization of target recipient
+    if (!number || (typeof number !== 'string' && typeof number !== 'number') || String(number).trim() === '' || number === 'undefined' || number === 'null') {
         const msg = `[WhatsApp] مقصد پیام نامعتبر یا خالی است: "${number}"`;
         console.warn(msg);
         addDiagnosticLog('warn', 'MESSAGE', msg);
         return { success: false, warning: msg, skipped: true };
     }
 
-    let chatId = number.trim();
+    const toAsciiDigits = (s) => String(s)
+        .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+        .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+
+    let chatId = toAsciiDigits(String(number).trim());
     if (!chatId.includes('@')) {
         const digits = chatId.replace(/\D/g, '');
         if (digits.length < 10) {
@@ -637,9 +797,22 @@ export const sendMessage = async (number, text, mediaData) => {
         if (digits.length > 15 || chatId.includes('-')) {
             chatId = `${digits}@g.us`;
         } else {
-            const cleanDigits = digits.replace(/^0/, '98');
+            let cleanDigits = digits;
+            if (cleanDigits.startsWith('0098')) {
+                cleanDigits = '98' + cleanDigits.substring(4);
+            } else if (cleanDigits.startsWith('0')) {
+                cleanDigits = '98' + cleanDigits.substring(1);
+            } else if (cleanDigits.startsWith('9') && cleanDigits.length === 10) {
+                cleanDigits = '98' + cleanDigits;
+            }
             chatId = `${cleanDigits}@c.us`;
         }
+    } else {
+        const [userPart, domainPart] = chatId.split('@');
+        const cleanUserPart = domainPart === 'c.us'
+            ? userPart.replace(/\D/g, '').replace(/^0098/, '98').replace(/^0/, '98')
+            : userPart.trim();
+        chatId = `${cleanUserPart}@${domainPart}`;
     }
 
     // 2. Check client readiness and active browser page safely
@@ -649,6 +822,57 @@ export const sendMessage = async (number, text, mediaData) => {
     }
 
     const browserAlive = client?.pupBrowser && (typeof client.pupBrowser.isConnected === 'function' ? client.pupBrowser.isConnected() : true);
+
+    // Self-heal if WhatsApp Web is synced in browser but ready event was missed or WWebJS needs live patching
+    if (client && browserAlive && page && !(typeof page.isClosed === 'function' && page.isClosed())) {
+        try {
+            await page.evaluate(async () => {
+                if (typeof window.require !== 'function') return;
+                let hasSynced = false;
+                let meUser = null;
+                try {
+                    const SocketModel = window.require('WAWebSocketModel');
+                    hasSynced = !!(SocketModel && SocketModel.Socket && SocketModel.Socket.hasSynced);
+                } catch (e) {}
+                try {
+                    const UserPrefs = window.require('WAWebUserPrefsMeUser');
+                    const wid = UserPrefs && UserPrefs.getMaybeMePnUser ? UserPrefs.getMaybeMePnUser() : null;
+                    if (wid) meUser = wid.user || wid._serialized;
+                } catch (e) {}
+                if ((hasSynced || meUser) && typeof window.onAppStateHasSyncedEvent === 'function' && !window.__wwebSyncedTriggered) {
+                    window.__wwebSyncedTriggered = true;
+                    try { window.onAppStateHasSyncedEvent(); } catch (e) {}
+                }
+                if (window.WWebJS && !window.WWebJS.__patchedSendSeenLive) {
+                    window.WWebJS.__patchedSendSeenLive = true;
+                    window.WWebJS.sendSeen = async (cId) => {
+                        try {
+                            const c = await window.WWebJS.getChat(cId, { getAsModel: false });
+                            if (c) {
+                                try { window.require('WAWebStreamModel').Stream.markAvailable(); } catch (e) {}
+                                await window.require('WAWebUpdateUnreadChatAction').sendSeen({ chat: c, threadId: undefined });
+                                try { window.require('WAWebStreamModel').Stream.markUnavailable(); } catch (e) {}
+                                return true;
+                            }
+                        } catch (e) {}
+                        return false;
+                    };
+                }
+            }).catch(() => {});
+
+            if (!isReady) {
+                const storeActive = await page.evaluate(() => {
+                    return !!(window.WWebJS && typeof window.require === 'function' && window.require('WAWebCollections')?.Chat);
+                }).catch(() => false);
+                if (storeActive) {
+                    isReady = true;
+                    isInitializing = false;
+                    if (!connectedAt) connectedAt = new Date().toISOString();
+                }
+            }
+        } catch (e) {}
+    }
+
     if (!client || !isReady || !browserAlive || !page || (typeof page.isClosed === 'function' && page.isClosed())) {
         const warningMsg = `سرویس واتساپ در حال حاضر متصل یا آماده نیست. روال سیستم و ثبت سند با موفقیت انجام شد.`;
         console.warn(`>>> [WhatsApp Soft Warning] ${warningMsg} (مقصد: ${chatId})`);
@@ -656,24 +880,41 @@ export const sendMessage = async (number, text, mediaData) => {
         return { success: false, warning: warningMsg, skipped: true, error: 'WhatsApp not ready' };
     }
 
-    // 3. For direct personal contacts (@c.us), verify existence with getNumberId to prevent WhatsApp Web memoize crash
+    // 3. For direct personal contacts (@c.us), resolve canonical JID via getNumberId if possible, but never abort on query failure
     let targetJid = chatId;
     if (chatId.endsWith('@c.us')) {
         try {
             const numberOnly = chatId.replace(/\D/g, '');
-            const numId = await client.getNumberId(numberOnly).catch(() => null);
+            const numId = await client.getNumberId(numberOnly).catch(() => undefined);
             if (numId && numId._serialized) {
                 targetJid = numId._serialized;
-            } else if (numId === null) {
-                const warningMsg = `شماره ${chatId} در واتساپ حساب فعال ندارد یا ثبت نام نکرده است. گردش کار با موفقیت ادامه یافت.`;
-                console.warn(`>>> [WhatsApp Soft Warning] ${warningMsg}`);
-                addDiagnosticLog('warn', 'MESSAGE', warningMsg);
-                return { success: false, warning: warningMsg, skipped: true, error: 'Recipient not on WhatsApp' };
             }
-        } catch(e) {
-            // Keep targetJid as chatId if getNumberId is unsupported or times out
+        } catch (e) {
+            // Keep targetJid as chatId if getNumberId fails or times out
         }
     }
+
+    // Pre-warm target chat / group metadata in WhatsApp Web Store so sendMessage has valid Chat & GroupMetadata models
+    try {
+        await page.evaluate(async (jid) => {
+            if (typeof window.require !== 'function') return;
+            const chatWid = window.require('WAWebWidFactory').createWid(jid);
+            const ChatCol = window.require('WAWebCollections').Chat;
+            let chat = ChatCol.get(chatWid);
+            if (!chat) {
+                try {
+                    const found = await window.require('WAWebFindChatAction').findOrCreateLatestChat(chatWid);
+                    chat = found?.chat || found;
+                } catch (e) {}
+            }
+            if (!chat && typeof ChatCol.find === 'function') {
+                try { chat = await ChatCol.find(chatWid); } catch (e) {}
+            }
+            if (typeof chatWid.isGroup === 'function' && chatWid.isGroup()) {
+                try { await window.require('WAWebCollections').GroupMetadata.update(chatWid); } catch (e) {}
+            }
+        }, targetJid).catch(() => {});
+    } catch (e) {}
 
     // 4. Prepare MediaData if provided (Direct Photo with Caption standard)
     let media = null;
@@ -709,67 +950,90 @@ export const sendMessage = async (number, text, mediaData) => {
         }
     }
 
-    // 5. Tier 1 Send Attempt (Direct Photo with Caption or Direct Text)
+    // 5. Tier 1 Send Attempt (Direct Photo with Caption or Direct Text, with sendSeen: false to avoid sendSeen crash)
     try {
         if (media) {
-            // sendMediaAsDocument: false guarantees it is rendered inline as a photo with caption underneath
-            await client.sendMessage(targetJid, media, { caption: text || '', sendMediaAsDocument: false });
+            const isImageMedia = (media.mimetype || '').startsWith('image/');
+            await client.sendMessage(targetJid, media, {
+                caption: text || '',
+                sendMediaAsDocument: !isImageMedia,
+                sendSeen: false
+            });
         } else if (text) {
-            await client.sendMessage(targetJid, text);
+            await client.sendMessage(targetJid, text, { sendSeen: false });
         }
-        addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} ارسال شد (عکس و کپشن مستقیم).`);
+        addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} ارسال شد.`);
         return { success: true, chatId: targetJid };
     } catch (err) {
         console.warn(`[WhatsApp] Send attempt 1 failed for ${targetJid}: ${err.message}`);
 
-        // Check for group non-membership or recipient invalid errors
-        const isGroupOrRecipientError = targetJid.endsWith('@g.us') || (err.message && (
-            err.message.includes('not a participant') ||
-            err.message.includes('not found') ||
-            err.message.includes('Chat not found') ||
-            err.message.includes('Evaluation failed') ||
-            err.message.includes('No LID') ||
-            err.message.includes('item-not-found')
-        ));
-
-        if (isGroupOrRecipientError) {
-            const warningMsg = `ارسال پیام به گروه یا مخاطب ${targetJid} ناموفق بود (احتمالاً شماره متصل عضو این گروه نیست یا دسترسی ارسال ندارد). گردش کار و ثبت سند با موفقیت ادامه یافت.`;
-            console.warn(`>>> [WhatsApp Soft Warning] ${warningMsg}:`, err.message);
-            addDiagnosticLog('warn', 'MESSAGE', warningMsg, err.message);
-            return { success: false, warning: warningMsg, error: err.message, skipped: true };
-        }
-
-        // Tier 2: Fallback via direct chat instance or direct script injection
+        // Tier 2: Fallback via direct chat instance or direct in-page WWebJS.sendMessage evaluation
         try {
             page = await recoverActivePage();
             if (page && !page.isClosed()) {
-                // Try chat instance
+                // 2a. Try chat instance with sendSeen: false
                 try {
                     const chat = await client.getChatById(targetJid);
                     if (chat) {
                         if (media) {
-                            await chat.sendMessage(media, { caption: text || '', sendMediaAsDocument: false });
+                            const isImageMedia = (media.mimetype || '').startsWith('image/');
+                            await chat.sendMessage(media, {
+                                caption: text || '',
+                                sendMediaAsDocument: !isImageMedia,
+                                sendSeen: false
+                            });
                         } else if (text) {
-                            await chat.sendMessage(text);
+                            await chat.sendMessage(text, { sendSeen: false });
                         }
                         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش Chat Object) ارسال شد.`);
                         return { success: true, chatId: targetJid };
                     }
-                } catch(chatErr) {
+                } catch (chatErr) {
                     console.warn(`[WhatsApp] Chat object fallback failed: ${chatErr.message}`);
                 }
 
-                // Try direct in-page script injection for text
-                if (text && (!media || !media.data)) {
-                    await page.evaluate(async (jid, msgText) => {
+                // 2b. Try direct in-page WWebJS.sendMessage injection (supports both media and text!)
+                try {
+                    const mediaPayload = media ? {
+                        mimetype: media.mimetype,
+                        data: media.data,
+                        filename: media.filename || 'file'
+                    } : null;
+
+                    const evalSent = await page.evaluate(async (jid, msgText, mediaObj) => {
                         const chatWid = window.require('WAWebWidFactory').createWid(jid);
-                        const chat = window.require('WAWebCollections').Chat.get(chatWid) ||
-                            (await window.require('WAWebFindChatAction').findOrCreateLatestChat(chatWid))?.chat;
-                        if (!chat) throw new Error('چت یافت نشد.');
-                        return await window.WWebJS.sendMessage(chat, msgText);
-                    }, targetJid, text);
-                    addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش تزریق مستقیم) ارسال شد.`);
-                    return { success: true, chatId: targetJid };
+                        const ChatCol = window.require('WAWebCollections').Chat;
+                        let chat = ChatCol.get(chatWid);
+                        if (!chat) {
+                            try {
+                                const found = await window.require('WAWebFindChatAction').findOrCreateLatestChat(chatWid);
+                                chat = found?.chat || found;
+                            } catch (e) {}
+                        }
+                        if (!chat && typeof ChatCol.find === 'function') {
+                            try { chat = await ChatCol.find(chatWid); } catch (e) {}
+                        }
+                        if (!chat) throw new Error('چت مقصد در واتساپ وب یافت نشد.');
+                        if (typeof chatWid.isGroup === 'function' && chatWid.isGroup()) {
+                            try { await window.require('WAWebCollections').GroupMetadata.update(chatWid); } catch (e) {}
+                        }
+
+                        const opts = {};
+                        if (mediaObj && mediaObj.data) {
+                            opts.attachment = mediaObj;
+                            opts.caption = msgText || '';
+                            opts.sendMediaAsDocument = !(mediaObj.mimetype || '').startsWith('image/');
+                        }
+                        await window.WWebJS.sendMessage(chat, mediaObj && mediaObj.data ? (msgText || '') : msgText, opts);
+                        return true;
+                    }, targetJid, text || '', mediaPayload);
+
+                    if (evalSent) {
+                        addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش تزریق مستقیم WWebJS) ارسال شد.`);
+                        return { success: true, chatId: targetJid };
+                    }
+                } catch (evalErr) {
+                    console.warn("[WhatsApp] Direct WWebJS.sendMessage injection failed:", evalErr.message);
                 }
             }
         } catch (tier2Err) {
@@ -780,7 +1044,7 @@ export const sendMessage = async (number, text, mediaData) => {
         if (media && text) {
             try {
                 console.log(`[WhatsApp] Falling back to text-only send for ${targetJid}...`);
-                await client.sendMessage(targetJid, text);
+                await client.sendMessage(targetJid, text, { sendSeen: false });
                 addDiagnosticLog('success', 'MESSAGE', `متن اطلاعیه با موفقیت به ${targetJid} ارسال شد (ارسال خودکار متن به جای فایل).`);
                 return { success: true, chatId: targetJid, mediaFallbackToText: true };
             } catch (textErr) {

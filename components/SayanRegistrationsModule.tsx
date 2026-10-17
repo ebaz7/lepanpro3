@@ -631,71 +631,79 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
     }
 
     return (
-        <div className="w-full flex flex-col flex-1 min-h-0 space-y-4 pb-20 animate-fade-in select-text">
+        <div className="w-full flex flex-col flex-1 min-h-0 space-y-5 pb-20 p-3 sm:p-5 md:p-6 animate-fade-in select-text">
             
-            {/* Top Enterprise Navigation Header */}
-            <div className="glass-panel p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className="p-3 bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl shadow-md shadow-blue-500/20">
-                        <Database className="w-6 h-6" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                                بخش ثبت‌های سایان
-                            </h1>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                                ERP سایان
-                            </span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            مرکز ثبت، تایید و صدور مستقیم اسناد مالی و انبار در پایگاه‌داده سایان ERP
-                        </p>
-                    </div>
-                </div>
+            {/* Unified Executive Hero Header */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-5 sm:p-6 shadow-xl border border-white/10">
+                <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
 
-                {/* Sub-Module Switcher */}
-                <div className="flex items-center bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl gap-1 border border-slate-200 dark:border-slate-700/60 self-start md:self-auto">
-                    {canSayanPreInvoices && (
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-tr from-blue-600 to-indigo-500 text-white rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center shrink-0 border border-white/20">
+                            <Database className="w-6 h-6 sm:w-7 sm:h-7" />
+                        </div>
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-blue-500/20 text-blue-300 border border-blue-400/30">
+                                    اتوماسیون مستقیم ERP سایان
+                                </span>
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                                    SQL Server Bridge
+                                </span>
+                            </div>
+                            <h1 className="text-lg sm:text-2xl font-black text-white mt-1">
+                                مرکز ثبت‌ها و اتوماسیون اسناد سایان
+                            </h1>
+                            <p className="text-xs text-slate-300/90 mt-0.5">
+                                ثبت، تایید و صدور مستقیم پیش‌فاکتورهای خرید (سند ۵۷) و رسید دریافت چک در پایگاه‌داده سایان ERP
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Sub-Module Switcher */}
+                    <div className="flex flex-wrap items-center bg-white/10 backdrop-blur-md p-1.5 rounded-2xl gap-1.5 border border-white/15 w-full lg:w-auto">
+                        {canSayanPreInvoices && (
+                            <button
+                                type="button"
+                                onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
+                                className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    mainSubTab === 'PURCHASE_PREINVOICES'
+                                        ? 'bg-white text-slate-900 shadow-lg'
+                                        : 'text-slate-200 hover:bg-white/10 hover:text-white'
+                                }`}
+                            >
+                                <Sparkles className="w-4 h-4 text-amber-500" />
+                                <span>پیش‌فاکتورهای درخواست خرید</span>
+                            </button>
+                        )}
+                        {canAccessChequeReceiptsTab && (
+                            <button
+                                type="button"
+                                onClick={() => setMainSubTab('CHEQUE_RECEIPTS')}
+                                className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                    mainSubTab === 'CHEQUE_RECEIPTS'
+                                        ? 'bg-white text-slate-900 shadow-lg'
+                                        : 'text-slate-200 hover:bg-white/10 hover:text-white'
+                                }`}
+                            >
+                                <CreditCard className="w-4 h-4 text-emerald-500" />
+                                <span>رسید دریافت چک (اسناد خزانه)</span>
+                            </button>
+                        )}
                         <button
                             type="button"
-                            onClick={() => setMainSubTab('PURCHASE_PREINVOICES')}
-                            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                                mainSubTab === 'PURCHASE_PREINVOICES'
-                                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            onClick={() => setMainSubTab('FUTURE_DOCS')}
+                            className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                mainSubTab === 'FUTURE_DOCS'
+                                    ? 'bg-white text-slate-900 shadow-lg'
+                                    : 'text-slate-200 hover:bg-white/10 hover:text-white'
                             }`}
                         >
-                            <Sparkles className="w-4 h-4 text-amber-500" />
-                            <span>ثبت پیش‌فاکتورهای درخواست خرید</span>
+                            <Layers className={`w-4 h-4 ${mainSubTab === 'FUTURE_DOCS' ? 'text-blue-600' : 'text-slate-300'}`} />
+                            <span>سایر ثبت‌ها و عملیات اسناد</span>
                         </button>
-                    )}
-                    {canAccessChequeReceiptsTab && (
-                        <button
-                            type="button"
-                            onClick={() => setMainSubTab('CHEQUE_RECEIPTS')}
-                            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                                mainSubTab === 'CHEQUE_RECEIPTS'
-                                    ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                            }`}
-                        >
-                            <CreditCard className="w-4 h-4 text-emerald-500" />
-                            <span>رسید دریافت چک (اسناد خزانه)</span>
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={() => setMainSubTab('FUTURE_DOCS')}
-                        className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                            mainSubTab === 'FUTURE_DOCS'
-                                ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200 dark:border-slate-700'
-                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                    >
-                        <Layers className="w-4 h-4 text-slate-400" />
-                        <span>سایر ثبت‌ها و عملیات اسناد</span>
-                    </button>
+                    </div>
                 </div>
             </div>
 

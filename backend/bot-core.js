@@ -3769,41 +3769,60 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
             }).catch(e => console.error("Bale Import Error", e));
         }
 
+        // Helper to resolve attachment base64 (from inline data or /uploads/ file path)
+        const resolveAttachmentBase64 = (att) => {
+            if (!att) return null;
+            if (att.data) {
+                return att.data.replace(/^data:[^;]+;base64,/, '');
+            }
+            const fileUrl = att.url || att.path || att.filePath;
+            if (fileUrl && typeof fileUrl === 'string') {
+                try {
+                    const relPath = fileUrl.replace(/^https?:\/\/[^/]+/, '').replace(/^\/+/, '');
+                    const absPath = path.resolve(process.cwd(), relPath);
+                    if (fs.existsSync(absPath)) {
+                        return fs.readFileSync(absPath).toString('base64');
+                    }
+                } catch (e) {}
+            }
+            return null;
+        };
+
         // Fire WhatsApp Group
-        if (waGroupId && settings.whatsappEnabled) {
+        if (waGroupId && settings.whatsappEnabled !== false) {
             import('./whatsapp.js').then(async mod => {
                 if (!mod || !mod.sendMessage) return;
                 if (paymentOrderImgBuffer) {
                     const b64 = paymentOrderImgBuffer.toString('base64');
-                    await mod.sendMessage(waGroupId, caption, {
+                    const sendRes = await mod.sendMessage(waGroupId, caption, {
                         data: b64,
                         mimeType: 'image/png',
                         filename: `payment_order_${o.id || o.trackingNumber}.png`
-                    }).catch(async () => {
-                    // Send attached photo/file if present
-                    if (o.attachments && o.attachments.length > 0) {
-                      for (let attIdx = 0; attIdx < o.attachments.length; attIdx++) {
-                        const att = o.attachments[attIdx];
-                        if (att.data || att.url) {
-                          try {
-                            const attB64 = att.data ? att.data.replace(/^data:[^;]+;base64,/, '') : null;
-                            if (attB64) {
-                              const attMime = att.mimeType || (att.name && att.name.endsWith('.pdf') ? 'application/pdf' : 'image/png');
-                              await mod.sendMessage(waGroupId, `📎 پیوست (${attIdx + 1}/${o.attachments.length}) دستور پرداخت #${o.trackingNumber || o.id}\n📄 ${att.name || 'فاکتور/پیوست'}`, {
-                                data: attB64,
-                                mimeType: attMime,
-                                filename: att.name || `attachment_${attIdx + 1}.png`
-                              }).catch(() => {});
-                            }
-                          } catch (attErr) {}
-                        }
-                      }
-                    }
-      
+                    }).catch(() => ({ success: false }));
+                    if (!sendRes || !sendRes.success) {
                         await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Payment Notify Error:", e));
-                    });
+                    }
                 } else {
                     await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Payment Notify Error:", e));
+                }
+
+                // Send attached invoice/receipt photos or PDFs right after the payment order card
+                if (o.attachments && o.attachments.length > 0) {
+                    for (let attIdx = 0; attIdx < o.attachments.length; attIdx++) {
+                        const att = o.attachments[attIdx];
+                        try {
+                            const attB64 = resolveAttachmentBase64(att);
+                            if (attB64) {
+                                const attName = att.name || att.fileName || `attachment_${attIdx + 1}.png`;
+                                const attMime = att.mimeType || (attName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png');
+                                await mod.sendMessage(waGroupId, `📎 پیوست (${attIdx + 1}/${o.attachments.length}) دستور پرداخت #${o.trackingNumber || o.id}\n📄 ${attName}`, {
+                                    data: attB64,
+                                    mimeType: attMime,
+                                    filename: attName
+                                }).catch(() => {});
+                            }
+                        } catch (attErr) {}
+                    }
                 }
             }).catch(e => console.error("WA Import Error", e));
         }
@@ -3817,7 +3836,7 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
         });
 
         for (const user of responsibleUsers) {
-            if (user.phoneNumber && settings.whatsappEnabled) {
+            if (user.phoneNumber && settings.whatsappEnabled !== false) {
                 import('./whatsapp.js').then(async mod => {
                     if (!mod || !mod.sendMessage) return;
                     if (paymentOrderImgBuffer) {
@@ -3829,6 +3848,23 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
                         }).catch(() => {});
                     } else {
                         await mod.sendMessage(user.phoneNumber, caption).catch(() => {});
+                    }
+                    if (o.attachments && o.attachments.length > 0) {
+                        for (let attIdx = 0; attIdx < o.attachments.length; attIdx++) {
+                            const att = o.attachments[attIdx];
+                            try {
+                                const attB64 = resolveAttachmentBase64(att);
+                                if (attB64) {
+                                    const attName = att.name || att.fileName || `attachment_${attIdx + 1}.png`;
+                                    const attMime = att.mimeType || (attName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png');
+                                    await mod.sendMessage(user.phoneNumber, `📎 پیوست (${attIdx + 1}/${o.attachments.length}) دستور پرداخت #${o.trackingNumber || o.id}\n📄 ${attName}`, {
+                                        data: attB64,
+                                        mimeType: attMime,
+                                        filename: attName
+                                    }).catch(() => {});
+                                }
+                            } catch (attErr) {}
+                        }
                     }
                 }).catch(() => {});
             }
@@ -4050,18 +4086,19 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE', options 
         }
 
         // Fire WhatsApp Group
-        if (waGroupId && settings.whatsappEnabled) {
+        if (waGroupId && settings.whatsappEnabled !== false) {
             import('./whatsapp.js').then(async (mod) => {
                 if (mod?.sendMessage) {
                     if (formImageBuffer) {
                         const b64 = formImageBuffer.toString('base64');
-                        await mod.sendMessage(waGroupId, caption, {
+                        const sendRes = await mod.sendMessage(waGroupId, caption, {
                             data: b64,
                             mimeType: 'image/png',
                             filename: `driver_payment_${dp.id}.png`
-                        }).catch(async () => {
+                        }).catch(() => ({ success: false }));
+                        if (!sendRes || !sendRes.success) {
                             await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Driver Payment Text Error:", e.message));
-                        });
+                        }
                     } else {
                         await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Driver Payment Text Error:", e.message));
                     }
@@ -4082,7 +4119,7 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE', options 
         }
 
         // Direct WhatsApp to Driver (if driver phone provided)
-        if (dp.driverPhone && settings.whatsappEnabled && !isDelete) {
+        if (dp.driverPhone && settings.whatsappEnabled !== false && !isDelete) {
             const driverCaption = `🚚 *رسید واریز کرایه راننده*\n` +
                 `جناب آقای ${dp.driverName || 'راننده محترم'}، مبلغ ${formattedAmount} بابت کرایه مسیر ${dp.origin || ''} به ${dp.destination || ''} واریز گردید.\n` +
                 `📅 تاریخ: ${dateStr}\n` +
@@ -4112,7 +4149,7 @@ export const notifyDriverPayment = async (dp, db, eventType = 'CREATE', options 
         const stageUsers = (db?.users || []).filter(u => responsibleStageRoles.includes(u.role) && u.phoneNumber);
 
         for (const sUser of stageUsers) {
-            if (settings.whatsappEnabled) {
+            if (settings.whatsappEnabled !== false) {
                 import('./whatsapp.js').then(async (mod) => {
                     if (mod?.sendMessage && formImageBuffer) {
                         const b64 = formImageBuffer.toString('base64');
@@ -4234,7 +4271,7 @@ export const notifyWarehouseBijak = async (tx, db, stepName, eventType = 'STEP')
             const media = isPrivate ? mediaDataWithPrice : mediaDataNoPrice;
             const opts = (tx.status === 'PENDING' && isPrivate) ? { reply_markup } : {};
 
-            if (t.type === 'wa' && settings.whatsappEnabled) {
+            if (t.type === 'wa' && settings.whatsappEnabled !== false) {
                 const mod = await import('./whatsapp.js');
                 mod.sendMessage(t.id, caption, media).catch(console.error);
             }
@@ -4288,7 +4325,7 @@ export const notifyWarehouseBijak = async (tx, db, stepName, eventType = 'STEP')
         }
 
         // 4. Send directly to Driver on WhatsApp upon approval (if driver mobile present)
-        if (tx.status === 'APPROVED' && (tx.driverPhone || tx.driverMobile) && settings.whatsappEnabled) {
+        if (tx.status === 'APPROVED' && (tx.driverPhone || tx.driverMobile) && settings.whatsappEnabled !== false) {
             const driverPhone = tx.driverPhone || tx.driverMobile;
             sendToTarget({ type: 'wa', id: driverPhone }, false);
         }
@@ -6936,11 +6973,19 @@ export const notifyMeetingAnnouncement = async (meeting, db) => {
         s.botMeetingAnnouncementSecondGroupIdWhatsApp,
         s.botMeetingAnnouncementGroupId
     );
-    if (waIds.length > 0 && s.whatsappEnabled) {
+    if (waIds.length > 0 && s.whatsappEnabled !== false) {
         import('./whatsapp.js').then(m => {
             for (const cleanId of waIds) {
                 console.log(`Sending meeting announcement to WhatsApp: ${cleanId}`);
-                m.sendMessage(cleanId, message).catch(e => console.error("WA meeting fail:", e));
+                if (announcementImg) {
+                    m.sendMessage(cleanId, message, {
+                        data: announcementImg.toString('base64'),
+                        mimeType: 'image/png',
+                        filename: `meeting_${meeting.meetingNumber || meeting.id}.png`
+                    }).catch(e => console.error("WA meeting fail:", e));
+                } else {
+                    m.sendMessage(cleanId, message).catch(e => console.error("WA meeting fail:", e));
+                }
             }
         }).catch(e => console.error("WA import fail:", e));
     }
@@ -7039,7 +7084,7 @@ export const notifyMeetingMinutes = async (meeting, db) => {
     }
 
     // 3. Send to unique WhatsApp groups
-    if (waIds.length > 0 && s.whatsappEnabled) {
+    if (waIds.length > 0 && s.whatsappEnabled !== false) {
         const msg = generateFullMessage('whatsapp');
         import('./whatsapp.js').then(m => {
             for (const cleanId of waIds) {
