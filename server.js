@@ -13824,11 +13824,6 @@ app.post('/api/public/survey/submit', (req, res) => {
         return res.status(500).json({ error: 'خطا در ثبت نظرسنجی' });
     }
 });
-    } catch (err) {
-        console.error("Public survey submit error:", err);
-        return res.status(500).json({ error: 'خطا در ثبت نظرسنجی' });
-    }
-});
 
 app.get('/api/customer-feedbacks', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

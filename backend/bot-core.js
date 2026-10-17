@@ -3712,9 +3712,21 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
             }
         }
 
-        let header = isDelete ? `❌ *حذف شد: دستور پرداخت*` : (isEdit ? `✏️ *ویرایش شد: دستور پرداخت*` : `💸 *دستور پرداخت*`);
-        let caption = `${header}\n🏢 شرکت: ${o.payingCompany || '-'}\n🔢 شماره: ${o.trackingNumber || o.id}\n📅 تاریخ پرداخت: ${o.date ? toShamsiFull(o.date) : '-'}\n💰 مبلغ: ${Number(o.totalAmount || 0).toLocaleString()} ریال\n🏦 بانک پرداختی: ${paymentBankInfo}\n💳 نوع پرداختی: ${(o.paymentDetails&&o.paymentDetails.length>0) ? o.paymentDetails[0].method : '-'}\n👤 ذینفع: ${o.payee || '-'}\n📍 محل پرداخت: ${o.paymentPlace || '-'}\n📝 توضیحات: ${o.description || '-'}\n\n✅ *مرحله:* ${stepName}\n🔄 *وضعیت:* ${o.status}${isEdit ? '\n⚠️ *این یک پیام ویرایشی است*' : ''}${isDelete ? '\n⚠️ *این سند حذف شده است*' : ''}`;
-        
+        let header = isDelete ? `❌ *حذف شد: دستور پرداخت*` : (isEdit ? `✏️ *ویرایش شد: دستور پرداخت*` : `📢 *درخواست پرداخت جدید*`);
+        let caption = `${header}\n\n` +
+            `🔢 *شماره پیگیری:* #${o.trackingNumber || o.id}\n` +
+            `🏢 *شرکت صادرکننده:* ${o.payingCompany || o.company || '-'}\n` +
+            `💰 *مبلغ کل:* *${Number(o.totalAmount || 0).toLocaleString()} ریال*\n` +
+            `👤 *ذینفع / دریافت‌کننده:* *${o.payee || o.beneficiary || '-'}\n` +
+            `👤 *درخواست کننده:* ${o.requester || o.createdByName || '-'}\n` +
+            `📅 *تاریخ ثبت/پرداخت:* ${o.date ? toShamsiFull(o.date) : '-'}\n` +
+            `🏦 *بانک / حساب:* ${paymentBankInfo}\n` +
+            `💳 *نوع/روش پرداخت:* ${(o.paymentDetails && o.paymentDetails.length > 0) ? o.paymentDetails[0].method : (o.paymentMethod || '-')}\n` +
+            `📍 *محل / مرکز هزینه:* ${o.paymentPlace || o.costCenter || '-'}\n` +
+            `📝 *بابت / توضیحات کامل:* ${o.description || '-'}\n\n` +
+            `✅ *مرحله:* ${stepName}\n` +
+            `🔄 *وضعیت:* ${o.status}${isEdit ? '\n⚠️ *این یک پیام ویرایشی است*' : ''}${isDelete ? '\n⚠️ *این سند حذف شده است*' : ''}`;
+
         const attachFiles = o.attachments && o.attachments.length > 0;
         if (attachFiles) caption += `\n📎 همراه با ${o.attachments.length} فایل/سند الحاقی`;
 
@@ -3768,6 +3780,26 @@ export const notifyPaymentOrderStep = async (o, db, stepName, isFinal = false, e
                         mimeType: 'image/png',
                         filename: `payment_order_${o.id || o.trackingNumber}.png`
                     }).catch(async () => {
+                    // Send attached photo/file if present
+                    if (o.attachments && o.attachments.length > 0) {
+                      for (let attIdx = 0; attIdx < o.attachments.length; attIdx++) {
+                        const att = o.attachments[attIdx];
+                        if (att.data || att.url) {
+                          try {
+                            const attB64 = att.data ? att.data.replace(/^data:[^;]+;base64,/, '') : null;
+                            if (attB64) {
+                              const attMime = att.mimeType || (att.name && att.name.endsWith('.pdf') ? 'application/pdf' : 'image/png');
+                              await mod.sendMessage(waGroupId, `📎 پیوست (${attIdx + 1}/${o.attachments.length}) دستور پرداخت #${o.trackingNumber || o.id}\n📄 ${att.name || 'فاکتور/پیوست'}`, {
+                                data: attB64,
+                                mimeType: attMime,
+                                filename: att.name || `attachment_${attIdx + 1}.png`
+                              }).catch(() => {});
+                            }
+                          } catch (attErr) {}
+                        }
+                      }
+                    }
+      
                         await mod.sendMessage(waGroupId, caption).catch(e => console.error("WA Payment Notify Error:", e));
                     });
                 } else {
