@@ -331,7 +331,6 @@ export const WarehouseOverviewTab: React.FC = () => {
             return '';
         }
     });
-    const ceoSignature = "";
 
     // Configurable Labels and Query Dates
     const [report1Label, setReport1Label] = useState("منتهی به سال ۱۴۰۴");
@@ -853,7 +852,6 @@ export const WarehouseOverviewTab: React.FC = () => {
                     if (dbData.meta.reportDate) setReportDate(dbData.meta.reportDate);
                     if (dbData.meta.signature) setSignature(dbData.meta.signature);
                     
-                    
                     if (dbData.meta.report1Label) setReport1Label(dbData.meta.report1Label);
                     if (dbData.meta.report1Jalali) setReport1Jalali(dbData.meta.report1Jalali);
                     if (dbData.meta.report1Miladi) {
@@ -979,7 +977,6 @@ export const WarehouseOverviewTab: React.FC = () => {
                 meta: {
                     reportDate,
                     signature,
-                    ceoSignature,
                     report1Label,
                     report1Jalali,
                     report1Miladi,
@@ -1765,7 +1762,6 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
             report1Label,
             report2Label,
             signature,
-            ceoSignature,
             lastYearYarnsWeight: totalLastYearYarnsWeight,
             currentYarnsWeight: totalCurrentYarnsWeight,
             yarnsDiffWeight: diffYarnsWeight,

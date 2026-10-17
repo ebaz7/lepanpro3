@@ -2535,18 +2535,7 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
 
     // Return cached live stock if valid, confirmed live, and not forcing refresh (cache TTL: 3 minutes)
     const cached = db.warehouseOverview?.sayanCache;
-    if (!forceRefresh && cached && cached.isLive === true && Array.isArray(cached.lastYearStock) && cached.lastYearStock.length > 0 && Array.isArray(cached.currentStock) && cached.currentStock.length > 0) {
-        const cacheAge = Date.now() - (cached.timestamp || 0);
-        if (cacheAge < 60 * 1000) {
-            return {
-                success: true,
-                isLive: true,
-                fromCache: true,
-                lastYearStock: cached.lastYearStock,
-                currentStock: cached.currentStock
-            };
-        }
-    }
+    // Cache bypassed to ensure 100% live queries from Sayan SQL
 
     let lastYearStock = [];
     let currentStock = [];
@@ -2565,16 +2554,12 @@ const fetchSayanWarehouseInventoryData = async (db, lastYearDateTo, currentYearD
             isLiveSayan = true;
 
             const overview = db.warehouseOverview || {};
-            if (isLiveSayan) {
-      overview.sayanCache = {
-          lastYearStock,
-          currentStock,
-          timestamp: Date.now(),
-          isLive: true
-      };
-      db.warehouseOverview = overview;
-      saveDb(db);
-  }
+            overview.sayanCache = {
+                lastYearStock,
+                currentStock,
+                timestamp: Date.now(),
+                isLive: true
+            };
             db.warehouseOverview = overview;
             saveDb(db);
         }
@@ -2636,7 +2621,7 @@ app.get('/api/warehouse-overview/data', (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     try {
         const db = getDb();
-        res.json(db.warehouseOverview || {});
+        const overviewData = { ...(db.warehouseOverview || {}) }; delete overviewData.sayanCache; res.json(overviewData);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
