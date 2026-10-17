@@ -2596,7 +2596,7 @@ app.get('/api/sayan/warehouse-inventory', async (req, res) => {
         if (!lastYearDateTo || !/^\d{4}-\d{2}-\d{2}$/.test(lastYearDateTo)) {
             lastYearDateTo = '2026-03-20';
         }
-        let currentYearDateTo = req.query.currentYearDateTo;
+        let currentYearDateTo = req.query.currentYearDateTo || new Date().toISOString().split("T")[0];
         if (!currentYearDateTo || !/^\d{4}-\d{2}-\d{2}$/.test(currentYearDateTo)) {
             currentYearDateTo = new Date().toISOString().split('T')[0];
         }

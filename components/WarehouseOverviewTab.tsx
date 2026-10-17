@@ -860,11 +860,8 @@ export const WarehouseOverviewTab: React.FC = () => {
                     }
                     
                     if (dbData.meta.report2Label) setReport2Label(dbData.meta.report2Label);
-                    if (dbData.meta.report2Jalali) setReport2Jalali(dbData.meta.report2Jalali);
-                    if (dbData.meta.report2Miladi) {
-                        setReport2Miladi(dbData.meta.report2Miladi);
-                        r2Date = dbData.meta.report2Miladi;
-                    }
+                    // report2Jalali kept as live today date
+                    r2Date = todayMiladi; setReport2Miladi(todayMiladi); setReport2Jalali(todayJalali);
 
                     if (dbData.meta.cumulativeFromLastYear !== undefined) {
                         setCumulativeFromLastYear(dbData.meta.cumulativeFromLastYear);
@@ -1046,7 +1043,7 @@ export const WarehouseOverviewTab: React.FC = () => {
             await handleSave(true);
 
             // Refetch live stock with newly updated Miladi dates & cumulative configurations
-            await fetchSayanData(report1Miladi, report2Miladi, report1Jalali, report2Jalali, cumulativeFromLastYear, true);
+            const nowToday = new Date().toISOString().split("T")[0]; const nowTodayJalali = new Date().toLocaleDateString("fa-IR-u-nu-latn", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "Asia/Tehran" }); setReport2Miladi(nowToday); setReport2Jalali(nowTodayJalali); setReportDate(nowTodayJalali); await fetchSayanData(report1Miladi, nowToday, report1Jalali, nowTodayJalali, cumulativeFromLastYear, true);
             
             setShowSettings(false);
             alert("تنظیمات با موفقیت ذخیره شد و به عنوان پیش‌فرض دائم گزارش ثبت گردید.");
