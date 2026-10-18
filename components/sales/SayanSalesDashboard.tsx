@@ -226,7 +226,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
 }) => {
 
   // State
-  const [activeTab, setActiveTab] = useState<'hierarchy' | 'items' | 'invoices' | 'compare' | 'charts'>('hierarchy');
+  const [activeTab, setActiveTab] = useState<'hierarchy' | 'items' | 'invoices' | 'customers' | 'compare' | 'charts'>('hierarchy');
   const [compareModeType, setCompareModeType] = useState<'groups' | 'items'>('groups');
   const [isExportingImage, setIsExportingImage] = useState<boolean>(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -235,6 +235,15 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'official' | 'unofficial'>('all');
   const [excludeOther, setExcludeOther] = useState<boolean>(true);
   const [excludedSalesGroups, setExcludedSalesGroups] = useState<string[]>([]);
+
+  // Customer Filtering & Sorting State
+  const [selectedCustomer, setSelectedCustomer] = useState<string>('all');
+  const [customerSortBy, setCustomerSortBy] = useState<'netAmt_desc' | 'netAmt_asc' | 'netWgt_desc' | 'netWgt_asc' | 'invoices_desc' | 'name_asc'>('netAmt_desc');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
+  const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [customerDetailTab, setCustomerDetailTab] = useState<Record<string, 'invoices' | 'items'>>({});
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
+  const [customerFilterSearchQuery, setCustomerFilterSearchQuery] = useState<string>('');
 
   // Toggle exclusion of a major product group in comparison report
   const toggleExcludeSalesGroup = (groupName: string) => {
@@ -312,6 +321,11 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         csvContent += 'ردیف,شماره فاکتور,تاریخ,نام خریدار,شهر,کارشناس فروش,مبلغ ناخالص (ریال),مرجوعی (ریال),فروش خالص (ریال),وزن خالص (ک‌گ),وضعیت تسویه\n';
         filteredInvoices.forEach((inv, idx) => {
           csvContent += `${idx + 1},"${inv.invoiceNum}","${inv.date}","${inv.customerName}","${inv.city}","${inv.salesExpert}",${inv.grossAmt},${inv.retAmt},${inv.netAmt},${inv.netWgt},"${inv.paymentStatus}"\n`;
+        });
+      } else if (activeTab === 'customers') {
+        csvContent += 'ردیف,نام خریدار / مشتری,تعداد فاکتور,وزن فروش (ک‌گ),وزن مرجوعی (ک‌گ),وزن خالص (ک‌گ),مبلغ فروش (ریال),مبلغ مرجوعی (ریال),فروش خالص (ریال),فی میانگین (ریال/ک‌گ),سهم از کل %\n';
+        sortedAndFilteredCustomers.forEach((c, idx) => {
+          csvContent += `${idx + 1},"${c.customerName}",${c.invoiceCount},${c.salesWgt},${c.retWgt},${c.netWgt},${c.salesAmt},${c.retAmt},${c.netAmt},${Math.round(c.netFee)},${c.sharePct.toFixed(1)}%\n`;
         });
       } else if (activeTab === 'compare' && comparisonMetrics) {
         csvContent += 'عنوان کالا / گروه,فروش خالص A (ریال),فروش خالص B (ریال),وزن A (ک‌گ),وزن B (ک‌گ),فی A (ریال),فی B (ریال),اختلاف مبلغ,درصد رشد/افت\n';
@@ -495,6 +509,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       if (invoiceFilter === 'official' && row.isOfficial !== true) return false;
       if (invoiceFilter === 'unofficial' && row.isOfficial === true) return false;
       if (excludeOther && !row.GroupName && !row.ItemName) return false;
+      if (selectedCustomer !== 'all' && (row.CustomerName || 'مشتری متفرقه').trim() !== selectedCustomer.trim()) return false;
       return true;
     });
 
@@ -795,7 +810,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         returnRatePct
       }
     };
-  }, [salesData, invoiceFilter]);
+  }, [salesData, invoiceFilter, excludeOther, selectedCustomer]);
 
   // ----------------------------------------------------------------------
   // COMPARISON COMPUTATIONS (Period A vs Period B)
@@ -1116,6 +1131,23 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       }));
       const wsInv = XLSX.utils.json_to_sheet(invData);
       XLSX.utils.book_append_sheet(wb, wsInv, 'لیست فاکتورها');
+
+      // Sheet 4: Customer Summary
+      const custData = sortedAndFilteredCustomers.map((c, idx) => ({
+        'ردیف': idx + 1,
+        'نام خریدار / مشتری': c.customerName,
+        'تعداد فاکتور': c.invoiceCount,
+        'وزن فروش (ک‌گ)': c.salesWgt,
+        'وزن مرجوعی (ک‌گ)': c.retWgt,
+        'وزن خالص (ک‌گ)': c.netWgt,
+        'مبلغ فروش (ریال)': c.salesAmt,
+        'مبلغ مرجوعی (ریال)': c.retAmt,
+        'فروش خالص (ریال)': c.netAmt,
+        'فی میانگین (ریال/ک‌گ)': Math.round(c.netFee),
+        'سهم از کل %': c.sharePct.toFixed(1) + '%'
+      }));
+      const wsCust = XLSX.utils.json_to_sheet(custData);
+      XLSX.utils.book_append_sheet(wb, wsCust, 'فروش مشتریان');
 
       XLSX.writeFile(wb, `Sayan_Sales_Executive_${dateFrom.replace(/\//g, '-')}_to_${dateTo.replace(/\//g, '-')}.xlsx`);
       toast.success('فایل اکسل با موفقیت تولید و دانلود شد.');
@@ -1622,6 +1654,227 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     );
   }, [processedMetrics.invoicesList, searchQuery]);
 
+  // All Available Customers (for dropdown filter)
+  const allAvailableCustomers = useMemo(() => {
+    const custMap = new Map<string, { count: number; totalAmt: number; totalWgt: number }>();
+    salesData.forEach(row => {
+      if (!isActualProduct(row)) return;
+      if (invoiceFilter === 'official' && row.isOfficial !== true) return false;
+      if (invoiceFilter === 'unofficial' && row.isOfficial === true) return false;
+      if (excludeOther && !row.GroupName && !row.ItemName) return false;
+      const name = (row.CustomerName || '').trim() || 'مشتری متفرقه';
+      const amt = parseFloat(row.Amount || '0') || 0;
+      const qty = parseFloat(row.Quantity || '0') || 0;
+      const isRet = String(row.OpCode || '').trim() === '13';
+      const netAmt = isRet ? -amt : amt;
+      const netWgt = isRet ? -qty : qty;
+      const prev = custMap.get(name) || { count: 0, totalAmt: 0, totalWgt: 0 };
+      custMap.set(name, {
+        count: prev.count + 1,
+        totalAmt: prev.totalAmt + netAmt,
+        totalWgt: prev.totalWgt + netWgt
+      });
+    });
+    return Array.from(custMap.entries())
+      .map(([name, data]) => ({ name, count: data.count, totalAmt: data.totalAmt, totalWgt: data.totalWgt }))
+      .sort((a, b) => b.totalAmt - a.totalAmt);
+  }, [salesData, invoiceFilter, excludeOther]);
+
+  // Filtered list of customers inside the dropdown picker search
+  const filteredAvailableCustomers = useMemo(() => {
+    if (!customerFilterSearchQuery) return allAvailableCustomers;
+    const q = customerFilterSearchQuery.trim().toLowerCase();
+    return allAvailableCustomers.filter(c => c.name.toLowerCase().includes(q));
+  }, [allAvailableCustomers, customerFilterSearchQuery]);
+
+  // Aggregated Customer Report List (with drill-down invoices & items)
+  const customersList = useMemo(() => {
+    const custMap = new Map<string, {
+      customerName: string;
+      invoicesMap: Map<string, {
+        invoiceNum: string;
+        docId: string;
+        date: string;
+        city: string;
+        salesExpert: string;
+        grossAmt: number;
+        retAmt: number;
+        netAmt: number;
+        netWgt: number;
+        paymentStatus: string;
+      }>;
+      itemsMap: Map<string, {
+        itemCode: string;
+        itemName: string;
+        groupName: string;
+        majorCategory: string;
+        salesQty: number;
+        returnQty: number;
+        netQty: number;
+        salesAmt: number;
+        returnAmt: number;
+        netAmt: number;
+      }>;
+      salesAmt: number;
+      retAmt: number;
+      salesWgt: number;
+      retWgt: number;
+    }>();
+
+    const baseRows = salesData.filter(row => {
+      if (invoiceFilter === 'official' && row.isOfficial !== true) return false;
+      if (invoiceFilter === 'unofficial' && row.isOfficial === true) return false;
+      if (excludeOther && !row.GroupName && !row.ItemName) return false;
+      if (selectedCustomer !== 'all' && (row.CustomerName || 'مشتری متفرقه').trim() !== selectedCustomer.trim()) return false;
+      return true;
+    });
+
+    let totalAllNetAmt = 0;
+
+    baseRows.forEach(row => {
+      if (!isActualProduct(row)) return;
+      const amt = parseFloat(row.Amount || '0') || 0;
+      const qty = parseFloat(row.Quantity || '0') || 0;
+      const isReturn = String(row.OpCode || '').trim() === '13';
+      const custName = (row.CustomerName || '').trim() || 'مشتری متفرقه';
+      const invNum = row.InvoiceNum || row.DocId || 'بدون شماره';
+      const docKey = row.DocId ? String(row.DocId) : invNum;
+      const majorCat = classifyMajorCategory(row.GroupName, row.ItemName, row.ItemCode);
+      const itemKey = row.ItemCode || row.ItemName || 'کالا';
+
+      if (!custMap.has(custName)) {
+        custMap.set(custName, {
+          customerName: custName,
+          invoicesMap: new Map(),
+          itemsMap: new Map(),
+          salesAmt: 0,
+          retAmt: 0,
+          salesWgt: 0,
+          retWgt: 0
+        });
+      }
+      const record = custMap.get(custName)!;
+      if (isReturn) {
+        record.retAmt += amt;
+        record.retWgt += qty;
+        totalAllNetAmt -= amt;
+      } else {
+        record.salesAmt += amt;
+        record.salesWgt += qty;
+        totalAllNetAmt += amt;
+      }
+
+      // Invoices aggregation
+      if (!record.invoicesMap.has(docKey)) {
+        record.invoicesMap.set(docKey, {
+          invoiceNum: invNum,
+          docId: docKey,
+          date: toShamsiStr(row.Date),
+          city: row.City || 'نامشخص',
+          salesExpert: row.SalesExpert || 'کارشناس فروش',
+          grossAmt: 0,
+          retAmt: 0,
+          netAmt: 0,
+          netWgt: 0,
+          paymentStatus: row.PaymentStatus || 'تسویه شده'
+        });
+      }
+      const inv = record.invoicesMap.get(docKey)!;
+      if (isReturn) {
+        inv.retAmt += amt;
+        inv.netAmt -= amt;
+        inv.netWgt -= qty;
+      } else {
+        inv.grossAmt += amt;
+        inv.netAmt += amt;
+        inv.netWgt += qty;
+      }
+
+      // Items aggregation
+      if (!record.itemsMap.has(itemKey)) {
+        record.itemsMap.set(itemKey, {
+          itemCode: row.ItemCode || '',
+          itemName: row.ItemName || 'کالای بدون نام',
+          groupName: row.GroupName || 'سایر',
+          majorCategory: majorCat,
+          salesQty: 0,
+          returnQty: 0,
+          netQty: 0,
+          salesAmt: 0,
+          returnAmt: 0,
+          netAmt: 0
+        });
+      }
+      const it = record.itemsMap.get(itemKey)!;
+      if (isReturn) {
+        it.returnQty += qty;
+        it.returnAmt += amt;
+        it.netQty -= qty;
+        it.netAmt -= amt;
+      } else {
+        it.salesQty += qty;
+        it.salesAmt += amt;
+        it.netQty += qty;
+        it.netAmt += amt;
+      }
+    });
+
+    return Array.from(custMap.values()).map(c => {
+      const netAmt = c.salesAmt - c.retAmt;
+      const netWgt = c.salesWgt - c.retWgt;
+      const netFee = netWgt > 0 ? (netAmt / netWgt) : 0;
+      const sharePct = totalAllNetAmt > 0 ? ((netAmt / totalAllNetAmt) * 100) : 0;
+
+      const invoices = Array.from(c.invoicesMap.values()).sort((a, b) => b.netAmt - a.netAmt);
+      const items = Array.from(c.itemsMap.values())
+        .map(it => ({
+          ...it,
+          netFee: it.netQty > 0 ? (it.netAmt / it.netQty) : 0
+        }))
+        .sort((a, b) => b.netAmt - a.netAmt);
+
+      return {
+        customerName: c.customerName,
+        invoiceCount: invoices.length,
+        invoices,
+        items,
+        salesAmt: c.salesAmt,
+        retAmt: c.retAmt,
+        netAmt,
+        salesWgt: c.salesWgt,
+        retWgt: c.retWgt,
+        netWgt,
+        netFee,
+        sharePct
+      };
+    });
+  }, [salesData, invoiceFilter, excludeOther, selectedCustomer]);
+
+  // Sorted and filtered customers for Customers Tab
+  const sortedAndFilteredCustomers = useMemo(() => {
+    let list = [...customersList];
+    if (customerSearchQuery) {
+      const q = customerSearchQuery.trim().toLowerCase();
+      list = list.filter(c => c.customerName.toLowerCase().includes(q));
+    }
+    switch (customerSortBy) {
+      case 'netAmt_desc':
+        return list.sort((a, b) => b.netAmt - a.netAmt);
+      case 'netAmt_asc':
+        return list.sort((a, b) => a.netAmt - b.netAmt);
+      case 'netWgt_desc':
+        return list.sort((a, b) => b.netWgt - a.netWgt);
+      case 'netWgt_asc':
+        return list.sort((a, b) => a.netWgt - b.netWgt);
+      case 'invoices_desc':
+        return list.sort((a, b) => b.invoiceCount - a.invoiceCount);
+      case 'name_asc':
+        return list.sort((a, b) => a.customerName.localeCompare(b.customerName, 'fa'));
+      default:
+        return list.sort((a, b) => b.netAmt - a.netAmt);
+    }
+  }, [customersList, customerSearchQuery, customerSortBy]);
+
   // ----------------------------------------------------------------------
   // RENDER UI
   // ----------------------------------------------------------------------
@@ -1948,6 +2201,135 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
                   {excludeOther ? 'حذف شده‌اند (عدم نمایش)' : 'شامل شده‌اند (نمایش)'}
                 </button>
               </div>
+
+              {/* Customer Filter Dropdown */}
+              <div className="flex flex-col gap-2 relative">
+                <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>فیلتر مشتری (اشخاص):</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomerDropdownOpen(!isCustomerDropdownOpen)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 h-[34px] border ${
+                        selectedCustomer !== 'all'
+                          ? 'bg-emerald-500 text-slate-950 font-black border-emerald-300 shadow-md ring-2 ring-emerald-400/40'
+                          : 'bg-black/20 text-slate-200 border-white/10 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span className="max-w-[130px] sm:max-w-[180px] truncate">
+                        {selectedCustomer === 'all' ? 'همه مشتریان' : selectedCustomer}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    </button>
+
+                    {isCustomerDropdownOpen && (
+                      <div className="absolute top-full right-0 mt-2 w-72 sm:w-80 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 text-right space-y-2">
+                        <div className="flex items-center justify-between border-b border-slate-700/60 pb-1.5 px-1">
+                          <span className="text-xs font-extrabold text-white flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5 text-emerald-400" />
+                            انتخاب مشتری ({allAvailableCustomers.length} شخص)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsCustomerDropdownOpen(false)}
+                            className="text-slate-400 hover:text-white p-0.5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Search input in dropdown */}
+                        <div className="bg-slate-800/90 border border-slate-700 rounded-xl p-1.5 px-2.5 flex items-center gap-2">
+                          <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <input
+                            type="text"
+                            value={customerFilterSearchQuery}
+                            onChange={(e) => setCustomerFilterSearchQuery(e.target.value)}
+                            placeholder="جستجوی نام مشتری..."
+                            className="w-full text-xs bg-transparent border-none outline-none text-white placeholder-slate-400 font-bold"
+                            autoFocus
+                          />
+                          {customerFilterSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setCustomerFilterSearchQuery('')}
+                              className="text-slate-400 hover:text-white"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* List */}
+                        <div className="max-h-56 overflow-y-auto space-y-1 text-xs">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedCustomer('all');
+                              setIsCustomerDropdownOpen(false);
+                            }}
+                            className={`w-full text-right p-2 rounded-xl flex items-center justify-between transition-all ${
+                              selectedCustomer === 'all'
+                                ? 'bg-emerald-600/30 text-emerald-300 font-black border border-emerald-500/40'
+                                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                            }`}
+                          >
+                            <span>همه مشتریان (بدون فیلتر)</span>
+                            {selectedCustomer === 'all' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                          </button>
+
+                          {filteredAvailableCustomers.map(cust => (
+                            <button
+                              key={cust.name}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCustomer(cust.name);
+                                setIsCustomerDropdownOpen(false);
+                              }}
+                              className={`w-full text-right p-2 rounded-xl flex items-center justify-between transition-all ${
+                                selectedCustomer === cust.name
+                                  ? 'bg-emerald-600/30 text-emerald-300 font-black border border-emerald-500/40'
+                                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                              }`}
+                            >
+                              <div className="truncate pl-2">
+                                <div className="font-bold text-white truncate">{cust.name}</div>
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  {cust.count} فاکتور | {formatWeight(cust.totalWgt)} ک‌گ
+                                </div>
+                              </div>
+                              <span className="text-[10px] text-emerald-400 font-mono font-bold shrink-0">
+                                {formatMoney(cust.totalAmt)} ریال
+                              </span>
+                            </button>
+                          ))}
+                          {filteredAvailableCustomers.length === 0 && (
+                            <div className="text-center py-4 text-xs text-slate-400">
+                              مشتری با این نام یافت نشد
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedCustomer !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCustomer('all')}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/30 flex items-center gap-1 transition-all h-[34px]"
+                      title="حذف فیلتر شخص و نمایش همه"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>حذف</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
             
             {/* Show Quick Stats of Current View */}
@@ -1959,6 +2341,41 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ACTIVE CUSTOMER FILTER BANNER */}
+      {selectedCustomer !== 'all' && (
+        <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-500/50 rounded-2xl p-3.5 px-4 flex flex-wrap items-center justify-between gap-3 text-white shadow-lg animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-500/20 text-emerald-300 rounded-xl border border-emerald-400/40 shrink-0">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-emerald-300">گزارش اختصاصی فیلتر شده روی خریدار:</div>
+              <div className="text-base font-black text-white flex items-center gap-2">
+                <span>{selectedCustomer}</span>
+                <span className="text-xs bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                  {processedMetrics.invoicesList.length} فاکتور
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="text-xs text-emerald-200 font-mono font-bold bg-black/40 px-3 py-1.5 rounded-xl border border-emerald-500/30 flex items-center gap-3">
+              <span>فروش خالص: <strong className="text-emerald-300">{formatMoney(processedMetrics.rangeNetAmt)}</strong> ریال</span>
+              <span className="text-white/20">|</span>
+              <span>وزن خالص: <strong className="text-emerald-300">{formatWeight(processedMetrics.rangeNetWgt)}</strong> ک‌گ</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedCustomer('all')}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>حذف فیلتر و بازگشت به کل فروش</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 2. TOP EXECUTIVE KPI CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -2282,6 +2699,16 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         >
           <FileText className="w-4 h-4" />
           <span>لیست فاکتورهای فروش</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('customers')}
+          className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'customers' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>گزارش فروش بر اساس مشتریان (اشخاص)</span>
         </button>
 
         <button
@@ -2829,6 +3256,323 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {/* ================================================================== */}
+      {/* TAB 3.5: CUSTOMERS REPORT (فروش بر اساس مشتریان و اشخاص) */}
+      {/* ================================================================== */}
+      {activeTab === 'customers' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-fadeIn space-y-4 p-4">
+          
+          {/* Header & Controls */}
+          <div className="bg-slate-900 text-white p-4 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-extrabold flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-400" />
+                <span>گزارش جامع فروش به تفکیک خریداران و اشخاص (Customer Sales Breakdown)</span>
+              </h2>
+              <p className="text-[11px] text-slate-300 mt-1">
+                قابلیت سورت، جستجوی آنی اشخاص، و مشاهده ریز فاکتورها و کالاهای خریداری‌شده هر مشتری (Drill-down)
+              </p>
+            </div>
+            <div className="flex items-center gap-2 font-mono text-xs bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+              <Users className="w-4 h-4 text-emerald-400" />
+              <span>تعداد خریداران: <strong className="text-white font-bold">{sortedAndFilteredCustomers.length}</strong> نفر/شرکت</span>
+            </div>
+          </div>
+
+          {/* Search Bar & Sorting Selector */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-slate-50 p-3 rounded-xl border border-slate-200">
+            {/* Search Input */}
+            <div className="md:col-span-6 flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-2xs">
+              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={customerSearchQuery}
+                onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                placeholder="جستجوی نام خریدار یا شخص..."
+                className="w-full text-xs font-bold bg-transparent outline-none text-slate-800 placeholder-slate-400"
+              />
+              {customerSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setCustomerSearchQuery('')}
+                  className="text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort Selector */}
+            <div className="md:col-span-6 flex flex-wrap items-center justify-end gap-2 text-xs">
+              <span className="font-bold text-slate-600 shrink-0">مرتب‌سازی (سورت):</span>
+              <div className="flex flex-wrap items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                {[
+                  { id: 'netAmt_desc', label: 'بیشترین مبلغ' },
+                  { id: 'netAmt_asc', label: 'کمترین مبلغ' },
+                  { id: 'netWgt_desc', label: 'بیشترین وزن' },
+                  { id: 'invoices_desc', label: 'تعداد فاکتور' },
+                  { id: 'name_asc', label: 'الفبای نام' }
+                ].map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setCustomerSortBy(s.id as any)}
+                    className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                      customerSortBy === s.id
+                        ? 'bg-emerald-600 text-white shadow-xs font-extrabold'
+                        : 'text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Table */}
+          <div className="overflow-x-auto hidden md:block max-h-[650px] overflow-y-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="sticky top-0 bg-slate-100 z-10 border-b border-slate-200 font-bold text-slate-700">
+                <tr>
+                  <th className="p-3 w-10 text-center"></th>
+                  <th className="p-3 w-12 text-center">ردیف</th>
+                  <th className="p-3">نام خریدار / مشتری</th>
+                  <th className="p-3 text-center">تعداد فاکتور</th>
+                  <th className="p-3 text-center">وزن فروش (ک‌گ)</th>
+                  <th className="p-3 text-center text-rose-700 bg-rose-50/50">وزن مرجوعی (ک‌گ)</th>
+                  <th className="p-3 text-center font-black text-blue-900 bg-blue-50/50">وزن خالص (ک‌گ)</th>
+                  <th className="p-3 text-left">مبلغ فروش (ریال)</th>
+                  <th className="p-3 text-left text-rose-700 bg-rose-50/50">مرجوعی (ریال)</th>
+                  <th className="p-3 text-left font-black text-emerald-900 bg-emerald-50/50">فروش خالص (ریال)</th>
+                  <th className="p-3 text-left font-black text-teal-900 bg-teal-50/50">فی میانگین (ریال/ک‌گ)</th>
+                  <th className="p-3 text-center font-bold">سهم %</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sortedAndFilteredCustomers.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="text-center py-12 text-slate-400 font-medium">
+                      هیچ مشتری یا خریدار متناسب با جستجو یافت نشد.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedAndFilteredCustomers.map((cust, idx) => {
+                    const isExpanded = expandedCustomer === cust.customerName;
+                    const activeSubTab = customerDetailTab[cust.customerName] || 'invoices';
+
+                    return (
+                      <React.Fragment key={cust.customerName}>
+                        <tr
+                          onClick={() => setExpandedCustomer(isExpanded ? null : cust.customerName)}
+                          className={`hover:bg-emerald-50/40 transition-colors cursor-pointer font-bold ${
+                            isExpanded ? 'bg-emerald-50/60' : ''
+                          }`}
+                        >
+                          <td className="p-3 text-center text-slate-400">
+                            {isExpanded ? <ChevronDown className="w-4 h-4 text-emerald-600" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          </td>
+                          <td className="p-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                          <td className="p-3 font-extrabold text-slate-900 flex items-center gap-2">
+                            <Users className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>{cust.customerName}</span>
+                          </td>
+                          <td className="p-3 text-center font-mono font-bold">{cust.invoiceCount}</td>
+                          <td className="p-3 text-center font-mono">{formatWeight(cust.salesWgt)}</td>
+                          <td className="p-3 text-center font-mono text-rose-600 bg-rose-50/30">{formatWeight(cust.retWgt)}</td>
+                          <td className="p-3 text-center font-mono font-black text-blue-900 bg-blue-50/30">{formatWeight(cust.netWgt)}</td>
+                          <td className="p-3 text-left font-mono">{formatMoney(cust.salesAmt)}</td>
+                          <td className="p-3 text-left font-mono text-rose-600 bg-rose-50/30">{formatMoney(cust.retAmt)}</td>
+                          <td className="p-3 text-left font-mono font-black text-emerald-900 bg-emerald-50/30">{formatMoney(cust.netAmt)}</td>
+                          <td className="p-3 text-left font-mono font-black text-teal-800 bg-teal-50/30">{formatMoney(cust.netFee)}</td>
+                          <td className="p-3 text-center font-mono">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 font-bold text-[10px]">
+                              {cust.sharePct.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+
+                        {/* Customer Drill-Down Sub-table */}
+                        {isExpanded && (
+                          <tr className="bg-slate-50/90 border-l-4 border-l-emerald-500">
+                            <td colSpan={12} className="p-4">
+                              <div className="bg-white rounded-xl p-3 border border-slate-200 shadow-2xs space-y-3">
+                                
+                                {/* Sub-tab Toggle Header */}
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black text-slate-800">جزئیات فروش به «{cust.customerName}»:</span>
+                                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCustomerDetailTab(prev => ({ ...prev, [cust.customerName]: 'invoices' }));
+                                        }}
+                                        className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                                          activeSubTab === 'invoices' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                      >
+                                        فاکتورها ({cust.invoices.length} عدد)
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCustomerDetailTab(prev => ({ ...prev, [cust.customerName]: 'items' }));
+                                        }}
+                                        className={`px-3 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
+                                          activeSubTab === 'items' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-600 hover:text-slate-900'
+                                        }`}
+                                      >
+                                        کالاهای خریداری‌شده ({cust.items.length} نوع)
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedCustomer(cust.customerName)}
+                                    className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold text-[11px] rounded-lg border border-emerald-300 transition-all flex items-center gap-1 cursor-pointer"
+                                    title="فیلتر کلیه بخش‌های داشبورد فقط برای این خریدار"
+                                  >
+                                    <Filter className="w-3 h-3 text-emerald-700" />
+                                    <span>فیلتر کل داشبورد روی این خریدار</span>
+                                  </button>
+                                </div>
+
+                                {/* Invoices Sub-tab View */}
+                                {activeSubTab === 'invoices' && (
+                                  <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                                    <table className="w-full text-right text-[11px]">
+                                      <thead>
+                                        <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
+                                          <th className="p-2 w-8 text-center">ردیف</th>
+                                          <th className="p-2">شماره فاکتور</th>
+                                          <th className="p-2 font-mono">تاریخ</th>
+                                          <th className="p-2">شهر</th>
+                                          <th className="p-2">کارشناس</th>
+                                          <th className="p-2 text-left">مبلغ ناخالص (ریال)</th>
+                                          <th className="p-2 text-left text-rose-600">مرجوعی (ریال)</th>
+                                          <th className="p-2 text-left font-black text-blue-900">فروش خالص (ریال)</th>
+                                          <th className="p-2 text-center font-bold">وزن خالص (ک‌گ)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 font-mono">
+                                        {cust.invoices.map((inv, iIdx) => (
+                                          <tr key={iIdx} className="hover:bg-slate-50">
+                                            <td className="p-2 text-center text-slate-400">{iIdx + 1}</td>
+                                            <td className="p-2 font-bold text-blue-700">#{inv.invoiceNum}</td>
+                                            <td className="p-2 text-slate-600">{inv.date}</td>
+                                            <td className="p-2 text-slate-500 font-sans">{inv.city}</td>
+                                            <td className="p-2 text-slate-500 font-sans">{inv.salesExpert}</td>
+                                            <td className="p-2 text-left">{formatMoney(inv.grossAmt)}</td>
+                                            <td className="p-2 text-left text-rose-600">{formatMoney(inv.retAmt)}</td>
+                                            <td className="p-2 text-left font-bold text-blue-900">{formatMoney(inv.netAmt)}</td>
+                                            <td className="p-2 text-center font-bold text-blue-900">{formatWeight(inv.netWgt)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+
+                                {/* Items Sub-tab View */}
+                                {activeSubTab === 'items' && (
+                                  <div className="overflow-x-auto max-h-60 overflow-y-auto">
+                                    <table className="w-full text-right text-[11px]">
+                                      <thead>
+                                        <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
+                                          <th className="p-2 w-8 text-center">ردیف</th>
+                                          <th className="p-2">نام کالا</th>
+                                          <th className="p-2">گروه اصلی</th>
+                                          <th className="p-2 text-center">وزن فروش (ک‌گ)</th>
+                                          <th className="p-2 text-center text-rose-600">وزن مرجوعی</th>
+                                          <th className="p-2 text-center font-bold text-blue-900">وزن خالص (ک‌گ)</th>
+                                          <th className="p-2 text-left">فروش خالص (ریال)</th>
+                                          <th className="p-2 text-left font-bold text-teal-800">فی میانگین (ریال/ک‌گ)</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100 font-mono">
+                                        {cust.items.map((it, itIdx) => (
+                                          <tr key={itIdx} className="hover:bg-slate-50">
+                                            <td className="p-2 text-center text-slate-400">{itIdx + 1}</td>
+                                            <td className="p-2 font-bold text-slate-800 font-sans">{it.itemName}</td>
+                                            <td className="p-2 text-slate-500 font-sans">{it.majorCategory}</td>
+                                            <td className="p-2 text-center">{formatWeight(it.salesQty)}</td>
+                                            <td className="p-2 text-center text-rose-600">{formatWeight(it.returnQty)}</td>
+                                            <td className="p-2 text-center font-bold text-blue-900">{formatWeight(it.netQty)}</td>
+                                            <td className="p-2 text-left font-bold text-blue-900">{formatMoney(it.netAmt)}</td>
+                                            <td className="p-2 text-left font-bold text-teal-800">{formatMoney(it.netFee)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="block md:hidden divide-y divide-slate-100 space-y-3">
+            {sortedAndFilteredCustomers.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 font-medium">
+                هیچ خریدار یا مشتری یافت نشد.
+              </div>
+            ) : (
+              sortedAndFilteredCustomers.map((cust, idx) => (
+                <div key={cust.customerName} className="bg-slate-50/60 rounded-xl border border-slate-100 p-3.5 space-y-2.5">
+                  <div className="flex justify-between items-start gap-2 border-b border-slate-200/50 pb-2">
+                    <div>
+                      <span className="text-[9px] text-slate-400 font-bold font-mono">#{idx + 1} | {cust.invoiceCount} فاکتور</span>
+                      <h4 className="font-extrabold text-slate-900 text-xs mt-0.5">{cust.customerName}</h4>
+                    </div>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-black font-mono shrink-0">
+                      {cust.sharePct.toFixed(1)}% سهم
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-blue-50/40 border border-blue-100/50 p-2 rounded-lg text-blue-950">
+                      <span className="text-blue-600 block text-[9px] font-bold">وزن خالص</span>
+                      <span className="font-mono font-black">{formatWeight(cust.netWgt)} kg</span>
+                    </div>
+                    <div className="bg-teal-50/40 border border-teal-100/50 p-2 rounded-lg text-teal-950">
+                      <span className="text-teal-600 block text-[9px] font-bold">فی میانگین</span>
+                      <span className="font-mono font-black">{formatMoney(cust.netFee)}</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-2.5 flex justify-between items-center text-[11px]">
+                    <span className="font-bold text-emerald-900">فروش خالص خریدار</span>
+                    <span className="font-mono font-black text-emerald-800">{formatMoney(cust.netAmt)} ریال</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomer(cust.customerName)}
+                    className="w-full text-center py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs"
+                  >
+                    فیلتر کل گزارشات روی این مشتری
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
         </div>
       )}
 
