@@ -42,10 +42,16 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
   id = 'sayan-sales-remittance-doc',
   showStamps = true,
 }) => {
-  const totalNet = data.items.reduce((sum, i) => sum + (Number(i.netQty) || 0), 0);
-  const totalGross = data.items.reduce((sum, i) => sum + (Number(i.grossQty) || 0), 0);
-  const totalCartons = data.items.reduce((sum, i) => sum + (Number(i.cartonCount) || 0), 0);
-  const totalBobbins = data.items.reduce((sum, i) => sum + (Number(i.bobbinCount) || 0), 0);
+  const safeItems = Array.isArray(data?.items) ? data.items : [];
+  const recipientName = data?.recipientName || (data as any)?.personFullName || '---';
+  const recipientCode = data?.recipientCode || (data as any)?.personCode || '';
+  const recipientAddress = data?.recipientAddress || (data as any)?.personAddress || '';
+  const notes = data?.notes || (data as any)?.note || '';
+
+  const totalNet = safeItems.reduce((sum, i: any) => sum + (Number(i.netQty ?? i.deliveredWeight ?? i.weight) || 0), 0);
+  const totalGross = safeItems.reduce((sum, i: any) => sum + (Number(i.grossQty ?? i.grossWeight ?? i.netQty ?? i.deliveredWeight ?? i.weight) || 0), 0);
+  const totalCartons = safeItems.reduce((sum, i: any) => sum + (Number(i.cartonCount ?? i.deliveredCartonCount) || 0), 0);
+  const totalBobbins = safeItems.reduce((sum, i: any) => sum + (Number(i.bobbinCount) || 0), 0);
 
   return (
     <div
@@ -68,17 +74,17 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
           <div className="w-1/3 text-right space-y-1.5 text-xs">
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-gray-700">شماره:</span>
-              <span className="font-mono font-black text-sm tracking-wider">{data.remittanceNumber || '---'}</span>
+              <span className="font-mono font-black text-sm tracking-wider">{data?.remittanceNumber || '---'}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-gray-700">نام شخص:</span>
-              <span className="font-black text-xs text-gray-900">{data.recipientName || '---'}</span>
+              <span className="font-black text-xs text-gray-900">{recipientName}</span>
             </div>
-            {data.recipientCode && (
+            {recipientCode && (
               <div className="flex items-center gap-1.5 text-[10px] text-gray-600 font-mono">
                 <span>کد شخص / تفصیلی:</span>
-                <span className="font-bold">{data.recipientCode}</span>
-                {data.tafsiliCode && <span>({data.tafsiliCode})</span>}
+                <span className="font-bold">{recipientCode}</span>
+                {data?.tafsiliCode && <span>({data.tafsiliCode})</span>}
               </div>
             )}
           </div>
@@ -86,7 +92,7 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
           {/* Center Brand Title */}
           <div className="w-1/3 text-center">
             <h1 className="text-xl font-black tracking-tight text-gray-900 mb-1">
-              {data.companyTitle || 'شرکت لپان بافت'}
+              {data?.companyTitle || 'شرکت لپان بافت'}
             </h1>
             <div className="inline-block bg-gray-100 px-4 py-0.5 rounded border border-gray-400 font-black text-base tracking-wide text-gray-900">
               حواله فروش
@@ -134,8 +140,8 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-300">
-            {data.items && data.items.length > 0 ? (
-              data.items.map((item, idx) => (
+            {safeItems.length > 0 ? (
+              safeItems.map((item: any, idx: number) => (
                 <tr key={idx} className="border-b border-gray-300 hover:bg-gray-50/50">
                   <td className="py-2.5 px-2 border-l border-black font-mono font-bold text-gray-600">
                     {idx + 1}
@@ -144,13 +150,13 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
                     {item.goodsName || '---'}
                   </td>
                   <td className="py-2.5 px-2 border-l border-black font-mono font-black text-gray-900">
-                    {Number(item.netQty || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+                    {Number(item.netQty ?? item.deliveredWeight ?? item.weight ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
                   </td>
                   <td className="py-2.5 px-2 border-l border-black font-mono font-bold text-gray-800">
-                    {Number(item.grossQty || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
+                    {Number(item.grossQty ?? item.grossWeight ?? item.netQty ?? item.deliveredWeight ?? item.weight ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}
                   </td>
                   <td className="py-2.5 px-2 border-l border-black font-mono font-bold text-gray-800">
-                    {item.cartonCount || 0}
+                    {item.cartonCount ?? item.deliveredCartonCount ?? 0}
                   </td>
                   <td className="py-2.5 px-2 border-l border-black font-mono font-bold text-gray-800">
                     {item.bobbinCount || 0}
@@ -175,8 +181,8 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
             )}
 
             {/* Empty padding rows to maintain authentic official look if items < 4 */}
-            {data.items && data.items.length > 0 && data.items.length < 4 && (
-              Array.from({ length: 4 - data.items.length }).map((_, i) => (
+            {safeItems.length > 0 && safeItems.length < 4 && (
+              Array.from({ length: 4 - safeItems.length }).map((_, i) => (
                 <tr key={`empty-${i}`} className="border-b border-gray-200 h-8">
                   <td className="border-l border-black"></td>
                   <td className="border-l border-black"></td>
@@ -217,18 +223,18 @@ const SayanSalesRemittanceDoc: React.FC<Props> = ({
       </div>
 
       {/* Destination & Notes */}
-      {(data.recipientAddress || data.notes) && (
+      {(recipientAddress || notes) && (
         <div className="border border-gray-300 rounded p-3 mb-4 text-xs bg-gray-50/60 leading-relaxed">
-          {data.recipientAddress && (
+          {recipientAddress && (
             <div className="flex items-start gap-1 mb-1">
               <span className="font-bold text-gray-700 shrink-0">آدرس تحویل / مقصد:</span>
-              <span className="text-gray-900">{data.recipientAddress}</span>
+              <span className="text-gray-900">{recipientAddress}</span>
             </div>
           )}
-          {data.notes && (
+          {notes && (
             <div className="flex items-start gap-1">
               <span className="font-bold text-gray-700 shrink-0">توضیحات:</span>
-              <span className="text-gray-800">{data.notes}</span>
+              <span className="text-gray-800">{notes}</span>
             </div>
           )}
         </div>

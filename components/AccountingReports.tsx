@@ -123,8 +123,17 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const isRemittancesAllowed = currentUser?.role === UserRole.ADMIN || perms.canViewSayan === true || perms.canViewSayanRemittances === true || (perms as any).canManageExitPermits === true || (perms as any).canCreateExitPermit === true;
     const isWarehouseOverviewAllowed = currentUser?.role === UserRole.ADMIN || perms.canViewSayan === true || perms.canViewSayanWarehouseOverview === true;
 
-    // Default to the first allowed tab
+    // Default to the first allowed tab (or last active tab from localStorage)
     const [activeTab, setActiveTab] = useState(() => {
+        try {
+            const saved = localStorage.getItem('sayan_reports_active_tab');
+            if (saved === 'sales' && isSalesAllowed) return 'sales';
+            if (saved === 'traz' && isTrazAllowed) return 'traz';
+            if (saved === 'production' && isProductionAllowed) return 'production';
+            if (saved === 'cheques' && isChequesAllowed) return 'cheques';
+            if (saved === 'remittances' && isRemittancesAllowed) return 'remittances';
+            if (saved === 'warehouseOverview' && isWarehouseOverviewAllowed) return 'warehouseOverview';
+        } catch {}
         if (isTrazAllowed) return 'traz';
         if (isSalesAllowed) return 'sales';
         if (isProductionAllowed) return 'production';
@@ -154,10 +163,52 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             reader.readAsDataURL(blob);
         });
     };
-    
-    // Default Date Range (Direct Shamsi format "YYYY/MM/DD")
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
+
+    const getActiveFiscalYearLabel = () => {
+        if (settings?.fiscalYears && Array.isArray(settings.fiscalYears)) {
+            const found = settings.fiscalYears.find((y: any) => y.id === settings.activeFiscalYearId);
+            if (found && found.label) {
+                const match = found.label.match(/\d+/);
+                if (match) return parseInt(match[0], 10);
+            }
+        }
+        const today = new Date();
+        const jToday = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+        return jToday.jy;
+    };
+
+    const getDefaultEndDate = (activeYear: number, jToday: any) => {
+        if (jToday.jy > activeYear) {
+            return `${activeYear}/12/29`;
+        } else if (jToday.jy < activeYear) {
+            return `${activeYear}/01/01`;
+        } else {
+            return `${jToday.jy}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
+        }
+    };
+
+    const getInitialDateRange = () => {
+        try {
+            const savedFrom = typeof window !== 'undefined' ? localStorage.getItem('sayan_default_date_from') : null;
+            const savedTo = typeof window !== 'undefined' ? localStorage.getItem('sayan_default_date_to') : null;
+            if (savedFrom && savedTo && /^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(savedFrom) && /^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(savedTo)) {
+                return { from: savedFrom, to: savedTo };
+            }
+        } catch {}
+
+        const today = new Date();
+        const jToday = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
+        const activeYear = getActiveFiscalYearLabel();
+
+        const from = `${activeYear}/01/01`;
+        const to = getDefaultEndDate(activeYear, jToday);
+        return { from, to };
+    };
+
+    const initialDateRange = getInitialDateRange();
+    // Default Date Range (Direct Shamsi format "YYYY/MM/DD") - Synchronously initialized to prevent empty queries
+    const [dateFrom, setDateFrom] = useState<string>(() => initialDateRange.from);
+    const [dateTo, setDateTo] = useState<string>(() => initialDateRange.to);
 
     // --- PERMANENT EXCLUDED PERSONS STATE (Saved to localStorage) ---
     const [permanentExcluded, setPermanentExcluded] = useState<{
@@ -240,15 +291,47 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     }, [isStatementModalOpen, selectedAgingParty, isExcludeManagerOpen]);
 
     // --- TAB 3: SALES STATE ---
-    const [salesData, setSalesData] = useState<any[]>([]);
+    // Restore cached sales data from sessionStorage immediately for instant 0ms load
+    const [salesData, setSalesData] = useState<any[]>(() => {
+        try {
+            const cached = typeof window !== 'undefined' ? sessionStorage.getItem('sayan_sales_cache') : null;
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed.data) && parsed.data.length > 0) {
+                    return parsed.data;
+                }
+            }
+        } catch {}
+        return [];
+    });
+    const [isSalesLoading, setIsSalesLoading] = useState<boolean>(false);
     const [salesViewMode, setSalesViewMode] = useState<'today' | 'range'>('today');
     const [compareMode, setCompareMode] = useState(false);
     const [compareGroupBy, setCompareGroupBy] = useState<'group' | 'item'>('group');
     const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
     // Period B for sales comparison
-    const [salesDateFromB, setSalesDateFromB] = useState('');
-    const [salesDateToB, setSalesDateToB] = useState('');
-    const [compareSalesDataA, setCompareSalesDataA] = useState<any[]>([]);
+    const [salesDateFromB, setSalesDateFromB] = useState<string>(() => {
+        const p = initialDateRange.from.split('/');
+        if (p.length === 3) return `${parseInt(p[0], 10) - 1}/${p[1]}/${p[2]}`;
+        return '';
+    });
+    const [salesDateToB, setSalesDateToB] = useState<string>(() => {
+        const p = initialDateRange.to.split('/');
+        if (p.length === 3) return `${parseInt(p[0], 10) - 1}/${p[1]}/${p[2]}`;
+        return '';
+    });
+    const [compareSalesDataA, setCompareSalesDataA] = useState<any[]>(() => {
+        try {
+            const cached = typeof window !== 'undefined' ? sessionStorage.getItem('sayan_sales_cache') : null;
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed.data) && parsed.data.length > 0) {
+                    return parsed.data;
+                }
+            }
+        } catch {}
+        return [];
+    });
     const [compareSalesDataB, setCompareSalesDataB] = useState<any[]>([]);
     const [excludedSalesGroups, setExcludedSalesGroups] = useState<string[]>([]);
     const [isSendingSalesBot, setIsSendingSalesBot] = useState(false);
@@ -472,42 +555,24 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         return { moein: '', code: '' };
     };
 
-    const getActiveFiscalYearLabel = () => {
-        if (settings?.fiscalYears && Array.isArray(settings.fiscalYears)) {
-            const found = settings.fiscalYears.find((y: any) => y.id === settings.activeFiscalYearId);
-            if (found && found.label) {
-                const match = found.label.match(/\d+/);
-                if (match) return parseInt(match[0], 10);
-            }
-        }
-        const today = new Date();
-        const jToday = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
-        return jToday.jy;
-    };
-
-    const getDefaultEndDate = (activeYear: number, jToday: any) => {
-        if (jToday.jy > activeYear) {
-            return `${activeYear}/12/29`;
-        } else if (jToday.jy < activeYear) {
-            return `${activeYear}/01/01`;
-        } else {
-            return `${jToday.jy}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
-        }
-    };
-
     useEffect(() => {
-        // Initialize Date range directly in Shamsi
+        // Initialize / sync date range based on active fiscal year or persistent user selection
         const today = new Date();
         const jToday = jalaali.toJalaali(today.getFullYear(), today.getMonth() + 1, today.getDate());
-        
-        const currentYear = jToday.jy; // 1405
+        const activeYear = getActiveFiscalYearLabel();
         
         const savedFrom = localStorage.getItem('sayan_default_date_from');
         const savedTo = localStorage.getItem('sayan_default_date_to');
         
-        // Default to current year 1405 start if savedFrom is missing or from an old year
-        const initialFrom = (savedFrom && !savedFrom.startsWith('1403') && !savedFrom.startsWith('1404')) ? savedFrom : `${currentYear}/01/01`;
-        const initialTo = savedTo || `${currentYear}/${String(jToday.jm).padStart(2, '0')}/${String(jToday.jd).padStart(2, '0')}`;
+        // Use user's saved date if valid; otherwise default cleanly to active fiscal year range
+        let initialFrom = savedFrom;
+        let initialTo = savedTo;
+        if (!initialFrom || !/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(initialFrom)) {
+            initialFrom = `${activeYear}/01/01`;
+        }
+        if (!initialTo || !/^\d{2,4}\/\d{1,2}\/\d{1,2}$/.test(initialTo)) {
+            initialTo = getDefaultEndDate(activeYear, jToday);
+        }
         
         setDateFrom(initialFrom);
         setDateTo(initialTo);
@@ -1995,6 +2060,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     // TAB 3: SALES & COMPARISONS (گزارش فروش و مقایسه فصلی)
     // ==========================================
     const fetchSalesData = async () => {
+        setIsSalesLoading(true);
         setIsLoading(true);
         try {
             // Helper for shifting Shamsi year
@@ -2006,18 +2072,39 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 return `${y + delta}/${p[1]}/${p[2]}`;
             };
 
+            let validFrom = (dateFrom || '').trim();
+            let validTo = (dateTo || '').trim();
+
+            if (!validFrom || !validTo) {
+                const fallback = getInitialDateRange();
+                validFrom = validFrom || fallback.from;
+                validTo = validTo || fallback.to;
+                setDateFrom(validFrom);
+                setDateTo(validTo);
+            }
+
             let effectiveFromB = salesDateFromB;
             let effectiveToB = salesDateToB;
 
             if (compareMode && (!effectiveFromB || !effectiveToB)) {
-                effectiveFromB = shiftShamsiYear(dateFrom, -1);
-                effectiveToB = shiftShamsiYear(dateTo, -1);
+                effectiveFromB = shiftShamsiYear(validFrom, -1);
+                effectiveToB = shiftShamsiYear(validTo, -1);
                 if (effectiveFromB) setSalesDateFromB(effectiveFromB);
                 if (effectiveToB) setSalesDateToB(effectiveToB);
             }
 
-            const gregFrom = jalaliToGregorianStr(dateFrom);
-            const gregTo = jalaliToGregorianStr(dateTo);
+            let gregFrom = jalaliToGregorianStr(validFrom);
+            let gregTo = jalaliToGregorianStr(validTo);
+
+            if (!gregFrom || !gregTo) {
+                const fallback = getInitialDateRange();
+                validFrom = fallback.from;
+                validTo = fallback.to;
+                setDateFrom(validFrom);
+                setDateTo(validTo);
+                gregFrom = jalaliToGregorianStr(validFrom);
+                gregTo = jalaliToGregorianStr(validTo);
+            }
             
             const dateFilter = gregFrom && gregTo 
                 ? `AND t10.Field_008 >= '${gregFrom}T00:00:00.000Z' AND t10.Field_008 <= '${gregTo}T23:59:59.000Z'` 
@@ -2202,6 +2289,15 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             setSalesData(processedA);
             setCompareSalesDataA(processedA);
 
+            try {
+                sessionStorage.setItem('sayan_sales_cache', JSON.stringify({
+                    from: validFrom,
+                    to: validTo,
+                    data: processedA,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {}
+
             if (sqlB && results.length > 1) {
                 const dataB = results[1] || [];
                 const processedB = allocateSalesRows(dataB);
@@ -2213,6 +2309,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             console.error(err);
             toast.error(`خطا در واکشی اطلاعات فروش: ${err.message || err}`);
         } finally {
+            setIsSalesLoading(false);
             setIsLoading(false);
         }
     };
@@ -5233,7 +5330,10 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar border-y sm:border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/60 p-1.5 rounded-none sm:rounded-xl">
                 {isTrazAllowed && (
                     <button 
-                        onClick={() => setActiveTab('traz')} 
+                        onClick={() => {
+                            setActiveTab('traz');
+                            try { localStorage.setItem('sayan_reports_active_tab', 'traz'); } catch (e) {}
+                        }} 
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'traz' ? 'bg-white dark:bg-zinc-900 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-700/50 hover:text-slate-900'}`}
                     >
                         <ArrowUpDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -5242,7 +5342,13 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 )}
                 {isSalesAllowed && (
                     <button 
-                        onClick={() => setActiveTab('sales')} 
+                        onClick={() => {
+                            setActiveTab('sales');
+                            try { localStorage.setItem('sayan_reports_active_tab', 'sales'); } catch (e) {}
+                            if (salesData.length === 0) {
+                                setIsSalesLoading(true);
+                            }
+                        }} 
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'sales' ? 'bg-white dark:bg-zinc-900 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-700/50 hover:text-slate-900'}`}
                     >
                         <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -5251,7 +5357,10 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 )}
                 {isProductionAllowed && (
                     <button 
-                        onClick={() => setActiveTab('production')} 
+                        onClick={() => {
+                            setActiveTab('production');
+                            try { localStorage.setItem('sayan_reports_active_tab', 'production'); } catch (e) {}
+                        }} 
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'production' ? 'bg-white dark:bg-zinc-900 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-700/50 hover:text-slate-900'}`}
                     >
                         <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -5260,7 +5369,10 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 )}
                 {isProdReturnsAllowed && (
                     <button 
-                        onClick={() => setActiveTab('prodReturns')} 
+                        onClick={() => {
+                            setActiveTab('prodReturns');
+                            try { localStorage.setItem('sayan_reports_active_tab', 'prodReturns'); } catch (e) {}
+                        }} 
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'prodReturns' ? 'bg-white dark:bg-zinc-900 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-700/50 hover:text-slate-900'}`}
                     >
                         <Undo2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
@@ -5269,7 +5381,10 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 )}
                 {isChequesAllowed && (
                     <button 
-                        onClick={() => setActiveTab('cheques')} 
+                        onClick={() => {
+                            setActiveTab('cheques');
+                            try { localStorage.setItem('sayan_reports_active_tab', 'cheques'); } catch (e) {}
+                        }} 
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'cheques' ? 'bg-white dark:bg-zinc-900 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-700/50 hover:text-slate-900'}`}
                     >
                         <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -5278,7 +5393,10 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 )}
                 {isRemittancesAllowed && (
                     <button 
-                        onClick={() => setActiveTab('remittances')} 
+                        onClick={() => {
+                            setActiveTab('remittances');
+                            try { localStorage.setItem('sayan_reports_active_tab', 'remittances'); } catch (e) {}
+                        }} 
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'remittances' ? 'bg-white dark:bg-zinc-900 shadow-sm text-blue-600 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-zinc-700/50 hover:text-slate-900'}`}
                     >
                         <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
@@ -6265,12 +6383,16 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             salesDateFromB={salesDateFromB}
                             salesDateToB={salesDateToB}
                             compareMode={compareMode}
-                            isLoading={isLoading}
+                            isLoading={isLoading || isSalesLoading}
                             settings={settings}
                             onRefreshData={fetchSalesData}
                             onDateRangeChange={(from, to) => {
                                 setDateFrom(from);
                                 setDateTo(to);
+                                try {
+                                    localStorage.setItem('sayan_default_date_from', from);
+                                    localStorage.setItem('sayan_default_date_to', to);
+                                } catch (e) {}
                             }}
                             onCompareDateRangeChange={(fromB, toB) => {
                                 setSalesDateFromB(fromB);

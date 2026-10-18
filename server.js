@@ -5342,19 +5342,36 @@ app.all('/api/sayan/sales-remittances', async (req, res) => {
             const sanitized = search.replace(/'/g, "''");
             const sqlNormalize = (col) => `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), N'ي', N'ی'), N'ك', N'ک'), N'‌', N' '), N'أ', N'ا')`;
             const jsNorm = String(search).replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/أ/g, 'ا').replace(/'/g, "''").trim();
-            
+            const fullPersonCol = `COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, '')`;
+
             const searchConds = [
                 `RTRIM(LTRIM(t10.Field_005)) LIKE N'%${sanitized}%'`,
                 `RTRIM(LTRIM(t10.Field_006)) LIKE N'%${sanitized}%'`,
                 `RTRIM(LTRIM(t10.Field_010)) LIKE N'%${sanitized}%'`,
                 `${sqlNormalize('p.Field_006')} LIKE N'%${jsNorm}%'`,
                 `${sqlNormalize('p.Field_007')} LIKE N'%${jsNorm}%'`,
+                `${sqlNormalize(fullPersonCol)} LIKE N'%${jsNorm}%'`,
                 `${sqlNormalize('t07.Field_006')} LIKE N'%${jsNorm}%'`,
                 `RTRIM(LTRIM(t11.Field_005)) LIKE N'%${sanitized}%'`,
                 `${sqlNormalize('s04.Field_003')} LIKE N'%${jsNorm}%'`,
                 `${sqlNormalize('t22.Field_004')} LIKE N'%${jsNorm}%'`,
                 `${sqlNormalize('t10.Field_029')} LIKE N'%${jsNorm}%'`
             ];
+
+            // Multi-word token matching for customer names (e.g. "شرکت نساجی بهشت" or "احمد محمدی")
+            const stopWords = new Set(['شرکت', 'فروشگاه', 'جناب', 'اقای', 'آقای', 'خانم', 'مهندس', 'حاج', 'برادران', 'کارخانه', 'تولیدی', 'بازرگانی', 'نساجی']);
+            const nameTokens = jsNorm
+                .replace(/[\(\)\-\:\d]/g, ' ')
+                .split(/\s+/)
+                .map(t => t.trim())
+                .filter(t => t.length >= 2 && !stopWords.has(t));
+            if (nameTokens.length >= 2) {
+                const tokenAndCond = nameTokens.map(tok =>
+                    `(${sqlNormalize(fullPersonCol)} LIKE N'%${tok}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${tok}%' OR ${sqlNormalize('t10.Field_029')} LIKE N'%${tok}%')`
+                ).join(' AND ');
+                searchConds.push(`(${tokenAndCond})`);
+            }
+
             whereClauses.push(`(${searchConds.join(' OR ')})`);
         }
 
@@ -5723,144 +5740,248 @@ app.post('/api/sayan/sales-remittance/explore', async (req, res) => {
     }
 });
 
-// Automatic Strict Match Endpoint
-app.post('/api/sayan/sales-remittance/lookup', async (req, res) => {
-    try {
-        const db = getDb();
-        const { personCode, recipientName, permitDate, permitNumber, docType } = req.body;
+// Fast Unified Helper to Lookup Matching Sayan Remittances (Header-First + Priority Ranking)
+async function findMatchingSayanRemittances(db, params = {}) {
+    const {
+        personCode,
+        tafsiliCode,
+        recipientName,
+        permitDate,
+        permitNumber,
+        remittanceNumber,
+        docType = 'all_exit',
+        limit = 10
+    } = params;
 
-        if (!personCode && !recipientName && !permitNumber) {
-            return res.status(400).json({ error: 'کد شخص، نام شخص یا شماره مجوز الزامی است' });
+    const sqlNormalize = (col) =>
+        `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), N'ي', N'ی'), N'ك', N'ک'), N'‌', N' '), N'أ', N'ا')`;
+
+    const jsNormalize = (str) =>
+        String(str || '')
+            .replace(/ي/g, 'ی')
+            .replace(/ك/g, 'ک')
+            .replace(/‌/g, ' ')
+            .replace(/أ/g, 'ا')
+            .replace(/'/g, "''")
+            .trim();
+
+    let pCode = personCode && !['0', '---', 'null', 'undefined'].includes(String(personCode).trim())
+        ? String(personCode).trim()
+        : '';
+    let tCode = tafsiliCode && !['0', '---', 'null', 'undefined'].includes(String(tafsiliCode).trim())
+        ? String(tafsiliCode).trim()
+        : '';
+    let rName = String(recipientName || '').trim();
+
+    if (rName) {
+        const { cleanName, extractedCode } = extractCodeAndCleanName(rName);
+        if (extractedCode && !pCode) {
+            pCode = extractedCode;
         }
+        rName = cleanName
+            .replace(/\(.*?\)/g, ' ')
+            .replace(/راننده\s*:.*/g, ' ')
+            .replace(/کامیون\s*:.*/g, ' ')
+            .replace(/پلاک\s*:.*/g, ' ')
+            .replace(/شماره\s*:.*/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
 
-        // Match conditions in STR_TBL_010
-        let targetDocType = docType || 'all_exit'; // Default to 'all_exit' to look up only sales and exit remittances (12, 23)
-        let whereClauses = [];
-        if (targetDocType === 'all') {
-            whereClauses.push("RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '3', '13')");
-        } else if (targetDocType === 'all_exit') {
-            whereClauses.push("RTRIM(LTRIM(t10.Field_009)) IN ('12', '23')");
-        } else {
-            whereClauses.push(`RTRIM(LTRIM(t10.Field_009)) = '${targetDocType.replace(/'/g, "''")}'`);
+    let docTypeClause = "RTRIM(LTRIM(t10.Field_009)) IN ('12', '23')";
+    if (docType === 'all') {
+        docTypeClause = "RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '3', '13')";
+    } else if (docType && docType !== 'all_exit') {
+        docTypeClause = `RTRIM(LTRIM(t10.Field_009)) = '${String(docType).replace(/'/g, "''")}'`;
+    }
+
+    const fullPersonCol = `COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, '')`;
+
+    // 1. Code match condition (PersonCode or TafsiliCode)
+    const codeConds = [];
+    for (const rawCode of [pCode, tCode].filter(Boolean)) {
+        const sCode = String(rawCode).replace(/'/g, "''").trim();
+        const numCode = parseInt(sCode, 10);
+        codeConds.push(`RTRIM(LTRIM(t10.Field_010)) = '${sCode}'`);
+        codeConds.push(`RTRIM(LTRIM(t10.Field_010)) = '0${sCode}'`);
+        codeConds.push(`RTRIM(LTRIM(p.Field_003)) = '${sCode}'`);
+        codeConds.push(`RTRIM(LTRIM(p.Field_005)) = '${sCode}'`);
+        codeConds.push(`RTRIM(LTRIM(t07.Field_005)) = '${sCode}'`);
+        if (!isNaN(numCode)) {
+            codeConds.push(`TRY_CAST(t10.Field_010 AS INT) = ${numCode}`);
         }
-        
-        let pCode = personCode;
-        let rName = recipientName;
-        if (!pCode && rName) {
-            const { cleanName, extractedCode } = extractCodeAndCleanName(rName);
-            if (extractedCode) {
-                pCode = extractedCode;
-                rName = cleanName;
-            }
+    }
+    const codeGroupSql = codeConds.length > 0 ? `(${codeConds.join(' OR ')})` : null;
+
+    // 2. Customer Name Token conditions
+    const stopWords = new Set(['شرکت', 'فروشگاه', 'جناب', 'اقای', 'آقای', 'خانم', 'مهندس', 'حاج', 'برادران', 'کارخانه', 'تولیدی', 'بازرگانی', 'نساجی', 'گروه', 'صنایع']);
+    const normName = jsNormalize(rName);
+    const allTokens = normName
+        .replace(/[\(\)\-\:\d\/\\]/g, ' ')
+        .split(/\s+/)
+        .map(t => t.trim())
+        .filter(t => t.length >= 2);
+    const coreTokens = allTokens.filter(t => !stopWords.has(t));
+    const effectiveTokens = coreTokens.length > 0 ? coreTokens : allTokens;
+
+    let exactNameGroupSql = null;
+    let looseNameGroupSql = null;
+
+    if (effectiveTokens.length > 0) {
+        const tokenMatches = effectiveTokens.map(tok =>
+            `(${sqlNormalize(fullPersonCol)} LIKE N'%${tok}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${tok}%' OR ${sqlNormalize('t10.Field_029')} LIKE N'%${tok}%')`
+        );
+        exactNameGroupSql = `(${tokenMatches.join(' AND ')})`;
+
+        const significantTokens = effectiveTokens.filter(t => t.length >= 3);
+        if (significantTokens.length > 1) {
+            const anyTokenMatches = significantTokens.map(tok =>
+                `(${sqlNormalize(fullPersonCol)} LIKE N'%${tok}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${tok}%')`
+            );
+            looseNameGroupSql = `(${anyTokenMatches.join(' OR ')})`;
         }
+    } else if (normName && !/^\d+$/.test(normName)) {
+        exactNameGroupSql = `(${sqlNormalize(fullPersonCol)} LIKE N'%${normName}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${normName}%' OR ${sqlNormalize('t10.Field_029')} LIKE N'%${normName}%')`;
+    }
 
-        // If there's a permitDate, it's an automatic lookup where we want STRICT matching of customer and date
-        if (permitDate) {
-            const gregDate = parseJalaliStrToGregorian(permitDate);
-            if (gregDate) {
-                whereClauses.push(`ABS(DATEDIFF(day, t10.Field_008, '${gregDate}')) <= 7`);
-            } else {
-                const sanitizedDate = String(permitDate).replace(/'/g, "''").trim();
-                whereClauses.push(`ABS(DATEDIFF(day, t10.Field_008, '${sanitizedDate}')) <= 7`);
-            }
+    // 3. Explicit RemittanceNumber / DocNo search (only if explicitly numeric search or remittanceNumber provided)
+    let remNoGroupSql = null;
+    const explicitNum = remittanceNumber || (normName && /^\d+$/.test(normName) ? normName : null);
+    if (explicitNum) {
+        const sNum = String(explicitNum).replace(/'/g, "''").trim();
+        remNoGroupSql = `(RTRIM(LTRIM(t10.Field_005)) = '${sNum}' OR RTRIM(LTRIM(t10.Field_006)) = '${sNum}')`;
+    }
+
+    const candidateOrGroups = [codeGroupSql, exactNameGroupSql, looseNameGroupSql, remNoGroupSql].filter(Boolean);
+    if (candidateOrGroups.length === 0) {
+        return [];
+    }
+
+    const priorityCases = [];
+    if (remNoGroupSql) priorityCases.push(`WHEN ${remNoGroupSql} THEN 0`);
+    if (codeGroupSql) priorityCases.push(`WHEN ${codeGroupSql} THEN 1`);
+    if (exactNameGroupSql) priorityCases.push(`WHEN ${exactNameGroupSql} THEN 2`);
+    if (looseNameGroupSql) priorityCases.push(`WHEN ${looseNameGroupSql} THEN 3`);
+    const priorityOrderSql = priorityCases.length > 0
+        ? `CASE ${priorityCases.join(' ')} ELSE 4 END ASC`
+        : `0 ASC`;
+
+    const gregDate = permitDate ? parseJalaliStrToGregorian(permitDate) : null;
+    const dateProximityOrderSql = gregDate
+        ? `CASE WHEN ABS(DATEDIFF(day, t10.Field_008, '${gregDate}')) <= 14 THEN 0 ELSE 1 END ASC, t10.Field_008 DESC, t10.Field_005 DESC`
+        : `t10.Field_008 DESC, t10.Field_005 DESC`;
+
+    const topLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 30);
+
+    const queryHeaders = `
+        SELECT TOP ${topLimit}
+            t10.Field_001 as ArchiveCode,
+            t10.Field_004 as SubSystem,
+            t10.Field_005 as DocNo,
+            t10.Field_006 as RemittanceNumber,
+            t10.Field_007 as SubCode,
+            t10.Field_008 as DocDate,
+            RTRIM(LTRIM(t10.Field_009)) as DocType,
+            t10.Field_010 as PersonCode,
+            t10.Field_018 as StoreId,
+            t10.Field_029 as Note,
+            COALESCE(
+                NULLIF(RTRIM(LTRIM(t07.Field_006)), ''),
+                NULLIF(RTRIM(LTRIM(${fullPersonCol})), ''),
+                t10.Field_010,
+                N'طرف‌حساب نامشخص'
+            ) as PersonFullName,
+            p.Field_013 as PersonAddress,
+            p.Field_015 as PersonPhone
+        FROM STR_TBL_010 t10
+        LEFT JOIN GNR_TBL_001 p ON p.Field_003 = t10.Field_010 OR p.Field_005 = t10.Field_010
+        LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
+        WHERE ${docTypeClause} AND (${candidateOrGroups.join(' OR ')})
+        ORDER BY ${priorityOrderSql}, ${dateProximityOrderSql}
+    `;
+
+    const headers = await executeSayanQuery(db, queryHeaders);
+    if (!headers || headers.length === 0) {
+        return [];
+    }
+
+    // Deduplicate headers by DocNo
+    const uniqueHeaders = [];
+    const seenDocNos = new Set();
+    for (const h of headers) {
+        const dNo = String(h.DocNo || '').trim();
+        if (dNo && !seenDocNos.has(dNo)) {
+            seenDocNos.add(dNo);
+            uniqueHeaders.push(h);
         }
+    }
+    if (uniqueHeaders.length === 0) return [];
 
-        let matchConditions = getSayanMatchConditions({ personCode: pCode, recipientName: rName, permitNumber });
-        if (matchConditions.length > 0) {
-            if (permitDate) {
-                // Strict match: ALL provided constraints (Person AND Number) must match
-                whereClauses.push(...matchConditions);
-            } else {
-                // Manual loose search: ANY of the provided constraints can match
-                whereClauses.push(`(${matchConditions.join(' OR ')})`);
-            }
-        }
+    const docNoListSql = uniqueHeaders
+        .map(h => `'${String(h.DocNo).replace(/'/g, "''")}'`)
+        .join(', ');
 
-        const gregDate = permitDate ? parseJalaliStrToGregorian(permitDate) : null;
-        const orderByClause = gregDate 
-            ? `ABS(DATEDIFF(day, t10.Field_008, '${gregDate}')) ASC, t10.Field_008 DESC, t10.Field_001 DESC`
-            : `t10.Field_008 DESC, t10.Field_001 DESC`;
+    const queryDetails = `
+        SELECT 
+            t11.Field_001 as LineId,
+            t11.Field_004 as DocNo,
+            RTRIM(LTRIM(t11.Field_005)) as ItemCode,
+            COALESCE(
+                NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
+                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(c01.Field_003)), ''),
+                RTRIM(LTRIM(t11.Field_005)),
+                N'کالای بدون نام'
+            ) as ItemName,
+            t11.Field_006 as NetQty,
+            t11.Field_007 as UnitPrice,
+            t11.Field_008 as TotalPrice,
+            t11.Field_031 as DetailNote,
+            t11.Field_034 as RowNo
+        FROM STR_TBL_011 t11
+        LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_021 t21 ON RTRIM(LTRIM(t21.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t21.Field_003)) OR RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
+        LEFT JOIN COM_TBL_001 c01 ON RTRIM(LTRIM(c01.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        WHERE t11.Field_004 IN (${docNoListSql})
+        ORDER BY t11.Field_034 ASC, t11.Field_001 ASC
+    `;
 
-        const queryHeaders = `
-            SELECT TOP 10
-                t10.Field_001 as ArchiveCode,
-                t10.Field_004 as SubSystem,
-                t10.Field_005 as DocNo,
-                t10.Field_006 as RemittanceNumber,
-                t10.Field_007 as SubCode,
-                t10.Field_008 as DocDate,
-                RTRIM(LTRIM(t10.Field_009)) as DocType,
-                t10.Field_010 as PersonCode,
-                t10.Field_018 as StoreId,
-                t10.Field_029 as Note,
-                COALESCE(
-                    NULLIF(RTRIM(LTRIM(COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, ''))), ''),
-                    NULLIF(RTRIM(LTRIM(t07.Field_006)), ''),
-                    t10.Field_010,
-                    N'طرف‌حساب نامشخص'
-                ) as PersonFullName,
-                p.Field_013 as PersonAddress,
-                p.Field_015 as PersonPhone
-            FROM STR_TBL_010 t10
-            LEFT JOIN GNR_TBL_001 p ON p.Field_003 = t10.Field_010 OR p.Field_005 = t10.Field_010
-            LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
-            WHERE ${whereClauses.join(' AND ')}
-            ORDER BY ${orderByClause}
-        `;
+    const detailRows = await executeSayanQuery(db, queryDetails);
+    const detailsByDocNo = new Map();
+    for (const row of (detailRows || [])) {
+        const dKey = String(row.DocNo || '').trim();
+        if (!detailsByDocNo.has(dKey)) detailsByDocNo.set(dKey, []);
+        detailsByDocNo.get(dKey).push(row);
+    }
 
-        const headers = await executeSayanQuery(db, queryHeaders);
-        if (!headers || headers.length === 0) {
-            return res.json({ success: false, message: 'هیچ حواله فروش مرتبطی در سایان یافت نشد' });
-        }
+    const persianDays = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
 
-        const h = headers[0];
-        const queryDetails = `
-            SELECT 
-                t11.Field_001 as LineId,
-                t11.Field_004 as DocNo,
-                RTRIM(LTRIM(t11.Field_005)) as ItemCode,
-                COALESCE(
-                    NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
-                    NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
-                    NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
-                    NULLIF(RTRIM(LTRIM(c01.Field_003)), ''),
-                    NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
-                    RTRIM(LTRIM(t11.Field_005)),
-                    N'کالای بدون نام'
-                ) as ItemName,
-                t11.Field_006 as NetQty,
-                t11.Field_007 as UnitPrice,
-                t11.Field_008 as TotalPrice,
-                t11.Field_031 as DetailNote,
-                t11.Field_034 as RowNo
-            FROM STR_TBL_011 t11
-            LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-            LEFT JOIN IND_TBL_021 t21 ON RTRIM(LTRIM(t21.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-            LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t21.Field_003)) OR RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
-            LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
-            LEFT JOIN COM_TBL_001 c01 ON RTRIM(LTRIM(c01.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-            LEFT JOIN (
-                SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, MIN(t02_sub.Field_003) as ItemName
-                FROM IND_TBL_021 t21_sub
-                LEFT JOIN IND_TBL_002 t02_sub ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
-                GROUP BY t21_sub.Field_004
-            ) t_name ON RTRIM(LTRIM(t11.Field_005)) = RTRIM(LTRIM(t_name.ItemCode))
-            WHERE t11.Field_004 = '${h.DocNo}'
-            ORDER BY t11.Field_034 ASC, t11.Field_001 ASC
-        `;
-
-        const detailRows = await executeSayanQuery(db, queryDetails);
-
+    return uniqueHeaders.map(h => {
+        const dNo = String(h.DocNo || '').trim();
+        const rawRows = detailsByDocNo.get(dNo) || [];
         let totalNet = 0;
         let totalGross = 0;
         let totalCartons = 0;
         let totalBobbins = 0;
 
-        const items = (detailRows || []).map((row, idx) => {
+        // Deduplicate lines by LineId in case LEFT JOIN IND_TBL_021 produced multiple rows
+        const seenLineIds = new Set();
+        const dedupedRows = [];
+        for (const r of rawRows) {
+            const lid = String(r.LineId || '');
+            if (lid && seenLineIds.has(lid)) continue;
+            if (lid) seenLineIds.add(lid);
+            dedupedRows.push(r);
+        }
+
+        const items = dedupedRows.map((row, idx) => {
             const parsed = parseDetailNote(row.DetailNote);
             const netVal = parseFloat(row.NetQty || 0);
             const grossVal = parsed.grossWeight > 0 ? parsed.grossWeight : netVal;
-            
+
             totalNet += netVal;
             totalGross += grossVal;
             totalCartons += parsed.cartonCount;
@@ -5871,8 +5992,8 @@ app.post('/api/sayan/sales-remittance/lookup', async (req, res) => {
                 docNo: String(row.DocNo || ''),
                 itemCode: String(row.ItemCode || ''),
                 goodsName: String(row.ItemName || row.ItemCode || `کالا ${idx + 1}`),
-                netQty: netVal,
-                grossQty: grossVal,
+                netQty: parseFloat(netVal.toFixed(3)),
+                grossQty: parseFloat(grossVal.toFixed(3)),
                 unitPrice: parseFloat(row.UnitPrice || 0),
                 totalPrice: parseFloat(row.TotalPrice || 0),
                 cartonCount: parsed.cartonCount,
@@ -5880,48 +6001,91 @@ app.post('/api/sayan/sales-remittance/lookup', async (req, res) => {
                 grade: parsed.grade,
                 twistDirection: parsed.twistDirection,
                 description: parsed.description,
+                detailNote: row.DetailNote || '',
                 rowNo: parseInt(row.RowNo || (idx + 1), 10)
             };
         });
 
-        // Shamsi Date conversion
         let shamsiDateStr = '';
+        let dayOfWeek = '';
         if (h.DocDate) {
             try {
                 const d = new Date(h.DocDate);
                 if (!isNaN(d.getTime())) {
                     const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
                     shamsiDateStr = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+                    dayOfWeek = persianDays[d.getDay()];
                 }
             } catch (e) {}
         }
 
-        const remittance = {
+        const docTypeStr = String(h.DocType || '').trim();
+        let docTypeLabel = 'حواله فروش';
+        if (docTypeStr === '23') docTypeLabel = 'حواله فروش';
+        else if (docTypeStr === '12') docTypeLabel = 'سایر حواله‌ها (۱۲)';
+        else if (docTypeStr === '3') docTypeLabel = 'حواله انبار';
+        else if (docTypeStr === '13') docTypeLabel = 'برگشت از فروش';
+
+        return {
             archiveCode: String(h.ArchiveCode || ''),
             subSystem: String(h.SubSystem || ''),
-            docNo: String(h.DocNo || ''),
-            remittanceNumber: String(h.RemittanceNumber || h.DocNo || ''),
+            docNo: dNo,
+            remittanceNumber: String(h.RemittanceNumber || dNo || ''),
             subCode: String(h.SubCode || ''),
             docDate: h.DocDate || '',
             shamsiDate: shamsiDateStr,
-            docType: String(h.DocType || ''),
+            dayOfWeek,
+            docType: docTypeStr,
+            docTypeLabel,
             personCode: String(h.PersonCode || ''),
-            personFullName: (h.PersonFullName || recipientName || '').trim(),
+            personFullName: String(h.PersonFullName || recipientName || '').trim(),
             personAddress: h.PersonAddress || '',
             personPhone: h.PersonPhone || '',
             storeId: String(h.StoreId || ''),
-            note: h.Note || '',
+            note: String(h.Note || '').trim(),
             items,
+            itemsCount: items.length,
             totalNetWeight: parseFloat(totalNet.toFixed(3)),
             totalGrossWeight: parseFloat(totalGross.toFixed(3)),
             totalCartons,
             totalBobbins
         };
+    });
+}
 
-        res.json({ success: true, remittance });
+// Automatic Fast Smart Lookup Endpoint
+app.post('/api/sayan/sales-remittance/lookup', async (req, res) => {
+    try {
+        const db = getDb();
+        const { personCode, tafsiliCode, recipientName, permitDate, permitNumber, remittanceNumber, docType, limit } = req.body || {};
+
+        if (!personCode && !tafsiliCode && !recipientName && !permitNumber && !remittanceNumber) {
+            return res.status(400).json({ error: 'کد شخص، نام شخص یا شماره مجوز الزامی است' });
+        }
+
+        const remittances = await findMatchingSayanRemittances(db, {
+            personCode,
+            tafsiliCode,
+            recipientName,
+            permitDate,
+            permitNumber,
+            remittanceNumber,
+            docType: docType || 'all_exit',
+            limit: limit || 12
+        });
+
+        if (!remittances || remittances.length === 0) {
+            return res.json({ success: false, remittances: [], message: 'هیچ حواله فروش مرتبطی در سایان یافت نشد' });
+        }
+
+        res.json({
+            success: true,
+            remittance: remittances[0],
+            remittances
+        });
     } catch (e) {
         console.error("Sayan Remittance Lookup Error:", e);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ error: e.message, remittances: [] });
     }
 });
 
@@ -5931,7 +6095,7 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
         const db = getDb();
         if (!db.exitPermits) db.exitPermits = [];
         const { id } = req.params;
-        const { approverWarehouse, advanceToSecurity = true, customItems, remittanceData, attachmentDataUrl } = req.body;
+        const { approverWarehouse, advanceToSecurity = false, customItems, remittanceData, remittanceDocs, attachmentDataUrl } = req.body || {};
 
         const idx = db.exitPermits.findIndex(p => p.id === id);
         if (idx === -1) {
@@ -5940,139 +6104,71 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
 
         const permit = db.exitPermits[idx];
         let rem = remittanceData;
+        let remDocs = Array.isArray(remittanceDocs) && remittanceDocs.length > 0 ? remittanceDocs : null;
 
-        // If not passed, lookup directly
+        // If not passed, lookup directly using fast priority-ranked helper
         if (!rem) {
-            let pCode = permit.sayanPersonCode || (permit.destinations?.[0]?.sayanPersonCode);
-            let rName = permit.recipientName || (permit.destinations?.[0]?.recipientName);
+            const pCode = permit.sayanPersonCode || (permit.destinations?.[0]?.sayanPersonCode);
+            const tCode = permit.sayanTafsiliCode || (permit.destinations?.[0]?.sayanTafsiliCode);
+            const rName = permit.recipientName || (permit.destinations?.[0]?.recipientName);
             const pDate = permit.date;
-            const pNum = permit.permitNumber;
-            
-            if (!pCode && rName) {
-                const { cleanName, extractedCode } = extractCodeAndCleanName(rName);
-                if (extractedCode) {
-                    pCode = extractedCode;
-                    rName = cleanName;
+
+            try {
+                const matchedList = await findMatchingSayanRemittances(db, {
+                    personCode: pCode,
+                    tafsiliCode: tCode,
+                    recipientName: rName,
+                    permitDate: pDate,
+                    docType: 'all_exit',
+                    limit: 5
+                });
+                if (matchedList && matchedList.length > 0) {
+                    rem = matchedList[0];
+                    if (!remDocs) remDocs = [rem];
                 }
+            } catch (lookupErr) {
+                console.warn('Background Sayan lookup warning during sync-remittance:', lookupErr.message);
             }
-            
-            let whereClauses = ["RTRIM(LTRIM(t10.Field_009)) IN ('12', '23')"];
-            
-            if (pDate) {
-                const gregDate = parseJalaliStrToGregorian(pDate);
-                if (gregDate) {
-                    whereClauses.push(`ABS(DATEDIFF(day, t10.Field_008, '${gregDate}')) <= 5`);
-                } else {
-                    const sanitizedDate = String(pDate).replace(/'/g, "''").trim();
-                    whereClauses.push(`ABS(DATEDIFF(day, t10.Field_008, '${sanitizedDate}')) <= 5`);
-                }
-            }
+        }
 
-            // Utilize robust getSayanMatchConditions
-            let matchConditions = getSayanMatchConditions({ personCode: pCode, recipientName: rName, permitNumber: pNum });
-            if (matchConditions.length > 0) {
-                whereClauses.push(...matchConditions);
-            }
+        // Preserve user-entered customItems (deliveredCartonCount & deliveredWeight) if provided!
+        const hasUserConfirmedItems = Array.isArray(customItems) && customItems.length > 0 && customItems.some(x => Number(x.deliveredWeight) > 0 || Number(x.deliveredCartonCount) > 0);
+        if (hasUserConfirmedItems) {
+            permit.items = customItems.map((ci, i) => {
+                const sayanItem = rem?.items?.[i];
+                return {
+                    ...ci,
+                    id: ci.id || permit.items?.[i]?.id || `item-${Date.now()}-${i}`,
+                    goodsName: ci.goodsName || sayanItem?.goodsName || `کالا ${i + 1}`,
+                    cartonCount: Number(ci.cartonCount) || sayanItem?.cartonCount || Number(ci.deliveredCartonCount) || 0,
+                    weight: Number(ci.weight) || sayanItem?.netQty || Number(ci.deliveredWeight) || 0,
+                    deliveredCartonCount: Number(ci.deliveredCartonCount) || 0,
+                    deliveredWeight: Number(ci.deliveredWeight) || 0,
+                    grossWeight: Number(ci.grossWeight) || sayanItem?.grossQty || Number(ci.deliveredWeight) || 0,
+                    bobbinCount: ci.bobbinCount ?? sayanItem?.bobbinCount ?? 0,
+                    grade: ci.grade || sayanItem?.grade || 'AA',
+                    twistDirection: ci.twistDirection || sayanItem?.twistDirection || 'Z',
+                    itemCode: ci.itemCode || sayanItem?.itemCode || '',
+                    description: ci.description || sayanItem?.description || ''
+                };
+            });
+            permit.cartonCount = permit.items.reduce((s, x) => s + (Number(x.deliveredCartonCount || x.cartonCount) || 0), 0);
+            permit.weight = permit.items.reduce((s, x) => s + (Number(x.deliveredWeight || x.weight) || 0), 0);
+        }
 
-            const gregDateForOrder = pDate ? parseJalaliStrToGregorian(pDate) : null;
-            const orderByClause = gregDateForOrder 
-                ? `ABS(DATEDIFF(day, t10.Field_008, '${gregDateForOrder}')) ASC, t10.Field_008 DESC, t10.Field_001 DESC`
-                : `t10.Field_008 DESC, t10.Field_001 DESC`;
-
-            const queryHeaders = `
-                SELECT TOP 1
-                    t10.Field_001 as ArchiveCode,
-                    t10.Field_004 as SubSystem,
-                    t10.Field_005 as DocNo,
-                    t10.Field_006 as RemittanceNumber,
-                    t10.Field_007 as SubCode,
-                    t10.Field_008 as DocDate,
-                    t10.Field_009 as DocType,
-                    t10.Field_010 as PersonCode,
-                    t10.Field_018 as StoreId,
-                    t10.Field_029 as Note,
-                    COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, '') as PersonFullName
-                FROM STR_TBL_010 t10
-                LEFT JOIN GNR_TBL_001 p ON p.Field_003 = t10.Field_010 OR p.Field_005 = t10.Field_010
-                WHERE ${whereClauses.join(' AND ')}
-                ORDER BY ${orderByClause}
-            `;
-                const foundHeaders = await executeSayanQuery(db, queryHeaders);
-                if (foundHeaders && foundHeaders.length > 0) {
-                    const fh = foundHeaders[0];
-                    const queryDetails = `
-                        SELECT 
-                            t11.Field_001 as LineId,
-                            t11.Field_004 as DocNo,
-                            t11.Field_005 as ItemCode,
-                            COALESCE(t02.Field_003, t22.Field_004, t21.Field_004, t11.Field_005) as ItemName,
-                            t11.Field_006 as NetQty,
-                            t11.Field_031 as DetailNote,
-                            t11.Field_034 as RowNo
-                        FROM STR_TBL_011 t11
-                        LEFT JOIN IND_TBL_021 t21 ON RTRIM(LTRIM(t21.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-                        LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t21.Field_003))
-                        LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
-                        WHERE t11.Field_004 = '${fh.DocNo}' AND t11.Field_012 = '${fh.StoreId}' AND t11.Field_036 = '${fh.DocType}'
-                        ORDER BY t11.Field_034 ASC, t11.Field_001 ASC
-                    `;
-                    const fDetails = await executeSayanQuery(db, queryDetails);
-                    let tNet = 0, tGross = 0, tCart = 0, tBob = 0;
-                    const parsedItems = (fDetails || []).map((row, idx) => {
-                        const parsed = parseDetailNote(row.DetailNote);
-                        const netVal = parseFloat(row.NetQty || 0);
-                        const grossVal = parsed.grossWeight > 0 ? parsed.grossWeight : netVal;
-                        tNet += netVal;
-                        tGross += grossVal;
-                        tCart += parsed.cartonCount;
-                        tBob += parsed.bobbinCount;
-                        return {
-                            goodsName: String(row.ItemName || row.ItemCode || `کالا ${idx + 1}`),
-                            netQty: netVal,
-                            grossQty: grossVal,
-                            cartonCount: parsed.cartonCount,
-                            bobbinCount: parsed.bobbinCount,
-                            grade: parsed.grade,
-                            twistDirection: parsed.twistDirection,
-                            description: parsed.description,
-                            itemCode: row.ItemCode
-                        };
-                    });
-
-                    let shamsi = '';
-                    if (fh.DocDate) {
-                        try {
-                            const d = new Date(fh.DocDate);
-                            const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
-                            shamsi = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
-                        } catch (e) {}
-                    }
-
-                    rem = {
-                        archiveCode: String(fh.ArchiveCode || ''),
-                        remittanceNumber: String(fh.RemittanceNumber || fh.DocNo || ''),
-                        subCode: String(fh.SubCode || ''),
-                        shamsiDate: shamsi,
-                        personFullName: fh.PersonFullName || rName,
-                        items: parsedItems,
-                        totalNetWeight: tNet,
-                        totalGrossWeight: tGross,
-                        totalCartons: tCart,
-                        totalBobbins: tBob
-                    };
-                }
-            }
-
-        // Apply to permit
+        // Apply Sayan Remittance metadata to permit
         if (rem) {
             permit.sayanRemittanceNumber = String(rem.remittanceNumber || '');
             permit.sayanSubCode = String(rem.subCode || '');
             permit.sayanArchiveCode = String(rem.archiveCode || '');
             permit.sayanSyncedAt = Date.now();
             permit.sayanRemittanceDoc = rem;
+            if (remDocs) {
+                permit.sayanRemittanceDocs = remDocs;
+            }
 
-            // Update items if available from Sayan
-            if (Array.isArray(rem.items) && rem.items.length > 0) {
+            // Only overwrite items from Sayan if user hadn't already entered custom delivered quantities
+            if (!hasUserConfirmedItems && Array.isArray(rem.items) && rem.items.length > 0 && (!permit.items || !permit.items.some(x => Number(x.deliveredWeight) > 0))) {
                 permit.items = rem.items.map((it, i) => ({
                     id: permit.items?.[i]?.id || `sayan-${Date.now()}-${i}`,
                     goodsName: it.goodsName || `کالا ${i + 1}`,
@@ -6095,7 +6191,7 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
         if (attachmentDataUrl) {
             permit.attachments = permit.attachments || [];
             const fileName = `حواله_فروش_سایان_${permit.sayanRemittanceNumber || permit.permitNumber}.png`;
-            permit.attachments = permit.attachments.filter(a => !a.fileName.includes('حواله_فروش_سایان'));
+            permit.attachments = permit.attachments.filter(a => !String(a.fileName || '').includes('حواله_فروش_سایان'));
             permit.attachments.push({
                 fileName,
                 data: attachmentDataUrl
@@ -6114,15 +6210,17 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
         db.exitPermits[idx] = permit;
         saveDb(db);
 
-        // Background Bot Notification
-        setImmediate(async () => {
-            try {
-                const refreshedDb = getDb();
-                await notifyExitPermitStep(permit, null, approverWarehouse, null, refreshedDb, 'تایید انبار با اتصال سایان', 'WAREHOUSE');
-            } catch (err) {
-                console.error("Background notifyExitPermitStep error on sync-remittance:", err);
-            }
-        });
+        // Background Bot Notification (only when advancing status or explicitly requested)
+        if (advanceToSecurity || req.body?.notifyBot) {
+            setImmediate(async () => {
+                try {
+                    const refreshedDb = getDb();
+                    await notifyExitPermitStep(permit, null, approverWarehouse, null, refreshedDb, 'تایید انبار با اتصال سایان', 'WAREHOUSE');
+                } catch (err) {
+                    console.error("Background notifyExitPermitStep error on sync-remittance:", err);
+                }
+            });
+        }
 
         res.json({ success: true, permit });
     } catch (e) {
@@ -10129,7 +10227,27 @@ app.put('/api/exit-permits/:id', async (req, res) => {
         let updatedItem;
         
         if (idx > -1) {
-            db.exitPermits[idx] = { ...db.exitPermits[idx], ...req.body };
+            const existing = db.exitPermits[idx];
+            const incoming = { ...req.body };
+
+            // Preserve background-synced Sayan remittance metadata & attachment if incoming snapshot lacked them
+            if (!incoming.sayanRemittanceDoc && existing.sayanRemittanceDoc) {
+                incoming.sayanRemittanceDoc = existing.sayanRemittanceDoc;
+                incoming.sayanRemittanceDocs = incoming.sayanRemittanceDocs || existing.sayanRemittanceDocs;
+                incoming.sayanRemittanceNumber = incoming.sayanRemittanceNumber || existing.sayanRemittanceNumber;
+                incoming.sayanSubCode = incoming.sayanSubCode || existing.sayanSubCode;
+                incoming.sayanArchiveCode = incoming.sayanArchiveCode || existing.sayanArchiveCode;
+                incoming.sayanSyncedAt = incoming.sayanSyncedAt || existing.sayanSyncedAt;
+            }
+            if (Array.isArray(existing.attachments) && existing.attachments.some(a => String(a?.fileName || '').includes('حواله_فروش_سایان'))) {
+                const incomingAtts = Array.isArray(incoming.attachments) ? incoming.attachments : [];
+                if (!incomingAtts.some(a => String(a?.fileName || '').includes('حواله_فروش_سایان'))) {
+                    const sayanAtts = existing.attachments.filter(a => String(a?.fileName || '').includes('حواله_فروش_سایان'));
+                    incoming.attachments = [...incomingAtts, ...sayanAtts];
+                }
+            }
+
+            db.exitPermits[idx] = { ...existing, ...incoming };
             updatedItem = db.exitPermits[idx];
         } else {
             updatedItem = { id: req.params.id, ...req.body };

@@ -1,6 +1,10 @@
-import { apiCall } from './apiService';
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { apiCall, LS_KEYS, getLocalData } from './apiService';
 import { ExitPermit, ExitPermitItem } from '../types';
 import html2canvas from 'html2canvas';
+import SayanSalesRemittanceDoc, { SayanRemittanceData } from '../components/SayanSalesRemittanceDoc';
+import toast from 'react-hot-toast';
 
 export interface SayanPersonResult {
   id: string;
@@ -70,6 +74,52 @@ export interface SayanSalesRemittanceResult {
 }
 
 /**
+ * Helper to merge multiple Sayan sales remittances into one unified remittance
+ */
+export const mergeSayanRemittances = (remittances: SayanSalesRemittanceResult[]): SayanSalesRemittanceResult | null => {
+  if (!remittances || remittances.length === 0) return null;
+  if (remittances.length === 1) return remittances[0];
+
+  const mergedItems: any[] = [];
+  let totalNetWeight = 0;
+  let totalGrossWeight = 0;
+  let totalCartons = 0;
+  let totalBobbins = 0;
+
+  remittances.forEach(rem => {
+    if (Array.isArray(rem.items)) {
+      rem.items.forEach(it => {
+        mergedItems.push({
+          ...it,
+          goodsName: `${it.goodsName} (حواله ${rem.remittanceNumber})`
+        });
+      });
+    }
+    totalNetWeight += Number(rem.totalNetWeight || 0);
+    totalGrossWeight += Number(rem.totalGrossWeight || 0);
+    totalCartons += Number(rem.totalCartons || 0);
+    totalBobbins += Number(rem.totalBobbins || 0);
+  });
+
+  return {
+    archiveCode: remittances.map(r => r.archiveCode).filter(Boolean).join('، '),
+    remittanceNumber: remittances.map(r => r.remittanceNumber).filter(Boolean).join('، '),
+    subCode: remittances.map(r => r.subCode).filter(Boolean).join('، '),
+    docDate: remittances[0].docDate,
+    shamsiDate: remittances.map(r => r.shamsiDate).filter(Boolean).join('، '),
+    personCode: remittances[0].personCode,
+    personFullName: remittances[0].personFullName,
+    personAddress: remittances[0].personAddress,
+    personPhone: remittances[0].personPhone,
+    items: mergedItems,
+    totalNetWeight: Number(totalNetWeight.toFixed(3)),
+    totalGrossWeight: Number(totalGrossWeight.toFixed(3)),
+    totalCartons,
+    totalBobbins
+  };
+};
+
+/**
  * Fetch all Sayan Sales Remittances with filters
  */
 export const fetchSayanSalesRemittances = async (filters: {
@@ -131,29 +181,56 @@ export const searchSayanPersons = async (query: string): Promise<SayanPersonResu
 };
 
 /**
+ * Fast Smart Lookup for matching Sayan Sales Remittances (returns best match + candidate list in 1 call)
+ */
+export const lookupSayanSalesRemittancesFast = async (params: {
+  personCode?: string;
+  tafsiliCode?: string;
+  recipientName?: string;
+  permitDate?: string;
+  permitNumber?: number | string;
+  remittanceNumber?: string;
+  docType?: string;
+  limit?: number;
+}): Promise<{ success: boolean; remittance: SayanSalesRemittanceResult | null; remittances: SayanSalesRemittanceResult[] }> => {
+  try {
+    const res = await apiCall<{
+      success: boolean;
+      remittance?: SayanSalesRemittanceResult;
+      remittances?: SayanSalesRemittanceResult[];
+      error?: string;
+    }>('/sayan/sales-remittance/lookup', 'POST', params);
+
+    if (res && res.success && (res.remittance || (res.remittances && res.remittances.length > 0))) {
+      const list = Array.isArray(res.remittances) && res.remittances.length > 0
+        ? res.remittances
+        : (res.remittance ? [res.remittance] : []);
+      return {
+        success: true,
+        remittance: res.remittance || list[0] || null,
+        remittances: list
+      };
+    }
+    return { success: false, remittance: null, remittances: [] };
+  } catch (err) {
+    console.warn('lookupSayanSalesRemittancesFast error:', err);
+    return { success: false, remittance: null, remittances: [] };
+  }
+};
+
+/**
  * Lookup matching Sayan Sales Remittance (STR_TBL_010 / STR_TBL_011)
  */
 export const lookupSayanSalesRemittance = async (params: {
   personCode?: string;
+  tafsiliCode?: string;
   recipientName?: string;
   permitDate?: string;
   permitNumber?: number | string;
   docType?: string;
 }): Promise<SayanSalesRemittanceResult | null> => {
-  try {
-    const res = await apiCall<{ success: boolean; remittance?: SayanSalesRemittanceResult; error?: string }>(
-      '/sayan/sales-remittance/lookup',
-      'POST',
-      params
-    );
-    if (res && res.success && res.remittance) {
-      return res.remittance;
-    }
-    return null;
-  } catch (err) {
-    console.warn('lookupSayanSalesRemittance error:', err);
-    return null;
-  }
+  const res = await lookupSayanSalesRemittancesFast(params);
+  return res.remittance;
 };
 
 /**
@@ -165,7 +242,9 @@ export const syncExitPermitWithSayan = async (
     approverWarehouse?: string;
     advanceToSecurity?: boolean;
     customItems?: ExitPermitItem[];
-    remittanceData?: SayanSalesRemittanceResult;
+    remittanceData?: SayanSalesRemittanceResult | null;
+    remittanceDocs?: SayanSalesRemittanceResult[];
+    attachmentDataUrl?: string;
   }
 ): Promise<{ success: boolean; permit?: ExitPermit; error?: string }> => {
   try {
@@ -182,7 +261,7 @@ export const syncExitPermitWithSayan = async (
 };
 
 /**
- * Capture an element and return a base64 PNG data URL
+ * Capture an element and return a base64 JPEG data URL
  */
 export const captureElementToDataUrl = async (elementId: string): Promise<string> => {
   const el = document.getElementById(elementId);
@@ -197,3 +276,219 @@ export const captureElementToDataUrl = async (elementId: string): Promise<string
   });
   return canvas.toDataURL('image/jpeg', 0.75);
 };
+
+/**
+ * Render SayanSalesRemittanceDoc in a temporary offscreen DOM container attached to document.body
+ * and capture it to a base64 image Data URL. Safe to call even after modals are unmounted!
+ */
+export const renderAndCaptureRemittanceOffscreen = async (docData: SayanRemittanceData): Promise<string | null> => {
+  if (typeof document === 'undefined') return null;
+
+  const container = document.createElement('div');
+  const tempId = `offscreen-sayan-rem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '-9999px';
+  container.style.width = '820px';
+  container.style.zIndex = '-1000';
+  container.style.pointerEvents = 'none';
+  document.body.appendChild(container);
+
+  const root = createRoot(container);
+  try {
+    root.render(React.createElement(SayanSalesRemittanceDoc, { id: tempId, data: docData, showStamps: true }));
+    // Wait for React render + layout paint
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const el = document.getElementById(tempId) || (container.firstElementChild as HTMLElement);
+    if (!el) return null;
+    const canvas = await html2canvas(el, {
+      scale: 1.2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+    });
+    return canvas.toDataURL('image/jpeg', 0.78);
+  } catch (err) {
+    console.warn('renderAndCaptureRemittanceOffscreen warning:', err);
+    return null;
+  } finally {
+    try {
+      root.unmount();
+    } catch {}
+    if (container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+  }
+};
+
+/**
+ * Background Auto-Detection, Rendering & Attachment of Sayan Sales Remittance.
+ * Runs completely in the background after the warehouse user confirms counts/weights,
+ * never blocking the modal or UI. If remittance wasn't detected yet, automatically
+ * queries Sayan (with smart retries), renders the official remittance document offscreen,
+ * and attaches it to the permit.
+ */
+export const backgroundAutoDetectAndAttachRemittance = (options: {
+  permit: ExitPermit;
+  finalizedItems: ExitPermitItem[];
+  initialRemittance?: SayanSalesRemittanceResult | null;
+  initialRemittances?: SayanSalesRemittanceResult[];
+  approverWarehouse?: string;
+}): void => {
+  const { permit, finalizedItems, initialRemittance, initialRemittances, approverWarehouse } = options;
+
+  setTimeout(async () => {
+    try {
+      let matchedRemittance: SayanSalesRemittanceResult | null = initialRemittance || null;
+      let matchedDocs: SayanSalesRemittanceResult[] =
+        Array.isArray(initialRemittances) && initialRemittances.length > 0
+          ? initialRemittances
+          : (matchedRemittance ? [matchedRemittance] : []);
+
+      const personCode = permit.sayanPersonCode
+        ? String(permit.sayanPersonCode).trim()
+        : (permit.destinations?.[0]?.sayanPersonCode ? String(permit.destinations[0].sayanPersonCode).trim() : '');
+      const tafsiliCode = permit.sayanTafsiliCode
+        ? String(permit.sayanTafsiliCode).trim()
+        : (permit.destinations?.[0]?.sayanTafsiliCode ? String(permit.destinations[0].sayanTafsiliCode).trim() : '');
+      const recipientName = permit.recipientName || permit.destinations?.[0]?.recipientName || '';
+
+      const buildDocData = (rem: SayanSalesRemittanceResult | null): SayanRemittanceData => {
+        const useItems = finalizedItems && finalizedItems.length > 0
+          ? finalizedItems
+          : (rem?.items && rem.items.length > 0 ? rem.items : []);
+        return {
+          companyTitle: permit.company || 'شرکت لپان بافت',
+          remittanceNumber: rem?.remittanceNumber || permit.sayanRemittanceNumber || permit.permitNumber || '---',
+          subCode: rem?.subCode || permit.sayanSubCode || '---',
+          archiveCode: rem?.archiveCode || permit.sayanArchiveCode || '---',
+          shamsiDate: rem?.shamsiDate || permit.date || '---',
+          recipientName: rem?.personFullName || recipientName || '---',
+          recipientCode: rem?.personCode || personCode,
+          tafsiliCode: tafsiliCode,
+          recipientAddress: rem?.personAddress || permit.destinationAddress || permit.destinations?.[0]?.address,
+          recipientPhone: rem?.personPhone || permit.driverPhone || permit.destinations?.[0]?.phone,
+          items: useItems.map((it: any, idx: number) => {
+            const remItem = rem?.items?.[idx];
+            return {
+              rowNo: idx + 1,
+              goodsName: it.goodsName || remItem?.goodsName || '---',
+              netQty: Number(it.deliveredWeight || it.netQty || it.weight || 0),
+              grossQty: Number(it.grossWeight || it.grossQty || it.deliveredWeight || it.netQty || 0),
+              cartonCount: Number(it.deliveredCartonCount || it.cartonCount || 0),
+              bobbinCount: Number(it.bobbinCount || remItem?.bobbinCount || 0),
+              grade: it.grade || remItem?.grade || 'AA',
+              twistDirection: it.twistDirection || remItem?.twistDirection || 'Z',
+              description: it.description || remItem?.description || ''
+            };
+          }),
+          notes: permit.description || '',
+          creatorName: permit.requester || 'مسئول فروش',
+          warehouseKeeperName: approverWarehouse || permit.approverWarehouse || 'سرپرست انبار',
+          managerName: permit.approverFactory || 'مدیریت کارخانه',
+          securityGuardName: permit.approverSecurity || 'انتظامات'
+        };
+      };
+
+      const applySyncedPermitToClient = (syncedPermit: ExitPermit) => {
+        try {
+          const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+          if (Array.isArray(cached)) {
+            const updatedList = cached.map(p => p.id === syncedPermit.id ? { ...p, ...syncedPermit } : p);
+            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updatedList));
+          }
+        } catch {}
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
+            detail: {
+              permitId: syncedPermit.id,
+              targetStatus: syncedPermit.status,
+              updates: syncedPermit
+            }
+          }));
+        }
+      };
+
+      // Case A: Remittance was already detected/attached before confirmation -> capture & save immediately
+      if (matchedRemittance) {
+        const docData = buildDocData(matchedRemittance);
+        const dataUrl = await renderAndCaptureRemittanceOffscreen(docData);
+        const syncRes = await syncExitPermitWithSayan(permit.id, {
+          approverWarehouse,
+          advanceToSecurity: false,
+          customItems: finalizedItems,
+          remittanceData: matchedRemittance,
+          remittanceDocs: matchedDocs,
+          attachmentDataUrl: dataUrl || undefined
+        });
+        if (syncRes?.success && syncRes.permit) {
+          applySyncedPermitToClient(syncRes.permit);
+        }
+        return;
+      }
+
+      // Case B: Remittance was NOT detected yet (or was taking too long so user entered counts & confirmed).
+      // Try fast lookup with background retries (0ms, 4000ms, 10000ms).
+      const retryDelays = [0, 4000, 10000];
+      for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+        if (retryDelays[attempt] > 0) {
+          await new Promise(r => setTimeout(r, retryDelays[attempt]));
+        }
+
+        const lookupRes = await lookupSayanSalesRemittancesFast({
+          personCode,
+          tafsiliCode,
+          recipientName,
+          permitDate: permit.date,
+          docType: 'all_exit',
+          limit: 5
+        });
+
+        if (lookupRes.success && lookupRes.remittance) {
+          matchedRemittance = lookupRes.remittance;
+          matchedDocs = [matchedRemittance];
+          break;
+        }
+
+        // On first attempt failure, still attach the warehouse-confirmed remittance doc immediately
+        // so the permit has a document right away, while continuing background retries for Sayan match.
+        if (attempt === 0) {
+          const fallbackDocData = buildDocData(null);
+          const fallbackDataUrl = await renderAndCaptureRemittanceOffscreen(fallbackDocData);
+          if (fallbackDataUrl) {
+            const initSync = await syncExitPermitWithSayan(permit.id, {
+              approverWarehouse,
+              advanceToSecurity: false,
+              customItems: finalizedItems,
+              attachmentDataUrl: fallbackDataUrl
+            });
+            if (initSync?.success && initSync.permit) {
+              applySyncedPermitToClient(initSync.permit);
+            }
+          }
+        }
+      }
+
+      // If Sayan remittance was found during background lookup/retry, attach official Sayan remittance & notify
+      if (matchedRemittance) {
+        const docData = buildDocData(matchedRemittance);
+        const dataUrl = await renderAndCaptureRemittanceOffscreen(docData);
+        const syncRes = await syncExitPermitWithSayan(permit.id, {
+          approverWarehouse,
+          advanceToSecurity: false,
+          customItems: finalizedItems,
+          remittanceData: matchedRemittance,
+          remittanceDocs: matchedDocs,
+          attachmentDataUrl: dataUrl || undefined
+        });
+        if (syncRes?.success && syncRes.permit) {
+          applySyncedPermitToClient(syncRes.permit);
+          toast.success(`حواله سایان شماره ${matchedRemittance.remittanceNumber} در پس‌زمینه شناسایی و به مجوز #${permit.permitNumber} پیوست شد.`);
+        }
+      }
+    } catch (err) {
+      console.warn('backgroundAutoDetectAndAttachRemittance warning:', err);
+    }
+  }, 50);
+};
+

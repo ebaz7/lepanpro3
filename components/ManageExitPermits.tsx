@@ -18,6 +18,7 @@ import useIsMobile from '../hooks/useIsMobile';
 
 import { isInFinancialYear } from '../utils/dateUtils';
 import { syncDriversFromRecords } from '../services/driverMemoryService';
+import { backgroundAutoDetectAndAttachRemittance } from '../services/sayanExitService';
 
 const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings, statusFilter?: any, financialYear?: string, mode?: 'INVOICE' | 'EXIT' }> = ({ currentUser, settings, statusFilter, financialYear, mode = 'EXIT' }) => {
     const isMobile = useIsMobile();
@@ -56,8 +57,9 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         const handleOptimisticApply = (e: any) => {
             const { permitId, targetStatus, extra, updates } = e.detail || {};
             const extraData = updates || extra || {};
-            if (permitId && targetStatus) {
-                setPermits(prev => prev.map(p => p.id === permitId ? { ...p, status: targetStatus, ...extraData } : p));
+            if (permitId) {
+                setPermits(prev => prev.map(p => p.id === permitId ? { ...p, ...(targetStatus ? { status: targetStatus } : {}), ...extraData } : p));
+                setViewPermit(prev => prev && prev.id === permitId ? { ...prev, ...(targetStatus ? { status: targetStatus } : {}), ...extraData } : prev);
             }
         };
 
@@ -495,7 +497,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         // 1. Optimistic instant state update
         setPermits(prev => prev.map(p => p.id === currentPermit.id ? { ...p, ...updated } : p));
 
-        // 2. Persistent queue
+        // 2. Persistent queue (advances status to PENDING_SECURITY)
         exitPermitQueueService.enqueueApproval({
             permitId: currentPermit.id,
             permitNumber: currentPermit.permitNumber,
@@ -506,6 +508,16 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             permitSnapshot: updated,
             settings: settings
         });
+
+        // 3. Background Sayan remittance detection, offscreen official doc capture, and attachment sync
+        backgroundAutoDetectAndAttachRemittance({
+            permit: updated,
+            finalItems,
+            initialRemittance: sayanRemittanceData || null,
+            initialRemittances: sayanRemittanceDocs || (sayanRemittanceData ? [sayanRemittanceData] : []),
+            initialAttachmentDataUrl: attachmentDataUrl,
+            companyName: settings?.companyNotifications?.exitPermitCompany || currentPermit.company,
+        }).catch(err => console.warn('[ManageExitPermits] Background remittance attach error:', err));
     };
 
     const handleDelete = async (id: string) => {
@@ -951,6 +963,7 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             {warehouseFinalize && (
                 <WarehouseFinalizeModal 
                     permit={warehouseFinalize} 
+                    settings={settings}
                     onClose={() => setWarehouseFinalize(null)} 
                     onConfirm={handleWarehouseSubmit} 
                 />

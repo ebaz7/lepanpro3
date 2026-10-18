@@ -1045,10 +1045,11 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       const daysInPrev = jalaali.jalaaliMonthLength(prevY, prevM);
       toStr = `${prevY}/${pad(prevM)}/${pad(daysInPrev)}`;
     } else if (presetKey === 'this_year') {
-      fromStr = `${jNow.jy}/01/01`;
-      toStr = `${jNow.jy}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      const activeY = targetYear || jNow.jy;
+      fromStr = `${activeY}/01/01`;
+      toStr = jNow.jy > activeY ? `${activeY}/12/29` : `${activeY}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'last_year') {
-      const prevY = jNow.jy - 1;
+      const prevY = (targetYear || jNow.jy) - 1;
       fromStr = `${prevY}/01/01`;
       toStr = `${prevY}/12/29`;
     }
@@ -2361,8 +2362,20 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
               <tbody className="divide-y divide-slate-100">
                 {processedMetrics.categoryList.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-12 text-slate-400">
-                      {isLoading ? 'در حال دریافت اطلاعات از سرور سایان ERP...' : 'هیچ رکوردی در این بازه یافت نشد'}
+                    <td colSpan={10} className="text-center py-16 text-slate-400">
+                      {isLoading ? (
+                        <div className="flex flex-col items-center justify-center gap-3">
+                          <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+                          <span className="font-extrabold text-slate-700 text-sm">در حال دریافت و تحلیل هوشمند اطلاعات فروش سایان ERP...</span>
+                          <span className="text-xs text-slate-400 font-mono">اطلاعات در حال واکشی و بارگذاری لحظه‌ای است</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center gap-2.5">
+                          <AlertCircle className="w-8 h-8 text-amber-500" />
+                          <span className="font-extrabold text-slate-700 text-sm">هیچ رکوردی در بازه انتخابی یافت نشد</span>
+                          <span className="text-xs text-slate-400">می‌توانید با استفاده از دکمه‌های بازه در بالا، تاریخ دیگری را بررسی نمایید.</span>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -2447,7 +2460,19 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           <div className="block md:hidden divide-y divide-slate-100 bg-white p-3.5 space-y-4">
             {processedMetrics.categoryList.length === 0 ? (
               <div className="text-center py-12 text-slate-400 font-medium">
-                {isLoading ? 'در حال دریافت اطلاعات از سرور سایان ERP...' : 'هیچ رکوردی در این بازه یافت نشد'}
+                {isLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-2.5 py-4">
+                    <RefreshCw className="w-7 h-7 text-blue-500 animate-spin" />
+                    <span className="font-bold text-slate-700 text-sm">در حال دریافت اطلاعات فروش سایان ERP...</span>
+                    <span className="text-[11px] text-slate-400">لطفاً چند لحظه شکیبا باشید</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 py-4">
+                    <AlertCircle className="w-7 h-7 text-amber-500" />
+                    <span className="font-bold text-slate-700 text-sm">هیچ رکوردی در این بازه یافت نشد</span>
+                    <span className="text-[11px] text-slate-400">می‌توانید با دکمه‌های بازه در بالا تاریخ دیگری را انتخاب کنید.</span>
+                  </div>
+                )}
               </div>
             ) : (
               processedMetrics.categoryList.map((cat, idx) => {

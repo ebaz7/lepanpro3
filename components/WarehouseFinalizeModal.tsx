@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ExitPermit, ExitPermitItem, SystemSettings } from '../types';
-import { Save, X, Package, Calculator, Plus, Trash2, RefreshCw, CheckCircle2, FileText, ArrowDownToLine, Eye, AlertCircle, Filter, Search } from 'lucide-react';
+import { Save, X, Package, Calculator, Plus, Trash2, RefreshCw, CheckCircle2, FileText, ArrowDownToLine, Eye, AlertCircle, Filter, Search, Copy } from 'lucide-react';
 import { generateUUID } from '../constants';
-import { lookupSayanSalesRemittance, fetchSayanSalesRemittances, SayanSalesRemittanceResult, captureElementToDataUrl } from '../services/sayanExitService';
+import { lookupSayanSalesRemittancesFast, fetchSayanSalesRemittances, SayanSalesRemittanceResult, mergeSayanRemittances } from '../services/sayanExitService';
 import SayanSalesRemittanceDoc, { SayanRemittanceData } from './SayanSalesRemittanceDoc';
 import { getSettings } from '../services/storageService';
-import { apiCall } from '../services/apiService';
 import * as jalaali from 'jalaali-js';
 
 interface Props {
   permit: ExitPermit;
+  settings?: SystemSettings | null;
   onClose: () => void;
   onConfirm: (updatedItems: ExitPermitItem[], sayanRemittanceData?: SayanSalesRemittanceResult | null, attachmentDataUrl?: string, sayanRemittanceDocs?: SayanSalesRemittanceResult[]) => void;
 }
 
-const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm }) => {
+const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSettings, onClose, onConfirm }) => {
   const [items, setItems] = useState<ExitPermitItem[]>(
     permit.items && permit.items.length > 0 
       ? permit.items.map(i => ({
@@ -26,7 +26,10 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
       : [{ id: generateUUID(), goodsName: permit.goodsName || '', cartonCount: permit.cartonCount || 0, weight: permit.weight || 0, deliveredCartonCount: 0, deliveredWeight: 0 }]
   );
 
-  const [settings, setSettings] = useState<SystemSettings | null>(null);
+  // Track if user manually edited counts/weights so background auto-detection never wipes out typed values
+  const userEditedItemsRef = useRef(false);
+
+  const [settings, setSettings] = useState<SystemSettings | null>(initialSettings || null);
   const [loadingSayan, setLoadingSayan] = useState(false);
   
   // Manage multiple attached remittances
@@ -93,71 +96,29 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
   const [showDocPreview, setShowDocPreview] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Helper to merge multiple Sayan sales remittances
-  const getMergedRemittance = (remittances: SayanSalesRemittanceResult[]): SayanSalesRemittanceResult | null => {
-    if (!remittances || remittances.length === 0) return null;
-    if (remittances.length === 1) return remittances[0];
-
-    const mergedItems: any[] = [];
-    let totalNetWeight = 0;
-    let totalGrossWeight = 0;
-    let totalCartons = 0;
-    let totalBobbins = 0;
-
-    remittances.forEach(rem => {
-      if (Array.isArray(rem.items)) {
-        rem.items.forEach(it => {
-          mergedItems.push({
-            ...it,
-            goodsName: `${it.goodsName} (حواله ${rem.remittanceNumber})`
-          });
-        });
-      }
-      totalNetWeight += Number(rem.totalNetWeight || 0);
-      totalGrossWeight += Number(rem.totalGrossWeight || 0);
-      totalCartons += Number(rem.totalCartons || 0);
-      totalBobbins += Number(rem.totalBobbins || 0);
-    });
-
-    return {
-      archiveCode: remittances.map(r => r.archiveCode).filter(Boolean).join('، '),
-      remittanceNumber: remittances.map(r => r.remittanceNumber).filter(Boolean).join('، '),
-      subCode: remittances.map(r => r.subCode).filter(Boolean).join('، '),
-      docDate: remittances[0].docDate,
-      shamsiDate: remittances.map(r => r.shamsiDate).filter(Boolean).join('، '),
-      personCode: remittances[0].personCode,
-      personFullName: remittances[0].personFullName,
-      personAddress: remittances[0].personAddress,
-      personPhone: remittances[0].personPhone,
-      items: mergedItems,
-      totalNetWeight: Number(totalNetWeight.toFixed(3)),
-      totalGrossWeight: Number(totalGrossWeight.toFixed(3)),
-      totalCartons,
-      totalBobbins
-    };
-  };
-
-  const sayanRemittance = getMergedRemittance(attachedRemittances);
+  const sayanRemittance = mergeSayanRemittances(attachedRemittances);
 
   useEffect(() => {
-    getSettings().then(st => {
-      setSettings(st);
-      if (st.sayanOnlineExitPermitsEnabled) {
-        fetchSayanRemittance();
-      }
-    }).catch(console.error);
+    // Start fast auto-detection immediately on mount without waiting for settings round-trip
+    if (!initialSettings || initialSettings.sayanOnlineExitPermitsEnabled !== false) {
+      fetchSayanRemittance(false);
+    }
+    if (!initialSettings) {
+      getSettings().then(st => {
+        setSettings(st);
+      }).catch(console.error);
+    }
   }, []);
 
   const fetchSayanRemittance = async (forceOverwrite = false) => {
     setLoadingSayan(true);
     setSayanError(null);
     try {
-      // Helper function to clean up recipient name from driver info, parenthesis, plates etc.
       const cleanRecipientName = (name: string) => {
         if (!name) return '';
         return name
-          .replace(/\(.*?\)/g, '') // Remove parenthesis and contents
-          .replace(/راننده\s*:.*/g, '') // Remove driver prefix
+          .replace(/\(.*?\)/g, '')
+          .replace(/راننده\s*:.*/g, '')
           .replace(/کامیون\s*:.*/g, '')
           .replace(/پلاک\s*:.*/g, '')
           .replace(/شماره\s*:.*/g, '')
@@ -165,58 +126,38 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
           .trim();
       };
 
-      const personCode = permit.sayanPersonCode ? String(permit.sayanPersonCode).trim() : (permit.destinations?.[0]?.sayanPersonCode ? String(permit.destinations?.[0]?.sayanPersonCode).trim() : '');
-      const hasPersonCode = personCode && personCode !== '0' && personCode !== '---' && personCode !== 'null' && personCode !== 'undefined';
-      
+      const personCode = permit.sayanPersonCode
+        ? String(permit.sayanPersonCode).trim()
+        : (permit.destinations?.[0]?.sayanPersonCode ? String(permit.destinations[0].sayanPersonCode).trim() : '');
+      const tafsiliCode = permit.sayanTafsiliCode
+        ? String(permit.sayanTafsiliCode).trim()
+        : (permit.destinations?.[0]?.sayanTafsiliCode ? String(permit.destinations[0].sayanTafsiliCode).trim() : '');
       const recipientName = permit.recipientName || permit.destinations?.[0]?.recipientName || '';
       const cleanName = cleanRecipientName(recipientName);
 
-      // Set search query field to the clean customer name (or person code as fallback) so manual searches are easy
-      setSearchQuery(cleanName || personCode);
+      setSearchQuery(cleanName || personCode || tafsiliCode);
 
-      let response = null;
+      // Single fast priority-ranked lookup call (<150ms on server)
+      const fastRes = await lookupSayanSalesRemittancesFast({
+        personCode,
+        tafsiliCode,
+        recipientName: cleanName || recipientName,
+        permitDate: permit.date,
+        docType: 'all_exit',
+        limit: 12
+      });
 
-      // 1. First priority: Query by specific Person Code if available in Sayan
-      if (hasPersonCode) {
-        response = await fetchSayanSalesRemittances({
-          dateFrom: '',
-          dateTo: '',
-          personCode,
-          docType: 'all_exit'
-        });
-      }
-
-      // 2. Second priority / Fallback: Query by clean recipient/customer name if no personCode or no match found
-      if ((!response || !response.success || !response.remittances || response.remittances.length === 0) && cleanName) {
-        response = await fetchSayanSalesRemittances({
-          dateFrom: '',
-          dateTo: '',
-          search: cleanName,
-          docType: 'all_exit'
-        });
-      }
-
-      // 3. Last resort fallback: Query by raw customer name
-      if ((!response || !response.success || !response.remittances || response.remittances.length === 0) && recipientName && recipientName !== cleanName) {
-        response = await fetchSayanSalesRemittances({
-          dateFrom: '',
-          dateTo: '',
-          search: recipientName,
-          docType: 'all_exit'
-        });
-      }
-
-      if (response && response.success && response.remittances && response.remittances.length > 0) {
-        const list = response.remittances;
+      if (fastRes.success && fastRes.remittances.length > 0) {
+        const list = fastRes.remittances;
         setSearchResults(list);
         setHasSearched(true);
 
         if (forceOverwrite || attachedRemittances.length === 0) {
-          // Select the latest recorded one (list[0] is guaranteed to be the latest because the server sorts by DocDate DESC)
-          const latestRemittance = list[0];
+          const latestRemittance = fastRes.remittance || list[0];
           setAttachedRemittances([latestRemittance]);
 
-          if (latestRemittance.items && latestRemittance.items.length > 0) {
+          // Only auto-populate items if user hasn't already started typing manually (or if user clicked manual refresh)
+          if ((forceOverwrite || !userEditedItemsRef.current) && latestRemittance.items && latestRemittance.items.length > 0) {
             const newItems: ExitPermitItem[] = latestRemittance.items.map((it, idx) => ({
               id: generateUUID(),
               goodsName: it.goodsName || `کالا ${idx + 1}`,
@@ -235,10 +176,10 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
           }
         }
       } else {
-        setSayanError('سیستم موفق به یافتن خودکار حواله فروش/خروج مرتبط با این مشتری بر اساس نام یا کد شخص در سایان نشد. لطفاً از کادر جستجوی زیر استفاده کنید.');
+        setSayanError('حواله منطبق در استعلام اولیه یافت نشد؛ می‌توانید تعداد و وزن را وارد و تایید کنید تا سیستم در پس‌زمینه حواله را متصل نماید، یا به صورت دستی جستجو کنید.');
       }
     } catch (e: any) {
-      setSayanError(e.message || 'خطا در ارتباط با سایان');
+      setSayanError('استعلام اولیه زمان‌بر شد؛ می‌توانید مقادیر را وارد و تایید کنید تا الصاق حواله در پس‌زمینه انجام شود.');
     } finally {
       setLoadingSayan(false);
     }
@@ -306,20 +247,32 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
   };
 
   const handleUpdateItem = (index: number, field: keyof ExitPermitItem, value: string | number) => {
+    userEditedItemsRef.current = true;
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
   };
 
   const handleAddItem = () => {
+    userEditedItemsRef.current = true;
     setItems([...items, { id: generateUUID(), goodsName: '', cartonCount: 0, weight: 0, deliveredCartonCount: 0, deliveredWeight: 0 }]);
   };
 
   const handleRemoveItem = (index: number) => {
     if (items.length === 1) return alert("حداقل یک ردیف کالا باید وجود داشته باشد.");
+    userEditedItemsRef.current = true;
     const newItems = [...items];
     newItems.splice(index, 1);
     setItems(newItems);
+  };
+
+  const copyRequestedToDelivered = () => {
+    userEditedItemsRef.current = true;
+    setItems(prev => prev.map(i => ({
+      ...i,
+      deliveredCartonCount: Number(i.deliveredCartonCount) > 0 ? i.deliveredCartonCount : (Number(i.cartonCount) || 1),
+      deliveredWeight: Number(i.deliveredWeight) > 0 ? i.deliveredWeight : (Number(i.weight) || 0)
+    })));
   };
 
   const totalRequestedCount = items.reduce((sum, i) => sum + (Number(i.cartonCount) || 0), 0);
@@ -338,35 +291,15 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
 
     const finalizedItems = items.map(i => ({
       ...i,
-      cartonCount: Number(i.cartonCount), 
-      weight: Number(i.weight),
+      cartonCount: Number(i.cartonCount) || Number(i.deliveredCartonCount), 
+      weight: Number(i.weight) || Number(i.deliveredWeight),
       deliveredCartonCount: Number(i.deliveredCartonCount),
       deliveredWeight: Number(i.deliveredWeight)
     }));
 
-    // ⚡ INSTANT CONFIRMATION & MODAL CLOSE (0ms delay)
+    // ⚡ INSTANT CONFIRMATION & MODAL CLOSE (0ms delay).
+    // Background auto-detection, offscreen rendering & attachment is handled by ManageExitPermits via backgroundAutoDetectAndAttachRemittance!
     onConfirm(finalizedItems, sayanRemittance, undefined, attachedRemittances);
-
-    // 🚀 BACKGROUND NON-BLOCKING REMITTANCE CAPTURE & ATTACHMENT
-    if (settings?.sayanOnlineExitPermitsEnabled || sayanRemittance) {
-      const permitId = permit.id;
-      const remNum = sayanRemittance?.remittanceNumber || permit.permitNumber;
-      setTimeout(async () => {
-        try {
-          const elId = 'hidden-sayan-remittance-capture';
-          const bgDataUrl = await captureElementToDataUrl(elId);
-          if (bgDataUrl) {
-            const docName = `حواله_فروش_سایان_${remNum}.png`;
-            const bgAttachment = { fileName: docName, data: bgDataUrl };
-            await apiCall(`/exit-permits/${permitId}`, 'PUT', {
-              attachments: [...(permit.attachments || []), bgAttachment]
-            }).catch(() => {});
-          }
-        } catch (err) {
-          console.warn('Background Sayan remittance capture warning:', err);
-        }
-      }, 100);
-    }
   };
 
   // Prepare data for Sayan Document Rendering
@@ -669,6 +602,22 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
             </div>
           )}
 
+          {/* Quick Fill Helper Bar */}
+          <div className="flex items-center justify-between flex-wrap gap-2 bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/40 px-3.5 py-2 rounded-xl">
+            <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+              💡 می‌توانید تعداد کارتن و وزن خروجی را مستقیماً وارد و بلافاصله تایید کنید (تشخیص و الصاق حواله در پس‌زمینه انجام می‌شود).
+            </span>
+            {(totalRequestedCount > 0 || totalRequestedWeight > 0) && (
+              <button
+                type="button"
+                onClick={copyRequestedToDelivered}
+                className="text-xs bg-white dark:bg-zinc-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 hover:bg-emerald-100 transition-colors shadow-2xs"
+              >
+                <Copy size={13} /> کپی مقادیر درخواستی به خروجی
+              </button>
+            )}
+          </div>
+
           {/* Table */}
           {/* Desktop Table */}
           <div className="hidden md:block glass-panel rounded-xl border border-gray-200/50 dark:border-white/10 shadow-sm overflow-x-auto w-full max-w-full" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -828,9 +777,13 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, onClose, onConfirm })
         {/* Footer */}
         <div className="p-4 border-t glass-panel flex justify-between items-center flex-wrap gap-2">
           <div className="text-xs text-gray-500 font-medium">
-            {settings?.sayanOnlineExitPermitsEnabled && (
+            {sayanRemittance ? (
               <span className="text-emerald-700 flex items-center gap-1 font-bold">
-                <CheckCircle2 size={14} /> سند حواله فروش رسمی به صورت خودکار به برگه پیوست خواهد شد.
+                <CheckCircle2 size={14} /> حواله فروش شماره {sayanRemittance.remittanceNumber} آماده پیوست خودکار در پس‌زمینه است.
+              </span>
+            ) : (
+              <span className="text-indigo-700 flex items-center gap-1 font-bold">
+                <RefreshCw size={14} className={loadingSayan ? "animate-spin" : ""} /> پس از تایید، تشخیص و پیوست حواله سایان به صورت خودکار در پس‌زمینه انجام می‌شود.
               </span>
             )}
           </div>
