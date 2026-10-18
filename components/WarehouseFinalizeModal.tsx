@@ -20,10 +20,21 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
     permit.items && permit.items.length > 0 
       ? permit.items.map(i => ({
           ...i,
-          deliveredCartonCount: i.deliveredCartonCount !== undefined && i.deliveredCartonCount !== null ? i.deliveredCartonCount : 0,
-          deliveredWeight: i.deliveredWeight !== undefined && i.deliveredWeight !== null ? i.deliveredWeight : 0
+          deliveredCartonCount: i.deliveredCartonCount !== undefined && i.deliveredCartonCount !== null && Number(i.deliveredCartonCount) > 0
+            ? Number(i.deliveredCartonCount)
+            : (Number(i.cartonCount) > 0 ? Number(i.cartonCount) : 0),
+          deliveredWeight: i.deliveredWeight !== undefined && i.deliveredWeight !== null && Number(i.deliveredWeight) > 0
+            ? Number(i.deliveredWeight)
+            : (Number(i.weight) > 0 ? Number(i.weight) : 0)
         })) 
-      : [{ id: generateUUID(), goodsName: permit.goodsName || '', cartonCount: permit.cartonCount || 0, weight: permit.weight || 0, deliveredCartonCount: 0, deliveredWeight: 0 }]
+      : [{
+          id: generateUUID(),
+          goodsName: permit.goodsName || '',
+          cartonCount: permit.cartonCount || 0,
+          weight: permit.weight || 0,
+          deliveredCartonCount: Number(permit.cartonCount) > 0 ? Number(permit.cartonCount) : 0,
+          deliveredWeight: Number(permit.weight) > 0 ? Number(permit.weight) : 0
+        }]
   );
 
   // Track if user manually edited counts/weights so background auto-detection never wipes out typed values
@@ -113,6 +124,16 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
   const fetchSayanRemittance = async (forceOverwrite = false) => {
     setLoadingSayan(true);
     setSayanError(null);
+
+    // Non-blocking 2.2s UI timer: if Sayan ERP takes longer than 2.2s, stop spinner and inform user they can enter & confirm immediately
+    let settled = false;
+    const uiGuardTimer = setTimeout(() => {
+      if (!settled) {
+        setLoadingSayan(false);
+        setSayanError('استعلام حواله در پس‌زمینه ادامه دارد؛ می‌توانید بدون معطلی تعداد کارتن و وزن را وارد و تایید کنید تا حواله به صورت خودکار پیوست شود.');
+      }
+    }, 2200);
+
     try {
       const cleanRecipientName = (name: string) => {
         if (!name) return '';
@@ -143,14 +164,19 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
         tafsiliCode,
         recipientName: cleanName || recipientName,
         permitDate: permit.date,
+        itemNames: items.map(i => i.goodsName).filter(Boolean),
         docType: 'all_exit',
         limit: 12
       });
+
+      settled = true;
+      clearTimeout(uiGuardTimer);
 
       if (fastRes.success && fastRes.remittances.length > 0) {
         const list = fastRes.remittances;
         setSearchResults(list);
         setHasSearched(true);
+        setSayanError(null);
 
         if (forceOverwrite || attachedRemittances.length === 0) {
           const latestRemittance = fastRes.remittance || list[0];
@@ -161,9 +187,9 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
             const newItems: ExitPermitItem[] = latestRemittance.items.map((it, idx) => ({
               id: generateUUID(),
               goodsName: it.goodsName || `کالا ${idx + 1}`,
-              cartonCount: it.cartonCount || 0,
+              cartonCount: it.cartonCount || 1,
               weight: it.netQty || 0,
-              deliveredCartonCount: it.cartonCount || 0,
+              deliveredCartonCount: it.cartonCount || 1,
               deliveredWeight: it.netQty || 0,
               grossWeight: it.grossQty || it.netQty || 0,
               bobbinCount: it.bobbinCount || 0,
@@ -179,8 +205,12 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
         setSayanError('حواله منطبق در استعلام اولیه یافت نشد؛ می‌توانید تعداد و وزن را وارد و تایید کنید تا سیستم در پس‌زمینه حواله را متصل نماید، یا به صورت دستی جستجو کنید.');
       }
     } catch (e: any) {
+      settled = true;
+      clearTimeout(uiGuardTimer);
       setSayanError('استعلام اولیه زمان‌بر شد؛ می‌توانید مقادیر را وارد و تایید کنید تا الصاق حواله در پس‌زمینه انجام شود.');
     } finally {
+      settled = true;
+      clearTimeout(uiGuardTimer);
       setLoadingSayan(false);
     }
   };
@@ -216,7 +246,30 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
       setSearchError(`حواله شماره ${rem.remittanceNumber} قبلاً الحاق شده است`);
       return;
     }
-    setAttachedRemittances([...attachedRemittances, rem]);
+    const next = [...attachedRemittances, rem];
+    setAttachedRemittances(next);
+    setSayanError(null);
+
+    // Automatically populate items table if user hasn't manually typed custom weights yet
+    const merged = mergeSayanRemittances(next);
+    const hasNoManualWeights = !userEditedItemsRef.current || items.every(i => !i.deliveredWeight || Number(i.deliveredWeight) <= 0);
+    if (hasNoManualWeights && merged && merged.items && merged.items.length > 0) {
+      const newItems: ExitPermitItem[] = merged.items.map((it, idx) => ({
+        id: generateUUID(),
+        goodsName: it.goodsName || `کالا ${idx + 1}`,
+        cartonCount: it.cartonCount || 1,
+        weight: it.netQty || 0,
+        deliveredCartonCount: it.cartonCount || 1,
+        deliveredWeight: it.netQty || 0,
+        grossWeight: it.grossQty || it.netQty || 0,
+        bobbinCount: it.bobbinCount || 0,
+        grade: it.grade || 'AA',
+        twistDirection: it.twistDirection || 'Z',
+        itemCode: it.itemCode || '',
+        description: it.description || ''
+      }));
+      setItems(newItems);
+    }
   };
 
   const handleDetachRemittance = (index: number) => {
@@ -231,9 +284,9 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
     const newItems: ExitPermitItem[] = sayanRemittance.items.map((it, idx) => ({
       id: generateUUID(),
       goodsName: it.goodsName || `کالا ${idx + 1}`,
-      cartonCount: it.cartonCount || 0,
+      cartonCount: it.cartonCount || 1,
       weight: it.netQty || 0,
-      deliveredCartonCount: it.cartonCount || 0,
+      deliveredCartonCount: it.cartonCount || 1,
       deliveredWeight: it.netQty || 0,
       grossWeight: it.grossQty || it.netQty || 0,
       bobbinCount: it.bobbinCount || 0,
@@ -281,21 +334,52 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
   const totalDeliveredWeight = items.reduce((sum, i) => sum + (Number(i.deliveredWeight) || 0), 0);
 
   const handleSave = () => {
-    if (items.some(i => !i.goodsName)) return alert("نام کالا نمی‌تواند خالی باشد.");
-    if (items.some(i => i.deliveredCartonCount === undefined || i.deliveredCartonCount === null || i.deliveredCartonCount <= 0)) {
-      return alert("وارد کردن تعداد کارتن خروجی معتبر برای تمامی ردیف‌ها الزامی است.");
+    // If Sayan remittance is attached and user didn't manually enter weights yet, auto-apply remittance items
+    let effectiveItems = items;
+    if (
+      sayanRemittance &&
+      Array.isArray(sayanRemittance.items) &&
+      sayanRemittance.items.length > 0 &&
+      items.every(i => !i.deliveredWeight || Number(i.deliveredWeight) <= 0)
+    ) {
+      effectiveItems = sayanRemittance.items.map((it, idx) => ({
+        id: generateUUID(),
+        goodsName: it.goodsName || `کالا ${idx + 1}`,
+        cartonCount: it.cartonCount || 1,
+        weight: it.netQty || 0,
+        deliveredCartonCount: it.cartonCount || 1,
+        deliveredWeight: it.netQty || 0,
+        grossWeight: it.grossQty || it.netQty || 0,
+        bobbinCount: it.bobbinCount || 0,
+        grade: it.grade || 'AA',
+        twistDirection: it.twistDirection || 'Z',
+        itemCode: it.itemCode || '',
+        description: it.description || ''
+      }));
     }
-    if (items.some(i => !i.deliveredWeight || i.deliveredWeight <= 0)) return alert("وارد کردن وزن خروجی برای تمامی ردیف‌ها الزامی است.");
+
+    if (effectiveItems.some(i => !i.goodsName || !String(i.goodsName).trim())) {
+      return alert("نام کالا نمی‌تواند خالی باشد.");
+    }
+    if (effectiveItems.some(i => (!i.deliveredWeight || Number(i.deliveredWeight) <= 0) && (!i.weight || Number(i.weight) <= 0))) {
+      return alert("لطفاً وزن خروجی کالا را وارد نمایید.");
+    }
 
     setIsSubmitting(true);
 
-    const finalizedItems = items.map(i => ({
-      ...i,
-      cartonCount: Number(i.cartonCount) || Number(i.deliveredCartonCount), 
-      weight: Number(i.weight) || Number(i.deliveredWeight),
-      deliveredCartonCount: Number(i.deliveredCartonCount),
-      deliveredWeight: Number(i.deliveredWeight)
-    }));
+    const finalizedItems = effectiveItems.map(i => {
+      const delivWeight = Number(i.deliveredWeight) > 0 ? Number(i.deliveredWeight) : Number(i.weight) || 0;
+      const delivCarton = Number(i.deliveredCartonCount) > 0
+        ? Number(i.deliveredCartonCount)
+        : (Number(i.cartonCount) > 0 ? Number(i.cartonCount) : 1);
+      return {
+        ...i,
+        cartonCount: Number(i.cartonCount) || delivCarton,
+        weight: Number(i.weight) || delivWeight,
+        deliveredCartonCount: delivCarton,
+        deliveredWeight: delivWeight
+      };
+    });
 
     // ⚡ INSTANT CONFIRMATION & MODAL CLOSE (0ms delay).
     // Background auto-detection, offscreen rendering & attachment is handled by ManageExitPermits via backgroundAutoDetectAndAttachRemittance!
@@ -819,11 +903,6 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
           </div>
         </div>
       )}
-
-      {/* Hidden Offscreen Element for Automatic Capture on Save */}
-      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '820px' }}>
-        <SayanSalesRemittanceDoc id="hidden-sayan-remittance-capture" data={sayanDocData} showStamps={true} />
-      </div>
     </div>
   );
 

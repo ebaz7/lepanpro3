@@ -138,6 +138,14 @@ if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
 app.disable('x-powered-by');
 app.use(cors()); 
 
+// --- URL NORMALIZATION FOR REVERSE PROXIES & ACCIDENTAL DOUBLE PREFIXES ---
+app.use((req, res, next) => {
+    if (req.url && req.url.startsWith('/api/api/')) {
+        req.url = req.url.replace(/^\/api\/api\//, '/api/');
+    }
+    next();
+});
+
 // --- ENTERPRISE SECURITY HEADERS ---
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -350,7 +358,7 @@ app.post('/api/share-target', upload.single('files'), (req, res) => {
 });
 
 // Direct Multipart File Upload Endpoint for high-speed mobile & desktop uploads (supports categories)
-app.post('/api/upload-file', upload.single('file'), (req, res) => {
+app.post(['/api/upload-file', '/upload-file'], upload.single('file'), (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ success: false, error: 'هیچ فایلی برای بارگذاری ارسال نشده است.' });
@@ -373,7 +381,7 @@ app.post('/api/upload-file', upload.single('file'), (req, res) => {
 });
 
 // Safe File Delete Endpoint
-app.post('/api/delete-file', (req, res) => {
+app.post(['/api/delete-file', '/delete-file'], (req, res) => {
     try {
         const { url } = req.body;
         if (!url || typeof url !== 'string' || !url.startsWith('/uploads/')) {
@@ -5389,12 +5397,16 @@ app.all('/api/sayan/sales-remittances', async (req, res) => {
                 t10.Field_029 as Note,
                 COALESCE(
                     NULLIF(RTRIM(LTRIM(t07.Field_006)), ''),
+                    NULLIF(RTRIM(LTRIM(COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, ''))), ''),
                     t10.Field_010,
                     N'طرف‌حساب نامشخص'
                 ) as PersonFullName,
+                p.Field_013 as PersonAddress,
+                p.Field_015 as PersonPhone,
                 t11.Field_001 as LineId,
                 RTRIM(LTRIM(t11.Field_005)) as ItemCode,
                 COALESCE(
+                    NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
                     NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
                     NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
                     RTRIM(LTRIM(t11.Field_005)),
@@ -5415,7 +5427,7 @@ app.all('/api/sayan/sales-remittances', async (req, res) => {
                 GROUP BY t21_sub.Field_004
             ) t_name ON RTRIM(LTRIM(t11.Field_005)) = RTRIM(LTRIM(t_name.ItemCode))
             LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
-            LEFT JOIN GNR_TBL_001 p ON p.Field_003 = t10.Field_010 OR p.Field_005 = t10.Field_010
+            LEFT JOIN GNR_TBL_001 p ON RTRIM(LTRIM(p.Field_003)) = RTRIM(LTRIM(t10.Field_010))
             LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
             WHERE ${whereClauses.join(' AND ')}
             ORDER BY t10.Field_008 DESC, t10.Field_005 DESC
@@ -5724,7 +5736,7 @@ app.post('/api/sayan/sales-remittance/explore', async (req, res) => {
                 ) as PersonFullName,
                 p.Field_013 as PersonAddress
             FROM STR_TBL_010 t10
-            LEFT JOIN GNR_TBL_001 p ON p.Field_003 = t10.Field_010 OR p.Field_005 = t10.Field_010
+            LEFT JOIN GNR_TBL_001 p ON RTRIM(LTRIM(p.Field_003)) = RTRIM(LTRIM(t10.Field_010))
             LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
             WHERE ${whereClauses.join(' AND ')}
             ORDER BY t10.Field_008 DESC, t10.Field_001 DESC
@@ -5740,7 +5752,189 @@ app.post('/api/sayan/sales-remittance/explore', async (req, res) => {
     }
 });
 
-// Fast Unified Helper to Lookup Matching Sayan Remittances (Header-First + Priority Ranking)
+// In-memory fast cache for recent Sayan exit remittances (avoids repeated SQL scans within 15s)
+let RECENT_SAYAN_REMITTANCES_CACHE = {
+    remittances: [],
+    timestamp: 0,
+    inflightPromise: null
+};
+
+function groupSayanRowsIntoRemittances(rows) {
+    const remittancesMap = new Map();
+    const persianDays = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
+
+    for (const row of (rows || [])) {
+        const docKey = `${String(row.SubSystem || '').trim()}_${String(row.StoreId || '').trim()}_${String(row.DocNo || row.ArchiveCode || '').trim()}`;
+        if (!remittancesMap.has(docKey)) {
+            let shamsiDateStr = '';
+            let dayOfWeek = '';
+            if (row.DocDate) {
+                try {
+                    const d = new Date(row.DocDate);
+                    if (!isNaN(d.getTime())) {
+                        const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+                        shamsiDateStr = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+                        dayOfWeek = persianDays[d.getDay()];
+                    }
+                } catch (e) {}
+            }
+
+            const docTypeStr = String(row.DocType || '').trim();
+            let docTypeLabel = 'حواله فروش';
+            if (docTypeStr === '23') docTypeLabel = 'حواله فروش';
+            else if (docTypeStr === '12') docTypeLabel = 'سایر حواله‌ها (۱۲)';
+            else if (docTypeStr === '3') docTypeLabel = 'حواله انبار';
+            else if (docTypeStr === '13') docTypeLabel = 'برگشت از فروش';
+
+            remittancesMap.set(docKey, {
+                archiveCode: String(row.ArchiveCode || ''),
+                subSystem: String(row.SubSystem || ''),
+                docNo: String(row.DocNo || '').trim(),
+                remittanceNumber: String(row.RemittanceNumber || row.DocNo || '').trim(),
+                subCode: String(row.SubCode || ''),
+                docDate: row.DocDate || '',
+                shamsiDate: shamsiDateStr,
+                dayOfWeek,
+                docType: docTypeStr,
+                docTypeLabel,
+                personCode: String(row.PersonCode || '').trim(),
+                personFullName: String(row.PersonFullName || '').trim(),
+                personAddress: row.PersonAddress || '',
+                personPhone: row.PersonPhone || '',
+                storeId: String(row.StoreId || ''),
+                note: String(row.Note || '').trim(),
+                items: [],
+                _seenLineIds: new Set(),
+                itemsCount: 0,
+                totalNetWeight: 0,
+                totalGrossWeight: 0,
+                totalCartons: 0,
+                totalBobbins: 0
+            });
+        }
+
+        const rem = remittancesMap.get(docKey);
+        const lineId = String(row.LineId || '');
+        if (lineId && rem._seenLineIds.has(lineId)) continue;
+        if (lineId) rem._seenLineIds.add(lineId);
+
+        const parsed = parseDetailNote(row.DetailNote);
+        const netVal = parseFloat(row.NetQty || 0);
+        const grossVal = parsed.grossWeight > 0 ? parsed.grossWeight : netVal;
+
+        rem.items.push({
+            lineId,
+            docNo: rem.docNo,
+            itemCode: String(row.ItemCode || ''),
+            goodsName: String(row.ItemName || row.ItemCode || `کالا ${rem.items.length + 1}`),
+            netQty: parseFloat(netVal.toFixed(3)),
+            grossQty: parseFloat(grossVal.toFixed(3)),
+            unitPrice: parseFloat(row.UnitPrice || 0),
+            totalPrice: parseFloat(row.TotalPrice || 0),
+            cartonCount: parsed.cartonCount,
+            bobbinCount: parsed.bobbinCount,
+            grade: parsed.grade,
+            twistDirection: parsed.twistDirection,
+            description: parsed.description,
+            detailNote: row.DetailNote || '',
+            rowNo: parseInt(row.RowNo || (rem.items.length + 1), 10)
+        });
+
+        rem.itemsCount = rem.items.length;
+        rem.totalNetWeight = parseFloat((rem.totalNetWeight + netVal).toFixed(3));
+        rem.totalGrossWeight = parseFloat((rem.totalGrossWeight + grossVal).toFixed(3));
+        rem.totalCartons += parsed.cartonCount;
+        rem.totalBobbins += parsed.bobbinCount;
+    }
+
+    const result = Array.from(remittancesMap.values());
+    for (const r of result) {
+        delete r._seenLineIds;
+    }
+    return result;
+}
+
+async function getRecentSayanRemittancesFast(db, forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && RECENT_SAYAN_REMITTANCES_CACHE.remittances.length > 0 && (now - RECENT_SAYAN_REMITTANCES_CACHE.timestamp) < 25000) {
+        return RECENT_SAYAN_REMITTANCES_CACHE.remittances;
+    }
+    if (RECENT_SAYAN_REMITTANCES_CACHE.inflightPromise) {
+        return RECENT_SAYAN_REMITTANCES_CACHE.inflightPromise;
+    }
+
+    RECENT_SAYAN_REMITTANCES_CACHE.inflightPromise = (async () => {
+        try {
+            // Query recent 75 days using pure equality Hash-Joins (NO OR-joins!)
+            const cutoffDate = new Date(Date.now() - 75 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const sql = `
+                SELECT TOP 1200
+                    t10.Field_001 as ArchiveCode,
+                    t10.Field_004 as SubSystem,
+                    t10.Field_005 as DocNo,
+                    t10.Field_006 as RemittanceNumber,
+                    t10.Field_007 as SubCode,
+                    t10.Field_008 as DocDate,
+                    RTRIM(LTRIM(t10.Field_009)) as DocType,
+                    t10.Field_010 as PersonCode,
+                    t10.Field_018 as StoreId,
+                    t10.Field_029 as Note,
+                    COALESCE(
+                        NULLIF(RTRIM(LTRIM(t07.Field_006)), ''),
+                        NULLIF(RTRIM(LTRIM(COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, ''))), ''),
+                        NULLIF(RTRIM(LTRIM(COALESCE(p2.Field_006, '') + ' ' + COALESCE(p2.Field_007, ''))), ''),
+                        t10.Field_010,
+                        N'طرف‌حساب نامشخص'
+                    ) as PersonFullName,
+                    COALESCE(p.Field_013, p2.Field_013) as PersonAddress,
+                    COALESCE(p.Field_015, p2.Field_015) as PersonPhone,
+                    t11.Field_001 as LineId,
+                    RTRIM(LTRIM(t11.Field_005)) as ItemCode,
+                    COALESCE(
+                        NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
+                        NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
+                        NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
+                        RTRIM(LTRIM(t11.Field_005)),
+                        N'کالای بدون نام'
+                    ) as ItemName,
+                    t11.Field_006 as NetQty,
+                    t11.Field_007 as UnitPrice,
+                    t11.Field_008 as TotalPrice,
+                    t11.Field_031 as DetailNote,
+                    t11.Field_034 as RowNo
+                FROM STR_TBL_010 t10
+                INNER JOIN STR_TBL_011 t11 ON t11.Field_004 = t10.Field_005 
+                                          AND t11.Field_003 = t10.Field_004 
+                                          AND t11.Field_012 = t10.Field_018
+                LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
+                LEFT JOIN (
+                    SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, MIN(t02_sub.Field_003) as ItemName
+                    FROM IND_TBL_021 t21_sub
+                    LEFT JOIN IND_TBL_002 t02_sub ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
+                    GROUP BY t21_sub.Field_004
+                ) t_name ON RTRIM(LTRIM(t11.Field_005)) = RTRIM(LTRIM(t_name.ItemCode))
+                LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
+                LEFT JOIN GNR_TBL_001 p ON RTRIM(LTRIM(p.Field_003)) = RTRIM(LTRIM(t10.Field_010))
+                LEFT JOIN GNR_TBL_001 p2 ON RTRIM(LTRIM(p2.Field_005)) = RTRIM(LTRIM(t10.Field_010))
+                LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+                WHERE RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '3', '13')
+                  AND t10.Field_008 >= '${cutoffDate}T00:00:00.000Z'
+                ORDER BY t10.Field_008 DESC, t10.Field_005 DESC
+            `;
+            const rows = await executeSayanQuery(db, sql);
+            const grouped = groupSayanRowsIntoRemittances(rows);
+            RECENT_SAYAN_REMITTANCES_CACHE.remittances = grouped;
+            RECENT_SAYAN_REMITTANCES_CACHE.timestamp = Date.now();
+            return grouped;
+        } finally {
+            RECENT_SAYAN_REMITTANCES_CACHE.inflightPromise = null;
+        }
+    })();
+
+    return RECENT_SAYAN_REMITTANCES_CACHE.inflightPromise;
+}
+
+// Fast Unified Helper to Lookup Matching Sayan Remittances (<150ms via Recent Window + Smart Fuzzy Scorer)
 async function findMatchingSayanRemittances(db, params = {}) {
     const {
         personCode,
@@ -5749,34 +5943,34 @@ async function findMatchingSayanRemittances(db, params = {}) {
         permitDate,
         permitNumber,
         remittanceNumber,
+        itemNames = [],
         docType = 'all_exit',
         limit = 10
     } = params;
 
-    const sqlNormalize = (col) =>
-        `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), N'ي', N'ی'), N'ك', N'ک'), N'‌', N' '), N'أ', N'ا')`;
-
-    const jsNormalize = (str) =>
+    const normPersian = (str) =>
         String(str || '')
+            .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+            .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
             .replace(/ي/g, 'ی')
             .replace(/ك/g, 'ک')
             .replace(/‌/g, ' ')
-            .replace(/أ/g, 'ا')
-            .replace(/'/g, "''")
+            .replace(/[أإآ]/g, 'ا')
+            .replace(/\s+/g, ' ')
             .trim();
 
     let pCode = personCode && !['0', '---', 'null', 'undefined'].includes(String(personCode).trim())
-        ? String(personCode).trim()
+        ? normPersian(personCode)
         : '';
     let tCode = tafsiliCode && !['0', '---', 'null', 'undefined'].includes(String(tafsiliCode).trim())
-        ? String(tafsiliCode).trim()
+        ? normPersian(tafsiliCode)
         : '';
     let rName = String(recipientName || '').trim();
 
     if (rName) {
         const { cleanName, extractedCode } = extractCodeAndCleanName(rName);
         if (extractedCode && !pCode) {
-            pCode = extractedCode;
+            pCode = normPersian(extractedCode);
         }
         rName = cleanName
             .replace(/\(.*?\)/g, ' ')
@@ -5788,35 +5982,9 @@ async function findMatchingSayanRemittances(db, params = {}) {
             .trim();
     }
 
-    let docTypeClause = "RTRIM(LTRIM(t10.Field_009)) IN ('12', '23')";
-    if (docType === 'all') {
-        docTypeClause = "RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '3', '13')";
-    } else if (docType && docType !== 'all_exit') {
-        docTypeClause = `RTRIM(LTRIM(t10.Field_009)) = '${String(docType).replace(/'/g, "''")}'`;
-    }
-
-    const fullPersonCol = `COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, '')`;
-
-    // 1. Code match condition (PersonCode or TafsiliCode)
-    const codeConds = [];
-    for (const rawCode of [pCode, tCode].filter(Boolean)) {
-        const sCode = String(rawCode).replace(/'/g, "''").trim();
-        const numCode = parseInt(sCode, 10);
-        codeConds.push(`RTRIM(LTRIM(t10.Field_010)) = '${sCode}'`);
-        codeConds.push(`RTRIM(LTRIM(t10.Field_010)) = '0${sCode}'`);
-        codeConds.push(`RTRIM(LTRIM(p.Field_003)) = '${sCode}'`);
-        codeConds.push(`RTRIM(LTRIM(p.Field_005)) = '${sCode}'`);
-        codeConds.push(`RTRIM(LTRIM(t07.Field_005)) = '${sCode}'`);
-        if (!isNaN(numCode)) {
-            codeConds.push(`TRY_CAST(t10.Field_010 AS INT) = ${numCode}`);
-        }
-    }
-    const codeGroupSql = codeConds.length > 0 ? `(${codeConds.join(' OR ')})` : null;
-
-    // 2. Customer Name Token conditions
-    const stopWords = new Set(['شرکت', 'فروشگاه', 'جناب', 'اقای', 'آقای', 'خانم', 'مهندس', 'حاج', 'برادران', 'کارخانه', 'تولیدی', 'بازرگانی', 'نساجی', 'گروه', 'صنایع']);
-    const normName = jsNormalize(rName);
-    const allTokens = normName
+    const normRName = normPersian(rName);
+    const stopWords = new Set(['شرکت', 'فروشگاه', 'جناب', 'اقای', 'آقای', 'خانم', 'مهندس', 'حاج', 'برادران', 'کارخانه', 'تولیدی', 'بازرگانی', 'نساجی', 'گروه', 'صنایع', 'با', 'مسئولیت', 'محدود', 'سهامی', 'خاص', 'عام']);
+    const allTokens = normRName
         .replace(/[\(\)\-\:\d\/\\]/g, ' ')
         .split(/\s+/)
         .map(t => t.trim())
@@ -5824,57 +5992,174 @@ async function findMatchingSayanRemittances(db, params = {}) {
     const coreTokens = allTokens.filter(t => !stopWords.has(t));
     const effectiveTokens = coreTokens.length > 0 ? coreTokens : allTokens;
 
-    let exactNameGroupSql = null;
-    let looseNameGroupSql = null;
+    const normItemTokens = Array.isArray(itemNames)
+        ? itemNames
+            .flatMap(n => normPersian(n).split(/\s+/))
+            .map(t => t.trim())
+            .filter(t => t.length >= 2 && !['کالا', 'نخ', 'کیلو', 'کارتن'].includes(t))
+        : [];
 
-    if (effectiveTokens.length > 0) {
-        const tokenMatches = effectiveTokens.map(tok =>
-            `(${sqlNormalize(fullPersonCol)} LIKE N'%${tok}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${tok}%' OR ${sqlNormalize('t10.Field_029')} LIKE N'%${tok}%')`
-        );
-        exactNameGroupSql = `(${tokenMatches.join(' AND ')})`;
+    const explicitNum = remittanceNumber
+        ? normPersian(remittanceNumber)
+        : (normRName && /^\d+$/.test(normRName) ? normRName : '');
 
-        const significantTokens = effectiveTokens.filter(t => t.length >= 3);
-        if (significantTokens.length > 1) {
-            const anyTokenMatches = significantTokens.map(tok =>
-                `(${sqlNormalize(fullPersonCol)} LIKE N'%${tok}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${tok}%')`
-            );
-            looseNameGroupSql = `(${anyTokenMatches.join(' OR ')})`;
+    const targetCodes = new Set(
+        [pCode, tCode]
+            .filter(Boolean)
+            .flatMap(c => {
+                const n = parseInt(c, 10);
+                return !isNaN(n) ? [c, String(n), `0${n}`, `00${n}`] : [c];
+            })
+    );
+
+    const gregPermitMs = permitDate
+        ? (() => {
+            const g = parseJalaliStrToGregorian(permitDate) || (String(permitDate).includes('-') ? permitDate : null);
+            const t = g ? new Date(g).getTime() : NaN;
+            return !isNaN(t) ? t : null;
+        })()
+        : null;
+
+    const scoreCandidate = (rem) => {
+        if (docType && docType !== 'all' && docType !== 'all_exit' && rem.docType !== docType) {
+            return -1;
         }
-    } else if (normName && !/^\d+$/.test(normName)) {
-        exactNameGroupSql = `(${sqlNormalize(fullPersonCol)} LIKE N'%${normName}%' OR ${sqlNormalize('t07.Field_006')} LIKE N'%${normName}%' OR ${sqlNormalize('t10.Field_029')} LIKE N'%${normName}%')`;
-    }
+        let score = 0;
 
-    // 3. Explicit RemittanceNumber / DocNo search (only if explicitly numeric search or remittanceNumber provided)
-    let remNoGroupSql = null;
-    const explicitNum = remittanceNumber || (normName && /^\d+$/.test(normName) ? normName : null);
-    if (explicitNum) {
-        const sNum = String(explicitNum).replace(/'/g, "''").trim();
-        remNoGroupSql = `(RTRIM(LTRIM(t10.Field_005)) = '${sNum}' OR RTRIM(LTRIM(t10.Field_006)) = '${sNum}')`;
-    }
+        // 1. Explicit remittance / doc number match
+        if (explicitNum && (rem.remittanceNumber === explicitNum || rem.docNo === explicitNum)) {
+            score += 2000;
+        }
 
-    const candidateOrGroups = [codeGroupSql, exactNameGroupSql, looseNameGroupSql, remNoGroupSql].filter(Boolean);
-    if (candidateOrGroups.length === 0) {
-        return [];
-    }
+        // 2. Person / Tafsili code match
+        const remPCode = normPersian(rem.personCode);
+        const remPCodeInt = parseInt(remPCode, 10);
+        if (remPCode && (targetCodes.has(remPCode) || (!isNaN(remPCodeInt) && targetCodes.has(String(remPCodeInt))))) {
+            score += 1000;
+        }
 
-    const priorityCases = [];
-    if (remNoGroupSql) priorityCases.push(`WHEN ${remNoGroupSql} THEN 0`);
-    if (codeGroupSql) priorityCases.push(`WHEN ${codeGroupSql} THEN 1`);
-    if (exactNameGroupSql) priorityCases.push(`WHEN ${exactNameGroupSql} THEN 2`);
-    if (looseNameGroupSql) priorityCases.push(`WHEN ${looseNameGroupSql} THEN 3`);
-    const priorityOrderSql = priorityCases.length > 0
-        ? `CASE ${priorityCases.join(' ')} ELSE 4 END ASC`
-        : `0 ASC`;
+        // 3. Name token match
+        const remNameNorm = normPersian(rem.personFullName);
+        const remNameNoSpaces = remNameNorm.replace(/\s+/g, '');
+        const queryNoSpaces = effectiveTokens.join('');
+        const remNoteNorm = normPersian(rem.note);
 
-    const gregDate = permitDate ? parseJalaliStrToGregorian(permitDate) : null;
-    const dateProximityOrderSql = gregDate
-        ? `CASE WHEN ABS(DATEDIFF(day, t10.Field_008, '${gregDate}')) <= 14 THEN 0 ELSE 1 END ASC, t10.Field_008 DESC, t10.Field_005 DESC`
-        : `t10.Field_008 DESC, t10.Field_005 DESC`;
+        if (normRName && normRName.length >= 2) {
+            if (remNameNorm === normRName || (queryNoSpaces.length >= 4 && remNameNoSpaces.includes(queryNoSpaces))) {
+                score += 850;
+            } else if (effectiveTokens.length > 0) {
+                let matchedInName = 0;
+                let matchedInNote = 0;
+                for (const tok of effectiveTokens) {
+                    if (remNameNorm.includes(tok)) matchedInName++;
+                    else if (remNoteNorm.includes(tok)) matchedInNote++;
+                }
+                if (matchedInName === effectiveTokens.length) {
+                    score += 750;
+                } else if (matchedInName + matchedInNote === effectiveTokens.length) {
+                    score += 550;
+                } else if (effectiveTokens.length >= 2 && matchedInName >= effectiveTokens.length - 1) {
+                    score += 250 * matchedInName;
+                } else if (effectiveTokens.length === 1 && matchedInName === 1 && effectiveTokens[0].length >= 3) {
+                    score += 400;
+                }
+            }
+        }
+
+        if (score <= 0) return -1;
+
+        // 4. Boost exit docTypes ('23' = حواله فروش, '12' = سایر حواله‌ها)
+        if (rem.docType === '23') score += 40;
+        else if (rem.docType === '12') score += 30;
+
+        // 5. Item/Goods name overlap bonus (helps pick the exact remittance when a customer has multiple)
+        if (normItemTokens.length > 0 && Array.isArray(rem.items)) {
+            const remGoodsStr = normPersian(rem.items.map(it => it.goodsName || '').join(' '));
+            let matchedItemToks = 0;
+            for (const itok of normItemTokens) {
+                if (remGoodsStr.includes(itok)) matchedItemToks++;
+            }
+            if (matchedItemToks > 0) {
+                score += Math.min(120, matchedItemToks * 25);
+            }
+        }
+
+        // 6. Date proximity bonus
+        if (gregPermitMs && rem.docDate) {
+            const remMs = new Date(rem.docDate).getTime();
+            if (!isNaN(remMs)) {
+                const diffDays = Math.abs(remMs - gregPermitMs) / (1000 * 60 * 60 * 24);
+                if (diffDays <= 1) score += 140;
+                else if (diffDays <= 4) score += 110;
+                else if (diffDays <= 14) score += 75;
+                else if (diffDays <= 35) score += 35;
+            }
+        }
+
+        return score;
+    };
 
     const topLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 30);
 
-    const queryHeaders = `
-        SELECT TOP ${topLimit}
+    // PASS 1: Ultra-fast check against recent 75-day cached remittances (<150ms first call, <1ms cached)
+    try {
+        const cacheAgeMs = Date.now() - RECENT_SAYAN_REMITTANCES_CACHE.timestamp;
+        let recentList = await getRecentSayanRemittancesFast(db, false);
+        let scored = [];
+        for (const rem of recentList) {
+            const s = scoreCandidate(rem);
+            if (s > 0) {
+                scored.push({ rem, score: s });
+            }
+        }
+        // If cache was older than 3s and had no match (e.g., remittance was JUST registered in Sayan), refresh once
+        if (scored.length === 0 && cacheAgeMs > 3000) {
+            recentList = await getRecentSayanRemittancesFast(db, true);
+            for (const rem of recentList) {
+                const s = scoreCandidate(rem);
+                if (s > 0) {
+                    scored.push({ rem, score: s });
+                }
+            }
+        }
+        if (scored.length > 0) {
+            scored.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return String(b.rem.docDate || '').localeCompare(String(a.rem.docDate || ''));
+            });
+            return scored.slice(0, topLimit).map(x => x.rem);
+        }
+    } catch (fastErr) {
+        console.warn('[Sayan Fast Lookup] Recent window query warning:', fastErr.message);
+    }
+
+    // PASS 2: Targeted historical fallback (single query, pure Hash Joins, NO OR-joins!)
+    const sqlNormalize = (col) =>
+        `REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${col}, ''), N'ي', N'ی'), N'ك', N'ک'), N'‌', N' '), N'أ', N'ا')`;
+
+    const whereOrs = [];
+    if (explicitNum) {
+        const sNum = explicitNum.replace(/'/g, "''");
+        whereOrs.push(`RTRIM(LTRIM(t10.Field_005)) = '${sNum}'`);
+        whereOrs.push(`RTRIM(LTRIM(t10.Field_006)) = '${sNum}'`);
+    }
+    for (const c of [pCode, tCode].filter(Boolean)) {
+        const sCode = c.replace(/'/g, "''");
+        whereOrs.push(`RTRIM(LTRIM(t10.Field_010)) = '${sCode}'`);
+        whereOrs.push(`RTRIM(LTRIM(t10.Field_010)) = '0${sCode}'`);
+    }
+    if (effectiveTokens.length > 0) {
+        const tokConds = effectiveTokens.map(tok => {
+            const sTok = tok.replace(/'/g, "''");
+            return `(${sqlNormalize('t07.Field_006')} LIKE N'%${sTok}%' OR ${sqlNormalize("COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, '')")} LIKE N'%${sTok}%' OR ${sqlNormalize("COALESCE(p2.Field_006, '') + ' ' + COALESCE(p2.Field_007, '')")} LIKE N'%${sTok}%')`;
+        });
+        whereOrs.push(`(${tokConds.join(' AND ')})`);
+    }
+
+    if (whereOrs.length === 0) return [];
+
+    const fallbackSql = `
+        SELECT TOP 80
             t10.Field_001 as ArchiveCode,
             t10.Field_004 as SubSystem,
             t10.Field_005 as DocNo,
@@ -5887,50 +6172,19 @@ async function findMatchingSayanRemittances(db, params = {}) {
             t10.Field_029 as Note,
             COALESCE(
                 NULLIF(RTRIM(LTRIM(t07.Field_006)), ''),
-                NULLIF(RTRIM(LTRIM(${fullPersonCol})), ''),
+                NULLIF(RTRIM(LTRIM(COALESCE(p.Field_006, '') + ' ' + COALESCE(p.Field_007, ''))), ''),
+                NULLIF(RTRIM(LTRIM(COALESCE(p2.Field_006, '') + ' ' + COALESCE(p2.Field_007, ''))), ''),
                 t10.Field_010,
                 N'طرف‌حساب نامشخص'
             ) as PersonFullName,
-            p.Field_013 as PersonAddress,
-            p.Field_015 as PersonPhone
-        FROM STR_TBL_010 t10
-        LEFT JOIN GNR_TBL_001 p ON p.Field_003 = t10.Field_010 OR p.Field_005 = t10.Field_010
-        LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
-        WHERE ${docTypeClause} AND (${candidateOrGroups.join(' OR ')})
-        ORDER BY ${priorityOrderSql}, ${dateProximityOrderSql}
-    `;
-
-    const headers = await executeSayanQuery(db, queryHeaders);
-    if (!headers || headers.length === 0) {
-        return [];
-    }
-
-    // Deduplicate headers by DocNo
-    const uniqueHeaders = [];
-    const seenDocNos = new Set();
-    for (const h of headers) {
-        const dNo = String(h.DocNo || '').trim();
-        if (dNo && !seenDocNos.has(dNo)) {
-            seenDocNos.add(dNo);
-            uniqueHeaders.push(h);
-        }
-    }
-    if (uniqueHeaders.length === 0) return [];
-
-    const docNoListSql = uniqueHeaders
-        .map(h => `'${String(h.DocNo).replace(/'/g, "''")}'`)
-        .join(', ');
-
-    const queryDetails = `
-        SELECT 
+            COALESCE(p.Field_013, p2.Field_013) as PersonAddress,
+            COALESCE(p.Field_015, p2.Field_015) as PersonPhone,
             t11.Field_001 as LineId,
-            t11.Field_004 as DocNo,
             RTRIM(LTRIM(t11.Field_005)) as ItemCode,
             COALESCE(
                 NULLIF(RTRIM(LTRIM(s04.Field_003)), ''),
                 NULLIF(RTRIM(LTRIM(t22.Field_004)), ''),
-                NULLIF(RTRIM(LTRIM(t02.Field_003)), ''),
-                NULLIF(RTRIM(LTRIM(c01.Field_003)), ''),
+                NULLIF(RTRIM(LTRIM(t_name.ItemName)), ''),
                 RTRIM(LTRIM(t11.Field_005)),
                 N'کالای بدون نام'
             ) as ItemName,
@@ -5939,125 +6193,36 @@ async function findMatchingSayanRemittances(db, params = {}) {
             t11.Field_008 as TotalPrice,
             t11.Field_031 as DetailNote,
             t11.Field_034 as RowNo
-        FROM STR_TBL_011 t11
-        LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        FROM STR_TBL_010 t10
+        INNER JOIN STR_TBL_011 t11 ON t11.Field_004 = t10.Field_005 
+                                  AND t11.Field_003 = t10.Field_004 
+                                  AND t11.Field_012 = t10.Field_018
         LEFT JOIN IND_TBL_022 t22 ON RTRIM(LTRIM(t22.Field_005)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN IND_TBL_021 t21 ON RTRIM(LTRIM(t21.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN IND_TBL_002 t02 ON RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t21.Field_003)) OR RTRIM(LTRIM(t02.Field_008)) = RTRIM(LTRIM(t11.Field_005))
-        LEFT JOIN COM_TBL_001 c01 ON RTRIM(LTRIM(c01.Field_004)) = RTRIM(LTRIM(t11.Field_005))
-        WHERE t11.Field_004 IN (${docNoListSql})
-        ORDER BY t11.Field_034 ASC, t11.Field_001 ASC
+        LEFT JOIN (
+            SELECT RTRIM(LTRIM(t21_sub.Field_004)) as ItemCode, MIN(t02_sub.Field_003) as ItemName
+            FROM IND_TBL_021 t21_sub
+            LEFT JOIN IND_TBL_002 t02_sub ON RTRIM(LTRIM(t21_sub.Field_003)) = RTRIM(LTRIM(t02_sub.Field_008))
+            GROUP BY t21_sub.Field_004
+        ) t_name ON RTRIM(LTRIM(t11.Field_005)) = RTRIM(LTRIM(t_name.ItemCode))
+        LEFT JOIN ACT_TBL_007 t07 ON RTRIM(LTRIM(t10.Field_010)) = RTRIM(LTRIM(t07.Field_005)) AND (t07.Field_004 = '11' OR t07.Field_004 = '31')
+        LEFT JOIN GNR_TBL_001 p ON RTRIM(LTRIM(p.Field_003)) = RTRIM(LTRIM(t10.Field_010))
+        LEFT JOIN GNR_TBL_001 p2 ON RTRIM(LTRIM(p2.Field_005)) = RTRIM(LTRIM(t10.Field_010))
+        LEFT JOIN STR_TBL_004 s04 ON RTRIM(LTRIM(s04.Field_004)) = RTRIM(LTRIM(t11.Field_005))
+        WHERE RTRIM(LTRIM(t10.Field_009)) IN ('12', '23', '3', '13')
+          AND (${whereOrs.join(' OR ')})
+        ORDER BY t10.Field_008 DESC, t10.Field_005 DESC
     `;
 
-    const detailRows = await executeSayanQuery(db, queryDetails);
-    const detailsByDocNo = new Map();
-    for (const row of (detailRows || [])) {
-        const dKey = String(row.DocNo || '').trim();
-        if (!detailsByDocNo.has(dKey)) detailsByDocNo.set(dKey, []);
-        detailsByDocNo.get(dKey).push(row);
-    }
-
-    const persianDays = ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه', 'شنبه'];
-
-    return uniqueHeaders.map(h => {
-        const dNo = String(h.DocNo || '').trim();
-        const rawRows = detailsByDocNo.get(dNo) || [];
-        let totalNet = 0;
-        let totalGross = 0;
-        let totalCartons = 0;
-        let totalBobbins = 0;
-
-        // Deduplicate lines by LineId in case LEFT JOIN IND_TBL_021 produced multiple rows
-        const seenLineIds = new Set();
-        const dedupedRows = [];
-        for (const r of rawRows) {
-            const lid = String(r.LineId || '');
-            if (lid && seenLineIds.has(lid)) continue;
-            if (lid) seenLineIds.add(lid);
-            dedupedRows.push(r);
-        }
-
-        const items = dedupedRows.map((row, idx) => {
-            const parsed = parseDetailNote(row.DetailNote);
-            const netVal = parseFloat(row.NetQty || 0);
-            const grossVal = parsed.grossWeight > 0 ? parsed.grossWeight : netVal;
-
-            totalNet += netVal;
-            totalGross += grossVal;
-            totalCartons += parsed.cartonCount;
-            totalBobbins += parsed.bobbinCount;
-
-            return {
-                lineId: String(row.LineId || ''),
-                docNo: String(row.DocNo || ''),
-                itemCode: String(row.ItemCode || ''),
-                goodsName: String(row.ItemName || row.ItemCode || `کالا ${idx + 1}`),
-                netQty: parseFloat(netVal.toFixed(3)),
-                grossQty: parseFloat(grossVal.toFixed(3)),
-                unitPrice: parseFloat(row.UnitPrice || 0),
-                totalPrice: parseFloat(row.TotalPrice || 0),
-                cartonCount: parsed.cartonCount,
-                bobbinCount: parsed.bobbinCount,
-                grade: parsed.grade,
-                twistDirection: parsed.twistDirection,
-                description: parsed.description,
-                detailNote: row.DetailNote || '',
-                rowNo: parseInt(row.RowNo || (idx + 1), 10)
-            };
-        });
-
-        let shamsiDateStr = '';
-        let dayOfWeek = '';
-        if (h.DocDate) {
-            try {
-                const d = new Date(h.DocDate);
-                if (!isNaN(d.getTime())) {
-                    const j = jalaali.toJalaali(d.getFullYear(), d.getMonth() + 1, d.getDate());
-                    shamsiDateStr = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
-                    dayOfWeek = persianDays[d.getDay()];
-                }
-            } catch (e) {}
-        }
-
-        const docTypeStr = String(h.DocType || '').trim();
-        let docTypeLabel = 'حواله فروش';
-        if (docTypeStr === '23') docTypeLabel = 'حواله فروش';
-        else if (docTypeStr === '12') docTypeLabel = 'سایر حواله‌ها (۱۲)';
-        else if (docTypeStr === '3') docTypeLabel = 'حواله انبار';
-        else if (docTypeStr === '13') docTypeLabel = 'برگشت از فروش';
-
-        return {
-            archiveCode: String(h.ArchiveCode || ''),
-            subSystem: String(h.SubSystem || ''),
-            docNo: dNo,
-            remittanceNumber: String(h.RemittanceNumber || dNo || ''),
-            subCode: String(h.SubCode || ''),
-            docDate: h.DocDate || '',
-            shamsiDate: shamsiDateStr,
-            dayOfWeek,
-            docType: docTypeStr,
-            docTypeLabel,
-            personCode: String(h.PersonCode || ''),
-            personFullName: String(h.PersonFullName || recipientName || '').trim(),
-            personAddress: h.PersonAddress || '',
-            personPhone: h.PersonPhone || '',
-            storeId: String(h.StoreId || ''),
-            note: String(h.Note || '').trim(),
-            items,
-            itemsCount: items.length,
-            totalNetWeight: parseFloat(totalNet.toFixed(3)),
-            totalGrossWeight: parseFloat(totalGross.toFixed(3)),
-            totalCartons,
-            totalBobbins
-        };
-    });
+    const fallbackRows = await executeSayanQuery(db, fallbackSql);
+    const groupedFallback = groupSayanRowsIntoRemittances(fallbackRows);
+    return groupedFallback.slice(0, topLimit);
 }
 
 // Automatic Fast Smart Lookup Endpoint
 app.post('/api/sayan/sales-remittance/lookup', async (req, res) => {
     try {
         const db = getDb();
-        const { personCode, tafsiliCode, recipientName, permitDate, permitNumber, remittanceNumber, docType, limit } = req.body || {};
+        const { personCode, tafsiliCode, recipientName, permitDate, permitNumber, remittanceNumber, itemNames, docType, limit } = req.body || {};
 
         if (!personCode && !tafsiliCode && !recipientName && !permitNumber && !remittanceNumber) {
             return res.status(400).json({ error: 'کد شخص، نام شخص یا شماره مجوز الزامی است' });
@@ -6070,6 +6235,7 @@ app.post('/api/sayan/sales-remittance/lookup', async (req, res) => {
             permitDate,
             permitNumber,
             remittanceNumber,
+            itemNames,
             docType: docType || 'all_exit',
             limit: limit || 12
         });
@@ -6190,11 +6356,30 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
 
         if (attachmentDataUrl) {
             permit.attachments = permit.attachments || [];
-            const fileName = `حواله_فروش_سایان_${permit.sayanRemittanceNumber || permit.permitNumber}.png`;
+            const fileName = `حواله_فروش_سایان_${permit.sayanRemittanceNumber || permit.permitNumber}.jpg`;
+            let savedAttachmentData = attachmentDataUrl;
+
+            // Immediately offload base64 attachment to /uploads/exit-permits/ so database.json & client localStorage stay tiny
+            if (typeof attachmentDataUrl === 'string' && attachmentDataUrl.startsWith('data:image/')) {
+                try {
+                    const match = attachmentDataUrl.match(/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/);
+                    if (match && match[2]) {
+                        const ext = match[1] === 'png' ? 'png' : 'jpg';
+                        const subDir = path.join(UPLOADS_DIR, 'exit-permits');
+                        if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+                        const diskName = `sayan_rem_${permit.id}_${Date.now()}.${ext}`;
+                        fs.writeFileSync(path.join(subDir, diskName), Buffer.from(match[2], 'base64'));
+                        savedAttachmentData = `/uploads/exit-permits/${diskName}`;
+                    }
+                } catch (offloadErr) {
+                    console.warn('Could not offload Sayan remittance image to disk:', offloadErr.message);
+                }
+            }
+
             permit.attachments = permit.attachments.filter(a => !String(a.fileName || '').includes('حواله_فروش_سایان'));
             permit.attachments.push({
                 fileName,
-                data: attachmentDataUrl
+                data: savedAttachmentData
             });
         }
 
@@ -6743,7 +6928,7 @@ app.post('/api/notifications/add', async (req, res) => {
 });
 
 // 8. CHAT & COMMUNICATION
-app.get('/api/chat', (req, res) => {
+app.get(['/api/chat', '/chat'], (req, res) => {
     const db = getDb();
     const msgs = (db.messages || []).map(m => {
         let ts = m.timestamp;
@@ -6875,7 +7060,7 @@ app.delete('/api/tickets/:id', (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/chat', async (req, res) => { 
+app.post(['/api/chat', '/chat'], async (req, res) => { 
     const db = getDb(); 
     const msg = req.body;
     if(!db.messages) db.messages=[]; 
@@ -10134,6 +10319,12 @@ app.post('/api/secretariat/onlyoffice/convert-docx-to-html', async (req, res) =>
 app.get('/api/exit-permits', (req, res) => {
     const db = getDb();
     res.json(db.exitPermits || []);
+    // Pre-warm Sayan recent remittances cache in background so WarehouseFinalizeModal opens with 0ms latency
+    if (db.settings?.sayanOnlineExitPermitsEnabled !== false && (db.settings?.sayanApiUrl || process.env.SAYAN_API_URL)) {
+        setImmediate(() => {
+            getRecentSayanRemittancesFast(db, false).catch(() => {});
+        });
+    }
 });
 
 app.post('/api/exit-permits', async (req, res) => {
@@ -10629,7 +10820,7 @@ app.delete('/api/calendar-events/:id', (req, res) => {
 });
 
 // 9. FILE UPLOAD (Base64 JSON Endpoint)
-app.post('/api/upload', (req, res) => {
+app.post(['/api/upload', '/upload'], (req, res) => {
     try {
         const { fileName, fileData, category } = req.body;
         if (!fileName || !fileData) return res.status(400).send('Missing data');
@@ -10798,7 +10989,7 @@ app.get('/api/upload-get-base64', (req, res) => {
 const chunkTempDir = path.join(ROOT_DIR, 'chunk-temp');
 if (!fs.existsSync(chunkTempDir)) fs.mkdirSync(chunkTempDir, { recursive: true });
 
-app.post('/api/upload-chunk', (req, res) => {
+app.post(['/api/upload-chunk', '/upload-chunk'], (req, res) => {
     const { uploadId, chunkIndex, chunkData } = req.body;
     if (!uploadId || chunkIndex === undefined || !chunkData) return res.status(400).send('Missing chunk data');
     const safeUploadId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
@@ -10816,7 +11007,7 @@ app.post('/api/upload-chunk', (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/upload-finish', async (req, res) => {
+app.post(['/api/upload-finish', '/upload-finish'], async (req, res) => {
     const { uploadId, fileName, totalChunks } = req.body;
     if (!uploadId || !fileName || !totalChunks) return res.status(400).send('Missing finish data');
     
@@ -10839,15 +11030,16 @@ app.post('/api/upload-finish', async (req, res) => {
     // Append all chunks sequentially, using async/await to avoid blocking event loop
     try {
         // Verify all chunks exist first
-        for(let i = 0; i < totalChunks; i++) {
+        for (let i = 0; i < totalChunks; i++) {
             const chunkPath = path.join(chunkTempDir, `${safeUploadId}_${i}`);
-            if(!fs.existsSync(chunkPath)) {
+            if (!fs.existsSync(chunkPath)) {
                 console.error(`Missing chunk ${i} for upload ${safeUploadId}`);
+                try { writeStream.destroy(); } catch (_) {}
                 return res.status(400).send(`Chunk ${i} missing. Please try again.`);
             }
         }
 
-        for(let i = 0; i < totalChunks; i++) {
+        for (let i = 0; i < totalChunks; i++) {
             const chunkPath = path.join(chunkTempDir, `${safeUploadId}_${i}`);
             await new Promise((resolve, reject) => {
                 const readStream = fs.createReadStream(chunkPath);
@@ -10859,17 +11051,18 @@ app.post('/api/upload-finish', async (req, res) => {
                 readStream.on('error', reject);
             });
         }
-        writeStream.end();
         
-        writeStream.on('finish', () => {
-            res.json({ fileName: safeName, url: `/uploads/${uniqueName}` });
+        await new Promise((resolve, reject) => {
+            writeStream.on('finish', resolve);
+            writeStream.on('error', reject);
+            writeStream.end();
         });
-        writeStream.on('error', (err) => {
-            res.status(500).send('Finalize failed');
-        });
+        
+        return res.json({ success: true, fileName: safeName, url: `/uploads/${uniqueName}` });
     } catch (err) {
         console.error('Error combining chunks:', err);
-        res.status(500).send('Server Error');
+        try { writeStream.destroy(); } catch (_) {}
+        return res.status(500).send('Server Error');
     }
 });
 

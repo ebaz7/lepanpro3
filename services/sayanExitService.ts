@@ -192,6 +192,9 @@ export const lookupSayanSalesRemittancesFast = async (params: {
   remittanceNumber?: string;
   docType?: string;
   limit?: number;
+  itemNames?: string[];
+  targetWeight?: number;
+  targetCartons?: number;
 }): Promise<{ success: boolean; remittance: SayanSalesRemittanceResult | null; remittances: SayanSalesRemittanceResult[] }> => {
   try {
     const res = await apiCall<{
@@ -333,9 +336,11 @@ export const backgroundAutoDetectAndAttachRemittance = (options: {
   finalizedItems: ExitPermitItem[];
   initialRemittance?: SayanSalesRemittanceResult | null;
   initialRemittances?: SayanSalesRemittanceResult[];
+  initialAttachmentDataUrl?: string;
+  companyName?: string;
   approverWarehouse?: string;
 }): void => {
-  const { permit, finalizedItems, initialRemittance, initialRemittances, approverWarehouse } = options;
+  const { permit, finalizedItems, initialRemittance, initialRemittances, initialAttachmentDataUrl, companyName, approverWarehouse } = options;
 
   setTimeout(async () => {
     try {
@@ -353,12 +358,16 @@ export const backgroundAutoDetectAndAttachRemittance = (options: {
         : (permit.destinations?.[0]?.sayanTafsiliCode ? String(permit.destinations[0].sayanTafsiliCode).trim() : '');
       const recipientName = permit.recipientName || permit.destinations?.[0]?.recipientName || '';
 
+      const totalConfirmedWeight = (finalizedItems || []).reduce((acc, it) => acc + (Number(it.deliveredWeight) || Number(it.weight) || 0), 0) || Number(permit.weight || 0);
+      const totalConfirmedCartons = (finalizedItems || []).reduce((acc, it) => acc + (Number(it.deliveredCartonCount) || Number(it.cartonCount) || 0), 0) || Number(permit.cartonCount || 0);
+      const itemNames = (finalizedItems || []).map(it => it.goodsName).filter(Boolean);
+
       const buildDocData = (rem: SayanSalesRemittanceResult | null): SayanRemittanceData => {
         const useItems = finalizedItems && finalizedItems.length > 0
           ? finalizedItems
           : (rem?.items && rem.items.length > 0 ? rem.items : []);
         return {
-          companyTitle: permit.company || 'شرکت لپان بافت',
+          companyTitle: companyName || permit.company || 'شرکت لپان بافت',
           remittanceNumber: rem?.remittanceNumber || permit.sayanRemittanceNumber || permit.permitNumber || '---',
           subCode: rem?.subCode || permit.sayanSubCode || '---',
           archiveCode: rem?.archiveCode || permit.sayanArchiveCode || '---',
@@ -391,28 +400,40 @@ export const backgroundAutoDetectAndAttachRemittance = (options: {
       };
 
       const applySyncedPermitToClient = (syncedPermit: ExitPermit) => {
-        try {
-          const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
-          if (Array.isArray(cached)) {
-            const updatedList = cached.map(p => p.id === syncedPermit.id ? { ...p, ...syncedPermit } : p);
-            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updatedList));
-          }
-        } catch {}
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
             detail: {
               permitId: syncedPermit.id,
               targetStatus: syncedPermit.status,
-              updates: syncedPermit
+              updates: syncedPermit,
+              permit: syncedPermit
             }
           }));
         }
+        setTimeout(() => {
+          try {
+            const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+            if (Array.isArray(cached) && cached.length > 0) {
+              const updatedList = cached.map(p => {
+                if (p.id !== syncedPermit.id) return p;
+                const merged = { ...p, ...syncedPermit };
+                return {
+                  ...merged,
+                  attachments: Array.isArray(merged.attachments)
+                    ? merged.attachments.map((a: any) => typeof a === 'object' && a?.data?.length > 1024 ? { ...a, data: '' } : a)
+                    : merged.attachments
+                };
+              });
+              localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updatedList));
+            }
+          } catch {}
+        }, 120);
       };
 
       // Case A: Remittance was already detected/attached before confirmation -> capture & save immediately
       if (matchedRemittance) {
         const docData = buildDocData(matchedRemittance);
-        const dataUrl = await renderAndCaptureRemittanceOffscreen(docData);
+        const dataUrl = initialAttachmentDataUrl || await renderAndCaptureRemittanceOffscreen(docData);
         const syncRes = await syncExitPermitWithSayan(permit.id, {
           approverWarehouse,
           advanceToSecurity: false,
@@ -440,6 +461,9 @@ export const backgroundAutoDetectAndAttachRemittance = (options: {
           tafsiliCode,
           recipientName,
           permitDate: permit.date,
+          targetWeight: totalConfirmedWeight,
+          targetCartons: totalConfirmedCartons,
+          itemNames,
           docType: 'all_exit',
           limit: 5
         });

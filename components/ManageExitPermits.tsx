@@ -50,20 +50,42 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
     const [warehouseFinalize, setWarehouseFinalize] = useState<ExitPermit | null>(null);
     const [securityFinalize, setSecurityFinalize] = useState<ExitPermit | null>(null);
     const [processingId, setProcessingId] = useState<string | null>(null);
+    const [visibleCount, setVisibleCount] = useState<number>(40);
+    const [bgSyncBanner, setBgSyncBanner] = useState<{ permitNumber: string | number; message: string } | null>(null);
+
+    useEffect(() => {
+        setVisibleCount(40);
+    }, [activeTab, searchTerm]);
 
     useEffect(() => { 
         loadData(); 
 
         const handleOptimisticApply = (e: any) => {
-            const { permitId, targetStatus, extra, updates } = e.detail || {};
+            const { permitId, targetStatus, extra, updates, permit } = e.detail || {};
             const extraData = updates || extra || {};
             if (permitId) {
-                setPermits(prev => prev.map(p => p.id === permitId ? { ...p, ...(targetStatus ? { status: targetStatus } : {}), ...extraData } : p));
-                setViewPermit(prev => prev && prev.id === permitId ? { ...prev, ...(targetStatus ? { status: targetStatus } : {}), ...extraData } : prev);
+                setPermits(prev => prev.map(p => p.id === permitId ? { ...p, ...(permit || {}), ...(targetStatus ? { status: targetStatus } : {}), ...extraData } : p));
+                setViewPermit(prev => prev && prev.id === permitId ? { ...prev, ...(permit || {}), ...(targetStatus ? { status: targetStatus } : {}), ...extraData } : prev);
             }
         };
 
         const handleBackgroundSynced = (e: any) => {
+            const syncedPermit: ExitPermit | undefined = e.detail?.permit;
+            if (syncedPermit && syncedPermit.id) {
+                setPermits(prev => {
+                    if (prev.length === 0) return [syncedPermit];
+                    const exists = prev.some(p => p.id === syncedPermit.id);
+                    if (exists) {
+                        return prev.map(p => p.id === syncedPermit.id ? { ...p, ...syncedPermit } : p);
+                    }
+                    return [syncedPermit, ...prev];
+                });
+                setViewPermit(prev => prev && prev.id === syncedPermit.id ? { ...prev, ...syncedPermit } : prev);
+                if (syncedPermit.driverName || syncedPermit.plateNumber) {
+                    syncDriversFromRecords([syncedPermit]);
+                }
+                return;
+            }
             if (e.detail?.allPermits && Array.isArray(e.detail.allPermits)) {
                 let safeData = e.detail.allPermits;
                 if (financialYear && financialYear !== 'all') {
@@ -463,9 +485,10 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         });
     };
 
-    const handleWarehouseSubmit = async (finalItems: any[], sayanRemittanceData?: any, attachmentDataUrl?: string, sayanRemittanceDocs?: any[]) => {
+    const handleWarehouseSubmit = (finalItems: any[], sayanRemittanceData?: any, attachmentDataUrl?: string, sayanRemittanceDocs?: any[]) => {
         if (!warehouseFinalize) return;
         const currentPermit = warehouseFinalize;
+        // 1. Immediately close modal on current frame (0ms delay, zero freeze)
         setWarehouseFinalize(null);
         
         const currentAttachments = [...(currentPermit.attachments || [])];
@@ -477,13 +500,16 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             });
         }
 
+        const totalWeight = finalItems.reduce((a, b) => a + (Number(b.weight) || 0), 0);
+        const totalCartons = finalItems.reduce((a, b) => a + (Number(b.cartonCount) || 0), 0);
+
         const updated: ExitPermit = { 
             ...currentPermit, 
             items: finalItems, 
             approverWarehouse: currentUser.fullName, 
             status: ExitPermitStatus.PENDING_SECURITY,
-            weight: finalItems.reduce((a,b)=>a+(Number(b.weight)||0),1) > 1 ? finalItems.reduce((a,b)=>a+(Number(b.weight)||0),0) : currentPermit.weight,
-            cartonCount: finalItems.reduce((a,b)=>a+(Number(b.cartonCount)||0),1) > 1 ? finalItems.reduce((a,b)=>a+(Number(b.cartonCount)||0),0) : currentPermit.cartonCount,
+            weight: totalWeight > 0 ? totalWeight : currentPermit.weight,
+            cartonCount: totalCartons > 0 ? totalCartons : currentPermit.cartonCount,
             attachments: currentAttachments,
             sayanRemittanceNumber: sayanRemittanceData?.remittanceNumber || currentPermit.sayanRemittanceNumber,
             sayanSubCode: sayanRemittanceData?.subCode || currentPermit.sayanSubCode,
@@ -494,30 +520,43 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
             updatedAt: Date.now()
         };
         
-        // 1. Optimistic instant state update
+        // 2. Optimistic instant state update so the card immediately moves to Security
         setPermits(prev => prev.map(p => p.id === currentPermit.id ? { ...p, ...updated } : p));
 
-        // 2. Persistent queue (advances status to PENDING_SECURITY)
-        exitPermitQueueService.enqueueApproval({
-            permitId: currentPermit.id,
+        const hasAttachedRemittance = Boolean(sayanRemittanceData?.remittanceNumber || (sayanRemittanceDocs && sayanRemittanceDocs.length > 0));
+        setBgSyncBanner({
             permitNumber: currentPermit.permitNumber,
-            targetStatus: ExitPermitStatus.PENDING_SECURITY,
-            prevStatus: currentPermit.status,
-            approverUser: currentUser,
-            actionType: 'EDIT_PERMIT',
-            permitSnapshot: updated,
-            settings: settings
+            message: hasAttachedRemittance
+                ? `توزین حواله #${currentPermit.permitNumber} ثبت شد و در پس‌زمینه به انتظامات ارسال گردید.`
+                : `توزین حواله #${currentPermit.permitNumber} ثبت شد — تشخیص و پیوست خودکار حواله سایان در پس‌زمینه در حال انجام است...`
         });
+        setTimeout(() => {
+            setBgSyncBanner(prev => prev?.permitNumber === currentPermit.permitNumber ? null : prev);
+        }, 4500);
 
-        // 3. Background Sayan remittance detection, offscreen official doc capture, and attachment sync
-        backgroundAutoDetectAndAttachRemittance({
-            permit: updated,
-            finalItems,
-            initialRemittance: sayanRemittanceData || null,
-            initialRemittances: sayanRemittanceDocs || (sayanRemittanceData ? [sayanRemittanceData] : []),
-            initialAttachmentDataUrl: attachmentDataUrl,
-            companyName: settings?.companyNotifications?.exitPermitCompany || currentPermit.company,
-        }).catch(err => console.warn('[ManageExitPermits] Background remittance attach error:', err));
+        // 3. Defer background queue & Sayan remittance attachment to next tick so browser paints closed modal first
+        setTimeout(() => {
+            exitPermitQueueService.enqueueApproval({
+                permitId: currentPermit.id,
+                permitNumber: currentPermit.permitNumber,
+                targetStatus: ExitPermitStatus.PENDING_SECURITY,
+                prevStatus: currentPermit.status,
+                approverUser: currentUser,
+                actionType: 'EDIT_PERMIT',
+                permitSnapshot: updated,
+                settings: settings
+            });
+
+            backgroundAutoDetectAndAttachRemittance({
+                permit: updated,
+                finalizedItems: finalItems,
+                initialRemittance: sayanRemittanceData || null,
+                initialRemittances: sayanRemittanceDocs || (sayanRemittanceData ? [sayanRemittanceData] : []),
+                initialAttachmentDataUrl: attachmentDataUrl,
+                companyName: currentPermit.company || '',
+                approverWarehouse: currentUser.fullName,
+            });
+        }, 20);
     };
 
     const handleDelete = async (id: string) => {
@@ -897,25 +936,49 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
                     />
                     <Search className="absolute right-3 top-3.5 text-gray-400" size={18}/>
                 </div>
+                {bgSyncBanner && (
+                    <div className="bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shadow-xs animate-fade-in">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+                            <span>{bgSyncBanner.message}</span>
+                        </div>
+                        <button onClick={() => setBgSyncBanner(null)} className="text-emerald-600 hover:text-emerald-800 text-[11px] font-black px-2 py-0.5 rounded-lg">بستن</button>
+                    </div>
+                )}
             </div>
 
             {/* List */}
-            {React.useMemo(() => (
-                <div className={`${isMobile ? 'space-y-3' : 'space-y-4'} min-h-[300px]`}>
-                    {loading && permits.length === 0 ? (
-                        <div className="text-center py-20 text-gray-400 flex flex-col items-center gap-2">
-                            <Loader2 className="animate-spin text-blue-500"/> در حال بارگذاری...
-                        </div>
-                    ) : displayPermits.length === 0 ? (
-                        <div className="text-center py-20 glass-panel rounded-2xl border border-dashed border-gray-300">
-                            <div className="text-gray-400 font-bold">موردی یافت نشد.</div>
-                            {activeTab === 'CARTABLE' && <div className="text-xs text-gray-300 mt-2">خوشبختانه کارتابل شما خالی است! 🎉</div>}
-                        </div>
-                    ) : (
-                        displayPermits.map(p => renderPermitCard(p))
-                    )}
-                </div>
-            ), [displayPermits, loading, permits.length, activeTab, isMobile, processingId])}
+            {React.useMemo(() => {
+                const slicedPermits = displayPermits.slice(0, visibleCount);
+                return (
+                    <div className={`${isMobile ? 'space-y-3' : 'space-y-4'} min-h-[300px]`}>
+                        {loading && permits.length === 0 ? (
+                            <div className="text-center py-20 text-gray-400 flex flex-col items-center gap-2">
+                                <Loader2 className="animate-spin text-blue-500"/> در حال بارگذاری...
+                            </div>
+                        ) : displayPermits.length === 0 ? (
+                            <div className="text-center py-20 glass-panel rounded-2xl border border-dashed border-gray-300">
+                                <div className="text-gray-400 font-bold">موردی یافت نشد.</div>
+                                {activeTab === 'CARTABLE' && <div className="text-xs text-gray-300 mt-2">خوشبختانه کارتابل شما خالی است! 🎉</div>}
+                            </div>
+                        ) : (
+                            <>
+                                {slicedPermits.map(p => renderPermitCard(p))}
+                                {displayPermits.length > visibleCount && (
+                                    <div className="pt-2 pb-4 flex justify-center">
+                                        <button
+                                            onClick={() => setVisibleCount(prev => prev + 40)}
+                                            className="bg-white dark:bg-gray-800 hover:bg-teal-50 dark:hover:bg-teal-950/50 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 font-bold text-xs px-6 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
+                                        >
+                                            نمایش موارد بیشتر ({displayPermits.length - visibleCount} مورد باقی‌مانده)
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                );
+            }, [displayPermits, visibleCount, loading, permits.length, activeTab, isMobile, processingId])}
 
             {/* Modals */}
             {viewPermit && (

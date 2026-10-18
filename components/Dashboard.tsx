@@ -1175,22 +1175,43 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
     // 2. Factory Exit Permits Real-Time Sync
     const handleExitPermitOptimistic = (e: any) => {
         const { permitId, targetStatus, extra, updates, isDeleted, isNew, permit } = e.detail || {};
-        if (isDeleted && permitId) {
-            setExitPermits(prev => prev.filter(p => p.id !== permitId));
-        } else if (isNew && permit) {
-            setExitPermits(prev => [permit, ...prev.filter(p => p.id !== permit.id)]);
-        } else if (permitId && targetStatus) {
-            setExitPermits(prev => prev.map(p => p.id === permitId ? { ...p, status: targetStatus, ...(extra || {}), ...(updates || {}) } : p));
+        const applyUpdate = () => {
+            if (isDeleted && permitId) {
+                setExitPermits(prev => prev.filter(p => p.id !== permitId));
+            } else if (isNew && permit) {
+                setExitPermits(prev => [permit, ...prev.filter(p => p.id !== permit.id)]);
+            } else if (permitId) {
+                setExitPermits(prev => prev.map(p => p.id === permitId ? { ...p, ...(permit || {}), ...(targetStatus ? { status: targetStatus } : {}), ...(extra || {}), ...(updates || {}) } : p));
+            }
+        };
+        if (activeTab && activeTab !== 'dashboard') {
+            setTimeout(applyUpdate, 180);
+        } else {
+            applyUpdate();
         }
     };
     const handleExitPermitSynced = (e: any) => {
-        const { allPermits } = e.detail || {};
-        if (Array.isArray(allPermits) && allPermits.length > 0) {
-            let filtered = allPermits;
-            if (financialYear && financialYear !== 'all') {
-                filtered = filtered.filter(p => isInFinancialYear(p.date, financialYear));
+        const { permit, allPermits } = e.detail || {};
+        const applySync = () => {
+            if (permit && permit.id) {
+                setExitPermits(prev => prev.some(p => p.id === permit.id)
+                    ? prev.map(p => p.id === permit.id ? { ...p, ...permit } : p)
+                    : [permit, ...prev]
+                );
+                return;
             }
-            setExitPermits(filtered);
+            if (Array.isArray(allPermits) && allPermits.length > 0) {
+                let filtered = allPermits;
+                if (financialYear && financialYear !== 'all') {
+                    filtered = filtered.filter(p => isInFinancialYear(p.date, financialYear));
+                }
+                setExitPermits(filtered);
+            }
+        };
+        if (activeTab && activeTab !== 'dashboard') {
+            setTimeout(applySync, 250);
+        } else {
+            applySync();
         }
     };
 

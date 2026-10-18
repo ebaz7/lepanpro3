@@ -93,13 +93,28 @@ class ExitPermitQueueService {
         }
     }
 
+    private saveQueueTimer: any = null;
+
     private saveQueue() {
-        try {
-            localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(this.queue));
-        } catch (e) {
-            console.error('Error saving exit permit queue:', e);
-        }
         this.notifyListeners();
+        if (this.saveQueueTimer) clearTimeout(this.saveQueueTimer);
+        this.saveQueueTimer = setTimeout(() => {
+            try {
+                // Strip heavy base64 data from localStorage queue persistence so JSON.stringify is <1ms and never hits QuotaExceededError
+                const lightweightQueue = this.queue.map(t => ({
+                    ...t,
+                    permitSnapshot: t.permitSnapshot ? {
+                        ...t.permitSnapshot,
+                        attachments: Array.isArray(t.permitSnapshot.attachments)
+                            ? t.permitSnapshot.attachments.map((a: any) => typeof a === 'object' && a?.data?.length > 1024 ? { ...a, data: '' } : a)
+                            : t.permitSnapshot.attachments
+                    } : undefined
+                }));
+                localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(lightweightQueue));
+            } catch (e) {
+                console.error('Error saving exit permit queue:', e);
+            }
+        }, 60);
     }
 
     public subscribe(listener: (tasks: ExitPermitQueueTask[]) => void) {
@@ -118,7 +133,7 @@ class ExitPermitQueueService {
 
     /**
      * Enqueues an exit permit approval or rejection in the background
-     * and immediately locks the state in local storage and optimistic broadcast.
+     * without blocking the UI thread.
      */
     public enqueueApproval(taskParams: {
         permitId: string;
@@ -149,44 +164,54 @@ class ExitPermitQueueService {
             status: 'QUEUED'
         };
 
-        // 1. Instantly update local cache in localStorage so any reloads retain the approved state
-        try {
-            const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
-            if (Array.isArray(cached)) {
-                let updatedPermits = cached;
-                if (taskParams.permitSnapshot) {
-                    updatedPermits = cached.map(p => p.id === taskParams.permitId ? { ...p, ...taskParams.permitSnapshot } : p);
-                } else {
-                    updatedPermits = cached.map(p => p.id === taskParams.permitId ? { ...p, status: taskParams.targetStatus, updatedAt: Date.now() } : p);
-                }
-                localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updatedPermits));
-            }
-        } catch (e) {
-            console.warn('Could not update LS_KEYS.EXIT_PERMITS immediately:', e);
-        }
-
-        // 2. Add to persistent queue
+        // 1. Add to in-memory queue immediately (0ms) and schedule non-blocking storage persist
         this.queue.push(newTask);
         this.saveQueue();
 
-        // 3. Dispatch optimistic broadcast so all open tabs / views update immediately
-        if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
-                detail: {
-                    permitId: taskParams.permitId,
-                    targetStatus: taskParams.targetStatus,
-                    approverUser: taskParams.approverUser,
-                    extra: taskParams.extra,
-                    permit: taskParams.permitSnapshot,
-                    taskId
+        // 2. Defer localStorage EXIT_PERMITS cache update to background timer so UI never freezes
+        setTimeout(() => {
+            try {
+                const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+                if (Array.isArray(cached) && cached.length > 0) {
+                    const updatedPermits = cached.map(p => {
+                        if (p.id !== taskParams.permitId) return p;
+                        const merged = taskParams.permitSnapshot
+                            ? { ...p, ...taskParams.permitSnapshot }
+                            : { ...p, status: taskParams.targetStatus, updatedAt: Date.now() };
+                        return {
+                            ...merged,
+                            attachments: Array.isArray(merged.attachments)
+                                ? merged.attachments.map((a: any) => typeof a === 'object' && a?.data?.length > 1024 ? { ...a, data: '' } : a)
+                                : merged.attachments
+                        };
+                    });
+                    localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updatedPermits));
                 }
-            }));
+            } catch (e) {
+                console.warn('Could not update LS_KEYS.EXIT_PERMITS in background:', e);
+            }
+        }, 120);
+
+        // 3. Dispatch optimistic broadcast asynchronously so the active modal closes in the current frame first
+        if (typeof window !== 'undefined') {
+            setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
+                    detail: {
+                        permitId: taskParams.permitId,
+                        targetStatus: taskParams.targetStatus,
+                        approverUser: taskParams.approverUser,
+                        extra: taskParams.extra,
+                        permit: taskParams.permitSnapshot,
+                        taskId
+                    }
+                }));
+            }, 0);
         }
 
-        // 4. Kick off background worker
+        // 4. Kick off background network worker after browser paints modal close
         setTimeout(() => {
             this.processQueue(true);
-        }, 10);
+        }, 35);
 
         return taskId;
     }
@@ -217,24 +242,25 @@ class ExitPermitQueueService {
                     let updatedPermits: ExitPermit[] = [];
 
                     if (task.actionType === 'EDIT_PERMIT' && task.permitSnapshot) {
-                        updatedPermits = await editExitPermit(task.permitSnapshot);
+                        updatedPermits = await editExitPermit(task.permitSnapshot, true);
                     } else if (task.targetStatus && task.approverUser) {
                         updatedPermits = await updateExitPermitStatus(
                             task.permitId,
                             task.targetStatus,
                             task.approverUser,
-                            task.extra
+                            task.extra,
+                            true
                         );
                     }
 
-                    const updatedPermit = updatedPermits.find(p => p.id === task.permitId);
+                    const updatedPermit = updatedPermits.find(p => p.id === task.permitId) || task.permitSnapshot;
 
-                    // Trigger sync event with full updated permits
+                    // Trigger sync event with updated permit (lightweight single-item update preferred)
                     if (updatedPermit && typeof window !== 'undefined') {
                         window.dispatchEvent(new CustomEvent('EXIT_PERMIT_BACKGROUND_SYNCED', {
                             detail: {
                                 permit: updatedPermit,
-                                allPermits: updatedPermits,
+                                allPermits: updatedPermits.length > 0 ? updatedPermits : undefined,
                                 prevStatus: task.prevStatus || task.permitSnapshot?.status,
                                 taskId: task.id
                             }

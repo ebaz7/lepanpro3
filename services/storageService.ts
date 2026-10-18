@@ -1,6 +1,6 @@
 
 import { MeetingMinutes, PaymentOrder, User, OrderStatus, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, TradeAttachment, ExitPermit, ExitPermitStatus, WarehouseItem, WarehouseTransaction, SecurityLog, DriverPayment, PersonnelDelay, PersonnelOvertime, SecurityIncident, TaskGroup, SystemAnnouncement, ChequeReceipt, ChequeItem, BioLinkConfig, BioLinkOrder } from '../types';
-import { apiCall, getLocalData, LS_KEYS } from './apiService';
+import { apiCall, getLocalData, LS_KEYS, getEffectiveApiUrl, getAuthToken } from './apiService';
 
 // Safely return array
 const safeArray = <T>(data: any): T[] => {
@@ -199,18 +199,26 @@ export const deleteOrder = async (id: string): Promise<PaymentOrder[]> => {
     return safeRes;
 };
 
+let _exitPermitsCacheWriteTimer: any = null;
+const scheduleExitPermitsCacheUpdate = (updater: (cached: ExitPermit[]) => ExitPermit[]) => {
+    if (_exitPermitsCacheWriteTimer) clearTimeout(_exitPermitsCacheWriteTimer);
+    _exitPermitsCacheWriteTimer = setTimeout(() => {
+        try {
+            const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
+            if (cached && Array.isArray(cached)) {
+                const updated = updater(cached);
+                localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
+            }
+        } catch {}
+    }, 150);
+};
+
 export const getExitPermits = async (): Promise<ExitPermit[]> => { 
     const res = await apiCall<ExitPermit[]>('/exit-permits'); 
     return safeArray<ExitPermit>(res);
 };
 export const saveExitPermit = async (permit: ExitPermit): Promise<ExitPermit[]> => { 
-    try {
-        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
-        if (cached && Array.isArray(cached)) {
-            const updated = [permit, ...cached.filter((p: ExitPermit) => p.id !== permit.id)];
-            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
-        }
-    } catch {}
+    scheduleExitPermitsCacheUpdate(cached => [permit, ...cached.filter((p: ExitPermit) => p.id !== permit.id)]);
     if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
             detail: { permitId: permit.id, targetStatus: permit.status, permit, isNew: true }
@@ -226,15 +234,9 @@ export const saveExitPermit = async (permit: ExitPermit): Promise<ExitPermit[]> 
     return safeRes;
 };
 
-export const editExitPermit = async (updatedPermit: ExitPermit): Promise<ExitPermit[]> => { 
-    try {
-        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
-        if (cached && Array.isArray(cached)) {
-            const updated = cached.map((p: ExitPermit) => p.id === updatedPermit.id ? updatedPermit : p);
-            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
-        }
-    } catch {}
-    if (typeof window !== 'undefined') {
+export const editExitPermit = async (updatedPermit: ExitPermit, skipOptimisticBroadcast = false): Promise<ExitPermit[]> => { 
+    scheduleExitPermitsCacheUpdate(cached => cached.map((p: ExitPermit) => p.id === updatedPermit.id ? updatedPermit : p));
+    if (!skipOptimisticBroadcast && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
             detail: { permitId: updatedPermit.id, targetStatus: updatedPermit.status, permit: updatedPermit, updates: updatedPermit }
         }));
@@ -249,7 +251,7 @@ export const editExitPermit = async (updatedPermit: ExitPermit): Promise<ExitPer
     return safeRes;
 };
 
-export const updateExitPermitStatus = async (id: string, status: ExitPermitStatus, approverUser: User, extra?: { rejectionReason?: string, exitTime?: string, isReject?: boolean, isBackwardReject?: boolean }): Promise<ExitPermit[]> => {
+export const updateExitPermitStatus = async (id: string, status: ExitPermitStatus, approverUser: User, extra?: { rejectionReason?: string, exitTime?: string, isReject?: boolean, isBackwardReject?: boolean }, skipOptimisticBroadcast = false): Promise<ExitPermit[]> => {
     const updates: any = { status, updatedAt: Date.now() };
     
     if (extra?.isReject || extra?.rejectionReason) {
@@ -292,17 +294,11 @@ export const updateExitPermitStatus = async (id: string, status: ExitPermitStatu
         updates.rejectedBy = approverUser.fullName;
     }
 
-    // Optimistically update local cache
-    try {
-        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
-        if (cached && Array.isArray(cached)) {
-            const updated = cached.map((p: ExitPermit) => p.id === id ? { ...p, ...updates } : p);
-            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
-        }
-    } catch {}
+    // Non-blocking background update of local cache
+    scheduleExitPermitsCacheUpdate(cached => cached.map((p: ExitPermit) => p.id === id ? { ...p, ...updates } : p));
 
     // Dispatch optimistic broadcast so cartable and dashboard update immediately
-    if (typeof window !== 'undefined') {
+    if (!skipOptimisticBroadcast && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
             detail: { permitId: id, targetStatus: status, approverUser, extra, updates }
         }));
@@ -319,13 +315,7 @@ export const updateExitPermitStatus = async (id: string, status: ExitPermitStatu
 };
 
 export const deleteExitPermit = async (id: string): Promise<ExitPermit[]> => { 
-    try {
-        const cached = getLocalData<ExitPermit[]>(LS_KEYS.EXIT_PERMITS, []);
-        if (cached && Array.isArray(cached)) {
-            const updated = cached.filter((p: ExitPermit) => p.id !== id);
-            localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(updated));
-        }
-    } catch {}
+    scheduleExitPermitsCacheUpdate(cached => cached.filter((p: ExitPermit) => p.id !== id));
     if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('EXIT_PERMIT_OPTIMISTIC_APPLY', {
             detail: { permitId: id, isDeleted: true }
@@ -436,8 +426,14 @@ export const uploadTradeAttachment = async (
     formData.append('file', file);
     
     const cleanCat = category.replace(/[^a-zA-Z0-9_\-\/]/g, '').trim() || 'commercial/general';
-    const response = await fetch(`/api/upload-file?category=${encodeURIComponent(cleanCat)}`, {
+    const uploadUrl = getEffectiveApiUrl(`/upload-file?category=${encodeURIComponent(cleanCat)}`);
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(uploadUrl, {
         method: 'POST',
+        headers,
         body: formData
     });
     
@@ -473,9 +469,79 @@ export const deleteUploadedFile = async (url: string): Promise<boolean> => {
     }
 };
 
+// Helper: Direct high-speed multipart upload with granular native progress (0% - 100%)
+const uploadFileDirectWithProgress = (file: File, onProgress: (p: number) => void): Promise<{ fileName: string, url: string }> => {
+    return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const xhr = new XMLHttpRequest();
+        const targetUrl = getEffectiveApiUrl('/upload-file');
+
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable && e.total > 0) {
+                const percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+                onProgress(percent);
+            }
+        });
+
+        xhr.onreadystatechange = () => {
+            if (xhr.readyState === 4) {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const res = JSON.parse(xhr.responseText);
+                        if (res && res.url) {
+                            onProgress(100);
+                            resolve({ fileName: res.fileName || file.name, url: res.url });
+                            return;
+                        }
+                    } catch (e) {
+                        reject(new Error("پاسخ سرور در قالب نامعتبر است"));
+                        return;
+                    }
+                }
+                let errorMsg = `خطای سرور: ${xhr.status}`;
+                try {
+                    const errObj = JSON.parse(xhr.responseText);
+                    if (errObj && (errObj.error || errObj.message)) errorMsg = errObj.error || errObj.message;
+                } catch (_) {}
+                reject(new Error(errorMsg));
+            }
+        };
+
+        xhr.onerror = () => reject(new Error("خطای ارتباط با سرور در ارسال مستقیم فایل"));
+        xhr.ontimeout = () => reject(new Error("زمان مجاز آپلود به پایان رسید"));
+
+        xhr.open('POST', targetUrl, true);
+        xhr.timeout = 300000; // 5 minutes timeout
+
+        const token = getAuthToken();
+        if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        }
+
+        xhr.send(formData);
+    });
+};
+
 export const uploadFileChunked = async (file: File, onProgress: (p: number) => void): Promise<{ fileName: string, url: string }> => {
+    // Strategy 1: Direct High-Speed Multipart Upload (Fastest, zero base64 memory inflation, streams directly)
+    // Supports files up to 90MB (within multer 100MB limit). Covers 99.9% of user files.
+    if (file.size <= 90 * 1024 * 1024) {
+        try {
+            const directRes = await uploadFileDirectWithProgress(file, onProgress);
+            if (directRes && directRes.url) {
+                return directRes;
+            }
+        } catch (directErr: any) {
+            console.warn("Direct upload fallback to chunked upload:", directErr.message || directErr);
+            // If direct upload returned 404 or connection issue, proceed to chunked fallback
+        }
+    }
+
+    // Strategy 2: Resilient Chunked Upload
     const uploadId = Date.now().toString() + '_' + Math.floor(Math.random() * 1000);
-    const chunkSize = 2 * 1024 * 1024; // Increased to 2MB chunks
+    const chunkSize = 2 * 1024 * 1024; // 2MB chunks
     const totalChunks = Math.ceil(file.size / chunkSize);
     
     for (let i = 0; i < totalChunks; i++) {
@@ -508,18 +574,17 @@ export const uploadFileChunked = async (file: File, onProgress: (p: number) => v
             } catch (err) {
                 console.warn(`Upload chunk ${i} failed (Attempt ${attempts}/${maxAttempts})`, err);
                 if (attempts >= maxAttempts) throw err;
-                // Wait before retry
                 await new Promise(r => setTimeout(r, Math.min(1000 * Math.pow(2, attempts), 5000)));
             }
         }
         
-        onProgress(Math.round(((i + 1) / totalChunks) * 90)); // 90% is for uploading chunks
+        onProgress(Math.min(95, Math.round(((i + 1) / totalChunks) * 92)));
     }
     
     // Finish upload with retry
     let finishResponse: any = null;
     let finishAttempts = 0;
-    while (!finishResponse && finishAttempts < 3) {
+    while (!finishResponse && finishAttempts < 4) {
         try {
             finishAttempts++;
             finishResponse = await apiCall<{ fileName: string, url: string }>('/upload-finish', 'POST', {
@@ -527,10 +592,48 @@ export const uploadFileChunked = async (file: File, onProgress: (p: number) => v
                 fileName: file.name,
                 totalChunks
             });
-        } catch (err) {
+        } catch (err: any) {
             console.warn(`Finish upload failed (Attempt ${finishAttempts})`, err);
-            if (finishAttempts >= 3) throw err;
-            await new Promise(r => setTimeout(r, 2000));
+            // Also try fallback endpoint without /api prefix or via direct fetch
+            try {
+                const altUrl = getEffectiveApiUrl('/upload-finish');
+                const altRes = await fetch(altUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(getAuthToken() ? { 'Authorization': `Bearer ${getAuthToken()}` } : {})
+                    },
+                    body: JSON.stringify({ uploadId, fileName: file.name, totalChunks })
+                });
+                if (altRes.ok) {
+                    finishResponse = await altRes.json();
+                    break;
+                }
+            } catch (_) {}
+
+            if (finishAttempts >= 4) {
+                // If chunked finish failed and file is reasonably sized (< 20MB), attempt Strategy 3
+                if (file.size <= 20 * 1024 * 1024) {
+                    try {
+                        const base64Data = await new Promise<string>((resolve, reject) => {
+                            const r = new FileReader();
+                            r.onload = () => resolve(r.result as string);
+                            r.onerror = reject;
+                            r.readAsDataURL(file);
+                        });
+                        const b64Res = await apiCall<{ fileName: string, url: string }>('/upload', 'POST', {
+                            fileName: file.name,
+                            fileData: base64Data
+                        });
+                        if (b64Res && b64Res.url) {
+                            onProgress(100);
+                            return b64Res;
+                        }
+                    } catch (_) {}
+                }
+                throw err;
+            }
+            await new Promise(r => setTimeout(r, 1500));
         }
     }
     

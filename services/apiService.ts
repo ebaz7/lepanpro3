@@ -113,18 +113,33 @@ export const getServerHost = () => {
     }
 
     const stored = localStorage.getItem('app_server_host');
-    if (stored) return stored.trim().replace(/\/$/, '');
+    if (stored) {
+        let cleanStored = stored.trim().replace(/\/+$/, '');
+        cleanStored = cleanStored.replace(/\/api\/?$/i, '');
+        return cleanStored;
+    }
     if (Capacitor.isNativePlatform()) {
-        if (DEFAULT_SERVER_URL) return DEFAULT_SERVER_URL.replace(/\/$/, '');
+        if (DEFAULT_SERVER_URL) {
+            let cleanDef = DEFAULT_SERVER_URL.trim().replace(/\/+$/, '');
+            cleanDef = cleanDef.replace(/\/api\/?$/i, '');
+            return cleanDef;
+        }
     }
     return '';
 };
 
 export const getEffectiveApiUrl = (path: string): string => {
     const host = getServerHost();
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    if (!host) return cleanPath;
-    return `${host}${cleanPath}`;
+    let cleanPath = path.startsWith('/') ? path : `/${path}`;
+    // Deduplicate /api prefix if host or cleanPath causes doubling
+    if (host) {
+        cleanPath = cleanPath.replace(/^\/api(?=\/|$)/, '');
+        return `${host}/api${cleanPath}`;
+    }
+    if (!cleanPath.startsWith('/api')) {
+        cleanPath = `/api${cleanPath}`;
+    }
+    return cleanPath;
 };
 
 export const resolveImageUrl = (url: string | null | undefined): string => {
@@ -239,9 +254,10 @@ export const apiCall = async <T>(
             // Ensure endpoint starts with /
             let safeEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
             // Prevent double /api/api if caller passes path prefixed with /api
-            if (safeEndpoint.startsWith('/api/')) {
+            while (safeEndpoint.startsWith('/api/')) {
                 safeEndpoint = safeEndpoint.substring(4);
-            } else if (safeEndpoint === '/api') {
+            }
+            if (safeEndpoint === '/api') {
                 safeEndpoint = '';
             }
             const finalUrl = `${baseUrl}${safeEndpoint}`;
@@ -346,33 +362,35 @@ export const apiCall = async <T>(
                     data = { success: true } as unknown as T;
                 }
 
-                // --- CACHING ENABLED ---
-                // Crucial for Android app to prevent "raw/empty" state if network fluctuates
+                // --- NON-BLOCKING BACKGROUND CACHING ---
+                // Deferred to background tick so large JSON.stringify calls never block UI rendering or modal close
                 if (method === 'GET' || ((method === 'POST' || method === 'PUT' || method === 'DELETE') && Array.isArray(data))) {
-                    try {
-                        if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
-                        else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
-                        else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
-                        else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
-                        else if (endpoint === '/trade' || endpoint.startsWith('/trade/')) localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
-                        else if (endpoint === '/customer-balances') localStorage.setItem('app_data_balances', JSON.stringify(data));
-                        else if (endpoint === '/customer-balances/chat-codes') localStorage.setItem('app_data_balances_mappings', JSON.stringify(data));
-                        else if (endpoint === '/customer-balances/statements/all') localStorage.setItem('app_data_balances_statements', JSON.stringify(data));
-                        else if (endpoint === '/warehouse/items') localStorage.setItem(LS_KEYS.WH_ITEMS, JSON.stringify(data));
-                        else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(data));
-                        else if (endpoint === '/notes') localStorage.setItem(LS_KEYS.NOTES, JSON.stringify(data));
-                        else if (endpoint === '/exit-permits') localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(data));
-                        else if (endpoint === '/meetings') localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(data));
-                        else if (endpoint === '/purchase-requests') localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(data));
-                        else if (endpoint === '/announcements') localStorage.setItem(LS_KEYS.ANNOUNCEMENTS, JSON.stringify(data));
-                        else if (endpoint === '/groups') localStorage.setItem(LS_KEYS.GROUPS, JSON.stringify(data));
-                        else if (endpoint === '/task-groups') localStorage.setItem(LS_KEYS.TASK_GROUPS, JSON.stringify(data));
-                        else if (endpoint === '/tasks') localStorage.setItem(LS_KEYS.TASKS, JSON.stringify(data));
-                    } catch (cacheError) {
-                        console.warn("Cache write failed (storage full?)", cacheError);
-                    }
+                    setTimeout(() => {
+                        try {
+                            if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
+                            else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
+                            else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
+                            else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
+                            else if (endpoint === '/trade' || endpoint.startsWith('/trade/')) localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
+                            else if (endpoint === '/customer-balances') localStorage.setItem('app_data_balances', JSON.stringify(data));
+                            else if (endpoint === '/customer-balances/chat-codes') localStorage.setItem('app_data_balances_mappings', JSON.stringify(data));
+                            else if (endpoint === '/customer-balances/statements/all') localStorage.setItem('app_data_balances_statements', JSON.stringify(data));
+                            else if (endpoint === '/warehouse/items') localStorage.setItem(LS_KEYS.WH_ITEMS, JSON.stringify(data));
+                            else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(data));
+                            else if (endpoint === '/notes') localStorage.setItem(LS_KEYS.NOTES, JSON.stringify(data));
+                            else if (endpoint === '/exit-permits') localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(data));
+                            else if (endpoint === '/meetings') localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(data));
+                            else if (endpoint === '/purchase-requests') localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(data));
+                            else if (endpoint === '/announcements') localStorage.setItem(LS_KEYS.ANNOUNCEMENTS, JSON.stringify(data));
+                            else if (endpoint === '/groups') localStorage.setItem(LS_KEYS.GROUPS, JSON.stringify(data));
+                            else if (endpoint === '/task-groups') localStorage.setItem(LS_KEYS.TASK_GROUPS, JSON.stringify(data));
+                            else if (endpoint === '/tasks') localStorage.setItem(LS_KEYS.TASKS, JSON.stringify(data));
+                        } catch (cacheError) {
+                            console.warn("Cache write failed (storage full?)", cacheError);
+                        }
+                    }, 80);
                 }
-                
+
                 return data;
             } else {
                 // Server returned non-200 error code

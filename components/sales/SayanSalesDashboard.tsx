@@ -1045,11 +1045,11 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       const daysInPrev = jalaali.jalaaliMonthLength(prevY, prevM);
       toStr = `${prevY}/${pad(prevM)}/${pad(daysInPrev)}`;
     } else if (presetKey === 'this_year') {
-      const activeY = targetYear || jNow.jy;
+      const activeY = jNow.jy;
       fromStr = `${activeY}/01/01`;
-      toStr = jNow.jy > activeY ? `${activeY}/12/29` : `${activeY}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
+      toStr = `${activeY}/${pad(jNow.jm)}/${pad(jNow.jd)}`;
     } else if (presetKey === 'last_year') {
-      const prevY = (targetYear || jNow.jy) - 1;
+      const prevY = jNow.jy - 1;
       fromStr = `${prevY}/01/01`;
       toStr = `${prevY}/12/29`;
     }
