@@ -178,12 +178,12 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
         setHasSearched(true);
         setSayanError(null);
 
-        if (forceOverwrite || attachedRemittances.length === 0) {
+        // Do NOT automatically replace items or attach remittance unless forceOverwrite is explicitly requested
+        if (forceOverwrite) {
           const latestRemittance = fastRes.remittance || list[0];
           setAttachedRemittances([latestRemittance]);
 
-          // Only auto-populate items if user hasn't already started typing manually (or if user clicked manual refresh)
-          if ((forceOverwrite || !userEditedItemsRef.current) && latestRemittance.items && latestRemittance.items.length > 0) {
+          if (latestRemittance.items && latestRemittance.items.length > 0) {
             const newItems: ExitPermitItem[] = latestRemittance.items.map((it, idx) => ({
               id: generateUUID(),
               goodsName: it.goodsName || `کالا ${idx + 1}`,
@@ -202,12 +202,12 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
           }
         }
       } else {
-        setSayanError('حواله منطبق در استعلام اولیه یافت نشد؛ می‌توانید تعداد و وزن را وارد و تایید کنید تا سیستم در پس‌زمینه حواله را متصل نماید، یا به صورت دستی جستجو کنید.');
+        setSayanError('حواله منطبق در استعلام اولیه یافت نشد؛ می‌توانید مقادیر را به صورت دستی وارد کرده و تایید کنید.');
       }
     } catch (e: any) {
       settled = true;
       clearTimeout(uiGuardTimer);
-      setSayanError('استعلام اولیه زمان‌بر شد؛ می‌توانید مقادیر را وارد و تایید کنید تا الصاق حواله در پس‌زمینه انجام شود.');
+      setSayanError('استعلام اولیه زمان‌بر شد؛ می‌توانید مقادیر را به صورت دستی وارد نمایید.');
     } finally {
       settled = true;
       clearTimeout(uiGuardTimer);
@@ -689,7 +689,7 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
           {/* Quick Fill Helper Bar */}
           <div className="flex items-center justify-between flex-wrap gap-2 bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/40 px-3.5 py-2 rounded-xl">
             <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
-              💡 می‌توانید تعداد کارتن و وزن خروجی را مستقیماً وارد و بلافاصله تایید کنید (تشخیص و الصاق حواله در پس‌زمینه انجام می‌شود).
+              💡 می‌توانید تعداد کارتن و وزن خروجی را مستقیماً وارد کنید یا حواله مورد نظر از سایان را انتخاب نمایید.
             </span>
             {(totalRequestedCount > 0 || totalRequestedWeight > 0) && (
               <button
@@ -863,11 +863,11 @@ const WarehouseFinalizeModal: React.FC<Props> = ({ permit, settings: initialSett
           <div className="text-xs text-gray-500 font-medium">
             {sayanRemittance ? (
               <span className="text-emerald-700 flex items-center gap-1 font-bold">
-                <CheckCircle2 size={14} /> حواله فروش شماره {sayanRemittance.remittanceNumber} آماده پیوست خودکار در پس‌زمینه است.
+                <CheckCircle2 size={14} /> حواله فروش شماره {sayanRemittance.remittanceNumber} برای پیوست به این مجوز انتخاب شده است.
               </span>
             ) : (
-              <span className="text-indigo-700 flex items-center gap-1 font-bold">
-                <RefreshCw size={14} className={loadingSayan ? "animate-spin" : ""} /> پس از تایید، تشخیص و پیوست حواله سایان به صورت خودکار در پس‌زمینه انجام می‌شود.
+              <span className="text-gray-600 flex items-center gap-1 font-bold">
+                هیچ حواله‌ای از سایان انتخاب نشده است (ثبت با اعداد دستی وارد شده انجام می‌شود).
               </span>
             )}
           </div>

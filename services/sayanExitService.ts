@@ -430,7 +430,7 @@ export const backgroundAutoDetectAndAttachRemittance = (options: {
         }, 120);
       };
 
-      // Case A: Remittance was already detected/attached before confirmation -> capture & save immediately
+      // Case A: User explicitly selected a Sayan remittance -> render offscreen & attach to permit
       if (matchedRemittance) {
         const docData = buildDocData(matchedRemittance);
         const dataUrl = initialAttachmentDataUrl || await renderAndCaptureRemittanceOffscreen(docData);
@@ -448,67 +448,17 @@ export const backgroundAutoDetectAndAttachRemittance = (options: {
         return;
       }
 
-      // Case B: Remittance was NOT detected yet (or was taking too long so user entered counts & confirmed).
-      // Try fast lookup with background retries (0ms, 4000ms, 10000ms).
-      const retryDelays = [0, 4000, 10000];
-      for (let attempt = 0; attempt < retryDelays.length; attempt++) {
-        if (retryDelays[attempt] > 0) {
-          await new Promise(r => setTimeout(r, retryDelays[attempt]));
-        }
-
-        const lookupRes = await lookupSayanSalesRemittancesFast({
-          personCode,
-          tafsiliCode,
-          recipientName,
-          permitDate: permit.date,
-          targetWeight: totalConfirmedWeight,
-          targetCartons: totalConfirmedCartons,
-          itemNames,
-          docType: 'all_exit',
-          limit: 5
-        });
-
-        if (lookupRes.success && lookupRes.remittance) {
-          matchedRemittance = lookupRes.remittance;
-          matchedDocs = [matchedRemittance];
-          break;
-        }
-
-        // On first attempt failure, still attach the warehouse-confirmed remittance doc immediately
-        // so the permit has a document right away, while continuing background retries for Sayan match.
-        if (attempt === 0) {
-          const fallbackDocData = buildDocData(null);
-          const fallbackDataUrl = await renderAndCaptureRemittanceOffscreen(fallbackDocData);
-          if (fallbackDataUrl) {
-            const initSync = await syncExitPermitWithSayan(permit.id, {
-              approverWarehouse,
-              advanceToSecurity: false,
-              customItems: finalizedItems,
-              attachmentDataUrl: fallbackDataUrl
-            });
-            if (initSync?.success && initSync.permit) {
-              applySyncedPermitToClient(initSync.permit);
-            }
-          }
-        }
-      }
-
-      // If Sayan remittance was found during background lookup/retry, attach official Sayan remittance & notify
-      if (matchedRemittance) {
-        const docData = buildDocData(matchedRemittance);
-        const dataUrl = await renderAndCaptureRemittanceOffscreen(docData);
-        const syncRes = await syncExitPermitWithSayan(permit.id, {
-          approverWarehouse,
-          advanceToSecurity: false,
-          customItems: finalizedItems,
-          remittanceData: matchedRemittance,
-          remittanceDocs: matchedDocs,
-          attachmentDataUrl: dataUrl || undefined
-        });
-        if (syncRes?.success && syncRes.permit) {
-          applySyncedPermitToClient(syncRes.permit);
-          toast.success(`حواله سایان شماره ${matchedRemittance.remittanceNumber} در پس‌زمینه شناسایی و به مجوز #${permit.permitNumber} پیوست شد.`);
-        }
+      // Case B: User did NOT select any Sayan remittance (entered manual numbers or skipped selection).
+      // Do NOT auto-detect or auto-attach any Sayan remittance! Simply sync the confirmed items.
+      const syncRes = await syncExitPermitWithSayan(permit.id, {
+        approverWarehouse,
+        advanceToSecurity: false,
+        customItems: finalizedItems,
+        remittanceData: null,
+        remittanceDocs: []
+      });
+      if (syncRes?.success && syncRes.permit) {
+        applySyncedPermitToClient(syncRes.permit);
       }
     } catch (err) {
       console.warn('backgroundAutoDetectAndAttachRemittance warning:', err);

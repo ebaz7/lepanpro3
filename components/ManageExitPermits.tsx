@@ -527,8 +527,8 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
         setBgSyncBanner({
             permitNumber: currentPermit.permitNumber,
             message: hasAttachedRemittance
-                ? `توزین حواله #${currentPermit.permitNumber} ثبت شد و در پس‌زمینه به انتظامات ارسال گردید.`
-                : `توزین حواله #${currentPermit.permitNumber} ثبت شد — تشخیص و پیوست خودکار حواله سایان در پس‌زمینه در حال انجام است...`
+                ? `توزین حواله #${currentPermit.permitNumber} با پیوست حواله سایان ثبت شد و به انتظامات ارسال گردید.`
+                : `توزین حواله #${currentPermit.permitNumber} ثبت شد و به انتظامات ارسال گردید.`
         });
         setTimeout(() => {
             setBgSyncBanner(prev => prev?.permitNumber === currentPermit.permitNumber ? null : prev);

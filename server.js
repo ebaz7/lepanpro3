@@ -6272,8 +6272,10 @@ app.post('/api/sayan/exit-permits/:id/sync-remittance', async (req, res) => {
         let rem = remittanceData;
         let remDocs = Array.isArray(remittanceDocs) && remittanceDocs.length > 0 ? remittanceDocs : null;
 
-        // If not passed, lookup directly using fast priority-ranked helper
-        if (!rem) {
+        const skipAutoLookup = req.body.skipAutoLookup === true || req.body.remittanceData === null;
+
+        // Only do server fallback lookup if explicitly requested and rem was not passed
+        if (!rem && !skipAutoLookup && req.body.autoLookup === true) {
             const pCode = permit.sayanPersonCode || (permit.destinations?.[0]?.sayanPersonCode);
             const tCode = permit.sayanTafsiliCode || (permit.destinations?.[0]?.sayanTafsiliCode);
             const rName = permit.recipientName || (permit.destinations?.[0]?.recipientName);
