@@ -150,6 +150,8 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     const [sendToChatDefaultMsg, setSendToChatDefaultMsg] = useState('');
     const [trazShareModalOpen, setTrazShareModalOpen] = useState(false);
     const [isReportShareModalOpen, setIsReportShareModalOpen] = useState(false);
+    const [salesCustomShareGenerator, setSalesCustomShareGenerator] = useState<(() => Promise<{ htmlContent?: string; blob?: Blob; pdfFilename: string; defaultMsg: string; prebuiltUrl?: string }>) | null>(null);
+    const [salesCustomShareTitle, setSalesCustomShareTitle] = useState<string>('');
     const [reportShareInitialScope, setReportShareInitialScope] = useState<TrazScope>('both');
 
     const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -5173,6 +5175,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             }
             return { htmlContent, pdfFilename, defaultMsg: text };
         } else if (activeTab === 'sales') {
+            if (salesCustomShareGenerator) {
+                return await salesCustomShareGenerator();
+            }
             const pdfFilename = `Sayan_Sales_${dateFromStr.replace(/\//g, '-')}_to_${dateToStr.replace(/\//g, '-')}_${Date.now()}.pdf`;
             let htmlContent = '';
             if (compareMode && compareSalesDataB && compareSalesDataB.length > 0) {
@@ -6400,7 +6405,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             }}
                             onToggleCompareMode={(enabled) => setCompareMode(enabled)}
                             runSayanQuery={runSayanQuery}
-                            onShareToChat={() => {
+                            onShareToChat={(customGenerator, customTitle) => {
+                                setSalesCustomShareGenerator(() => customGenerator || null);
+                                setSalesCustomShareTitle(customTitle || '');
                                 setIsReportShareModalOpen(true);
                             }}
                         />
@@ -9071,11 +9078,15 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
             <ReportShareToChatModal
                 isOpen={isReportShareModalOpen}
-                onClose={() => setIsReportShareModalOpen(false)}
+                onClose={() => {
+                    setIsReportShareModalOpen(false);
+                    setSalesCustomShareGenerator(null);
+                    setSalesCustomShareTitle('');
+                }}
                 reportType={activeTab === 'traz' ? 'traz' : (activeTab === 'sales' ? 'sales' : (activeTab === 'production' ? 'production' : (activeTab === 'cheques' ? 'cheques' : 'general')))}
                 reportTitle={
                     activeTab === 'traz' ? 'تراز معین مالی و بدهکاران/بستانکاران' :
-                    activeTab === 'sales' ? 'گزارش تحلیلی فروش و فاکتورها' :
+                    activeTab === 'sales' ? (salesCustomShareTitle || 'گزارش تحلیلی فروش و فاکتورها') :
                     activeTab === 'production' ? 'گزارش آمار تولید و ضایعات کارخانه' :
                     activeTab === 'cheques' ? 'گزارش اسناد دریافتنی (چک‌ها)' :
                     'گزارش سیستمی سایان'

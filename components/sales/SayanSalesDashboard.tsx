@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, FileText, Users, 
   Send, Printer, Download, Calendar, Filter, ChevronDown, ChevronRight, 
@@ -54,7 +54,7 @@ interface SayanSalesDashboardProps {
   onCompareDateRangeChange?: (fromB: string, toB: string) => void;
   onToggleCompareMode?: (enabled: boolean) => void;
   runSayanQuery?: (sql: string) => Promise<any>;
-  onShareToChat?: () => void;
+  onShareToChat?: (customGenerator?: () => Promise<{ htmlContent?: string; blob?: Blob; pdfFilename: string; defaultMsg: string; prebuiltUrl?: string }>, customTitle?: string) => void;
 }
 
 const getEffectiveApiUrl = (path: string) => {
@@ -241,9 +241,23 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   const [customerSortBy, setCustomerSortBy] = useState<'netAmt_desc' | 'netAmt_asc' | 'netWgt_desc' | 'netWgt_asc' | 'invoices_desc' | 'name_asc'>('netAmt_desc');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
-  const [customerDetailTab, setCustomerDetailTab] = useState<Record<string, 'invoices' | 'items'>>({});
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
   const [customerFilterSearchQuery, setCustomerFilterSearchQuery] = useState<string>('');
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(event.target as Node)) {
+        setIsCustomerDropdownOpen(false);
+      }
+    };
+    if (isCustomerDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCustomerDropdownOpen]);
 
   // Toggle exclusion of a major product group in comparison report
   const toggleExcludeSalesGroup = (groupName: string) => {
@@ -1157,253 +1171,122 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   };
 
   // ----------------------------------------------------------------------
-  // PRINT EXECUTIVE REPORT
+    // ----------------------------------------------------------------------
+  // TAB-AWARE PRINT & EXPORT GENERATOR
   // ----------------------------------------------------------------------
-  const handlePrint = () => {
-    if (compareMode && comparisonMetrics) {
-      // Executive A4 Landscape Comparative Print Report
-      const docHtml = `
-        <html dir="rtl" lang="fa">
-        <head>
-          <meta charset="utf-8">
-          <title>گزارش مدیریتی و تحلیلی مقایسه‌ای فروش سایان ERP</title>
-          <style>
-            @page { size: A4 landscape; margin: 6mm 8mm; }
-            body { font-family: 'Tahoma', 'Vazirmatn', sans-serif; padding: 0; margin: 0; background: #fff; color: #0f172a; -webkit-print-color-adjust: exact; }
-            .container { width: 100%; padding: 10px; box-sizing: border-box; }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; }
-            .header-title { display: flex; align-items: center; gap: 8px; }
-            .header-bar { width: 8px; height: 24px; background-color: #0f172a; border-radius: 2px; }
-            .header h1 { font-size: 16px; margin: 0; font-weight: 900; color: #0f172a; }
-            .header p { font-size: 10px; color: #64748b; margin: 2px 0 0; font-weight: bold; }
-            .date-badge { background: #0f172a; color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; text-align: left; }
-            
-            .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
-            .kpi-card { border-right: 4px solid #0f172a; padding: 8px 10px; border-radius: 6px; background: #f8fafc; text-align: right; }
-            .kpi-card.indigo { border-right-color: #4338ca; }
-            .kpi-card.emerald { border-right-color: #047857; }
-            .kpi-card.dark { background: #0f172a; color: #fff; border-right-color: #f59e0b; }
-            .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; }
-            .kpi-card.dark .kpi-title { color: #cbd5e1; }
-            .kpi-val { font-size: 14px; font-weight: 900; margin-top: 2px; font-family: monospace; }
-            .kpi-sub { font-size: 8.5px; color: #64748b; font-family: monospace; margin-top: 2px; }
-            .kpi-card.dark .kpi-sub { color: #94a3b8; }
-            
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10px; border: 1px solid #cbd5e1; }
-            th, td { border: 1px solid #e2e8f0; padding: 4px 6px; text-align: center; }
-            th { background-color: #0f172a; color: #fff; font-weight: 900; font-size: 10px; }
-            tr:nth-child(even) { background-color: #f8fafc; }
-            .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }
-            .badge-pos { background-color: #d1fae5; color: #065f46; font-weight: 900; padding: 1px 5px; border-radius: 4px; font-size: 9px; display: inline-block; font-family: monospace; }
-            .badge-neg { background-color: #ffe4e6; color: #9f1239; font-weight: 900; padding: 1px 5px; border-radius: 4px; font-size: 9px; display: inline-block; font-family: monospace; }
-            
-            .footer-sig { margin-top: 12px; padding: 8px 12px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; }
-            .sig-titles { display: flex; justify-content: space-between; font-size: 8.5px; font-weight: bold; color: #64748b; text-transform: uppercase; }
-            .sig-lines { display: flex; justify-content: space-between; margin-top: 8px; padding: 0 16px; }
-            .sig-line { height: 20px; width: 25%; border-bottom: 1px solid #cbd5e1; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <div>
-                <div class="header-title">
-                  <div class="header-bar"></div>
-                  <h1>گزارش مدیریتی و تحلیلی مقایسه‌ای فروش (سایان ERP)</h1>
-                </div>
-                <p>دوره A (پایه): از ${dateFrom} تا ${dateTo} | دوره B (تطبیقی): از ${salesDateFromB} تا ${salesDateToB}</p>
-              </div>
-              <div class="date-badge">
-                ${new Date().toLocaleDateString('fa-IR')}
-                <div style="font-size: 8px; color: #94a3b8; margin-top: 1px;">گزارش تک‌صفحه‌ای A4</div>
-              </div>
-            </div>
+  const getHtmlForCurrentTab = () => {
+    const printDateStr = toShamsiStr(new Date().toISOString());
+    const filterSummary = selectedCustomer !== 'all' ? (' | خریدار: ' + selectedCustomer) : '';
+    const searchSummary = searchQuery ? (' | جستجو: ' + searchQuery) : '';
 
-            <div class="kpi-grid">
-              <div class="kpi-card">
-                <div class="kpi-title">تغییر مبلغ فروش کل (ریال)</div>
-                <div class="kpi-val" style="color: ${comparisonMetrics.amtGrowthPct >= 0 ? '#047857' : '#be123c'};">
-                  ${comparisonMetrics.amtGrowthPct >= 0 ? '+' : ''}${comparisonMetrics.amtGrowthPct.toFixed(1)}%
-                </div>
-                <div class="kpi-sub">A: ${formatMoney(comparisonMetrics.netAmtA)} | B: ${formatMoney(comparisonMetrics.netAmtB)}</div>
-              </div>
-
-              <div class="kpi-card indigo">
-                <div class="kpi-title">تغییر وزن فروش کل (ک‌گ)</div>
-                <div class="kpi-val" style="color: ${comparisonMetrics.wgtGrowthPct >= 0 ? '#047857' : '#be123c'};">
-                  ${comparisonMetrics.wgtGrowthPct >= 0 ? '+' : ''}${comparisonMetrics.wgtGrowthPct.toFixed(1)}%
-                </div>
-                <div class="kpi-sub">A: ${formatWeight(comparisonMetrics.netWgtA)} | B: ${formatWeight(comparisonMetrics.netWgtB)}</div>
-              </div>
-
-              <div class="kpi-card emerald">
-                <div class="kpi-title">تغییر فی متوسط نهایی</div>
-                <div class="kpi-val" style="color: ${comparisonMetrics.feeGrowthPct >= 0 ? '#047857' : '#be123c'};">
-                  ${comparisonMetrics.feeGrowthPct >= 0 ? '+' : ''}${comparisonMetrics.feeGrowthPct.toFixed(1)}%
-                </div>
-                <div class="kpi-sub">A: ${formatMoney(comparisonMetrics.avgFeeA)} | B: ${formatMoney(comparisonMetrics.avgFeeB)}</div>
-              </div>
-
-              <div class="kpi-card dark">
-                <div class="kpi-title">تحلیل انحراف عملکرد</div>
-                <div class="kpi-val" style="color: #fcd34d;">
-                  ${comparisonMetrics.amtGrowthPct > 0 && comparisonMetrics.wgtGrowthPct > 0 ? 'رشد متوازن' :
-                    (comparisonMetrics.amtGrowthPct > 0 ? 'رشد مبلغمحور' :
-                    (comparisonMetrics.wgtGrowthPct > 0 ? 'رشد حجمی' : 'افت عملکرد'))}
-                </div>
-                <div class="kpi-sub">
-                  ${comparisonMetrics.amtGrowthPct > 0 && comparisonMetrics.wgtGrowthPct > 0 ? 'افزایش همزمان حجم و درآمد' :
-                    (comparisonMetrics.amtGrowthPct > 0 ? 'افزایش نرخ واحد کالا' :
-                    (comparisonMetrics.wgtGrowthPct > 0 ? 'افزایش حجم با قیمت رقابتی' : 'کاهش حجم و درآمد'))}
-                </div>
-              </div>
-            </div>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>ردیف</th>
-                  <th style="text-align:right;">گروه اصلی کالا</th>
-                  <th>وزن A (ک‌گ)</th>
-                  <th>مبلغ A (ریال)</th>
-                  <th>وزن B (ک‌گ)</th>
-                  <th>مبلغ B (ریال)</th>
-                  <th>تغییر وزن %</th>
-                  <th>تغییر مبلغ %</th>
-                  <th>تغییر فی %</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${comparisonMetrics.compareGroupRows.map((r, idx) => `
-                  <tr>
-                    <td>${idx + 1}</td>
-                    <td style="text-align:right; font-weight:bold;">${r.catName}</td>
-                    <td>${formatWeight(r.netWgtA)}</td>
-                    <td>${formatMoney(r.netAmtA)}</td>
-                    <td>${formatWeight(r.netWgtB)}</td>
-                    <td>${formatMoney(r.netAmtB)}</td>
-                    <td><span class="${r.wgtGrowthPct >= 0 ? 'badge-pos' : 'badge-neg'}">${r.wgtGrowthPct >= 0 ? '+' : ''}${r.wgtGrowthPct.toFixed(1)}%</span></td>
-                    <td><span class="${r.growthPct >= 0 ? 'badge-pos' : 'badge-neg'}">${r.growthPct >= 0 ? '+' : ''}${r.growthPct.toFixed(1)}%</span></td>
-                    <td><span class="${r.feeGrowthPct >= 0 ? 'badge-pos' : 'badge-neg'}">${r.feeGrowthPct >= 0 ? '+' : ''}${r.feeGrowthPct.toFixed(1)}%</span></td>
-                  </tr>
-                `).join('')}
-                <tr class="total">
-                  <td colspan="2" style="text-align:right;">جمع کل خلاصه عملکرد</td>
-                  <td>${formatWeight(comparisonMetrics.netWgtA)}</td>
-                  <td>${formatMoney(comparisonMetrics.netAmtA)}</td>
-                  <td>${formatWeight(comparisonMetrics.netWgtB)}</td>
-                  <td>${formatMoney(comparisonMetrics.netAmtB)}</td>
-                  <td><span class="${comparisonMetrics.wgtGrowthPct >= 0 ? 'badge-pos' : 'badge-neg'}">${comparisonMetrics.wgtGrowthPct >= 0 ? '+' : ''}${comparisonMetrics.wgtGrowthPct.toFixed(1)}%</span></td>
-                  <td><span class="${comparisonMetrics.amtGrowthPct >= 0 ? 'badge-pos' : 'badge-neg'}">${comparisonMetrics.amtGrowthPct >= 0 ? '+' : ''}${comparisonMetrics.amtGrowthPct.toFixed(1)}%</span></td>
-                  <td><span class="${comparisonMetrics.feeGrowthPct >= 0 ? 'badge-pos' : 'badge-neg'}">${comparisonMetrics.feeGrowthPct >= 0 ? '+' : ''}${comparisonMetrics.feeGrowthPct.toFixed(1)}%</span></td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="footer-sig">
-              <div class="sig-titles">
-                <span>محل مهر و امضای مدیریت ارشد</span>
-                <span>محل امضای مدیر بازرگانی و فروش</span>
-                <span>تأییدیه امور مالی</span>
-              </div>
-              <div class="sig-lines">
-                <div class="sig-line"></div>
-                <div class="sig-line"></div>
-                <div class="sig-line"></div>
-              </div>
-            </div>
-          </div>
-        </body>
-        </html>
-      `;
-
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(docHtml);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
-        }, 500);
-      }
-      return;
+    if (activeTab === 'hierarchy') {
+      const title = 'گزارش سرفصل‌های اصلی کالا (۱۵ گروه سایان ERP)';
+      const filename = 'Sayan_Sales_Categories_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
+        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 16px; margin: 0; font-weight: 900; color: #0f172a; } .header p { font-size: 10px; color: #64748b; margin-top: 3px; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; } .kpi-card { border: 1px solid #e2e8f0; padding: 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 12px; font-weight: 900; margin-top: 3px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        '<div class="header"><div><h1>گزارش سرفصل‌های اصلی کالا (۱۵ گروه اصلی سایان ERP)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+        '<div class="kpi-grid">' +
+        '<div class="kpi-card"><div class="kpi-title">تعداد گروه‌های اصلی</div><div class="kpi-val">' + processedMetrics.categoryList.length + ' گروه</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع وزن خالص</div><div class="kpi-val">' + formatWeight(processedMetrics.rangeNetWgt) + ' ک‌گ</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع فروش خالص</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetAmt) + ' ریال</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">میانگین فی نهایی</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetFee) + ' ریال</div></div></div>' +
+        '<table><thead><tr><th style="width: 35px;">#</th><th style="text-align: right;">نام گروه اصلی کالا</th><th>وزن خالص (ک‌گ)</th><th>فروش خالص (ریال)</th><th>میانگین فی (ریال/ک‌گ)</th><th>سهم %</th></tr></thead><tbody>' +
+        processedMetrics.categoryList.map((cat, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + cat.name + '</td><td>' + formatWeight(cat.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netFee) + '</td><td>' + cat.sharePct.toFixed(1) + '%</td></tr>').join('') +
+        '<tr class="total"><td colspan="2" style="text-align: right;">جمع کل</td><td>' + formatWeight(processedMetrics.rangeNetWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetFee) + '</td><td>100%</td></tr></tbody></table></body></html>';
+      return { htmlContent, title, filename };
     }
 
-    // Single Period Standard Report
-    const docHtml = `
-      <html dir="rtl" lang="fa">
-      <head>
-        <meta charset="utf-8">
-        <title>داشبورد مدیریتی فروش سایان ERP</title>
-        <style>
-          body { font-family: 'Tahoma', sans-serif; padding: 20px; background: #fff; color: #1e293b; }
-          .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; }
-          .header h1 { font-size: 18px; margin: 0; color: #0f172a; }
-          .header p { font-size: 11px; color: #64748b; margin: 4px 0 0; }
-          .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-          .kpi-card { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f8fafc; text-align: center; }
-          .kpi-title { font-size: 10px; color: #64748b; font-weight: bold; }
-          .kpi-val { font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
-          th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: right; }
-          th { background-color: #0f172a; color: #fff; font-weight: bold; }
-          tr:nth-child(even) { background-color: #f1f5f9; }
-          .total { font-weight: bold; background: #e2e8f0 !important; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>داشبورد تصمیم‌گیری و گزارشات مدیریتی فروش سایان ERP</h1>
-          <p>بازه گزارش: از ${dateFrom} تا ${dateTo} | تاریخ چاپ: ${toShamsiStr(new Date().toISOString())}</p>
-        </div>
+    if (activeTab === 'items') {
+      const title = 'گزارش تفکیکی و ریز کالاهای فروخته شده';
+      const filename = 'Sayan_Sales_Detailed_Items_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
+      const totQty = filteredItems.reduce((s, i) => s + (i.netQty || 0), 0);
+      const totWgt = filteredItems.reduce((s, i) => s + (i.netWgt || 0), 0);
+      const totAmt = filteredItems.reduce((s, i) => s + (i.netAmt || 0), 0);
+      const avgFee = totWgt > 0 ? Math.round(totAmt / totWgt) : 0;
 
-        <div class="kpi-grid">
-          <div class="kpi-card"><div class="kpi-title">فروش خالص بازه</div><div class="kpi-val">${formatMoney(processedMetrics.rangeNetAmt)} ریال</div></div>
-          <div class="kpi-card"><div class="kpi-title">وزن خالص بازه</div><div class="kpi-val">${formatWeight(processedMetrics.rangeNetWgt)} ک‌گ</div></div>
-          <div class="kpi-card"><div class="kpi-title">فی نهایی میانگین</div><div class="kpi-val">${formatMoney(processedMetrics.rangeNetFee)} ریال/ک‌گ</div></div>
-          <div class="kpi-card"><div class="kpi-title">تعداد فاکتورها</div><div class="kpi-val">${processedMetrics.invoiceCount} عدد</div></div>
-        </div>
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
+        '<style>@page { size: A4 landscape; margin: 6mm 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 15px; margin: 0; font-weight: 900; } .header p { font-size: 10px; color: #64748b; margin-top: 2px; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        '<div class="header"><div><h1>گزارش تفکیکی و ریز کالاهای فروخته شده (سایان ERP)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + searchSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+        '<div class="kpi-grid">' +
+        '<div class="kpi-card"><div class="kpi-title">تعداد عناوین کالاها</div><div class="kpi-val">' + filteredItems.length + ' قلم</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع تعداد/بسته</div><div class="kpi-val">' + totQty.toLocaleString('fa-IR') + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع وزن خالص</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع مبلغ فروش</div><div class="kpi-val">' + formatMoney(totAmt) + ' ریال</div></div></div>' +
+        '<table><thead><tr><th style="width: 30px;">#</th><th style="width: 75px;">کد کالا</th><th style="text-align: right;">نام کامل کالا</th><th>گروه کالا</th><th>تعداد / بسته</th><th>وزن خالص (ک‌گ)</th><th>مبلغ کل (ریال)</th><th>میانگین فی (ریال/ک‌گ)</th></tr></thead><tbody>' +
+        filteredItems.map((item, idx) => '<tr><td>' + (idx + 1) + '</td><td style="font-family: monospace;">' + (item.itemCode || '-') + '</td><td style="text-align: right; font-weight: bold;">' + item.itemName + '</td><td>' + (item.majorCategory || '-') + '</td><td>' + (item.netQty || 0).toLocaleString('fa-IR') + '</td><td>' + formatWeight(item.netWgt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(item.netAmt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(item.netFee || 0) + '</td></tr>').join('') +
+        '<tr class="total"><td colspan="4" style="text-align: right;">جمع کل اقلام</td><td>' + totQty.toLocaleString('fa-IR') + '</td><td>' + formatWeight(totWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(totAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(avgFee) + '</td></tr></tbody></table></body></html>';
+      return { htmlContent, title, filename };
+    }
 
-        <h2>جدول عملکرد گروههای اصلی کالا (15 گروه)</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>ردیف</th>
-              <th>نام گروه اصلی</th>
-              <th>وزن خالص (ک‌گ)</th>
-              <th>فروش خالص (ریال)</th>
-              <th>فی نهایی (ریال/ک‌گ)</th>
-              <th>سهم %</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${processedMetrics.categoryList.map((cat, idx) => `
-              <tr>
-                <td style="text-align:center;">${idx + 1}</td>
-                <td>${cat.name}</td>
-                <td style="text-align:center;">${formatWeight(cat.netWgt)}</td>
-                <td style="text-align:left;">${formatMoney(cat.netAmt)}</td>
-                <td style="text-align:left;">${formatMoney(cat.netFee)}</td>
-                <td style="text-align:center;">${cat.sharePct.toFixed(1)}%</td>
-              </tr>
-            `).join('')}
-            <tr class="total">
-              <td colspan="2">جمع کل</td>
-              <td style="text-align:center;">${formatWeight(processedMetrics.rangeNetWgt)}</td>
-              <td style="text-align:left;">${formatMoney(processedMetrics.rangeNetAmt)}</td>
-              <td style="text-align:left;">${formatMoney(processedMetrics.rangeNetFee)}</td>
-              <td style="text-align:center;">100%</td>
-            </tr>
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
+    if (activeTab === 'invoices') {
+      const title = 'گزارش کامل لیست فاکتورهای فروش';
+      const filename = 'Sayan_Sales_Invoices_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
+      const totWgt = filteredInvoices.reduce((s, i) => s + (i.netWgt || 0), 0);
+      const totAmt = filteredInvoices.reduce((s, i) => s + (i.netAmt || 0), 0);
 
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
+        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 15px; margin: 0; font-weight: 900; } .header p { font-size: 10px; color: #64748b; margin-top: 2px; } .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        '<div class="header"><div><h1>گزارش جامع لیست فاکتورهای فروش (سایان ERP)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + searchSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+        '<div class="kpi-grid">' +
+        '<div class="kpi-card"><div class="kpi-title">تعداد کل فاکتورها</div><div class="kpi-val">' + filteredInvoices.length + ' فقره</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع وزن فاکتورها</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع مبلغ فاکتورها</div><div class="kpi-val">' + formatMoney(totAmt) + ' ریال</div></div></div>' +
+        '<table><thead><tr><th style="width: 30px;">#</th><th>شماره فاکتور</th><th>تاریخ فاکتور</th><th style="text-align: right;">خریدار / مشتری</th><th>شهر / محل</th><th>وزن خالص (ک‌گ)</th><th>مبلغ فاکتور (ریال)</th></tr></thead><tbody>' +
+        filteredInvoices.map((inv, idx) => '<tr><td>' + (idx + 1) + '</td><td style="font-weight: bold; font-family: monospace;">' + inv.invoiceNum + '</td><td style="font-family: monospace;">' + (inv.invoiceDate || '-') + '</td><td style="text-align: right; font-weight: bold;">' + (inv.customerName || 'مشتری متفرقه') + '</td><td>' + (inv.city || '-') + '</td><td>' + formatWeight(inv.netWgt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(inv.netAmt || 0) + '</td></tr>').join('') +
+        '<tr class="total"><td colspan="5" style="text-align: right;">جمع کل فاکتورها</td><td>' + formatWeight(totWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(totAmt) + '</td></tr></tbody></table></body></html>';
+      return { htmlContent, title, filename };
+    }
+
+    if (activeTab === 'customers') {
+      const title = 'گزارش فروش بر اساس مشتریان و اشخاص';
+      const filename = 'Sayan_Sales_Customers_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
+      const custs = sortedAndFilteredCustomers;
+      const totInvoices = custs.reduce((s, c) => s + c.invoiceCount, 0);
+      const totWgt = custs.reduce((s, c) => s + c.netWgt, 0);
+      const totAmt = custs.reduce((s, c) => s + c.netAmt, 0);
+      const avgFee = totWgt > 0 ? Math.round(totAmt / totWgt) : 0;
+
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
+        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 15px; margin: 0; font-weight: 900; } .header p { font-size: 10px; color: #64748b; margin-top: 2px; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        '<div class="header"><div><h1>گزارش فروش بر اساس مشتریان و اشخاص (Customer Sales Breakdown)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+        '<div class="kpi-grid">' +
+        '<div class="kpi-card"><div class="kpi-title">تعداد مشتریان فعال</div><div class="kpi-val">' + custs.length + ' شخص</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">تعداد فاکتورها</div><div class="kpi-val">' + totInvoices.toLocaleString('fa-IR') + '</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع وزن خرید</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
+        '<div class="kpi-card"><div class="kpi-title">مجموع ارزش خرید</div><div class="kpi-val">' + formatMoney(totAmt) + ' ریال</div></div></div>' +
+        '<table><thead><tr><th style="width: 30px;">#</th><th style="text-align: right;">نام خریدار / مشتری</th><th>تعداد فاکتور</th><th>وزن خرید (ک‌گ)</th><th>ارزش کل خرید (ریال)</th><th>میانگین فی (ریال/ک‌گ)</th></tr></thead><tbody>' +
+        custs.map((c, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + c.customerName + '</td><td>' + c.invoiceCount + '</td><td>' + formatWeight(c.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(c.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(c.avgFee) + '</td></tr>').join('') +
+        '<tr class="total"><td colspan="2" style="text-align: right;">جمع کل مشتریان</td><td>' + totInvoices.toLocaleString('fa-IR') + '</td><td>' + formatWeight(totWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(totAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(avgFee) + '</td></tr></tbody></table></body></html>';
+      return { htmlContent, title, filename };
+    }
+
+    const title = compareMode ? 'گزارش مدیریتی و تحلیلی مقایسه‌ای فروش سایان ERP' : 'داشبورد مدیریتی و خلاصه فروش سایان ERP';
+    const filename = 'Sayan_Sales_Executive_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
+
+    const docHtml = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title><style>body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 20px; background: #fff; color: #1e293b; direction: rtl; } .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; } .header h1 { font-size: 18px; margin: 0; color: #0f172a; font-weight: 900; } .header p { font-size: 11px; color: #64748b; margin: 4px 0 0; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; } .kpi-card { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 10px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: bold; } tr:nth-child(even) { background-color: #f1f5f9; } .total { font-weight: bold; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body><div class="header"><h1>' + title + '</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div><div class="kpi-grid"><div class="kpi-card"><div class="kpi-title">فروش خالص بازه</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetAmt) + ' ریال</div></div><div class="kpi-card"><div class="kpi-title">وزن خالص بازه</div><div class="kpi-val">' + formatWeight(processedMetrics.rangeNetWgt) + ' ک‌گ</div></div><div class="kpi-card"><div class="kpi-title">فی نهایی میانگین</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetFee) + ' ریال/ک‌گ</div></div><div class="kpi-card"><div class="kpi-title">تعداد فاکتورها</div><div class="kpi-val">' + processedMetrics.invoiceCount + ' عدد</div></div></div><h2>جدول عملکرد گروههای اصلی کالا (15 گروه)</h2><table><thead><tr><th>ردیف</th><th style="text-align: right;">نام گروه اصلی</th><th>وزن خالص (ک‌گ)</th><th>فروش خالص (ریال)</th><th>فی نهایی (ریال/ک‌گ)</th><th>سهم %</th></tr></thead><tbody>' + processedMetrics.categoryList.map((cat, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + cat.name + '</td><td>' + formatWeight(cat.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netFee) + '</td><td>' + cat.sharePct.toFixed(1) + '%</td></tr>').join('') + '<tr class="total"><td colspan="2" style="text-align: right;">جمع کل</td><td>' + formatWeight(processedMetrics.rangeNetWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetFee) + '</td><td>100%</td></tr></tbody></table></body></html>';
+    return { htmlContent: docHtml, title, filename };
+  };
+
+    const handleShareCurrentTabToChat = () => {
+    if (!onShareToChat) return;
+    const { htmlContent, title, filename } = getHtmlForCurrentTab();
+    const customGenerator = async () => {
+      let filterNote = selectedCustomer !== "all" ? (" (خریدار: " + selectedCustomer + ")") : "";
+      let searchNote = searchQuery ? (" (جستجو: " + searchQuery + ")") : "";
+      let defaultMsg = `📊 ${title}${filterNote}${searchNote} (${dateFrom} تا ${dateTo})
+• مجموع فروش: ${formatMoney(processedMetrics.rangeNetAmt)} ریال
+• مجموع وزن: ${formatWeight(processedMetrics.rangeNetWgt)} کیلوگرم
+📄 فایل PDF تفکیکی گزارش پیوست گردید.`;
+      return { htmlContent, pdfFilename: filename, defaultMsg };
+    };
+    onShareToChat(customGenerator, title);
+  };
+
+  const handlePrint = () => {
+    const { htmlContent } = getHtmlForCurrentTab();
     const printWindow = window.open('', '_blank');
     if (printWindow) {
-      printWindow.document.write(docHtml);
+      printWindow.document.write(htmlContent);
       printWindow.document.close();
       printWindow.focus();
       setTimeout(() => {
@@ -1412,7 +1295,6 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       }, 500);
     }
   };
-
   // ----------------------------------------------------------------------
   // DOWNLOAD COMPARATIVE PDF
   // ----------------------------------------------------------------------
@@ -1881,9 +1763,10 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   return (
     <div id="executive-sales-dashboard" className="w-full space-y-4 sm:space-y-6 text-right dir-rtl font-sans pb-8 px-0 sm:px-1 bg-transparent">
       
-      {/* 1. TOP HEADER & DASHBOARD CONTROLS */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-900 rounded-2xl p-5 text-white shadow-xl border border-blue-800/40 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-900 rounded-2xl p-5 text-white shadow-xl border border-blue-800/40 relative z-30">
+        <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+          <div className="absolute top-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
+        </div>
         
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
           <div>
@@ -2203,7 +2086,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
               </div>
 
               {/* Customer Filter Dropdown */}
-              <div className="flex flex-col gap-2 relative">
+              <div className="flex flex-col gap-2 relative z-50">
                 <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-1">
                   <Users className="w-3.5 h-3.5" />
                   <span>فیلتر مشتری (اشخاص):</span>
@@ -2227,7 +2110,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
                     </button>
 
                     {isCustomerDropdownOpen && (
-                      <div className="absolute top-full right-0 mt-2 w-72 sm:w-80 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl p-2.5 z-50 text-right space-y-2">
+                      <div className="absolute top-full right-0 mt-2 w-72 sm:w-80 bg-slate-900 border-2 border-emerald-500/50 rounded-2xl shadow-2xl p-2.5 z-[100] text-right space-y-2">
                         <div className="flex items-center justify-between border-b border-slate-700/60 pb-1.5 px-1">
                           <span className="text-xs font-extrabold text-white flex items-center gap-1.5">
                             <Users className="w-3.5 h-3.5 text-emerald-400" />
@@ -4243,7 +4126,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           {onShareToChat && (
             <button
               type="button"
-              onClick={onShareToChat}
+              onClick={handleShareCurrentTabToChat}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer min-h-[44px]"
               title="تولید PDF و ارسال این گزارش فروش به گفتگوی شخصی یا گروهی"
             >
