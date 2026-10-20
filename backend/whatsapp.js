@@ -134,9 +134,9 @@ export const cleanSessionLocks = (authDir = currentAuthDir, sessionName = 'sessi
         try {
             if (process.platform === 'win32') {
                 const cmds = [
-                    'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'chrome|edge' -and ($_.CommandLine -like '*' + sessionName + '*' -or $_.CommandLine -like '*wauth*') } | Stop-Process -Force -ErrorAction SilentlyContinue"',
-                    'cmd /c taskkill /F /FI "COMMANDLINE eq *' + sessionName + '*" >nul 2>&1',
-                    'cmd /c taskkill /F /FI "COMMANDLINE eq *wauth*" >nul 2>&1'
+                    "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'chrome|edge' -and ($_.CommandLine -like '*" + sessionName + "*' -or $_.CommandLine -like '*wauth*') } | Stop-Process -Force -ErrorAction SilentlyContinue\"",
+                    "cmd /c taskkill /F /FI \"COMMANDLINE eq *" + sessionName + "*\" >nul 2>&1",
+                    "cmd /c taskkill /F /FI \"COMMANDLINE eq *wauth*\" >nul 2>&1"
                 ];
                 for (const cmd of cmds) {
                     try { execSync(cmd, { stdio: 'ignore', timeout: 5000 }); } catch(e) {}
