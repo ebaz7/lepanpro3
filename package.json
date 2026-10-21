@@ -96,8 +96,8 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/api": "^1.6.0",
+    "@tauri-apps/cli": "^1.6.0",
     "@types/file-saver": "^2.0.7",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",

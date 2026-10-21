@@ -52,6 +52,15 @@
     "security": {
       "csp": null
     },
-    "windows": []
+    "windows": [
+      {
+        "title": "سیستم مدیریت انبار سایان",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ]
   }
 }
