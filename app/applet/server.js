@@ -98,9 +98,13 @@ const safeImport = async (modulePath) => {
 const DB_FILE = path.join(ROOT_DIR, 'database.json');
 const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
 const BACKUPS_DIR = path.join(ROOT_DIR, 'backups'); 
+const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads');
+const UPDATES_DIR = path.join(ROOT_DIR, 'updates');
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+if (!fs.existsSync(DOWNLOADS_DIR)) fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+if (!fs.existsSync(UPDATES_DIR)) fs.mkdirSync(UPDATES_DIR, { recursive: true });
 
 // --- WEB PUSH SETUP ---
 const VAPID_FILE = path.join(ROOT_DIR, 'vapid.json');
@@ -267,6 +271,8 @@ app.get('/manifest.json', (req, res) => {
 });
 
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' })); // Cache uploads for speed
+app.use('/downloads', express.static(DOWNLOADS_DIR));
+app.use('/updates', express.static(UPDATES_DIR));
 
 // --- SAFE FILE SANITIZATION HELPER ---
 const FORBIDDEN_EXTENSIONS = new Set([

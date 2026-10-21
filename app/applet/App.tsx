@@ -32,6 +32,7 @@ import { ThemeSelectorModal, AppThemeMode } from './components/ThemeSelectorModa
 import { AiExecutiveCopilot } from './components/AiExecutiveCopilot';
 import { AiDocumentScannerModal } from './components/AiDocumentScannerModal';
 import { SendToChatModal } from './components/SendToChatModal';
+import { NetworkRoleSettingsModal } from './components/NetworkRoleSettingsModal';
 import { WorkstationDock } from './components/WorkstationDock';
 import { SplitViewSelectorModal } from './components/SplitViewSelectorModal';
 import { WorkstationFloatingWindow } from './components/WorkstationFloatingWindow';
@@ -82,6 +83,7 @@ function App() {
   const [tabHistory, setTabHistory] = useState<string[]>(['dashboard']);
   const [directChatTarget, setDirectChatTarget] = useState<{ type: 'private' | 'group' | 'public' | 'task_group' | 'system', id: string, taskId?: string } | null>(null);
   const [showAiScannerModal, setShowAiScannerModal] = useState(false);
+  const [isNetworkRoleModalOpen, setIsNetworkRoleModalOpen] = useState(false);
   const [globalSendToChat, setGlobalSendToChat] = useState<{
     isOpen: boolean;
     attachment?: { fileName: string; url: string };
@@ -191,14 +193,17 @@ function App() {
       }
     };
 
+    const handleOpenNetworkModal = () => setIsNetworkRoleModalOpen(true);
     window.addEventListener('app_open_send_to_chat', handleOpenSendToChat);
     window.addEventListener('app_send_to_chat_attachment_ready', handleAttachmentReady);
+    window.addEventListener('sayan:open-network-settings', handleOpenNetworkModal);
 
     return () => {
         window.removeEventListener('REGISTER_BACK_ACTION', registerBack);
         window.removeEventListener('UNREGISTER_BACK_ACTION', unregisterBack);
         window.removeEventListener('app_open_send_to_chat', handleOpenSendToChat);
         window.removeEventListener('app_send_to_chat_attachment_ready', handleAttachmentReady);
+        window.removeEventListener('sayan:open-network-settings', handleOpenNetworkModal);
     }
   }, []);
 
@@ -2387,6 +2392,10 @@ function App() {
                             setDirectChatTarget(target);
                             setActiveTab('chat');
                         }}
+                    />
+                    <NetworkRoleSettingsModal
+                        isOpen={isNetworkRoleModalOpen}
+                        onClose={() => setIsNetworkRoleModalOpen(false)}
                     />
                 </>
             )}

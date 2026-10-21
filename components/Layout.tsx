@@ -10,7 +10,7 @@ import {
   ShoppingCart, Wallet, Sparkles, Pin, PinOff, Zap,
   BadgePlus, Receipt, ArrowLeftRight, ArrowRight, ScrollText, ClipboardCheck, Warehouse, BarChart3, 
   CalendarDays, FolderArchive, Banknote, MessagesSquare, Globe, Boxes, Handshake, Headset, UserCog,
-  FileCheck2, Link2, CheckCircle2, AlertCircle, Columns, Calculator, Monitor
+  FileCheck2, Link2, CheckCircle2, AlertCircle, Columns, Calculator, Monitor, Radio, Server
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, UserRole, AppNotification, SystemSettings } from '../types';
@@ -1833,6 +1833,13 @@ const Layout: React.FC<LayoutProps> = ({
                     className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95"
                   >
                       {theme === 'light-aurora' ? <Sparkles size={16} className="text-purple-500 animate-pulse" /> : theme === 'light' ? <Moon size={16} /> : <Sun size={16} className="text-yellow-400" />}
+                  </button>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('sayan:open-network-settings'))}
+                    className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                    title="پیکربندی شبکه و سرور (Dual-Role Network)"
+                  >
+                    <Radio size={16} className="text-blue-500" />
                   </button>
                   {canSeeNotifications && (
                       <div className="relative notification-trigger" ref={mobileNotifRef}>
