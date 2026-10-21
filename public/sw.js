@@ -1,8 +1,24 @@
-const CACHE_NAME = 'finance-app-v7';
+const CACHE_NAME = 'finance-app-v8';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/lepan-logo.png',
+  '/lepan-logo.svg',
+  '/fonts/Vazirmatn-Light.woff2',
+  '/fonts/Vazirmatn-Regular.woff2',
+  '/fonts/Vazirmatn-Medium.woff2',
+  '/fonts/Vazirmatn-SemiBold.woff2',
+  '/fonts/Vazirmatn-Bold.woff2',
+  '/fonts/Vazirmatn-ExtraBold.woff2',
+  '/fonts/Vazirmatn-Black.woff2',
+  '/fonts/Sahel.woff2',
+  '/fonts/Samim.woff2',
+  '/fonts/Shabnam.woff2',
+  '/fonts/Tanha.woff2',
+  '/fonts/Nahid.woff2',
+  '/fonts/Estedad.woff2',
+  '/fonts/Gandom.woff2'
 ];
 
 self.addEventListener('install', (event) => {
@@ -88,7 +104,10 @@ self.addEventListener('fetch', (event) => {
       .then((response) => {
         // If it's a valid successful response, cache it for offline use (if it's not an API call)
         const url = event.request.url;
-        if (response.status === 200 && !url.includes('/api/') && !url.includes('chrome-extension')) {
+        const contentType = (response.headers && response.headers.get('content-type')) || '';
+        const isStaticAssetRequest = /\.(js|mjs|css|woff2?|ttf|wasm|png|jpe?g|svg|ico)(\?.*)?$/i.test(url);
+        const isHtmlFallbackForAsset = isStaticAssetRequest && contentType.includes('text/html');
+        if (response.status === 200 && !isHtmlFallbackForAsset && !url.includes('/api/') && !url.includes('chrome-extension')) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);
@@ -178,8 +197,8 @@ self.addEventListener('push', (event) => {
         const data = event.data.json();
         const options = {
           body: data.body || 'اعلان جدید',
-          icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135706.png',
-          badge: 'https://cdn-icons-png.flaticon.com/512/3135/3135706.png',
+          icon: '/lepan-logo.png',
+          badge: '/lepan-logo.png',
           data: {
             url: data.url || '/',
             id: data.id

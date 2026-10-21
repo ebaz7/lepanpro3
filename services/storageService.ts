@@ -1179,7 +1179,7 @@ export const getBioLinkConfig = async (isAdmin: boolean = false): Promise<BioLin
         companyTitle: 'شرکت تولیدی لپان بافت',
         companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
         avatarUrl: '/lepan-logo.png',
-        coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+        coverUrl: '/lepan-logo.svg',
         theme: 'lepan_light',
         blocks: []
     };

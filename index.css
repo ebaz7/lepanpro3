@@ -702,13 +702,13 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   100% { transform: translate(2%, -4%) scale(1.04) rotate(360deg); }
 }
 
-/* Font Face - Full Multi-Weight Vazirmatn for Razor-Sharp Typography */
+/* Font Face - Full Multi-Weight Vazirmatn & Persian Fonts (100% Local Offline & Intranet Ready) */
 @font-face {
   font-family: 'Vazirmatn';
   font-style: normal;
   font-weight: 300;
   src: local('Vazirmatn Light'), local('Vazirmatn-Light'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Light.woff2') format('woff2');
+       url('/fonts/Vazirmatn-Light.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -717,7 +717,7 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   font-style: normal;
   font-weight: 400;
   src: local('Vazirmatn Regular'), local('Vazirmatn'), local('Vazirmatn-Regular'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Regular.woff2') format('woff2');
+       url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -726,7 +726,7 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   font-style: normal;
   font-weight: 500;
   src: local('Vazirmatn Medium'), local('Vazirmatn-Medium'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Medium.woff2') format('woff2');
+       url('/fonts/Vazirmatn-Medium.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -735,7 +735,7 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   font-style: normal;
   font-weight: 600;
   src: local('Vazirmatn SemiBold'), local('Vazirmatn-SemiBold'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-SemiBold.woff2') format('woff2');
+       url('/fonts/Vazirmatn-SemiBold.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -744,7 +744,7 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   font-style: normal;
   font-weight: 700;
   src: local('Vazirmatn Bold'), local('Vazirmatn-Bold'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Bold.woff2') format('woff2');
+       url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -753,7 +753,7 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   font-style: normal;
   font-weight: 800;
   src: local('Vazirmatn ExtraBold'), local('Vazirmatn-ExtraBold'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-ExtraBold.woff2') format('woff2');
+       url('/fonts/Vazirmatn-ExtraBold.woff2') format('woff2');
   font-display: swap;
 }
 
@@ -762,31 +762,49 @@ html.dark.has-preset-bg-cyan-cosmic .text-gray-400 {
   font-style: normal;
   font-weight: 900;
   src: local('Vazirmatn Black'), local('Vazirmatn-Black'),
-       url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-Black.woff2') format('woff2');
+       url('/fonts/Vazirmatn-Black.woff2') format('woff2');
   font-display: swap;
 }
 
 @font-face {
   font-family: 'Shabnam';
-  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/shabnam-font@v5.0.2/dist/Shabnam.woff2') format('woff2');
+  src: local('Shabnam'), url('/fonts/Shabnam.woff2') format('woff2');
   font-display: swap;
 }
 
 @font-face {
   font-family: 'Sahel';
-  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/sahel-font@v3.4.0/dist/Sahel.woff2') format('woff2');
+  src: local('Sahel'), url('/fonts/Sahel.woff2') format('woff2');
   font-display: swap;
 }
 
 @font-face {
   font-family: 'Gandom';
-  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/gandom-font@v0.6.0/dist/Gandom.woff2') format('woff2');
+  src: local('Gandom'), url('/fonts/Gandom.woff2') format('woff2');
   font-display: swap;
 }
 
 @font-face {
   font-family: 'Estedad';
-  src: url('https://cdn.jsdelivr.net/gh/rastikerdar/estedad-font@v4.0.2/dist/Estedad.woff2') format('woff2');
+  src: local('Estedad'), url('/fonts/Estedad.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Samim';
+  src: local('Samim'), url('/fonts/Samim.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Tanha';
+  src: local('Tanha'), url('/fonts/Tanha.woff2') format('woff2');
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Nahid';
+  src: local('Nahid'), url('/fonts/Nahid.woff2') format('woff2');
   font-display: swap;
 }
 

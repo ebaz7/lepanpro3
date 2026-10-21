@@ -4565,6 +4565,18 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 <meta charset="utf-8" />
                 <title>لیست برگه های چک - شرکت لپان بافت</title>
                 <style>
+                    @font-face {
+                        font-family: 'Vazirmatn';
+                        src: url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
+                        font-weight: normal;
+                        font-style: normal;
+                    }
+                    @font-face {
+                        font-family: 'Vazirmatn';
+                        src: url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
+                        font-weight: bold;
+                        font-style: normal;
+                    }
                     @page { size: A4 landscape; margin: 8mm; }
                     body {
                         font-family: Tahoma, 'Vazirmatn', Arial, sans-serif;

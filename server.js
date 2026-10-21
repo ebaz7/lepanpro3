@@ -7401,7 +7401,7 @@ const DEFAULT_BIO_LINK_CONFIG = {
     companyTitle: 'شرکت تولیدی لیان بافت',
     companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
     avatarUrl: '/lepan-logo.png',
-    coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+    coverUrl: '/lepan-logo.png',
     theme: 'lepan_light',
     primaryColor: '#0284c7',
     addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
@@ -11565,7 +11565,7 @@ async function handleQuoteRequest(req, res, type = 'poem') {
         const motivationalSources = [
             async () => {
                 // Online ZenQuotes / Inspiring API
-                const res = await fetchWithTimeout('https://zenquotes.io/api/random', 3000);
+                const res = await fetchWithTimeout('https://zenquotes.io/api/random', 1500);
                 if (res.ok) {
                     const data = await res.json();
                     if (Array.isArray(data) && data[0] && data[0].q) {
@@ -11729,7 +11729,7 @@ async function handleQuoteRequest(req, res, type = 'poem') {
 app.get('/manifest.json', (req, res) => {
     const db = getDb();
     const settings = db.settings || {};
-    const iconUrl = settings.pwaIcon || "https://cdn-icons-png.flaticon.com/512/3135/3135706.png";
+    const iconUrl = settings.pwaIcon || "/lepan-logo.png";
     const appName = settings.appName || "سامانه مالی و بازرگانی";
     
     const manifest = {
@@ -14237,7 +14237,7 @@ server.on('error', (err) => {
 });
 
 
-if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
+if (isExplicitDev || !fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
     console.log("Starting in Development mode with Vite Middleware...");
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -14252,6 +14252,9 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
         buildTime = stats.mtime.toLocaleString('fa-IR');
     } catch(e){}
     console.log(`Starting in Production mode serving built assets from dist (Build Date: ${buildTime})...`);
+    // Also serve public/fonts and public/tesseract directly as fallback if not copied to dist
+    app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
+    app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
     app.use(express.static(DIST_DIR, {
         maxAge: '1d',
         setHeaders: (res, filePath) => {
@@ -14265,6 +14268,9 @@ if (isExplicitDev || !fs.existsSync(DIST_DIR)) {
     }));
     app.get('*', (req, res) => {
         if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
+        if (req.path.startsWith('/assets/') || /\.(js|mjs|css|map|woff2?|ttf|wasm|png|jpe?g|svg|ico)$/i.test(req.path)) {
+            return res.status(404).end();
+        }
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');

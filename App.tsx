@@ -64,7 +64,7 @@ const FALLBACK_BIO_CONFIG: BioLinkConfig = {
     companyTitle: 'شرکت تولیدی لیان بافت',
     companySubtitle: 'تولید انواع نخ پلی استر ، کش ، اسپندکس ، POY و ساپورت',
     avatarUrl: '/lepan-logo.png',
-    coverUrl: 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000',
+    coverUrl: '/lepan-logo.png',
     theme: 'lepan_light',
     addressText: 'تهران، بازار، خیابان خیام، پلاک ۱۲۰ / کارخانه: جاده قدیم قم، شهرک صنعتی',
     blocks: []
@@ -1015,7 +1015,7 @@ function App() {
             if (appleTitle) appleTitle.setAttribute('content', settings.appName);
         }
 
-        const iconUrl = settings.pwaIcon || "https://cdn-icons-png.flaticon.com/512/3135/3135706.png";
+        const iconUrl = settings.pwaIcon || "/lepan-logo.png";
 
         // Favicon update
         let favicon = document.querySelector('link[rel="icon"]');

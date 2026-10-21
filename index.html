@@ -31,17 +31,41 @@
         }
       }
     </style>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/fonts/webfonts/Vazirmatn-font-face.css" media="print" onload="this.media='all'" onerror="this.onerror=null;this.href='';" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Cairo:wght@400..800&family=Lalezar&family=Lateef:wght@400;700&family=Markazi+Text:wght@400..700&family=Noto+Naskh+Arabic:wght@400..700&family=Noto+Sans+Arabic:wght@400..800&family=Scheherazade+New:wght@400;700&family=Vazirmatn:wght@300..900&display=swap" media="print" onload="this.media='all'" onerror="this.onerror=null;this.href='';" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sahel-font@3.4.0/dist/font-face.css" media="print" onload="this.media='all'" onerror="this.onerror=null;this.href='';" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/samim-font@4.0.5/dist/font-face.css" media="print" onload="this.media='all'" onerror="this.onerror=null;this.href='';" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tanha-font@0.10.0/dist/font-face.css" media="print" onload="this.media='all'" onerror="this.onerror=null;this.href='';" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nahid-font@0.3.0/dist/font-face.css" media="print" onload="this.media='all'" onerror="this.onerror=null;this.href='';" />
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <title>سیستم مدیریت پرداخت</title>
+    <script>
+      // Auto-recover from stale chunk errors after server rebuilds (prevents white screen)
+      window.addEventListener('vite:preloadError', function() {
+        if (!sessionStorage.getItem('chunk_reload_attempted')) {
+          sessionStorage.setItem('chunk_reload_attempted', '1');
+          if ('caches' in window) {
+            caches.keys().then(function(names) {
+              return Promise.all(names.map(function(n) { return caches.delete(n); }));
+            }).finally(function() { window.location.reload(); });
+          } else {
+            window.location.reload();
+          }
+        }
+      });
+      window.addEventListener('error', function(e) {
+        var msg = (e && e.message) ? String(e.message) : '';
+        if (
+          msg.indexOf('Failed to fetch dynamically imported module') !== -1 ||
+          msg.indexOf('Importing a module script failed') !== -1 ||
+          msg.indexOf('Expected a JavaScript module script') !== -1
+        ) {
+          if (!sessionStorage.getItem('chunk_reload_attempted')) {
+            sessionStorage.setItem('chunk_reload_attempted', '1');
+            if ('caches' in window) {
+              caches.keys().then(function(names) {
+                return Promise.all(names.map(function(n) { return caches.delete(n); }));
+              }).finally(function() { window.location.reload(); });
+            } else {
+              window.location.reload();
+            }
+          }
+        }
+      }, true);
+    </script>
     
     <script>
       // Comprehensive Polyfills for iOS Safari (iPhone 8, iPhone X, older WebKit)

@@ -112,10 +112,24 @@ export const getServerHost = () => {
         return '';
     }
 
+    // On Web (Desktop/Mobile browser), if accessed via Local LAN IP or localhost, always use relative origin
+    // so offline LAN mode works seamlessly even if a public domain was previously cached in localStorage.
+    if (!Capacitor.isNativePlatform() && typeof window !== 'undefined') {
+        const hn = window.location.hostname;
+        const isLocalLan = hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hn);
+        if (isLocalLan) {
+            return '';
+        }
+    }
+
     const stored = localStorage.getItem('app_server_host');
     if (stored) {
         let cleanStored = stored.trim().replace(/\/+$/, '');
         cleanStored = cleanStored.replace(/\/api\/?$/i, '');
+        // On Web, if stored host matches current origin, return empty string to use clean relative paths
+        if (!Capacitor.isNativePlatform() && typeof window !== 'undefined' && cleanStored === window.location.origin) {
+            return '';
+        }
         return cleanStored;
     }
     if (Capacitor.isNativePlatform()) {

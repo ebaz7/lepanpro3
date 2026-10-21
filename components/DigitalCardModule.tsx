@@ -800,14 +800,14 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   <div className="flex items-center gap-3">
                     <div className="w-20 h-14 rounded-2xl border-2 border-slate-200 dark:border-slate-700 overflow-hidden bg-slate-800 shrink-0 shadow-sm flex items-center justify-center relative group">
                       <img
-                        src={processBioImageUrl(config.coverUrl, 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000')}
+                        src={processBioImageUrl(config.coverUrl, '/lepan-logo.png')}
                         alt="Cover"
                         referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
                           target.onerror = null;
-                          target.src = 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000';
+                          target.src = '/lepan-logo.png';
                         }}
                       />
                     </div>

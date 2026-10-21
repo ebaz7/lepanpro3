@@ -241,6 +241,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   const [customerSortBy, setCustomerSortBy] = useState<'netAmt_desc' | 'netAmt_asc' | 'netWgt_desc' | 'netWgt_asc' | 'invoices_desc' | 'name_asc'>('netAmt_desc');
   const [customerSearchQuery, setCustomerSearchQuery] = useState<string>('');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [customerDetailTab, setCustomerDetailTab] = useState<Record<string, 'invoices' | 'items'>>({});
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
   const [customerFilterSearchQuery, setCustomerFilterSearchQuery] = useState<string>('');
   const customerDropdownRef = useRef<HTMLDivElement>(null);
@@ -1200,7 +1201,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       const title = 'گزارش تفکیکی و ریز کالاهای فروخته شده';
       const filename = 'Sayan_Sales_Detailed_Items_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
       const totQty = filteredItems.reduce((s, i) => s + (i.netQty || 0), 0);
-      const totWgt = filteredItems.reduce((s, i) => s + (i.netWgt || 0), 0);
+      const totWgt = filteredItems.reduce((s, i: any) => s + (i.netWgt || i.netQty || 0), 0);
       const totAmt = filteredItems.reduce((s, i) => s + (i.netAmt || 0), 0);
       const avgFee = totWgt > 0 ? Math.round(totAmt / totWgt) : 0;
 
@@ -1213,7 +1214,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         '<div class="kpi-card"><div class="kpi-title">مجموع وزن خالص</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">مجموع مبلغ فروش</div><div class="kpi-val">' + formatMoney(totAmt) + ' ریال</div></div></div>' +
         '<table><thead><tr><th style="width: 30px;">#</th><th style="width: 75px;">کد کالا</th><th style="text-align: right;">نام کامل کالا</th><th>گروه کالا</th><th>تعداد / بسته</th><th>وزن خالص (ک‌گ)</th><th>مبلغ کل (ریال)</th><th>میانگین فی (ریال/ک‌گ)</th></tr></thead><tbody>' +
-        filteredItems.map((item, idx) => '<tr><td>' + (idx + 1) + '</td><td style="font-family: monospace;">' + (item.itemCode || '-') + '</td><td style="text-align: right; font-weight: bold;">' + item.itemName + '</td><td>' + (item.majorCategory || '-') + '</td><td>' + (item.netQty || 0).toLocaleString('fa-IR') + '</td><td>' + formatWeight(item.netWgt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(item.netAmt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(item.netFee || 0) + '</td></tr>').join('') +
+        filteredItems.map((item: any, idx) => '<tr><td>' + (idx + 1) + '</td><td style="font-family: monospace;">' + (item.itemCode || '-') + '</td><td style="text-align: right; font-weight: bold;">' + item.itemName + '</td><td>' + (item.majorCategory || '-') + '</td><td>' + (item.netQty || 0).toLocaleString('fa-IR') + '</td><td>' + formatWeight(item.netWgt || item.netQty || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(item.netAmt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(item.netFee || 0) + '</td></tr>').join('') +
         '<tr class="total"><td colspan="4" style="text-align: right;">جمع کل اقلام</td><td>' + totQty.toLocaleString('fa-IR') + '</td><td>' + formatWeight(totWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(totAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(avgFee) + '</td></tr></tbody></table></body></html>';
       return { htmlContent, title, filename };
     }
@@ -1232,7 +1233,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         '<div class="kpi-card"><div class="kpi-title">مجموع وزن فاکتورها</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">مجموع مبلغ فاکتورها</div><div class="kpi-val">' + formatMoney(totAmt) + ' ریال</div></div></div>' +
         '<table><thead><tr><th style="width: 30px;">#</th><th>شماره فاکتور</th><th>تاریخ فاکتور</th><th style="text-align: right;">خریدار / مشتری</th><th>شهر / محل</th><th>وزن خالص (ک‌گ)</th><th>مبلغ فاکتور (ریال)</th></tr></thead><tbody>' +
-        filteredInvoices.map((inv, idx) => '<tr><td>' + (idx + 1) + '</td><td style="font-weight: bold; font-family: monospace;">' + inv.invoiceNum + '</td><td style="font-family: monospace;">' + (inv.invoiceDate || '-') + '</td><td style="text-align: right; font-weight: bold;">' + (inv.customerName || 'مشتری متفرقه') + '</td><td>' + (inv.city || '-') + '</td><td>' + formatWeight(inv.netWgt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(inv.netAmt || 0) + '</td></tr>').join('') +
+        filteredInvoices.map((inv: any, idx) => '<tr><td>' + (idx + 1) + '</td><td style="font-weight: bold; font-family: monospace;">' + inv.invoiceNum + '</td><td style="font-family: monospace;">' + (inv.date || inv.invoiceDate || '-') + '</td><td style="text-align: right; font-weight: bold;">' + (inv.customerName || 'مشتری متفرقه') + '</td><td>' + (inv.city || '-') + '</td><td>' + formatWeight(inv.netWgt || 0) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(inv.netAmt || 0) + '</td></tr>').join('') +
         '<tr class="total"><td colspan="5" style="text-align: right;">جمع کل فاکتورها</td><td>' + formatWeight(totWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(totAmt) + '</td></tr></tbody></table></body></html>';
       return { htmlContent, title, filename };
     }
@@ -1255,7 +1256,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
         '<div class="kpi-card"><div class="kpi-title">مجموع وزن خرید</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">مجموع ارزش خرید</div><div class="kpi-val">' + formatMoney(totAmt) + ' ریال</div></div></div>' +
         '<table><thead><tr><th style="width: 30px;">#</th><th style="text-align: right;">نام خریدار / مشتری</th><th>تعداد فاکتور</th><th>وزن خرید (ک‌گ)</th><th>ارزش کل خرید (ریال)</th><th>میانگین فی (ریال/ک‌گ)</th></tr></thead><tbody>' +
-        custs.map((c, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + c.customerName + '</td><td>' + c.invoiceCount + '</td><td>' + formatWeight(c.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(c.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(c.avgFee) + '</td></tr>').join('') +
+        custs.map((c: any, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + c.customerName + '</td><td>' + c.invoiceCount + '</td><td>' + formatWeight(c.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(c.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(c.netFee || c.avgFee || 0) + '</td></tr>').join('') +
         '<tr class="total"><td colspan="2" style="text-align: right;">جمع کل مشتریان</td><td>' + totInvoices.toLocaleString('fa-IR') + '</td><td>' + formatWeight(totWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(totAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(avgFee) + '</td></tr></tbody></table></body></html>';
       return { htmlContent, title, filename };
     }

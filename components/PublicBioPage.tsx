@@ -407,7 +407,7 @@ END:VCARD`;
         {/* Cover Photo Header */}
         <div className="relative w-full h-44 bg-slate-800 overflow-hidden">
           <img
-            src={processBioImageUrl(config.coverUrl, 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000')}
+            src={processBioImageUrl(config.coverUrl, '/lepan-logo.png')}
             alt="Cover"
             referrerPolicy="no-referrer"
             crossOrigin="anonymous"
@@ -415,7 +415,7 @@ END:VCARD`;
             onError={(e) => {
               const target = e.target as HTMLImageElement;
               target.onerror = null;
-              target.src = 'https://images.unsplash.com/photo-1606107557195-0e29a4b5b4aa?q=80&w=1000';
+              target.src = '/lepan-logo.png';
             }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />

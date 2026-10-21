@@ -69,30 +69,154 @@ const makeAbsolute = (url) => {
   return `http://127.0.0.1:3000${cleanUrl}`;
 };
 
-// --- FONT LOADER (ROBUST OFFLINE SUPPORT) ---
-const getFontBase64 = () => {
+// --- FONT LOADER (100% OFFLINE LOCAL SUPPORT FOR ALL PERSIAN FONTS) ---
+const loadFontFileBase64 = (fileName) => {
   try {
     const pathsToCheck = [
-      path.join(ROOT_DIR, "public", "fonts", "Vazirmatn-Regular.woff2"),
-      path.join(ROOT_DIR, "dist", "fonts", "Vazirmatn-Regular.woff2"),
-      path.join(process.cwd(), "public", "fonts", "Vazirmatn-Regular.woff2"),
+      path.join(ROOT_DIR, "public", "fonts", fileName),
+      path.join(ROOT_DIR, "dist", "fonts", fileName),
+      path.join(process.cwd(), "public", "fonts", fileName),
     ];
-
     for (const p of pathsToCheck) {
       if (fs.existsSync(p)) {
         return fs.readFileSync(p).toString("base64");
       }
     }
   } catch (e) {
-    console.warn("[Renderer] Error loading font:", e.message);
+    console.warn(`[Renderer] Error loading font ${fileName}:`, e.message);
   }
   return null;
 };
 
-const fontBase64 = getFontBase64();
-const fontFaceRule = fontBase64
-  ? `@font-face { font-family: 'Vazirmatn'; src: url(data:font/woff2;base64,${fontBase64}) format('woff2'); font-weight: normal; font-style: normal; }`
-  : `/* No Local Font Found */`;
+const buildFontFaceCss = (family, fileName, weight = "normal") => {
+  const b64 = loadFontFileBase64(fileName);
+  if (!b64) return "";
+  return `@font-face { font-family: '${family}'; src: url(data:font/woff2;base64,${b64}) format('woff2'); font-weight: ${weight}; font-style: normal; }\n`;
+};
+
+const fontFaceRule = [
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-Light.woff2", 300),
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-Regular.woff2", 400),
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-Medium.woff2", 500),
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-SemiBold.woff2", 600),
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-Bold.woff2", 700),
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-ExtraBold.woff2", 800),
+  buildFontFaceCss("Vazirmatn", "Vazirmatn-Black.woff2", 900),
+].join("") || "/* No Local Font Found */";
+
+const allPersianFontsRule = [
+  fontFaceRule,
+  buildFontFaceCss("Shabnam", "Shabnam.woff2", "normal"),
+  buildFontFaceCss("Sahel", "Sahel.woff2", "normal"),
+  buildFontFaceCss("Gandom", "Gandom.woff2", "normal"),
+  buildFontFaceCss("Samim", "Samim.woff2", "normal"),
+  buildFontFaceCss("Estedad", "Estedad.woff2", "normal"),
+  buildFontFaceCss("Tanha", "Tanha.woff2", "normal"),
+  buildFontFaceCss("Nahid", "Nahid.woff2", "normal"),
+].join("");
+
+const OFFLINE_TAILWIND_REPORT_CSS = `
+  *, ::before, ::after { box-sizing: border-box; border-width: 0; border-style: solid; border-color: #e5e7eb; }
+  .w-full { width: 100%; }
+  .w-2\\.5 { width: 0.625rem; }
+  .w-1\\/4 { width: 25%; }
+  .h-6 { height: 1.5rem; }
+  .p-0 { padding: 0; }
+  .p-2 { padding: 0.5rem; }
+  .p-2\\.5 { padding: 0.625rem; }
+  .py-0\\.5 { padding-top: 0.125rem; padding-bottom: 0.125rem; }
+  .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+  .py-1\\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
+  .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .px-1\\.5 { padding-left: 0.375rem; padding-right: 0.375rem; }
+  .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+  .px-2\\.5 { padding-left: 0.625rem; padding-right: 0.625rem; }
+  .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+  .pr-4 { padding-right: 1rem; }
+  .pb-2 { padding-bottom: 0.5rem; }
+  .pt-1\\.5 { padding-top: 0.375rem; }
+  .mb-0\\.5 { margin-bottom: 0.125rem; }
+  .mb-3 { margin-bottom: 0.75rem; }
+  .mt-0\\.5 { margin-top: 0.125rem; }
+  .mt-2 { margin-top: 0.5rem; }
+  .mt-3 { margin-top: 0.75rem; }
+  .flex { display: flex; }
+  .inline-block { display: inline-block; }
+  .grid { display: grid; }
+  .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .justify-between { justify-content: space-between; }
+  .items-center { align-items: center; }
+  .gap-2 { gap: 0.5rem; }
+  .gap-3 { gap: 0.75rem; }
+  .gap-8 { gap: 2rem; }
+  .space-y-0\\.5 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.125rem; }
+  .border { border-width: 1px; }
+  .border-b { border-bottom-width: 1px; }
+  .border-b-2 { border-bottom-width: 2px; }
+  .border-t { border-top-width: 1px; }
+  .border-t-2 { border-top-width: 2px; }
+  .border-l { border-left-width: 1px; }
+  .border-r-4 { border-right-width: 4px; }
+  .last\\:border-l-0:last-child { border-left-width: 0px; }
+  .border-dashed { border-style: dashed; }
+  .border-slate-100 { border-color: #f1f5f9; }
+  .border-slate-300 { border-color: #cbd5e1; }
+  .border-slate-900 { border-color: #0f172a; }
+  .border-gray-200\\/80 { border-color: rgba(229, 231, 235, 0.8); }
+  .border-gray-200\\/60 { border-color: rgba(229, 231, 235, 0.6); }
+  .border-gray-300 { border-color: #d1d5db; }
+  .border-indigo-600 { border-color: #4f46e5; }
+  .border-indigo-700 { border-color: #4338ca; }
+  .border-emerald-600 { border-color: #059669; }
+  .border-emerald-700 { border-color: #047857; }
+  .rounded { border-radius: 0.25rem; }
+  .rounded-sm { border-radius: 0.125rem; }
+  .rounded-md { border-radius: 0.375rem; }
+  .rounded-lg { border-radius: 0.5rem; }
+  .overflow-hidden { overflow: hidden; }
+  .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
+  .bg-white { background-color: #ffffff; }
+  .bg-slate-50 { background-color: #f8fafc; }
+  .bg-slate-50\\/90 { background-color: rgba(248, 250, 252, 0.9); }
+  .bg-slate-100 { background-color: #f1f5f9; }
+  .bg-slate-900 { background-color: #0f172a; }
+  .bg-amber-100\\/90 { background-color: rgba(254, 243, 199, 0.9); }
+  .bg-emerald-100 { background-color: #d1fae5; }
+  .bg-rose-100 { background-color: #ffe4e6; }
+  .text-white { color: #ffffff; }
+  .text-slate-300 { color: #cbd5e1; }
+  .text-slate-400 { color: #94a3b8; }
+  .text-slate-500 { color: #64748b; }
+  .text-slate-700 { color: #334155; }
+  .text-slate-900 { color: #0f172a; }
+  .text-slate-950 { color: #020617; }
+  .text-gray-800 { color: #1f2937; }
+  .text-gray-900 { color: #111827; }
+  .text-amber-300 { color: #fcd34d; }
+  .text-emerald-700 { color: #047857; }
+  .text-emerald-900 { color: #064e3b; }
+  .text-rose-700 { color: #be123c; }
+  .text-rose-900 { color: #881337; }
+  .text-right { text-align: right; }
+  .text-left { text-align: left; }
+  .text-center { text-align: center; }
+  .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+  .text-base { font-size: 1rem; line-height: 1.5rem; }
+  .text-\\[8px\\] { font-size: 8px; }
+  .text-\\[8\\.5px\\] { font-size: 8.5px; }
+  .text-\\[9px\\] { font-size: 9px; }
+  .text-\\[9\\.5px\\] { font-size: 9.5px; }
+  .text-\\[10px\\] { font-size: 10px; }
+  .text-\\[10\\.5px\\] { font-size: 10.5px; }
+  .font-bold { font-weight: 700; }
+  .font-black { font-weight: 900; }
+  .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  .tracking-tight { letter-spacing: -0.025em; }
+  .leading-tight { line-height: 1.25; }
+  .uppercase { text-transform: uppercase; }
+  .border-collapse { border-collapse: collapse; }
+`;
 
 // --- SYSTEM CHROME DETECTION (WINDOWS & LINUX) ---
 const findSystemChrome = () => {
@@ -759,9 +883,9 @@ export const generateRecordImage = async (record, type, options = {}) => {
       };
 
       const html = `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8">
-            <script src="https://cdn.tailwindcss.com"></script>
             <style>
                 ${fontFaceRule}
+                ${OFFLINE_TAILWIND_REPORT_CSS}
                 body { background: white; padding: 0 !important; font-family: 'Vazirmatn', sans-serif !important; margin: 0; }
                 .watermark-badge { position: absolute; top: 40px; left: 40px; font-size: 40px; font-weight: 900; opacity: 0.2; transform: rotate(-15deg); user-select: none; border: 4px solid; padding: 5px 20px; border-radius: 12px; z-index: 50; }
                 .badge-edit { color: #d97706; border-color: #d97706; }
@@ -1405,9 +1529,9 @@ export const generateReportPDF = async (
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         ${fontFaceRule}
+        ${OFFLINE_TAILWIND_REPORT_CSS}
         @page {
           size: A4 ${landscape ? 'landscape' : 'portrait'};
           margin: 6mm 8mm;
@@ -1543,9 +1667,9 @@ export const generateMeetingAnnouncementImage = async (meeting) => {
     const page = await browser.newPage();
 
     const html = `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8">
-            <script src="https://cdn.tailwindcss.com"></script>
             <style>
                 ${fontFaceRule}
+                ${OFFLINE_TAILWIND_REPORT_CSS}
                 body { background: #f9fafb; padding: 20px !important; font-family: 'Vazirmatn', sans-serif !important; }
                 .card { background: white; border-radius: 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 2px solid #e5e7eb; overflow: hidden; width: 600px; }
                 .header { background: #1e3a8a; color: white; padding: 30px; text-align: center; }
@@ -2283,14 +2407,7 @@ export const generateSecretariatLetterPDF = async (
     const html = `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8">
             <style>
                 ${BASE_STYLE}
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.0.0/Vazirmatn-font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/shabnam-font@v5.0.1/dist/font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/sahel-font@v3.4.0/dist/font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/gandom-font@v0.8.0/dist/font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/samim-font@v4.0.5/dist/font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/estedad-font@v1.0.0-alpha3/dist/font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/tanha-font@v0.1.3/dist/font-face.css');
-                @import url('https://cdn.jsdelivr.net/gh/rastikerdar/tahoma-font@v1.0.0/tahoma.css');
+                ${allPersianFontsRule}
                 
                 @page {
                     size: ${format} ${landscape ? "landscape" : "portrait"};

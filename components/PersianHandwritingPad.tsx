@@ -1,5 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Eraser, Undo2, Check, Sparkles, X, PenTool, RefreshCw } from 'lucide-react';
+import Tesseract from 'tesseract.js';
+
+const TESSERACT_OFFLINE_CONFIG = {
+  workerPath: '/tesseract/worker.min.js',
+  corePath: '/tesseract',
+  langPath: '/tesseract/lang-data',
+  gzip: true
+};
 
 interface PersianHandwritingPadProps {
   isOpen: boolean;
@@ -236,33 +244,54 @@ export const PersianHandwritingPad: React.FC<PersianHandwritingPadProps> = ({
         ]
       };
 
-      const response = await fetch('https://inputtools.google.com/request?itc=' + languageCode + '&app=translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-      if (!response.ok) {
-        throw new Error('Google Input Tools response error');
-      }
+      try {
+        const response = await fetch('https://inputtools.google.com/request?itc=' + languageCode + '&app=translate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
 
-      const data = await response.json();
-      
-      if (data && data[0] === 'SUCCESS') {
-        const results = data[1][0][1];
-        if (results && results.length > 0) {
-          setCandidates(results);
-        } else {
-          setCandidates([]);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data[0] === 'SUCCESS') {
+            const results = data[1][0][1];
+            if (results && results.length > 0) {
+              setCandidates(results);
+              return;
+            }
+          }
         }
-      } else {
-        setCandidates([]);
+      } catch (netErr) {
+        // Fallback to local offline OCR on canvas
       }
+
+      // Local offline OCR fallback via Tesseract (Works 100% on LAN / National Internet)
+      if (canvas) {
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+          const lang = languageMode === 'fa' ? 'fas' : 'eng';
+          const ocrRes = await Tesseract.recognize(dataUrl, lang, TESSERACT_OFFLINE_CONFIG);
+          const recognized = (ocrRes.data.text || '').trim();
+          if (recognized) {
+            setCandidates([recognized]);
+            return;
+          }
+        } catch (ocrErr) {
+          console.warn('Offline OCR recognition error:', ocrErr);
+        }
+      }
+
+      setCandidates([]);
     } catch (error) {
       console.error('Handwriting recognition failed:', error);
-      setRecognitionError('خطا در ارتباط با سرویس آنلاین تشخیص دست‌خط');
+      setRecognitionError('موردی با اطمینان کافی تشخیص داده نشد، لطفاً مجدداً بنویسید.');
     } finally {
       setIsRecognizing(false);
     }

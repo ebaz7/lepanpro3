@@ -319,6 +319,18 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
         <meta charset="UTF-8">
         <title>رسید دریافت چک #${receipt.receiptNo || receipt.id} - لپان بافت</title>
         <style>
+            @font-face {
+                font-family: 'Vazirmatn';
+                src: url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
+                font-weight: normal;
+                font-style: normal;
+            }
+            @font-face {
+                font-family: 'Vazirmatn';
+                src: url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
+                font-weight: bold;
+                font-style: normal;
+            }
             @page {
                 size: A5 landscape;
                 margin: 0;

@@ -760,7 +760,19 @@ export default function ProductionReturnTab({
                     <meta charset="UTF-8" />
                     <title>رسید برگشت از تولید - سند شماره ${doc.docNo}</title>
                     <style>
-                        body { font-family: Tahoma, 'Segoe UI', sans-serif; direction: rtl; padding: 20px; font-size: 12px; color: #111; }
+                        @font-face {
+                            font-family: 'Vazirmatn';
+                            src: url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
+                            font-weight: normal;
+                            font-style: normal;
+                        }
+                        @font-face {
+                            font-family: 'Vazirmatn';
+                            src: url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
+                            font-weight: bold;
+                            font-style: normal;
+                        }
+                        body { font-family: 'Vazirmatn', Tahoma, 'Segoe UI', sans-serif; direction: rtl; padding: 20px; font-size: 12px; color: #111; }
                         .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
                         .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
                         .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 15px; background: #f9f9f9; padding: 10px; border-radius: 6px; border: 1px solid #ddd; }
@@ -847,7 +859,19 @@ export default function ProductionReturnTab({
                 <meta charset="UTF-8" />
                 <title>رسید برگشت از تولید - سند شماره ${doc.docNo}</title>
                 <style>
-                    body { font-family: Tahoma, 'Segoe UI', sans-serif; direction: rtl; padding: 20px; font-size: 12px; color: #111; }
+                    @font-face {
+                        font-family: 'Vazirmatn';
+                        src: url('/fonts/Vazirmatn-Regular.woff2') format('woff2');
+                        font-weight: normal;
+                        font-style: normal;
+                    }
+                    @font-face {
+                        font-family: 'Vazirmatn';
+                        src: url('/fonts/Vazirmatn-Bold.woff2') format('woff2');
+                        font-weight: bold;
+                        font-style: normal;
+                    }
+                    body { font-family: 'Vazirmatn', Tahoma, 'Segoe UI', sans-serif; direction: rtl; padding: 20px; font-size: 12px; color: #111; }
                     .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
                     .title { font-size: 16px; font-weight: bold; margin-bottom: 5px; }
                     .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); margin-bottom: 15px; background: #f9f9f9; padding: 10px; border-radius: 6px; border: 1px solid #ddd; }

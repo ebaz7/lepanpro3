@@ -41,6 +41,14 @@ export const getPdfLib = async () => {
   }
 };
 
+// Offline local Tesseract configuration (100% Intranet & LAN ready)
+const TESSERACT_OFFLINE_CONFIG = {
+  workerPath: '/tesseract/worker.min.js',
+  corePath: '/tesseract',
+  langPath: '/tesseract/lang-data',
+  gzip: true
+};
+
 // Persian bank list for autocomplete and filters
 const COMMON_IRANIAN_BANKS = [
   'ملی ایران', 'صادرات ایران', 'سپه', 'ملت', 'تجارت', 'مسکن', 'کشاورزی', 
@@ -322,7 +330,8 @@ export const recognizeCropOffline = async (
 
           const response = await Tesseract.recognize(
             croppedDataUrl,
-            lang
+            lang,
+            TESSERACT_OFFLINE_CONFIG
           );
 
           resolve(response.data.text || '');
@@ -857,7 +866,7 @@ export const ChequeReceiptModule: React.FC<ChequeReceiptModuleProps> = ({ curren
       if (fctx) {
         fctx.drawImage(canvas, 0, 0);
         // DO NOT preprocess so typed text stays crisp
-        const fullRes = await Tesseract.recognize(fullCanvas.toDataURL('image/jpeg'), 'eng+fas');
+        const fullRes = await Tesseract.recognize(fullCanvas.toDataURL('image/jpeg'), 'eng+fas', TESSERACT_OFFLINE_CONFIG);
         fullTextTyped = fullRes.data.text || '';
         console.log('Full-page OCR (Typed/Unprocessed):', fullTextTyped);
       }

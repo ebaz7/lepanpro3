@@ -82,8 +82,19 @@ const loadGsiScript = (): Promise<void> => {
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = (err) => reject(err);
+
+    const timer = setTimeout(() => {
+      reject(new Error('عدم دسترسی به سرورهای گوگل. در وضعیت اینترنت ملی یا شبکه داخلی، اتصال به گوگل در دسترس نیست.'));
+    }, 6000);
+
+    script.onload = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    script.onerror = (err) => {
+      clearTimeout(timer);
+      reject(new Error('خطا در بارگذاری کتابخانه گوگل یا عدم اتصال اینترنت'));
+    };
     document.head.appendChild(script);
   });
 };

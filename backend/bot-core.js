@@ -7174,7 +7174,8 @@ export const notifyPurchaseRequestStep = async (p, platform, chatId, sendPhotoFn
         const caption = `${header}\n🔢 شماره: ${p.requestNumber || '-'}\n📅 تاریخ: ${p.date || '-'}\n📍 شاخه: ${branchLabel}\n👤 درخواست‌کننده: ${p.requester || '-'}\n📦 کالا: ${p.itemName || '-'}\n📂 گروه: ${p.category || '-'} - ${p.subCategory || '-'}\n🔢 مقدار: ${p.quantity} ${p.unit}\n📝 توضیحات: ${p.specifications || '-'}${sayanStockText}\n\n✅ *مرحله:* ${stepName}\n🔄 *وضعیت:* ${p.status}${isEdit ? '\n⚠️ *این پیام ویرایشی است*' : ''}`;
         
         if (chatId && sendPhotoFn) {
-            sendPhotoFn(platform, chatId, 'https://placehold.co/800x400/4f46e5/ffffff?text=Purchase+Request', caption).catch(e => {});
+            const defaultLogo = path.join(process.cwd(), 'public', 'lepan-logo.png');
+            sendPhotoFn(platform, chatId, defaultLogo, caption).catch(e => {});
         }
 
         const settings = db.settings || {};
