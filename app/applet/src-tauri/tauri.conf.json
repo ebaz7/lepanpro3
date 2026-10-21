@@ -40,16 +40,7 @@
       "shortDescription": "Lepan covering & texturing manufacturing company desktop client.",
       "longDescription": "Lepan intelligent manufacturing and warehouse system native desktop client with smart LAN/Cloud routing and dual role capability."
     },
-    "updater": {
-      "active": false,
-      "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IFJXRU9MZFJ4S2k0eFlXU1dndm00Rjhicm40OWJpdk1yYmx2U1lySE9mWHJzUjh0T2JqTFN3cE4yCg==",
-      "endpoints": [
-        "https://ais-dev-wjlf3a3s2y7mgngiaxufff-97484218589.us-east1.run.app/api/desktop/updater.json",
-        "http://localhost:3000/api/desktop/updater.json",
-        "http://localhost:8080/api/desktop/updater.json"
-      ]
-    },
+
     "security": {
       "csp": null
     },
