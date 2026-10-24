@@ -12,8 +12,8 @@ export interface AppVersionInfo {
 
 // Current client build embedded in the bundle
 export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
-  version: '1.3.1',
-  buildNumber: '20260831.101',
+  version: '1.3.2',
+  buildNumber: '20260901.103',
   title: 'نسخه جاری',
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'
 };
@@ -97,17 +97,32 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // Compare server version against client embedded version and baseline
+    // Compare server version against client embedded version and baseline/applied signatures
     const clientBuild = CURRENT_CLIENT_BUILD.buildNumber;
     const clientVer = CURRENT_CLIENT_BUILD.version;
+    const baselineBuild = localStorage.getItem('baseline_server_build');
     const baselineTimestamp = Number(localStorage.getItem('baseline_server_timestamp')) || 0;
+    const lastAppliedSig = localStorage.getItem('last_applied_release_sig');
 
-    // Is server strictly newer than embedded client build OR baseline timestamp?
+    const currentServerSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
+
+    // If user already applied this exact server release signature, no update is available
+    if (lastAppliedSig && lastAppliedSig === currentServerSig) {
+      return { hasUpdate: false, serverInfo: data };
+    }
+
+    // If baseline build matches server build and server timestamp is not newer than baseline, no update
+    if (baselineBuild && baselineBuild === serverBuild && (serverTimestamp <= baselineTimestamp || serverTimestamp === 0)) {
+      return { hasUpdate: false, serverInfo: data };
+    }
+
+    // Compare versions semantically / lexically
     const isNewerThanClientVer = serverVer !== clientVer && serverVer > clientVer;
-    const isNewerThanClientBuild = serverBuild !== clientBuild;
+    const isNewerThanClientBuild = serverVer > clientVer || (serverVer === clientVer && serverBuild > clientBuild);
     const isNewerThanTimestamp = serverTimestamp > 0 && serverTimestamp > baselineTimestamp;
 
-    const hasUpdate = isNewerThanClientVer || isNewerThanClientBuild || isNewerThanTimestamp;
+    // Check if there is an update that hasn't been applied yet
+    const hasUpdate = (isNewerThanClientVer || isNewerThanClientBuild || isNewerThanTimestamp) && baselineBuild !== serverBuild;
 
     return {
       hasUpdate,
