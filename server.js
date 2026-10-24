@@ -11471,7 +11471,7 @@ app.get('/api/version', (req, res) => {
         const title = settings.releaseTitle || 'نسخۀ جدید';
         const releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
         const publishedAt = settings.systemUpdatePublishedAt || 0;
-        const androidDownloadUrl = settings.androidDownloadUrl || '/downloads/sayan-android-latest.apk';
+        const androidDownloadUrl = settings.androidDownloadUrl || '/downloads/dlkam-android-latest.apk';
         
         res.json({ 
             version, 
@@ -11482,7 +11482,7 @@ app.get('/api/version', (req, res) => {
             androidDownloadUrl
         });
     } catch (e) {
-        res.json({ version: '1.3.2', buildNumber: '20260901.103', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/sayan-android-latest.apk' });
+        res.json({ version: '1.3.2', buildNumber: '20260901.103', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk' });
     }
 });
 

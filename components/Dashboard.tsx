@@ -1827,15 +1827,6 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
         </div>
       </div>
 
-      {/* Prominent Update Banner for Tauri / Web / Mobile */}
-      {isUpdateAvailable && !isUpdateDismissed && updateInfo && (
-        <div className="w-full mb-3 no-print animate-slide-down">
-          <UpdateBanner
-            updateInfo={updateInfo}
-            onDismiss={() => setIsUpdateDismissed(true)}
-          />
-        </div>
-      )}
 
       {!isClearDesktop && (
         <div className="flex flex-wrap gap-4 items-stretch w-full" id="dashboard-widgets-container">

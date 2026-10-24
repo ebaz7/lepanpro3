@@ -8,12 +8,12 @@ const cargoPath = path.join(rootDir, 'src-tauri', 'Cargo.toml');
 
 console.log('=== FIXING TAURI CONFIGURATION & MEMORY ISSUES ===');
 
-// 1. Write clean Cargo.toml with minimal, lightweight features (prevents Out of Memory / 549 crate explosion)
+// 1. Write clean Cargo.toml with single codegen-unit (prevents Out of Memory / STATUS_STACK_BUFFER_OVERRUN)
 const cleanCargo = `[package]
 name = "sayan-warehouse"
 version = "1.0.0"
-description = "Sayan warehouse system desktop application with embedded server and client-server dual role support"
-authors = ["Sayan AI Core Team"]
+description = "Dlkam warehouse system desktop application with embedded server and client-server dual role support"
+authors = ["Dlkam Core Team"]
 license = "MIT"
 repository = ""
 edition = "2021"
@@ -40,9 +40,10 @@ tower-http = { version = "0.4", default-features = false, features = ["cors", "f
 
 [profile.release]
 panic = "abort"
-opt-level = 2
-codegen-units = 16
+opt-level = 1
+codegen-units = 1
 lto = false
+incremental = false
 strip = true
 `;
 

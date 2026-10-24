@@ -53,7 +53,7 @@ interface LayoutProps {
 
 import { SearchModal } from './SearchModal';
 import { UpdateBanner } from './UpdateBanner';
-import { checkServerUpdate, AppVersionInfo } from '../services/updateService';
+import { checkServerUpdate, dismissUpdate, AppVersionInfo } from '../services/updateService';
 
 const Layout: React.FC<LayoutProps> = ({ 
   children, 
@@ -503,6 +503,8 @@ const Layout: React.FC<LayoutProps> = ({
         setUpdateInfo(updateResult.serverInfo);
         setIsUpdateAvailable(true);
         setIsUpdateDismissed(false);
+      } else {
+        setIsUpdateAvailable(false);
       }
     } catch (e) {
       console.debug('Version check error', e);
@@ -527,8 +529,7 @@ const Layout: React.FC<LayoutProps> = ({
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        setIsUpdateAvailable(true);
-        setIsUpdateDismissed(false);
+        checkVersion();
       });
     }
 
@@ -1865,7 +1866,10 @@ const Layout: React.FC<LayoutProps> = ({
                 <div className="p-2 sm:p-3 sm:pb-1 no-print animate-slide-down">
                   <UpdateBanner
                     updateInfo={updateInfo}
-                    onDismiss={() => setIsUpdateDismissed(true)}
+                    onDismiss={() => {
+                      setIsUpdateDismissed(true);
+                      dismissUpdate(updateInfo);
+                    }}
                   />
                 </div>
               )}

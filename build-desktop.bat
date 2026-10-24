@@ -1,18 +1,18 @@
 @echo off
 echo ========================================================
-echo   LEPAN WAREHOUSE - TAURI WINDOWS BUILDER (LOW MEMORY)
+echo   DLKAM - TAURI WINDOWS BUILDER (LOW MEMORY & STACK FIX)
 echo ========================================================
 echo.
 
 cd /d "%~dp0"
 
-echo [1/3] Updating src-tauri/Cargo.toml with memory-safe configuration...
+echo [1/3] Updating src-tauri/Cargo.toml with memory-safe single-unit configuration...
 (
 echo [package]
 echo name = "sayan-warehouse"
 echo version = "1.0.0"
-echo description = "Sayan warehouse desktop"
-echo authors = ["Sayan Team"]
+echo description = "Dlkam warehouse desktop"
+echo authors = ["Dlkam Team"]
 echo edition = "2021"
 echo rust-version = "1.65"
 echo.
@@ -35,24 +35,29 @@ echo tower-http = { version = "0.4", default-features = false, features = ["cors
 echo.
 echo [profile.release]
 echo panic = "abort"
-echo opt-level = 2
-echo codegen-units = 16
+echo opt-level = 1
+echo codegen-units = 1
 echo lto = false
+echo incremental = false
 echo strip = true
 ) > src-tauri\Cargo.toml
 
-echo [2/3] Cleaning previous corrupted cache...
+echo [2/3] Cleaning previous target cache to prevent LLVM OOM...
 cd src-tauri
 call cargo clean
 cd ..
 
-echo [3/3] Compiling Tauri Desktop App in single-thread mode (Low RAM)...
+echo [3/3] Compiling Tauri Desktop App in single-thread memory-safe mode...
 set CARGO_BUILD_JOBS=1
+set RUSTFLAGS=-C link-args=/STACK:16777216
+set CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+set CARGO_PROFILE_RELEASE_OPT_LEVEL=1
+set CARGO_PROFILE_RELEASE_LTO=false
 call npx tauri build -- --jobs 1
 
 echo.
 echo ========================================================
 echo   BUILD PROCESS FINISHED!
-echo   Installer location: src-tauri\target\release\bundle\nsis\
+echo   Installer location: src-tauri\target\release\bundle\
 echo ========================================================
 pause
