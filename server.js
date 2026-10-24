@@ -279,6 +279,32 @@ app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' })); // Cache upl
 app.use('/downloads', express.static(PUBLIC_DOWNLOADS_DIR, { maxAge: '1h' }));
 app.use('/downloads', express.static(DOWNLOADS_DIR, { maxAge: '1h' }));
 
+// --- DYNAMIC ANDROID APK DOWNLOAD PROVIDER ---
+app.get(['/downloads/sayan-android-latest.apk', '/downloads/sayan-app.apk', '/downloads/app-release.apk'], (req, res) => {
+    const candidatePaths = [
+        path.join(PUBLIC_DOWNLOADS_DIR, 'sayan-android-latest.apk'),
+        path.join(DOWNLOADS_DIR, 'sayan-android-latest.apk'),
+        path.join(ROOT_DIR, 'payment-system-release.apk'),
+        path.join(ROOT_DIR, 'payment-system-latest.apk'),
+        path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
+        path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
+        path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
+    ];
+
+    for (const apkPath of candidatePaths) {
+        if (fs.existsSync(apkPath)) {
+            res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+            res.setHeader('Content-Disposition', 'attachment; filename="sayan-android-latest.apk"');
+            return res.sendFile(apkPath);
+        }
+    }
+
+    res.status(404).json({
+        success: false,
+        error: 'فایل APK اندروید یافت نشد. جهت ساخت فایل APK دستور npm run build:apk را در سرور یا رایانه اجرا نمایید.'
+    });
+});
+
 // --- SAFE FILE SANITIZATION HELPER ---
 const FORBIDDEN_EXTENSIONS = new Set([
     '.exe', '.bat', '.cmd', '.sh', '.ps1', '.vbs', '.js', '.mjs', '.cjs',
@@ -11440,16 +11466,18 @@ app.get('/api/version', (req, res) => {
         const title = settings.releaseTitle || 'نسخۀ جدید';
         const releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
         const publishedAt = settings.systemUpdatePublishedAt || 0;
+        const androidDownloadUrl = settings.androidDownloadUrl || '/downloads/sayan-android-latest.apk';
         
         res.json({ 
             version, 
             buildNumber, 
             title, 
             releaseNotes,
-            timestamp: publishedAt || 0
+            timestamp: publishedAt || 0,
+            androidDownloadUrl
         });
     } catch (e) {
-        res.json({ version: '1.3.2', buildNumber: '20260901.103', title: 'نسخۀ جدید' });
+        res.json({ version: '1.3.2', buildNumber: '20260901.103', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/sayan-android-latest.apk' });
     }
 });
 

@@ -7,6 +7,7 @@ export interface AppVersionInfo {
   releaseNotes?: string;
   timestamp?: number;
   downloadUrl?: string;
+  androidDownloadUrl?: string;
 }
 
 // Current client build embedded in the bundle
@@ -17,6 +18,16 @@ export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'
 };
 
+// Detect if running inside Android Capacitor Native Shell
+export function isCapacitorAndroid(): boolean {
+  if (typeof window === 'undefined') return false;
+  const win = window as any;
+  return Boolean(
+    (win.Capacitor?.isNativePlatform?.() && win.Capacitor?.getPlatform?.() === 'android') ||
+    (win.Capacitor?.platform === 'android')
+  );
+}
+
 // Check for updates by querying /api/version and /api/desktop/check-update
 export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverInfo: AppVersionInfo | null }> {
   try {
@@ -25,6 +36,7 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
 
     let data: AppVersionInfo | null = null;
     let desktopDownloadUrl = '';
+    let androidDownloadUrl = '';
 
     try {
       const res = await fetch(versionApiUrl, {
@@ -32,6 +44,9 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       });
       if (res.ok) {
         data = await res.json();
+        if (data?.androidDownloadUrl) {
+          androidDownloadUrl = data.androidDownloadUrl;
+        }
       }
     } catch (e) {
       console.debug('Failed fetching /api/version:', e);
@@ -63,13 +78,20 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       return { hasUpdate: false, serverInfo: null };
     }
 
-    const downloadUrl = data.downloadUrl || desktopDownloadUrl || getEffectiveApiUrl('/downloads/sayan-desktop-setup.msi');
-    data.downloadUrl = downloadUrl;
+    const defaultAndroidUrl = getEffectiveApiUrl('/downloads/sayan-android-latest.apk');
+    const defaultDesktopUrl = getEffectiveApiUrl('/downloads/sayan-desktop-setup.msi');
+
+    data.androidDownloadUrl = androidDownloadUrl || data.androidDownloadUrl || defaultAndroidUrl;
+
+    if (isCapacitorAndroid()) {
+      data.downloadUrl = data.androidDownloadUrl;
+    } else {
+      data.downloadUrl = data.downloadUrl || desktopDownloadUrl || defaultDesktopUrl;
+    }
 
     const serverBuild = data.buildNumber || data.version;
     const serverVer = data.version || data.buildNumber;
     const serverTimestamp = Number(data.timestamp) || 0;
-    const serverSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
 
     if (typeof window === 'undefined') {
       return { hasUpdate: false, serverInfo: data };
@@ -131,25 +153,67 @@ export async function publishApplicationUpdate(payload: {
   }
 }
 
-// Apply update: clear caches, instruct SW to skip waiting, and reload/download
+// Apply update: clear caches, instruct SW to skip waiting, download APK if Android, and reload
 export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null): Promise<void> {
   try {
-    // If a direct setup/installer download URL exists (e.g. for Tauri desktop setup)
-    if (serverInfo?.downloadUrl && typeof window !== 'undefined') {
+    const isAndroid = isCapacitorAndroid();
+
+    // 1. Send automated backup to bots before applying update
+    try {
+      const backupUrl = getEffectiveApiUrl('/api/backups/send-to-bot');
+      await fetch(backupUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason: `پشتیبان خودکار ${isAndroid ? 'اندروید' : 'سامانه'} قبل از بروزرسانی به نسخه ${serverInfo?.version || serverInfo?.buildNumber || 'جدید'}`
+        })
+      });
+    } catch (botErr) {
+      console.warn('Backup to bot before update note:', botErr);
+    }
+
+    // 2. Mark update signature
+    if (serverInfo) {
+      const serverBuild = serverInfo.buildNumber || serverInfo.version;
+      const serverTimestamp = Number(serverInfo.timestamp) || Date.now();
+      const serverSig = `${serverInfo.version || serverBuild}_${serverBuild}_${serverTimestamp}`;
+      localStorage.setItem('last_applied_release_sig', serverSig);
+      localStorage.setItem('baseline_server_build', serverBuild);
+      localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
+    }
+
+    // 3. Handle direct download/installation for Android or Desktop
+    const targetDownloadUrl = isAndroid
+      ? (serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || getEffectiveApiUrl('/downloads/sayan-android-latest.apk'))
+      : serverInfo?.downloadUrl;
+
+    if (targetDownloadUrl && typeof window !== 'undefined') {
       try {
-        const link = document.createElement('a');
-        link.href = serverInfo.downloadUrl;
-        link.target = '_blank';
-        link.download = '';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (isAndroid) {
+          // Open direct download link in Android system package installer / browser
+          window.open(targetDownloadUrl, '_system');
+          const link = document.createElement('a');
+          link.href = targetDownloadUrl;
+          link.target = '_blank';
+          link.download = `sayan-android-v${serverInfo?.version || 'latest'}.apk`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } else {
+          const link = document.createElement('a');
+          link.href = targetDownloadUrl;
+          link.target = '_blank';
+          link.download = '';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
       } catch (e) {
-        window.open(serverInfo.downloadUrl, '_blank');
+        window.open(targetDownloadUrl, '_blank');
       }
     }
 
-    // 1. Tell Service Worker to skip waiting
+    // 4. Tell Service Worker to skip waiting
     if ('serviceWorker' in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
@@ -162,7 +226,7 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
       }
     }
 
-    // 2. Clear stale cache storage
+    // 5. Clear stale cache storage
     if ('caches' in window) {
       try {
         const cacheKeys = await caches.keys();
@@ -178,33 +242,12 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         console.warn('Failed clearing caches:', e);
       }
     }
-
-    // 3. Send automated backup to bots before applying update
-    try {
-      const backupUrl = getEffectiveApiUrl('/api/backups/send-to-bot');
-      await fetch(backupUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: `پشتیبان خودکار قبل از بروزرسانی به نسخه ${serverInfo?.version || serverInfo?.buildNumber || 'جدید'}` })
-      });
-    } catch (botErr) {
-      console.warn('Backup to bot before update note:', botErr);
-    }
-
-    // 4. Mark update signature
-    if (serverInfo) {
-      const serverBuild = serverInfo.buildNumber || serverInfo.version;
-      const serverTimestamp = Number(serverInfo.timestamp) || Date.now();
-      const serverSig = `${serverInfo.version || serverBuild}_${serverBuild}_${serverTimestamp}`;
-      localStorage.setItem('last_applied_release_sig', serverSig);
-      localStorage.setItem('baseline_server_build', serverBuild);
-      localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
-    }
   } catch (e) {
     console.error('Error during applyApplicationUpdate:', e);
   } finally {
-    // 5. Force hard reload with cache-buster parameter
+    // 6. Force hard reload with cache-buster parameter
     const cleanUrl = window.location.origin + window.location.pathname;
     window.location.replace(`${cleanUrl}?_update=${Date.now()}`);
   }
 }
+
