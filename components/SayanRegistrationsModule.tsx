@@ -117,7 +117,9 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
         perms.canSayanEditReceipt === true || 
         perms.canSayanDeleteReceipt === true || 
         perms.canSayanApproveAccounting === true || 
-        perms.canSayanApproveCeo === true;
+        perms.canSayanApproveCeo === true ||
+        perms.canSayanFinalApprove === true ||
+        (currentUser as any)?.canSayanFinalApprove === true;
 
     const canAccessSayanRegistrations = currentUser?.role === UserRole.ADMIN || 
         perms.canAccessSayanRegistrations === true || 

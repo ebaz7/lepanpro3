@@ -63,6 +63,7 @@ const ManageUsers: React.FC = () => {
     canSayanDeleteReceipt: false,
     canSayanApproveAccounting: false,
     canSayanApproveCeo: false,
+    canSayanFinalApprove: false,
     receiveNotifications: true, 
     canAccessSecretariat: false,
     secretariatAllowedCompanies: [] as string[],
@@ -171,6 +172,7 @@ const ManageUsers: React.FC = () => {
       canSayanDeleteReceipt: user.canSayanDeleteReceipt || false,
       canSayanApproveAccounting: user.canSayanApproveAccounting || false,
       canSayanApproveCeo: user.canSayanApproveCeo || false,
+      canSayanFinalApprove: user.canSayanFinalApprove || false,
       receiveNotifications: user.receiveNotifications !== false, 
       canAccessSecretariat: user.canAccessSecretariat || false,
       canManageSecretariatSettings: user.canManageSecretariatSettings || false,
@@ -1053,6 +1055,10 @@ const ManageUsers: React.FC = () => {
                             <label className="flex items-center gap-2 text-[11px] text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-gray-800 p-2 rounded-lg border border-purple-200 cursor-pointer">
                               <input type="checkbox" checked={formData.canSayanApproveCeo} onChange={e => setFormData({...formData, canSayanApproveCeo: e.target.checked})} className="w-3.5 h-3.5 text-purple-600 rounded" />
                               <span>تایید مدیرعامل در سایان</span>
+                            </label>
+                            <label className="flex items-center gap-2 text-[11px] text-indigo-800 dark:text-indigo-300 bg-indigo-50 dark:bg-gray-800 p-2 rounded-lg border border-indigo-200 cursor-pointer sm:col-span-2">
+                              <input type="checkbox" checked={formData.canSayanFinalApprove} onChange={e => setFormData({...formData, canSayanFinalApprove: e.target.checked})} className="w-3.5 h-3.5 text-indigo-600 rounded" />
+                              <span>تایید نهایی و ثبت در سایان (توسط کاربران مجاز به عنوان جایگزین مدیرعامل)</span>
                             </label>
                           </div>
                         </div>

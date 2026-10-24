@@ -6,7 +6,7 @@
     "distDir": "../dist"
   },
   "package": {
-    "productName": "Lepan Warehouse System",
+    "productName": "Dlkam",
     "version": "1.0.0"
   },
   "tauri": {
@@ -15,7 +15,10 @@
       "http": {
         "all": true,
         "request": true,
-        "scope": ["http://**", "https://**"]
+        "scope": [
+          "http://**",
+          "https://**"
+        ]
       },
       "shell": {
         "all": true,
@@ -36,17 +39,9 @@
       "resources": [],
       "externalBin": [],
       "copyright": "Copyright © 2026 Lepan Covering & Texturing Manufacturing Company. All rights reserved.",
-      "category": "Office",
+      "category": "Business",
       "shortDescription": "Lepan covering & texturing manufacturing company desktop client.",
       "longDescription": "Lepan intelligent manufacturing and warehouse system native desktop client with smart LAN/Cloud routing."
-    },
-    "updater": {
-      "active": true,
-      "dialog": true,
-      "endpoints": [
-        "https://ais-dev-wjlf3a3s2y7mgngiaxufff-97484218589.us-east1.run.app/api/desktop/updater.json",
-        "http://localhost:3000/api/desktop/updater.json"
-      ]
     },
     "security": {
       "csp": null

@@ -384,29 +384,29 @@ export const getRolePermissions = (userRole: string, settings: SystemSettings | 
         if (userObject.canSelectProforma !== undefined) {
             perms.canSelectProforma = userObject.canSelectProforma;
         }
-        if (userObject.canAccessSayanRegistrations !== undefined) {
-            perms.canAccessSayanRegistrations = userObject.canAccessSayanRegistrations;
+        if (userObject.canAccessSayanRegistrations === true) {
+            perms.canAccessSayanRegistrations = true;
         }
-        if (userObject.canSayanPreInvoices !== undefined) {
-            perms.canSayanPreInvoices = userObject.canSayanPreInvoices;
+        if (userObject.canSayanPreInvoices === true) {
+            perms.canSayanPreInvoices = true;
         }
-        if (userObject.canSayanRegisterCheque !== undefined) {
-            perms.canSayanRegisterCheque = userObject.canSayanRegisterCheque;
+        if (userObject.canSayanRegisterCheque === true) {
+            perms.canSayanRegisterCheque = true;
         }
-        if (userObject.canSayanEditReceipt !== undefined) {
-            perms.canSayanEditReceipt = userObject.canSayanEditReceipt;
+        if (userObject.canSayanEditReceipt === true) {
+            perms.canSayanEditReceipt = true;
         }
-        if (userObject.canSayanDeleteReceipt !== undefined) {
-            perms.canSayanDeleteReceipt = userObject.canSayanDeleteReceipt;
+        if (userObject.canSayanDeleteReceipt === true) {
+            perms.canSayanDeleteReceipt = true;
         }
-        if (userObject.canSayanApproveAccounting !== undefined) {
-            perms.canSayanApproveAccounting = userObject.canSayanApproveAccounting;
+        if (userObject.canSayanApproveAccounting === true) {
+            perms.canSayanApproveAccounting = true;
         }
-        if (userObject.canSayanApproveCeo !== undefined) {
-            perms.canSayanApproveCeo = userObject.canSayanApproveCeo;
+        if (userObject.canSayanApproveCeo === true) {
+            perms.canSayanApproveCeo = true;
         }
-        if (userObject.canSayanFinalApprove !== undefined) {
-            perms.canSayanFinalApprove = userObject.canSayanFinalApprove;
+        if (userObject.canSayanFinalApprove === true) {
+            perms.canSayanFinalApprove = true;
         }
         // Check if user is explicitly listed in settings.sayanChequeFinalApprovalUserIds
         if (settings?.sayanChequeFinalApprovalUserIds && Array.isArray(settings.sayanChequeFinalApprovalUserIds)) {

@@ -135,7 +135,13 @@ export const getAppNavItems = (currentUser: User | null, settings: SystemSetting
     perms.canSayanDeleteReceipt === true || 
     perms.canSayanApproveAccounting === true || 
     perms.canSayanApproveCeo === true || 
-    perms.canAccessSayanPendingDocs === true;
+    perms.canSayanFinalApprove === true ||
+    perms.canAccessSayanPendingDocs === true ||
+    (currentUser as any).canAccessSayanRegistrations === true ||
+    (currentUser as any).canSayanPreInvoices === true ||
+    (currentUser as any).canSayanRegisterCheque === true ||
+    (currentUser as any).canSayanApproveAccounting === true ||
+    (currentUser as any).canSayanFinalApprove === true;
 
   const canSeeChequeReceipts = currentUser.role === UserRole.ADMIN || perms.canAccessChequeReceipts === true;
   const canSeeDigitalCard = currentUser.role === UserRole.ADMIN || 

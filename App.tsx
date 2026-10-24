@@ -29,6 +29,7 @@ import SecretariatModule from './components/SecretariatModule';
 import { ChequeReceiptModule } from './components/ChequeReceiptModule';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeSelectorModal, AppThemeMode } from './components/ThemeSelectorModal';
+import { NetworkRoleSettingsModal } from './components/NetworkRoleSettingsModal';
 import { AiExecutiveCopilot } from './components/AiExecutiveCopilot';
 import { AiDocumentScannerModal } from './components/AiDocumentScannerModal';
 import { SendToChatModal } from './components/SendToChatModal';
@@ -460,6 +461,17 @@ function App() {
   const [theme, setTheme] = useState<string>(() => localStorage.getItem('theme') || 'light-aurora');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => localStorage.getItem('app_dark_mode') === 'true');
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showNetworkRoleModal, setShowNetworkRoleModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    const isTauriDesktop = typeof window !== 'undefined' && !!(window as any).__TAURI__;
+    if (isTauriDesktop && !localStorage.getItem('sayan_network_role')) {
+      setShowNetworkRoleModal(true);
+    }
+    const handleOpenRoleModal = () => setShowNetworkRoleModal(true);
+    window.addEventListener('open-network-role-settings', handleOpenRoleModal);
+    return () => window.removeEventListener('open-network-role-settings', handleOpenRoleModal);
+  }, []);
 
   const applyThemeToRoot = (themeName: string, dark: boolean) => {
     const root = document.documentElement;
@@ -2263,6 +2275,10 @@ function App() {
                 onSelectTheme={handleSelectTheme}
                 isDarkMode={isDarkMode}
                 onToggleDarkMode={handleToggleDarkMode}
+            />
+            <NetworkRoleSettingsModal
+                isOpen={showNetworkRoleModal}
+                onClose={() => setShowNetworkRoleModal(false)}
             />
 
             </Layout>

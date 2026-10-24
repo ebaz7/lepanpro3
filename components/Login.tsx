@@ -25,10 +25,13 @@ import {
   Sun,
   Moon,
   Eye,
-  EyeOff
+  EyeOff,
+  Monitor,
+  Smartphone
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { motion, AnimatePresence } from 'motion/react';
+import { isTauriDesktop, isMobileApp, isWebApp, getPlatformBadgeLabel } from '../utils/platformDetection';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -267,17 +270,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-50">
         {/* Left Side: Server Config and Quick Indicators */}
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setShowServerConfig(!showServerConfig)} 
-            className="p-3 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-amber-400 rounded-2xl border border-slate-700/60 shadow-lg shadow-black/40 backdrop-blur-md transition-all active:scale-95"
-            title="تنظیمات سرور"
-          >
-            <Settings size={20} />
-          </button>
+          {!isWebApp() && (
+            <button 
+              onClick={() => setShowServerConfig(!showServerConfig)} 
+              className="p-3 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-amber-400 rounded-2xl border border-slate-700/60 shadow-lg shadow-black/40 backdrop-blur-md transition-all active:scale-95"
+              title="تنظیمات آدرس سرور مرکزی"
+            >
+              <Settings size={20} />
+            </button>
+          )}
           
           <div className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 bg-slate-900/60 border border-slate-700/50 rounded-full backdrop-blur-md text-xs font-medium text-slate-300">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>ارتباط امن SSL / 256-Bit</span>
+            <span>
+              {isTauriDesktop() 
+                ? 'دلکام ویندوز | اتصال مستقیم محلی' 
+                : isMobileApp() 
+                  ? 'دلکام موبایل | متصل' 
+                  : 'ارتباط امن SSL / 256-Bit'}
+            </span>
           </div>
         </div>
 
@@ -296,13 +307,15 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <span className="hidden sm:inline">{isLampOn ? 'روشنایی فعال' : 'روشنایی خاموش'}</span>
           </button>
 
-          <button 
-            onClick={() => setShowRestoreModal(true)} 
-            className="p-3 bg-slate-900/80 hover:bg-slate-800 text-amber-400/80 hover:text-amber-300 rounded-2xl border border-slate-700/60 shadow-lg shadow-black/40 backdrop-blur-md transition-all active:scale-95 hidden md:flex"
-            title="بازگردانی اضطراری دیتابیس"
-          >
-            <Database size={20} />
-          </button>
+          {!isWebApp() && (
+            <button 
+              onClick={() => setShowRestoreModal(true)} 
+              className="p-3 bg-slate-900/80 hover:bg-slate-800 text-amber-400/80 hover:text-amber-300 rounded-2xl border border-slate-700/60 shadow-lg shadow-black/40 backdrop-blur-md transition-all active:scale-95 hidden md:flex"
+              title="بازگردانی اضطراری دیتابیس"
+            >
+              <Database size={20} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -508,11 +521,18 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <p className="text-[11px] text-slate-400 mt-0.5">مشخصات کاربری مجاز خود را وارد کنید</p>
                   </div>
                   
-                  {/* Badge */}
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-900/80 border border-slate-800/80 rounded-xl text-[10px] font-bold text-slate-300">
-                    <KeyRound size={12} className="text-amber-400" />
-                    <span>{isNative ? 'موبایل' : 'نسخه وب'}</span>
-                  </div>
+                  {/* Platform Badge */}
+                  {(() => {
+                    const badge = getPlatformBadgeLabel();
+                    return (
+                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold border backdrop-blur-md shadow-sm ${badge.colorClass}`}>
+                        {badge.iconType === 'desktop' && <Monitor size={13} className="text-emerald-400" />}
+                        {badge.iconType === 'mobile' && <Smartphone size={13} className="text-purple-400" />}
+                        {badge.iconType === 'web' && <Globe size={13} className="text-amber-400" />}
+                        <span>{badge.title}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Error Banner */}
@@ -604,21 +624,40 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     )}
                   </button>
 
-                  {/* Footer Security Badges */}
-                  <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
-                    <div className="flex items-center gap-1.5">
-                      <ShieldCheck size={14} className="text-emerald-500" />
-                      <span>ورود امن سازمانی</span>
+                  {/* Footer Action Badges - Strictly Desktop/Mobile Only, Never in Web */}
+                  {!isWebApp() ? (
+                    <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('open-network-role-settings'));
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-bold border border-blue-500/20 transition-all cursor-pointer"
+                        title="تعیین اینکه این سیستم سرور میزبان است یا کلاینت متصل"
+                      >
+                        <Server size={13} className="text-blue-400" />
+                        <span>نقش شبکه (سرور/کلاینت)</span>
+                      </button>
+                      
+                      <button 
+                        type="button"
+                        onClick={() => setShowRestoreModal(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold border border-amber-500/20 transition-all cursor-pointer"
+                        title="بازگردانی فایل پشتیبان ZIP یا JSON قبل از ورود"
+                      >
+                        <Database size={13} className="text-amber-400" />
+                        <span>بازیابی دیتابیس / بکاپ</span>
+                      </button>
                     </div>
-                    
-                    <button 
-                      type="button"
-                      onClick={() => setShowRestoreModal(true)}
-                      className="text-amber-400/80 hover:text-amber-300 font-bold transition-colors"
-                    >
-                      بازیابی دیتابیس
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="flex items-center gap-1.5 text-slate-400 font-medium">
+                        <ShieldCheck size={14} className="text-emerald-400" />
+                        <span>سامانه ابری متصل به سرور مرکزی</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 dir-ltr font-mono">Dlkam Cloud</span>
+                    </div>
+                  )}
 
                 </form>
               </div>
@@ -656,17 +695,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto mb-4 text-amber-400">
                 <Database size={32}/>
               </div>
-              <h3 className="text-lg font-black text-slate-100 mb-2">بازگردانی اضطراری دیتابیس</h3>
-              <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-                با آپلود فایل پشتیبان، تمام اطلاعات فعلی جایگزین خواهند شد.<br/>
-                <span className="text-rose-400 font-bold">توجه: این عملیات غیرقابل بازگشت است.</span>
+              <h3 className="text-lg font-black text-slate-100 mb-2">بازگردانی دیتابیس و فایل‌های پشتیبان</h3>
+              <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                با بارگذاری فایل پشتیبان، اطلاعات سیستم جایگزین خواهند شد.<br/>
+                <span className="text-amber-400 font-bold block mt-1">
+                  نکته: با انتخاب فایل ZIP، تمام عکس‌ها، اسناد و پیوست‌های آپلود شده نیز به همراه دیتابیس بازگردانی می‌شوند.
+                </span>
               </p>
               
               <input 
                 type="file" 
                 ref={restoreFileInputRef} 
                 className="hidden" 
-                accept=".json,.txt" 
+                accept=".zip,.json,.txt" 
                 onChange={handleRestoreFileChange}
               />
               
