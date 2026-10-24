@@ -550,6 +550,7 @@ export interface SystemSettings {
   desktopLastCheckTime?: string;
   desktopUpdateChannel?: 'stable' | 'beta';
   desktopDirectDownloadUrl?: string;
+  androidDirectDownloadUrl?: string;
   desktopLatestVersion?: string;
   desktopReleaseNotes?: string;
   desktopLocalServerUrl?: string;

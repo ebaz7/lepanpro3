@@ -8942,20 +8942,39 @@ const Settings: React.FC<SettingsProps> = ({
                   </p>
                 </div>
 
-                {/* Direct Download URL */}
+                {/* Direct Download URL Desktop */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                     <Download size={14} className="text-purple-600" />
-                    لینک دانلود مستقیم فایل نصبی ستاپ (.msi / .exe)
+                    لینک دانلود مستقیم فایل نصبی دسکتاپ (.msi / .exe)
                   </label>
                   <input
                     type="text"
                     dir="ltr"
-                    placeholder="https://example.com/downloads/sayan-desktop-setup.msi"
+                    placeholder="https://example.com/downloads/delkam-desktop-setup.msi"
                     value={settings.desktopDirectDownloadUrl || ""}
                     onChange={(e) => setSettings({ ...settings, desktopDirectDownloadUrl: e.target.value })}
                     className="w-full text-xs font-mono p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
                   />
+                </div>
+
+                {/* Direct Download URL Android */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Smartphone size={14} className="text-emerald-600" />
+                    لینک دانلود مستقیم فایل نصبی اندروید (.apk)
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    placeholder="https://example.com/downloads/delkam-android-latest.apk"
+                    value={settings.androidDirectDownloadUrl || ""}
+                    onChange={(e) => setSettings({ ...settings, androidDirectDownloadUrl: e.target.value })}
+                    className="w-full text-xs font-mono p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                  <p className="text-[10px] text-gray-400">
+                    در صورت خالی بودن، لینک پیش‌فرض سرور (`/downloads/delkam-android-latest.apk`) استفاده می‌شود.
+                  </p>
                 </div>
 
                 {/* Latest Version Target */}
