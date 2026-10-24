@@ -10,7 +10,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{WindowBuilder, WindowUrl};
+use tauri::{Manager, WindowBuilder, WindowUrl};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ClientConfig {

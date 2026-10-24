@@ -12,7 +12,7 @@ const isAndroid =
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: isAndroid ? './' : '/', // Absolute path for Web deployment, relative path for Android build
+  base: './', // Relative path for universal support across Web, CDN, Android, and Desktop (Tauri)
   optimizeDeps: {
     entries: ['index.html'],
   },

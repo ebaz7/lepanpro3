@@ -17,7 +17,7 @@ const INSTALL_DIR = __dirname;
 
 // Read config from .env if exists
 dotenv.config();
-const port = process.env.PORT || '3000';
+const port = process.env.APP_PORT || process.env.PORT || '3000';
 const proxy = process.env.PROXY_URL || '';
 
 console.log("---------------------------------------------------------");

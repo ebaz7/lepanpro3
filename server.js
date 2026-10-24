@@ -100,6 +100,9 @@ const UPLOADS_DIR = path.join(ROOT_DIR, 'uploads');
 const BACKUPS_DIR = path.join(ROOT_DIR, 'backups'); 
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads');
 const PUBLIC_DOWNLOADS_DIR = path.join(ROOT_DIR, 'public', 'downloads');
+const DIST_DIR = path.join(ROOT_DIR, 'dist');
+const isExplicitDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 if (!fs.existsSync(BACKUPS_DIR)) fs.mkdirSync(BACKUPS_DIR, { recursive: true });
@@ -123,20 +126,14 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-let PORT = parseInt(process.env.DEFAULT_APP_PORT || process.env.APP_PORT, 10);
-if (!PORT || isNaN(PORT)) {
-    const envPort = parseInt(process.env.PORT, 10);
-    // 8080 is reserved by Nginx inside the container, dev server must run on 3000
-    if (!isNaN(envPort) && envPort !== 8080) {
-        PORT = envPort;
-    } else {
-        PORT = 3000;
-    }
-}
+let PORT = parseInt(process.env.APP_PORT || process.env.PORT || process.env.DEFAULT_APP_PORT, 10);
 const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
 if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
     const parsed = parseInt(process.argv[portArgIndex + 1], 10);
     if (!isNaN(parsed) && parsed > 0) PORT = parsed;
+}
+if (!PORT || isNaN(PORT) || PORT <= 0) {
+    PORT = 3000;
 }
 
 app.disable('x-powered-by');
@@ -14032,8 +14029,7 @@ app.post('/api/ai/sayan-send-bot', async (req, res) => {
     }
 });
 
-const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const isExplicitDev = process.argv.includes("--dev") || process.env.NODE_ENV === "development";
+// Using top-level DIST_DIR and isExplicitDev
 
 // --- PUBLIC CUSTOMER SURVEY ENDPOINTS ---
 app.get('/api/public/survey/:id', (req, res) => {
@@ -14243,28 +14239,36 @@ server.on('error', (err) => {
 });
 
 
-if (isExplicitDev || !fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
-    console.log("Starting in Development mode with Vite Middleware...");
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: false },
-        appType: "spa",
-    });
-    app.use(vite.middlewares);
-} else {
+if (isExplicitDev) {
+    try {
+        console.log("Starting in Development mode with Vite Middleware...");
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+            server: { middlewareMode: true, hmr: false },
+            appType: "spa",
+        });
+        app.use(vite.middlewares);
+    } catch (err) {
+        console.error("Vite dev middleware failed to load, falling back to static dist:", err?.message);
+    }
+}
+
+// Serve static assets from dist and public
+app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
+app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
+app.use(express.static(path.join(ROOT_DIR, 'public'), { maxAge: '7d' }));
+
+if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
     let buildTime = "Unknown";
     try {
         const stats = fs.statSync(path.join(DIST_DIR, 'index.html'));
         buildTime = stats.mtime.toLocaleString('fa-IR');
     } catch(e){}
     console.log(`Starting in Production mode serving built assets from dist (Build Date: ${buildTime})...`);
-    // Also serve public/fonts and public/tesseract directly as fallback if not copied to dist
-    app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
-    app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
+    
     app.use(express.static(DIST_DIR, {
         maxAge: '1d',
         setHeaders: (res, filePath) => {
-            // Never cache HTML, Service Worker, JS or Manifest files to ensure instant updates
             if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.endsWith('manifest.json') || filePath.endsWith('.js')) {
                 res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                 res.setHeader('Pragma', 'no-cache');
@@ -14282,6 +14286,35 @@ if (isExplicitDev || !fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
         res.setHeader('Expires', '0');
         res.sendFile(path.join(DIST_DIR, 'index.html'));
     });
+} else {
+    console.warn("⚠️ [توجه] فایل dist/index.html روی سرور یافت نشد. برای فعال‌سازی کامل وب‌اپ، لطفاً یکبار دستور npm run build را در پوشه اصلی پروژه اجرا کنید.");
+    app.get('*', (req, res) => {
+        if (req.path.startsWith('/api')) return res.status(404).json({ error: 'API endpoint not found' });
+        res.status(503).send(`
+            <!DOCTYPE html>
+            <html dir="rtl" lang="fa">
+            <head>
+                <meta charset="UTF-8">
+                <title>سیستم در حال به‌روزرسانی</title>
+                <style>
+                    body { font-family: Tahoma, sans-serif; text-align: center; padding: 50px; background: #f8fafc; color: #1e293b; }
+                    .card { background: white; padding: 40px; border-radius: 12px; max-width: 500px; margin: 0 auto; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+                    h2 { color: #0d9488; }
+                    code { background: #f1f5f9; padding: 4px 8px; border-radius: 4px; color: #e11d48; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h2>در حال آماده‌سازی نسخه وب...</h2>
+                    <p>فایل‌های نسخه وب در حال بیلد مجدد می‌باشند.</p>
+                    <p>لطفاً در CMD سرور دستور زیر را اجرا نمایید:</p>
+                    <code>npm run build</code>
+                </div>
+            </body>
+            </html>
+        `);
+    });
 }
+
 
 
