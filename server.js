@@ -280,10 +280,15 @@ app.use('/downloads', express.static(PUBLIC_DOWNLOADS_DIR, { maxAge: '1h' }));
 app.use('/downloads', express.static(DOWNLOADS_DIR, { maxAge: '1h' }));
 
 // --- DYNAMIC ANDROID APK DOWNLOAD PROVIDER ---
-app.get(['/downloads/sayan-android-latest.apk', '/downloads/sayan-app.apk', '/downloads/app-release.apk'], (req, res) => {
+app.get(['/downloads/dlkam-android-latest.apk', '/downloads/delkam-android-latest.apk', '/downloads/sayan-android-latest.apk', '/downloads/sayan-app.apk', '/downloads/app-release.apk'], (req, res) => {
     const candidatePaths = [
+        path.join(PUBLIC_DOWNLOADS_DIR, 'dlkam-android-latest.apk'),
+        path.join(DOWNLOADS_DIR, 'dlkam-android-latest.apk'),
+        path.join(PUBLIC_DOWNLOADS_DIR, 'delkam-android-latest.apk'),
+        path.join(DOWNLOADS_DIR, 'delkam-android-latest.apk'),
         path.join(PUBLIC_DOWNLOADS_DIR, 'sayan-android-latest.apk'),
         path.join(DOWNLOADS_DIR, 'sayan-android-latest.apk'),
+        path.join(ROOT_DIR, 'dlkam-android-latest.apk'),
         path.join(ROOT_DIR, 'payment-system-release.apk'),
         path.join(ROOT_DIR, 'payment-system-latest.apk'),
         path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
@@ -294,7 +299,7 @@ app.get(['/downloads/sayan-android-latest.apk', '/downloads/sayan-app.apk', '/do
     for (const apkPath of candidatePaths) {
         if (fs.existsSync(apkPath)) {
             res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-            res.setHeader('Content-Disposition', 'attachment; filename="sayan-android-latest.apk"');
+            res.setHeader('Content-Disposition', 'attachment; filename="dlkam-android-latest.apk"');
             return res.sendFile(apkPath);
         }
     }

@@ -78,8 +78,8 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       return { hasUpdate: false, serverInfo: null };
     }
 
-    const defaultAndroidUrl = getEffectiveApiUrl('/downloads/sayan-android-latest.apk');
-    const defaultDesktopUrl = getEffectiveApiUrl('/downloads/sayan-desktop-setup.msi');
+    const defaultAndroidUrl = getEffectiveApiUrl('/downloads/dlkam-android-latest.apk');
+    const defaultDesktopUrl = getEffectiveApiUrl('/downloads/dlkam-desktop-setup.msi');
 
     data.androidDownloadUrl = androidDownloadUrl || data.androidDownloadUrl || defaultAndroidUrl;
 
@@ -199,7 +199,7 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
 
     // 3. Handle direct download/installation for Android or Desktop
     const targetDownloadUrl = isAndroid
-      ? (serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || getEffectiveApiUrl('/downloads/sayan-android-latest.apk'))
+      ? (serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || getEffectiveApiUrl('/downloads/dlkam-android-latest.apk'))
       : serverInfo?.downloadUrl;
 
     if (targetDownloadUrl && typeof window !== 'undefined') {
@@ -210,7 +210,7 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
           const link = document.createElement('a');
           link.href = targetDownloadUrl;
           link.target = '_blank';
-          link.download = `sayan-android-v${serverInfo?.version || 'latest'}.apk`;
+          link.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -260,9 +260,9 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
   } catch (e) {
     console.error('Error during applyApplicationUpdate:', e);
   } finally {
-    // 6. Force hard reload with cache-buster parameter
+    // 6. Force hard reload with cache-buster parameter (v= instead of _update= to avoid WAF 403)
     const cleanUrl = window.location.origin + window.location.pathname;
-    window.location.replace(`${cleanUrl}?_update=${Date.now()}`);
+    window.location.replace(`${cleanUrl}?v=${Date.now()}`);
   }
 }
 

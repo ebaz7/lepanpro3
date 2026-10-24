@@ -29,7 +29,8 @@ tower-http = { version = "0.4", default-features = false, features = ["cors", "f
 
 [profile.release]
 panic = "abort"
-opt-level = 2
-codegen-units = 16
+opt-level = 1
+codegen-units = 1
 lto = false
+incremental = false
 strip = true

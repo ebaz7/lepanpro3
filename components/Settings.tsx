@@ -679,7 +679,7 @@ const Settings: React.FC<SettingsProps> = ({
     const dlUrl =
       updateManifestInfo?.downloadUrl ||
       settings.desktopDirectDownloadUrl ||
-      `${window.location.origin}/downloads/sayan-desktop-setup.msi`;
+      `${window.location.origin}/downloads/dlkam-desktop-setup.msi`;
     
     window.open(dlUrl, "_blank");
     alert("پکیج نسخه جدید آماده نصب است. فایل ستاپ دانلود و اجرا خواهد شد.");
