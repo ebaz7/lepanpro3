@@ -101,7 +101,7 @@ const BACKUPS_DIR = path.join(ROOT_DIR, 'backups');
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads');
 const PUBLIC_DOWNLOADS_DIR = path.join(ROOT_DIR, 'public', 'downloads');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const isExplicitDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+const isExplicitDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev' || process.argv.includes('--dev') || !process.env.NODE_ENV || !fs.existsSync(path.join(DIST_DIR, 'index.html'));
 
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -14239,6 +14239,11 @@ server.on('error', (err) => {
 });
 
 
+// Serve static assets from public
+app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
+app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
+app.use(express.static(path.join(ROOT_DIR, 'public'), { maxAge: '7d' }));
+
 if (isExplicitDev) {
     try {
         console.log("Starting in Development mode with Vite Middleware...");
@@ -14248,17 +14253,23 @@ if (isExplicitDev) {
             appType: "spa",
         });
         app.use(vite.middlewares);
+
+        // Fallback SPA HTML handler for Vite dev server
+        app.use('*', async (req, res, next) => {
+            if (req.originalUrl.startsWith('/api')) return next();
+            try {
+                let template = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf-8');
+                template = await vite.transformIndexHtml(req.originalUrl, template);
+                res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+            } catch (e) {
+                vite.ssrFixStacktrace(e);
+                next(e);
+            }
+        });
     } catch (err) {
         console.error("Vite dev middleware failed to load, falling back to static dist:", err?.message);
     }
-}
-
-// Serve static assets from dist and public
-app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
-app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
-app.use(express.static(path.join(ROOT_DIR, 'public'), { maxAge: '7d' }));
-
-if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+} else if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
     let buildTime = "Unknown";
     try {
         const stats = fs.statSync(path.join(DIST_DIR, 'index.html'));

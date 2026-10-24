@@ -804,18 +804,18 @@ export const CustomerBalanceModule: React.FC<{ currentUser?: any }> = ({ current
                             : isZero 
                             ? 'text-zinc-400 dark:text-zinc-500' 
                             : item.type === 'بدهکار' 
-                            ? 'text-emerald-600 dark:text-emerald-400' 
-                            : 'text-rose-600 dark:text-rose-450'
+                            ? 'text-emerald-900 dark:text-emerald-300 font-black' 
+                            : 'text-rose-700 dark:text-rose-400'
                         }`}>
                           {item.balance.toLocaleString()}
                         </td>
                         <td className="py-3.5 px-4 text-center border-l border-zinc-200 dark:border-zinc-800">
-                          <span className={`inline-block px-3 py-1 rounded-full font-extrabold text-[10px] tracking-wide shadow-xs ${
+                          <span className={`inline-block px-3 py-1 rounded-full font-black text-[10px] tracking-wide shadow-xs ${
                             isZero
                               ? 'bg-zinc-100 text-zinc-500 border border-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:border-zinc-700'
                               : item.type === 'بدهکار' 
-                              ? 'bg-emerald-50 text-emerald-850 border border-emerald-250 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/40' 
-                              : 'bg-rose-50 text-rose-850 border border-rose-250 dark:bg-rose-950/40 dark:text-rose-450 dark:border-rose-900/40'
+                              ? 'bg-emerald-100 text-emerald-950 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300' 
+                              : 'bg-rose-100 text-rose-950 border border-rose-300 dark:bg-rose-950/60 dark:text-rose-300'
                           }`}>
                             {isZero ? 'تسویه' : item.type}
                           </span>
