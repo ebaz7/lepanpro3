@@ -22,6 +22,9 @@ import {
 } from './DashboardWidgets';
 import { ResizableWidget, WidgetSize } from './ResizableWidget';
 import { DashboardAdminRoleLocksModal } from './DashboardAdminRoleLocksModal';
+import { UpdateBanner } from './UpdateBanner';
+import { checkServerUpdate, AppVersionInfo, CURRENT_CLIENT_BUILD } from '../services/updateService';
+import { RefreshCw, DownloadCloud, ArrowUpCircle } from 'lucide-react';
 
 interface DashboardProps {
   orders: PaymentOrder[];
@@ -221,6 +224,47 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
       return false;
     }
   });
+
+  // Version Update State
+  const [updateInfo, setUpdateInfo] = useState<AppVersionInfo | null>(null);
+  const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
+  const [isUpdateDismissed, setIsUpdateDismissed] = useState<boolean>(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+
+  const checkDashboardVersion = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const updateResult = await checkServerUpdate();
+      if (updateResult.serverInfo) {
+        setUpdateInfo(updateResult.serverInfo);
+        if (updateResult.hasUpdate) {
+          setIsUpdateAvailable(true);
+          setIsUpdateDismissed(false);
+        }
+      }
+    } catch (e) {
+      console.debug('Dashboard update check error', e);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    checkDashboardVersion();
+    const handleUpdatePublished = (e: any) => {
+      if (e?.detail) {
+        setUpdateInfo(e.detail);
+        setIsUpdateAvailable(true);
+        setIsUpdateDismissed(false);
+      } else {
+        checkDashboardVersion();
+      }
+    };
+    window.addEventListener('app:update-published', handleUpdatePublished);
+    return () => {
+      window.removeEventListener('app:update-published', handleUpdatePublished);
+    };
+  }, []);
 
   // Check if a widget is locked for the current user's role/group
   const isWidgetLockedForCurrentUser = (widgetId: string): boolean => {
@@ -1758,6 +1802,17 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
                   )}
                 </div>
 
+                {/* Manual Check Update Button */}
+                <button
+                  onClick={checkDashboardVersion}
+                  disabled={isCheckingUpdate}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs hover:opacity-90 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+                  title="بررسی دستی به‌روزرسانی سامانه"
+                >
+                  <RefreshCw size={12} className={isCheckingUpdate ? "animate-spin" : ""} />
+                  <span>{isCheckingUpdate ? 'بررسی...' : 'بررسی بروزرسانی'}</span>
+                </button>
+
                 {/* Quick Reset Button */}
                 <button
                   onClick={handleResetWidgets}
@@ -1771,6 +1826,16 @@ const Dashboard: React.FC<DashboardProps> = ({ orders: rawOrders, settings, curr
           </div>
         </div>
       </div>
+
+      {/* Prominent Update Banner for Tauri / Web / Mobile */}
+      {isUpdateAvailable && !isUpdateDismissed && updateInfo && (
+        <div className="w-full mb-3 no-print animate-slide-down">
+          <UpdateBanner
+            updateInfo={updateInfo}
+            onDismiss={() => setIsUpdateDismissed(true)}
+          />
+        </div>
+      )}
 
       {!isClearDesktop && (
         <div className="flex flex-wrap gap-4 items-stretch w-full" id="dashboard-widgets-container">
