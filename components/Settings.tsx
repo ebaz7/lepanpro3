@@ -4474,6 +4474,41 @@ const Settings: React.FC<SettingsProps> = ({
                         />
                       </div>
                       <div className="border-t pt-3">
+                        <div className="flex items-center justify-between p-3 mb-3 bg-indigo-50/70 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                          <div>
+                            <div className="text-xs font-black text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
+                              <Sparkles size={14} className="text-indigo-600" />
+                              <span>نمایش و فعال‌سازی گزینه هوش مصنوعی (اندروید، وب‌اپ و ویندوز)</span>
+                            </div>
+                            <p className="text-[10px] text-indigo-700 dark:text-indigo-300 mt-0.5">
+                              با خاموش کردن این کلید، دکمه دستیار هوشمند و ابزارهای هوش مصنوعی در تمام نسخه‌ها پنهان و غیرفعال می‌شود.
+                            </p>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={settings.enableAiWidget !== false}
+                              onChange={(e) => {
+                                const enabled = e.target.checked;
+                                setSettings({
+                                  ...settings,
+                                  enableAiWidget: enabled,
+                                  botAiEnabled: enabled,
+                                });
+                                localStorage.setItem('app_ai_copilot_enabled', String(enabled));
+                                if (!enabled) {
+                                  document.documentElement.classList.add('ai-features-disabled');
+                                } else {
+                                  document.documentElement.classList.remove('ai-features-disabled');
+                                }
+                                window.dispatchEvent(new CustomEvent('APP_AI_COPILOT_CHANGED', { detail: enabled }));
+                              }}
+                            />
+                            <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                          </label>
+                        </div>
+
                         <div className="flex items-center justify-between mb-1.5">
                           <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
                             <Sparkles size={14} className="text-indigo-600 animate-pulse" />

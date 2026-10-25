@@ -413,6 +413,7 @@ export interface SystemSettings {
   deepseekApiKey?: string;
   botAiSource?: 'gemini' | 'deepseek' | 'hybrid';
   botAiEnabled?: boolean;
+  enableAiWidget?: boolean;
   excelPriority?: boolean;
   autoPriceUpdateInterval?: number;
   supportUsername?: string;

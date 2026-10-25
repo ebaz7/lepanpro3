@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { PinchZoomContainer } from './PinchZoomContainer';
 import { 
   FileText, 
   Search, 
@@ -1207,58 +1208,60 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
 
             {/* Line Items Table */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              <table className="w-full text-right text-xs">
-                <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-700 sticky top-0">
-                  <tr>
-                    <th className="p-2.5 text-center w-10">ردیف</th>
-                    <th className="p-2.5">کد کالا</th>
-                    <th className="p-2.5">نام و شرح کالا</th>
-                    <th className="p-2.5 text-center">وزن خالص (kg)</th>
-                    <th className="p-2.5 text-center">وزن ناخالص (kg)</th>
-                    <th className="p-2.5 text-center">کارتن</th>
-                    <th className="p-2.5 text-center">بوبین</th>
-                    <th className="p-2.5 text-center">گرید</th>
-                    <th className="p-2.5 text-center">جهت تاب</th>
-                    <th className="p-2.5">توضیحات ردیف</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                  {selectedRemittance.items.map((item, idx) => (
-                    <tr key={item.lineId || idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40">
-                      <td className="p-2.5 text-center font-mono text-slate-400">
-                        {item.rowNo || idx + 1}
-                      </td>
-                      <td className="p-2.5 font-mono text-slate-500 text-[11px]">
-                        {item.itemCode}
-                      </td>
-                      <td className="p-2.5 font-bold text-slate-800 dark:text-slate-100">
-                        {item.goodsName}
-                      </td>
-                      <td className="p-2.5 text-center font-mono font-bold text-emerald-600">
-                        {item.netQty.toLocaleString('fa-IR')}
-                      </td>
-                      <td className="p-2.5 text-center font-mono text-slate-600 dark:text-slate-300">
-                        {item.grossQty ? item.grossQty.toLocaleString('fa-IR') : item.netQty.toLocaleString('fa-IR')}
-                      </td>
-                      <td className="p-2.5 text-center font-mono">
-                        {item.cartonCount || '-'}
-                      </td>
-                      <td className="p-2.5 text-center font-mono">
-                        {item.bobbinCount || '-'}
-                      </td>
-                      <td className="p-2.5 text-center font-mono font-bold text-blue-600">
-                        {item.grade || 'AA'}
-                      </td>
-                      <td className="p-2.5 text-center font-mono">
-                        {item.twistDirection || 'Z'}
-                      </td>
-                      <td className="p-2.5 text-slate-500 text-[11px]">
-                        {item.description || item.detailNote || '-'}
-                      </td>
+              <PinchZoomContainer contentWidth={860} autoFitMobile={true} showToolbar={true}>
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-700 sticky top-0">
+                    <tr>
+                      <th className="p-2.5 text-center w-10">ردیف</th>
+                      <th className="p-2.5">کد کالا</th>
+                      <th className="p-2.5">نام و شرح کالا</th>
+                      <th className="p-2.5 text-center">وزن خالص (kg)</th>
+                      <th className="p-2.5 text-center">وزن ناخالص (kg)</th>
+                      <th className="p-2.5 text-center">کارتن</th>
+                      <th className="p-2.5 text-center">بوبین</th>
+                      <th className="p-2.5 text-center">گرید</th>
+                      <th className="p-2.5 text-center">جهت تاب</th>
+                      <th className="p-2.5">توضیحات ردیف</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                    {selectedRemittance.items.map((item, idx) => (
+                      <tr key={item.lineId || idx} className="hover:bg-slate-50 dark:hover:bg-zinc-800/40">
+                        <td className="p-2.5 text-center font-mono text-slate-400">
+                          {item.rowNo || idx + 1}
+                        </td>
+                        <td className="p-2.5 font-mono text-slate-500 text-[11px]">
+                          {item.itemCode}
+                        </td>
+                        <td className="p-2.5 font-bold text-slate-800 dark:text-slate-100">
+                          {item.goodsName}
+                        </td>
+                        <td className="p-2.5 text-center font-mono font-bold text-emerald-600">
+                          {item.netQty.toLocaleString('fa-IR')}
+                        </td>
+                        <td className="p-2.5 text-center font-mono text-slate-600 dark:text-slate-300">
+                          {item.grossQty ? item.grossQty.toLocaleString('fa-IR') : item.netQty.toLocaleString('fa-IR')}
+                        </td>
+                        <td className="p-2.5 text-center font-mono">
+                          {item.cartonCount || '-'}
+                        </td>
+                        <td className="p-2.5 text-center font-mono">
+                          {item.bobbinCount || '-'}
+                        </td>
+                        <td className="p-2.5 text-center font-mono font-bold text-blue-600">
+                          {item.grade || 'AA'}
+                        </td>
+                        <td className="p-2.5 text-center font-mono">
+                          {item.twistDirection || 'Z'}
+                        </td>
+                        <td className="p-2.5 text-slate-500 text-[11px]">
+                          {item.description || item.detailNote || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </PinchZoomContainer>
 
               {selectedRemittance.note && (
                 <div className="mt-4 p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl text-xs text-amber-800 dark:text-amber-300">
@@ -1348,13 +1351,15 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
               </div>
             </div>
 
-            {/* Document Body Container */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200 dark:bg-zinc-950 flex justify-center custom-scrollbar">
-              <SayanSalesRemittanceDoc
-                data={getDocData(selectedRemittance)}
-                id="sayan-sales-remittance-doc"
-                showStamps={true}
-              />
+            {/* Document Body Container with Mobile Auto-Fit & 2-Finger Pinch-to-Zoom */}
+            <div className="flex-1 overflow-y-auto p-2 sm:p-8 bg-slate-200 dark:bg-zinc-950 flex justify-center custom-scrollbar">
+              <PinchZoomContainer contentWidth={794} autoFitMobile={true} showToolbar={true}>
+                <SayanSalesRemittanceDoc
+                  data={getDocData(selectedRemittance)}
+                  id="sayan-sales-remittance-doc"
+                  showStamps={true}
+                />
+              </PinchZoomContainer>
             </div>
 
           </div>

@@ -1,6 +1,7 @@
 import ProductionReturnTab from './ProductionReturnTab';
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { PinchZoomContainer } from './PinchZoomContainer';
 import { toast } from 'react-hot-toast';
 // @ts-ignore
 import DatePicker from "react-multi-date-picker";
@@ -5718,7 +5719,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         </div>
 
                         {/* Traz Data Table */}
-                        <div className="rounded-xl border border-slate-200 overflow-hidden max-h-[550px] overflow-y-auto shadow-xs">
+                        <div className="rounded-xl border border-slate-200 overflow-hidden md:max-h-[550px] md:overflow-y-auto shadow-xs">
                             {/* Desktop View */}
                             <table className="w-full text-right text-xs hidden md:table">
                                 <thead className="bg-slate-100 sticky top-0 border-b border-slate-200 z-10 select-none">
@@ -6315,71 +6316,73 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                         {statementData.length > 0 ? (
                             <div className="space-y-4">
-                                <div className="rounded-xl border border-slate-200 overflow-hidden max-h-[450px] overflow-y-auto">
-                                    <table className="w-full text-right text-xs">
-                                        <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 z-10">
-                                            <tr>
-                                                <th className="p-3 font-bold text-slate-700 w-24">تاریخ سند</th>
-                                                <th className="p-3 font-bold text-slate-700 w-24">شماره سند</th>
-                                                <th className="p-3 font-bold text-slate-700 w-40">سرفصل معین</th>
-                                                <th className="p-3 font-bold text-slate-700">شرح آرتیکل</th>
-                                                <th className="p-3 font-bold text-slate-700 text-left w-36">بدهکار (ریال)</th>
-                                                <th className="p-3 font-bold text-slate-700 text-left w-36">بستانکار (ریال)</th>
-                                                <th className="p-3 font-bold text-slate-700 text-left w-40">مانده حساب (ریال)</th>
-                                                <th className="p-3 font-bold text-slate-700 w-20 text-center">تشخیص</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {filteredStatementData.map((row, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                                                    <td className="p-3 font-medium text-slate-500 whitespace-nowrap">{formatDateToJalali(row.Date)}</td>
-                                                    <td className="p-3 font-mono text-slate-600 font-semibold">{row.SanadNo}</td>
-                                                    <td className="p-3 text-slate-600 font-medium whitespace-nowrap">
-                                                        {row.MoeinGroup && row.MoeinParent && row.MoeinCode ? (
-                                                            <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded text-[10px] font-extrabold">
-                                                                {row.MoeinGroup}{row.MoeinParent}{row.MoeinCode} - {row.MoeinName || 'سایر'}
+                                <PinchZoomContainer contentWidth={920} autoFitMobile={true} showToolbar={true}>
+                                    <div className="rounded-xl border border-slate-200 overflow-hidden md:max-h-[450px] md:overflow-y-auto">
+                                        <table className="w-full text-right text-xs">
+                                            <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 z-10">
+                                                <tr>
+                                                    <th className="p-3 font-bold text-slate-700 w-24">تاریخ سند</th>
+                                                    <th className="p-3 font-bold text-slate-700 w-24">شماره سند</th>
+                                                    <th className="p-3 font-bold text-slate-700 w-40">سرفصل معین</th>
+                                                    <th className="p-3 font-bold text-slate-700">شرح آرتیکل</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-left w-36">بدهکار (ریال)</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-left w-36">بستانکار (ریال)</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-left w-40">مانده حساب (ریال)</th>
+                                                    <th className="p-3 font-bold text-slate-700 w-20 text-center">تشخیص</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filteredStatementData.map((row, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                        <td className="p-3 font-medium text-slate-500 whitespace-nowrap">{formatDateToJalali(row.Date)}</td>
+                                                        <td className="p-3 font-mono text-slate-600 font-semibold">{row.SanadNo}</td>
+                                                        <td className="p-3 text-slate-600 font-medium whitespace-nowrap">
+                                                            {row.MoeinGroup && row.MoeinParent && row.MoeinCode ? (
+                                                                <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded text-[10px] font-extrabold">
+                                                                    {row.MoeinGroup}{row.MoeinParent}{row.MoeinCode} - {row.MoeinName || 'سایر'}
+                                                                </span>
+                                                            ) : (
+                                                                '-'
+                                                            )}
+                                                        </td>
+                                                        <td className="p-3 font-medium text-slate-800 leading-relaxed">{row.Description || 'ثبت حسابداری'}</td>
+                                                        <td className="p-3 text-left text-rose-600 dark:text-rose-400 font-mono font-bold">{row.bed > 0 ? formatMoney(row.bed) : '-'}</td>
+                                                        <td className="p-3 text-left text-emerald-800 dark:text-emerald-300 font-mono font-bold">{row.bes > 0 ? formatMoney(row.bes) : '-'}</td>
+                                                        <td className={`p-3 text-left font-black font-mono ${row.balance > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-900 dark:text-emerald-300 font-black'}`}>
+                                                            {formatMoney(row.balance)}
+                                                        </td>
+                                                        <td className="p-3 text-center">
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                                                row.balance > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-100 text-emerald-950 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                                            }`}>
+                                                                {row.balance > 0 ? 'بدهکار' : 'بستانکار'}
                                                             </span>
-                                                        ) : (
-                                                            '-'
-                                                        )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                
+                                                {/* Summary Sticky Foot */}
+                                                <tr className="bg-slate-50 dark:bg-zinc-800 font-extrabold sticky bottom-0 border-t-2 border-slate-200 dark:border-zinc-700 shadow-[0_-2px_6px_rgba(0,0,0,0.03)] z-10">
+                                                    <td colSpan={4} className="p-4 text-left font-extrabold text-slate-700 dark:text-slate-200">مجموع دوره تراکنش‌ها:</td>
+                                                    <td className="p-4 text-left text-rose-700 dark:text-rose-400 font-mono text-sm font-bold">
+                                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bed, 0))}
                                                     </td>
-                                                    <td className="p-3 font-medium text-slate-800 leading-relaxed">{row.Description || 'ثبت حسابداری'}</td>
-                                                    <td className="p-3 text-left text-rose-600 dark:text-rose-400 font-mono font-bold">{row.bed > 0 ? formatMoney(row.bed) : '-'}</td>
-                                                    <td className="p-3 text-left text-emerald-800 dark:text-emerald-300 font-mono font-bold">{row.bes > 0 ? formatMoney(row.bes) : '-'}</td>
-                                                    <td className={`p-3 text-left font-black font-mono ${row.balance > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-900 dark:text-emerald-300 font-black'}`}>
-                                                        {formatMoney(row.balance)}
+                                                    <td className="p-4 text-left text-emerald-800 dark:text-emerald-300 font-mono text-sm font-black">
+                                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bes, 0))}
                                                     </td>
-                                                    <td className="p-3 text-center">
-                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                                                            row.balance > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-100 text-emerald-950 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                                        }`}>
-                                                            {row.balance > 0 ? 'بدهکار' : 'بستانکار'}
+                                                    <td colSpan={2} className={`p-4 text-left font-black font-mono text-sm ${
+                                                        filteredStatementData[filteredStatementData.length - 1]?.balance > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-900 dark:text-emerald-300 font-black'
+                                                    }`}>
+                                                        {formatMoney(filteredStatementData[filteredStatementData.length - 1]?.balance || 0)}
+                                                        <span className="text-[10px] font-bold mr-1">
+                                                            ({(filteredStatementData[filteredStatementData.length - 1]?.balance || 0) > 0 ? 'بدهکار' : 'بستانکار'})
                                                         </span>
                                                     </td>
                                                 </tr>
-                                            ))}
-                                            
-                                            {/* Summary Sticky Foot */}
-                                            <tr className="bg-slate-50 dark:bg-zinc-800 font-extrabold sticky bottom-0 border-t-2 border-slate-200 dark:border-zinc-700 shadow-[0_-2px_6px_rgba(0,0,0,0.03)] z-10">
-                                                <td colSpan={4} className="p-4 text-left font-extrabold text-slate-700 dark:text-slate-200">مجموع دوره تراکنش‌ها:</td>
-                                                <td className="p-4 text-left text-rose-700 dark:text-rose-400 font-mono text-sm font-bold">
-                                                    {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bed, 0))}
-                                                </td>
-                                                <td className="p-4 text-left text-emerald-800 dark:text-emerald-300 font-mono text-sm font-black">
-                                                    {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bes, 0))}
-                                                </td>
-                                                <td colSpan={2} className={`p-4 text-left font-black font-mono text-sm ${
-                                                    filteredStatementData[filteredStatementData.length - 1]?.balance > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-900 dark:text-emerald-300 font-black'
-                                                }`}>
-                                                    {formatMoney(filteredStatementData[filteredStatementData.length - 1]?.balance || 0)}
-                                                    <span className="text-[10px] font-bold mr-1">
-                                                        ({(filteredStatementData[filteredStatementData.length - 1]?.balance || 0) > 0 ? 'بدهکار' : 'بستانکار'})
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </PinchZoomContainer>
                             </div>
                         ) : (
                             <div className="text-center py-16 text-slate-400 font-medium border-2 border-dashed border-slate-200 rounded-xl">
@@ -7193,7 +7196,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                 )}
                             </div>
                             
-                            <div className="rounded-xl border border-slate-200 overflow-hidden max-h-[400px] overflow-y-auto">
+                            <div className="rounded-xl border border-slate-200 overflow-hidden md:max-h-[400px] md:overflow-y-auto">
                                 {/* Desktop view */}
                                 <table className="w-full text-right text-xs hidden md:table">
                                     <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 z-10">
@@ -9193,7 +9196,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                 })()}
                             </div>
 
-                            {/* Table */}
+                            {/* Table - Auto-Fits Mobile Screen Width with 2-Finger Pinch-to-Zoom */}
                             {isLoading ? (
                                 <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -9204,46 +9207,48 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     هیچ رکوردی برای این شخص در بازه زمانی انتخابی یافت نشد.
                                 </div>
                             ) : (
-                                <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto overflow-y-auto max-h-[62vh] w-full shadow-xs">
-                                    <table className="w-full text-right text-xs border-collapse">
-                                        <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700 sticky top-0 z-10 shadow-xs">
-                                            <tr>
-                                                <th className="px-3 py-3 w-12 text-center">#</th>
-                                                <th className="px-3 py-3 w-28 text-center whitespace-nowrap">تاریخ سند</th>
-                                                <th className="px-3 py-3 w-24 text-center whitespace-nowrap">شماره سند</th>
-                                                <th className="px-3 py-3 w-40 whitespace-nowrap">سرفصل معین</th>
-                                                <th className="px-4 py-3 min-w-[280px]">شرح سند و تراکنش</th>
-                                                <th className="px-4 py-3 w-36 text-left whitespace-nowrap">بدهکار (ریال)</th>
-                                                <th className="px-4 py-3 w-36 text-left whitespace-nowrap">بستانکار (ریال)</th>
-                                                <th className="px-4 py-3 w-40 text-left whitespace-nowrap">مانده حساب (ریال)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
-                                            {filteredStatementData.map((row, idx) => {
-                                                const isBed = row.balance > 0;
-                                                const isBes = row.balance < 0;
-                                                return (
-                                                    <tr key={idx} className="hover:bg-blue-50/40 dark:hover:bg-zinc-800/60 transition-colors">
-                                                        <td className="px-3 py-2.5 text-center text-slate-400 font-sans font-bold">{idx + 1}</td>
-                                                        <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">{formatDateToJalali(row.Date)}</td>
-                                                        <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-300 whitespace-nowrap font-bold">{row.SanadNo}</td>
-                                                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">{row.MoeinName || 'سایر'}</td>
-                                                        <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 font-sans break-words">{row.Description || '-'}</td>
-                                                        <td className="px-4 py-2.5 text-left text-rose-600 dark:text-rose-400 font-bold whitespace-nowrap">
-                                                            {row.bed > 0 ? formatMoney(row.bed) : '-'}
-                                                        </td>
-                                                        <td className="px-4 py-2.5 text-left text-emerald-800 dark:text-emerald-300 font-extrabold whitespace-nowrap">
-                                                            {row.bes > 0 ? formatMoney(row.bes) : '-'}
-                                                        </td>
-                                                        <td className={`px-4 py-2.5 text-left font-black whitespace-nowrap ${isBed ? 'text-rose-700 dark:text-rose-400' : (isBes ? 'text-emerald-900 dark:text-emerald-300 font-black' : 'text-slate-600')}`}>
-                                                            {formatMoney(Math.abs(row.balance))} {isBed ? '(بد)' : (isBes ? '(بس)' : '')}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <PinchZoomContainer contentWidth={920} autoFitMobile={true} showToolbar={true}>
+                                    <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 md:overflow-x-auto md:overflow-y-auto md:max-h-[62vh] w-full shadow-xs">
+                                        <table className="w-full text-right text-xs border-collapse">
+                                            <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700 sticky top-0 z-10 shadow-xs">
+                                                <tr>
+                                                    <th className="px-3 py-3 w-12 text-center">#</th>
+                                                    <th className="px-3 py-3 w-28 text-center whitespace-nowrap">تاریخ سند</th>
+                                                    <th className="px-3 py-3 w-24 text-center whitespace-nowrap">شماره سند</th>
+                                                    <th className="px-3 py-3 w-40 whitespace-nowrap">سرفصل معین</th>
+                                                    <th className="px-4 py-3 min-w-[280px]">شرح سند و تراکنش</th>
+                                                    <th className="px-4 py-3 w-36 text-left whitespace-nowrap">بدهکار (ریال)</th>
+                                                    <th className="px-4 py-3 w-36 text-left whitespace-nowrap">بستانکار (ریال)</th>
+                                                    <th className="px-4 py-3 w-40 text-left whitespace-nowrap">مانده حساب (ریال)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
+                                                {filteredStatementData.map((row, idx) => {
+                                                    const isBed = row.balance > 0;
+                                                    const isBes = row.balance < 0;
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-blue-50/40 dark:hover:bg-zinc-800/60 transition-colors">
+                                                            <td className="px-3 py-2.5 text-center text-slate-400 font-sans font-bold">{idx + 1}</td>
+                                                            <td className="px-3 py-2.5 text-center text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">{formatDateToJalali(row.Date)}</td>
+                                                            <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-300 whitespace-nowrap font-bold">{row.SanadNo}</td>
+                                                            <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap">{row.MoeinName || 'سایر'}</td>
+                                                            <td className="px-4 py-2.5 text-slate-800 dark:text-slate-100 font-sans break-words">{row.Description || '-'}</td>
+                                                            <td className="px-4 py-2.5 text-left text-rose-600 dark:text-rose-400 font-bold whitespace-nowrap">
+                                                                {row.bed > 0 ? formatMoney(row.bed) : '-'}
+                                                            </td>
+                                                            <td className="px-4 py-2.5 text-left text-emerald-800 dark:text-emerald-300 font-extrabold whitespace-nowrap">
+                                                                {row.bes > 0 ? formatMoney(row.bes) : '-'}
+                                                            </td>
+                                                            <td className={`px-4 py-2.5 text-left font-black whitespace-nowrap ${isBed ? 'text-rose-700 dark:text-rose-400' : (isBes ? 'text-emerald-900 dark:text-emerald-300 font-black' : 'text-slate-600')}`}>
+                                                                {formatMoney(Math.abs(row.balance))} {isBed ? '(بد)' : (isBes ? '(بس)' : '')}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </PinchZoomContainer>
                             )}
                         </div>
 
@@ -9359,32 +9364,34 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                         فاکتور بازی در اسناد اخیر برای این شخص یافت نشد یا حساب به صورت کامل تسویه است.
                                     </div>
                                 ) : (
-                                    <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto w-full">
-                                        <table className="w-full text-right text-xs">
-                                            <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700">
-                                                <tr>
-                                                    <th className="px-3 py-3 text-center w-12">#</th>
-                                                    <th className="px-3 py-3 w-28 whitespace-nowrap">تاریخ فاکتور</th>
-                                                    <th className="px-3 py-3 w-24 text-center whitespace-nowrap">شماره سند</th>
-                                                    <th className="px-4 py-3 min-w-[220px]">شرح سند</th>
-                                                    <th className="px-4 py-3 w-36 text-left whitespace-nowrap">مبلغ کل فاکتور (ریال)</th>
-                                                    <th className="px-4 py-3 w-40 text-left whitespace-nowrap">بخش مانده باز تسویه‌نشده</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
-                                                {selectedAgingParty.unpaidInvoices.map((inv: any, iIdx: number) => (
-                                                    <tr key={iIdx} className="hover:bg-amber-50/40 dark:hover:bg-zinc-800/50 transition-colors">
-                                                        <td className="px-3 py-2.5 text-center text-slate-400 font-sans font-bold">{iIdx + 1}</td>
-                                                        <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap font-bold">{inv.dateJalali}</td>
-                                                        <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-400 whitespace-nowrap font-bold">{inv.sanadNo}</td>
-                                                        <td className="px-4 py-2.5 text-slate-800 dark:text-slate-200 font-sans break-words">{inv.description || '-'}</td>
-                                                        <td className="px-4 py-2.5 text-left text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatMoney(inv.totalAmount)}</td>
-                                                        <td className="px-4 py-2.5 text-left font-black text-amber-700 dark:text-amber-400 whitespace-nowrap">{formatMoney(inv.unpaidPortion)}</td>
+                                    <PinchZoomContainer contentWidth={780} autoFitMobile={true} showToolbar={true}>
+                                        <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 md:overflow-x-auto w-full">
+                                            <table className="w-full text-right text-xs">
+                                                <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700">
+                                                    <tr>
+                                                        <th className="px-3 py-3 text-center w-12">#</th>
+                                                        <th className="px-3 py-3 w-28 whitespace-nowrap">تاریخ فاکتور</th>
+                                                        <th className="px-3 py-3 w-24 text-center whitespace-nowrap">شماره سند</th>
+                                                        <th className="px-4 py-3 min-w-[220px]">شرح سند</th>
+                                                        <th className="px-4 py-3 w-36 text-left whitespace-nowrap">مبلغ کل فاکتور (ریال)</th>
+                                                        <th className="px-4 py-3 w-40 text-left whitespace-nowrap">بخش مانده باز تسویه‌نشده</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 font-mono">
+                                                    {selectedAgingParty.unpaidInvoices.map((inv: any, iIdx: number) => (
+                                                        <tr key={iIdx} className="hover:bg-amber-50/40 dark:hover:bg-zinc-800/50 transition-colors">
+                                                            <td className="px-3 py-2.5 text-center text-slate-400 font-sans font-bold">{iIdx + 1}</td>
+                                                            <td className="px-3 py-2.5 text-slate-700 dark:text-slate-300 font-sans whitespace-nowrap font-bold">{inv.dateJalali}</td>
+                                                            <td className="px-3 py-2.5 text-center text-slate-600 dark:text-slate-400 whitespace-nowrap font-bold">{inv.sanadNo}</td>
+                                                            <td className="px-4 py-2.5 text-slate-800 dark:text-slate-200 font-sans break-words">{inv.description || '-'}</td>
+                                                            <td className="px-4 py-2.5 text-left text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatMoney(inv.totalAmount)}</td>
+                                                            <td className="px-4 py-2.5 text-left font-black text-amber-700 dark:text-amber-400 whitespace-nowrap">{formatMoney(inv.unpaidPortion)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </PinchZoomContainer>
                                 )}
                             </div>
                         </div>

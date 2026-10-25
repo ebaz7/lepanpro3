@@ -287,6 +287,51 @@ const Layout: React.FC<LayoutProps> = ({
     });
   };
 
+  // AI Copilot & AI Options Global/Local Toggle State (فعال و غیرفعال کردن هوش مصنوعی در اندروید، وب‌اپ و ویندوز)
+  const [aiCopilotEnabled, setAiCopilotEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('app_ai_copilot_enabled');
+    if (saved !== null) return saved !== 'false';
+    return true;
+  });
+
+  const toggleAiCopilot = () => {
+    setAiCopilotEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem('app_ai_copilot_enabled', String(next));
+      if (!next) {
+        document.documentElement.classList.add('ai-features-disabled');
+      } else {
+        document.documentElement.classList.remove('ai-features-disabled');
+      }
+      window.dispatchEvent(new CustomEvent('APP_AI_COPILOT_CHANGED', { detail: next }));
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (settings && (settings.enableAiWidget === false || settings.botAiEnabled === false)) {
+      if (localStorage.getItem('app_ai_copilot_enabled') === null) {
+        setAiCopilotEnabled(false);
+        document.documentElement.classList.add('ai-features-disabled');
+        window.dispatchEvent(new CustomEvent('APP_AI_COPILOT_CHANGED', { detail: false }));
+      }
+    }
+  }, [settings?.enableAiWidget, settings?.botAiEnabled]);
+
+  useEffect(() => {
+    if (!aiCopilotEnabled) {
+      document.documentElement.classList.add('ai-features-disabled');
+    } else {
+      document.documentElement.classList.remove('ai-features-disabled');
+    }
+    const syncAiState = (e: any) => {
+      const enabled = typeof e.detail === 'boolean' ? e.detail : localStorage.getItem('app_ai_copilot_enabled') !== 'false';
+      setAiCopilotEnabled(enabled);
+    };
+    window.addEventListener('APP_AI_COPILOT_CHANGED', syncAiState);
+    return () => window.removeEventListener('APP_AI_COPILOT_CHANGED', syncAiState);
+  }, [aiCopilotEnabled]);
+
   useEffect(() => {
     if (lowSpecMode) {
       document.documentElement.classList.add('low-spec-mode');
@@ -1499,6 +1544,19 @@ const Layout: React.FC<LayoutProps> = ({
                               <Zap size={16} className={lowSpecMode ? 'fill-current animate-pulse' : ''} />
                           </button>
 
+                          {/* AI Options Toggle (Android / Web / Windows) */}
+                          <button 
+                            onClick={toggleAiCopilot} 
+                            className={`flex-1 flex items-center justify-center p-2 rounded-lg transition-all relative group ${
+                              aiCopilotEnabled 
+                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/30' 
+                                : 'text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white dark:hover:bg-zinc-700/60'
+                            }`}
+                            title={aiCopilotEnabled ? 'هوش مصنوعی (AI): فعال (کلیک جهت غیرفعال‌سازی)' : 'هوش مصنوعی (AI): غیرفعال (کلیک جهت فعال‌سازی)'}
+                          >
+                              <BrainCircuit size={16} />
+                          </button>
+
                           {/* Dark Mode Toggle */}
                           {onToggleDarkMode && (
                             <button 
@@ -1543,6 +1601,13 @@ const Layout: React.FC<LayoutProps> = ({
                             title={lowSpecMode ? 'حالت ضد لگ (فعال)' : 'ضد لگ'}
                           >
                               <Zap size={16} className={lowSpecMode ? 'fill-current' : ''} />
+                          </button>
+                          <button 
+                            onClick={toggleAiCopilot} 
+                            className={`p-2 rounded-lg transition-colors ${aiCopilotEnabled ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400' : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
+                            title={aiCopilotEnabled ? 'هوش مصنوعی: فعال (کلیک جهت غیرفعال‌سازی)' : 'هوش مصنوعی: غیرفعال (کلیک جهت فعال‌سازی)'}
+                          >
+                              <BrainCircuit size={16} />
                           </button>
                           {onToggleDarkMode && (
                             <button 
@@ -1675,6 +1740,17 @@ const Layout: React.FC<LayoutProps> = ({
                               </button>
                           </div>
                           <button 
+                            onClick={toggleAiCopilot} 
+                            className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold transition-colors ${
+                              aiCopilotEnabled 
+                                ? 'bg-indigo-500/10 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' 
+                                : 'bg-zinc-50 dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100'
+                            }`}
+                          >
+                              <BrainCircuit size={14} className={aiCopilotEnabled ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-400"} />
+                              <span>{aiCopilotEnabled ? 'گزینه هوش مصنوعی (AI): فعال (کلیک جهت غیرفعال‌سازی)' : 'گزینه هوش مصنوعی (AI): غیرفعال (کلیک جهت فعال‌سازی)'}</span>
+                          </button>
+                          <button 
                             onClick={toggleLowSpecMode} 
                             className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold transition-colors ${
                               lowSpecMode 
@@ -1761,7 +1837,7 @@ const Layout: React.FC<LayoutProps> = ({
         )}
       </AnimatePresence>
 
-      <main className={`flex flex-1 flex-col overflow-hidden relative min-w-0 min-h-0 w-full m-0 ${
+      <main className={`flex flex-1 flex-col overflow-hidden relative min-w-0 min-h-0 w-full max-w-full m-0 ${
           activeTab === 'dashboard'
             ? 'bg-transparent border-0 md:border-0 shadow-none md:my-0 md:ml-0 md:mr-0 rounded-none'
             : 'md:my-4 md:ml-4 md:mr-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl md:rounded-[24px] border-0 md:border border-slate-200/50 dark:border-slate-800/50 shadow-sm'
@@ -1830,6 +1906,17 @@ const Layout: React.FC<LayoutProps> = ({
                       </select>
                   )}
                   <button 
+                    onClick={toggleAiCopilot}
+                    className={`p-2 border rounded-lg shadow-sm active:scale-95 transition-colors ${
+                      aiCopilotEnabled
+                        ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400'
+                        : 'bg-zinc-100 dark:bg-zinc-900 border-zinc-200/50 dark:border-zinc-800/50 text-zinc-400'
+                    }`}
+                    title={aiCopilotEnabled ? 'هوش مصنوعی: فعال (کلیک جهت غیرفعال کردن)' : 'هوش مصنوعی: غیرفعال (کلیک جهت فعال کردن)'}
+                  >
+                      <BrainCircuit size={16} />
+                  </button>
+                  <button 
                     onClick={toggleTheme}
                     className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95"
                   >
@@ -1860,7 +1947,7 @@ const Layout: React.FC<LayoutProps> = ({
               </div>
           </header>
           
-          <div className={`flex-1 ${activeTab === 'chat' ? 'flex flex-col overflow-hidden pb-0 min-h-0' : isBottomBarVisible ? 'overflow-y-auto pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-24' : 'overflow-y-auto pb-24'} bg-transparent min-w-0 custom-scrollbar`} id="main-scroll-container">
+          <div className={`flex-1 ${activeTab === 'chat' ? 'flex flex-col overflow-hidden pb-0 min-h-0' : isBottomBarVisible ? 'overflow-y-auto overflow-x-hidden pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-24' : 'overflow-y-auto overflow-x-hidden pb-24'} bg-transparent min-w-0 w-full max-w-full custom-scrollbar`} id="main-scroll-container">
               {/* Bale-Style Top Update Banner for Web, Mobile, and PWA */}
               {isUpdateAvailable && !isUpdateDismissed && updateInfo && (
                 <div className="p-2 sm:p-3 sm:pb-1 no-print animate-slide-down">
@@ -1949,7 +2036,7 @@ const Layout: React.FC<LayoutProps> = ({
                       </select>
                   )}
               </div>
-              <div className={`${(activeTab === 'chat' || activeTab === 'sayan') ? 'p-0 w-full flex-1 flex flex-col min-h-0' : 'p-0 sm:p-2 md:p-4 w-full min-h-full'} mx-auto min-w-0`}>
+              <div className={`${(activeTab === 'chat' || activeTab === 'sayan') ? 'p-0 w-full max-w-full flex-1 flex flex-col min-h-0 overflow-x-hidden' : 'p-0 sm:p-2 md:p-4 w-full max-w-full min-h-full overflow-x-hidden'} mx-auto min-w-0`}>
                   {children}
               </div>
           </div>

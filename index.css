@@ -145,9 +145,11 @@
 }
 
 #main-scroll-container {
-  transform: translateZ(0);
-  will-change: scroll-position;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 /* Eye-Friendly Background Blobs */
@@ -282,7 +284,6 @@ html:not(.theme-light-aurora):not(.has-custom-bg):not(.has-preset-bg-cosmic-dark
     0 10px 25px -5px rgba(15, 23, 42, 0.06),
     0 4px 6px -2px rgba(15, 23, 42, 0.03),
     inset 0 1px 1px rgba(255, 255, 255, 0.9) !important;
-  transform: translateZ(0);
 }
 
 .theme-light-aurora .apple-glass-hover:hover,
@@ -813,13 +814,10 @@ html {
   height: -webkit-fill-available;
   height: 100dvh;
   width: 100%;
-  max-width: 100vw;
-  overflow: hidden !important;
+  max-width: 100%;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
   overscroll-behavior: none !important;
-  overscroll-behavior-x: none !important;
-  overscroll-behavior-y: none !important;
-  position: fixed;
-  inset: 0;
 }
 
 body {
@@ -831,13 +829,10 @@ body {
   height: -webkit-fill-available;
   height: 100dvh;
   width: 100%;
-  max-width: 100vw;
-  overflow: hidden !important;
+  max-width: 100%;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
   overscroll-behavior: none !important;
-  overscroll-behavior-x: none !important;
-  overscroll-behavior-y: none !important;
-  position: fixed;
-  inset: 0;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
@@ -852,9 +847,11 @@ body {
 #root {
   height: 100%;
   height: 100dvh;
+  max-height: 100dvh;
   width: 100%;
-  max-width: 100vw;
-  overflow: hidden !important;
+  max-width: 100%;
+  overflow-x: hidden !important;
+  overflow-y: hidden !important;
   overscroll-behavior: none !important;
   position: relative;
   display: flex;
@@ -1096,11 +1093,20 @@ tfoot th {
   }
 }
 
-/* Optimize blur for mobile performance */
+/* Optimize blur for low-end mobile/Android performance - eliminate heavy GPU shader blurs */
 @media (max-width: 768px) {
-  .glass-panel, .glass-header, .backdrop-blur-2xl, .backdrop-blur-3xl {
-    backdrop-filter: blur(8px) saturate(140%) !important;
-    -webkit-backdrop-filter: blur(8px) saturate(140%) !important;
+  .glass-panel, .apple-glass, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .theme-light-aurora .glass-panel,
+  .theme-light-aurora .apple-glass,
+  html:not(.dark) .glass-panel {
+    background: rgba(255, 255, 255, 0.97) !important;
+  }
+  html.dark .glass-panel,
+  html.dark .apple-glass {
+    background: rgba(15, 23, 42, 0.96) !important;
   }
 }
 
@@ -1584,7 +1590,7 @@ tfoot th {
     will-change: auto !important;
   }
   
-  /* Keep backdrop-blur enabled but set to a highly performant blur radius (12px) to prevent lag */
+  /* Disable heavy backdrop-filter on mobile/tablet to prevent GPU hang on weak Android phones */
   .theme-light-aurora main,
   .theme-light-aurora aside,
   .theme-light-aurora header,
@@ -1607,8 +1613,8 @@ tfoot th {
   html.has-preset-bg-cyan-cosmic aside,
   html.has-preset-bg-cyan-cosmic header,
   html.has-preset-bg-cyan-cosmic .glass-panel {
-    backdrop-filter: blur(12px) saturate(140%) !important;
-    -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
   
   /* Make all text inputs opaque and highly responsive on mobile keyboard focus */
@@ -2759,16 +2765,19 @@ html.low-spec-mode tr {
   content-visibility: visible !important;
 }
 
-/* --- GPU & COMPOSITE HARDWARE ACCELERATION (OFFLOAD FROM CPU TO GPU) --- */
-.gpu-accelerated,
-.glass-panel,
-aside,
-header,
-main {
+/* --- GPU & COMPOSITE HARDWARE ACCELERATION ---
+   Note: Never apply transform: translateZ(0) to main or .glass-panel as it traps position:fixed modals and exhausts Android GPU memory */
+.gpu-accelerated {
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+}
+
+/* Hide all AI buttons and widgets when user or admin disables AI features */
+html.ai-features-disabled .ai-feature-btn,
+html.ai-features-disabled button[title*="هوش مصنوعی"] {
+  display: none !important;
 }
 
 /* --- QUILL TOOLBAR & SECRETARIAT EDITOR ENHANCEMENTS --- */

@@ -32,6 +32,7 @@ import PrintPurchaseProforma from './PrintPurchaseProforma';
 import PrintWarehouseReceipt from './PrintWarehouseReceipt';
 import PrintPartDataSheet from './PrintPartDataSheet';
 import PrintPurchaseBarcode from './PrintPurchaseBarcode';
+import { PinchZoomContainer } from './PinchZoomContainer';
 import { generatePdf } from '../utils/pdfGenerator';
 import { getRolePermissions } from '../services/authService';
 import { AiPurchaseAdvisorModal } from './AiPurchaseAdvisorModal';
@@ -2609,10 +2610,12 @@ const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () =
                     </div>
                 )}
                 
-                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-8">
-                    <div id="datasheet-print-area" className="bg-white p-4 md:p-12 shadow-sm rounded-2xl mx-auto max-w-3xl border border-gray-200 printable-datasheet">
-                         <PrintPartDataSheet part={part} />
-                    </div>
+                <div className="flex-1 overflow-y-auto bg-gray-50 p-2 sm:p-4 md:p-8">
+                    <PinchZoomContainer contentWidth={760} autoFitMobile={true} showToolbar={true}>
+                        <div id="datasheet-print-area" className="bg-white p-4 md:p-12 shadow-sm rounded-2xl mx-auto max-w-3xl border border-gray-200 printable-datasheet">
+                             <PrintPartDataSheet part={part} />
+                        </div>
+                    </PinchZoomContainer>
                 </div>
 
                 <div className="p-6 border-t flex justify-end gap-3 bg-white">

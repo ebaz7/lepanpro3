@@ -1102,7 +1102,7 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                 <div ref={cardPrintRef} className="space-y-6 flex flex-col items-center">
                   
                   {/* FRONT SIDE OF BUSINESS CARD */}
-                  <div className="w-[380px] h-[220px] bg-gradient-to-br from-slate-900 via-slate-950 to-blue-950 text-white rounded-2xl p-5 shadow-2xl relative overflow-hidden border border-slate-800 flex flex-col justify-between shrink-0">
+                  <div className="w-full max-w-[380px] min-h-[220px] bg-gradient-to-br from-slate-900 via-slate-950 to-blue-950 text-white rounded-2xl p-5 shadow-2xl relative overflow-hidden border border-slate-800 flex flex-col justify-between shrink-0">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <img
@@ -1138,7 +1138,7 @@ export const DigitalCardModule: React.FC<DigitalCardModuleProps> = ({ currentUse
                   </div>
 
                   {/* BACK SIDE OF BUSINESS CARD (WITH QR CODE) */}
-                  <div className="w-[380px] h-[220px] bg-white text-slate-900 rounded-2xl p-5 shadow-2xl relative overflow-hidden border border-slate-200 flex items-center justify-between shrink-0">
+                  <div className="w-full max-w-[380px] min-h-[220px] bg-white text-slate-900 rounded-2xl p-5 shadow-2xl relative overflow-hidden border border-slate-200 flex items-center justify-between shrink-0">
                     <div className="flex-1 space-y-2 pl-3">
                       <div className="font-black text-sm text-slate-900">
                         مسیریابی و ارتباط آنلاین

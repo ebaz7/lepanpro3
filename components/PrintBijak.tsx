@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { WarehouseTransaction, SystemSettings, Contact } from '../types';
 import { formatCurrency, formatDate } from '../constants';
 import { X, Printer, Loader2, Share2, Search, Users, Smartphone, FileDown, CheckCircle, XCircle, ZoomIn, ZoomOut, RotateCcw, MessageSquare } from 'lucide-react';
@@ -481,7 +482,7 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
 
   if (embed) return content;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[9999] flex flex-col p-0 m-0 overflow-hidden animate-fade-in safe-top safe-bottom">
       {/* Sticky Top Header Bar */}
       <header className="sticky top-0 z-50 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-gray-200 dark:border-zinc-800 px-3 py-2 md:px-6 md:py-2.5 shadow-md flex items-center justify-between gap-2 flex-wrap shrink-0 no-print">
@@ -670,7 +671,8 @@ const PrintBijak: React.FC<PrintBijakProps> = ({ tx, onClose, settings, embed, f
           </div>
         </div>
       </main>
-    </div>
+    </div>,
+    document.body
   );
 };
 

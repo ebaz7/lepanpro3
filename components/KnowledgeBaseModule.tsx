@@ -809,7 +809,7 @@ const KnowledgeBaseModule: React.FC<KnowledgeBaseModuleProps> = ({ currentUser, 
                 </div>
 
                 <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex-1 min-w-[300px] relative">
+                    <div className="flex-1 min-w-[200px] sm:min-w-[300px] w-full sm:w-auto relative">
                         <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={20}/>
                         <input 
                             type="text"

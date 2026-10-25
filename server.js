@@ -126,11 +126,17 @@ webpush.setVapidDetails(
 );
 
 const app = express();
-let PORT = parseInt(process.env.APP_PORT || process.env.PORT || process.env.DEFAULT_APP_PORT, 10);
+let PORT = 3000;
 const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
 if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
     const parsed = parseInt(process.argv[portArgIndex + 1], 10);
     if (!isNaN(parsed) && parsed > 0) PORT = parsed;
+} else if (process.env.APP_PORT) {
+    PORT = parseInt(process.env.APP_PORT, 10);
+} else if (process.env.DEFAULT_APP_PORT) {
+    PORT = parseInt(process.env.DEFAULT_APP_PORT, 10);
+} else if (process.env.PORT) {
+    PORT = parseInt(process.env.PORT, 10);
 }
 if (!PORT || isNaN(PORT) || PORT <= 0) {
     PORT = 3000;
@@ -14184,94 +14190,6 @@ app.get('/api/customer-feedbacks', (req, res) => {
 });
 
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n  VITE v5.4.21  ready in 120 ms\n`);
-    console.log(`  ➜  Local:   http://localhost:${PORT}/`);
-    console.log(`  ➜  Network: http://0.0.0.0:${PORT}/`);
-    console.log(`  ➜  press h + enter to show help\n`);
-    console.log(`Server running on http://localhost:${PORT}`);
-    setTimeout(async () => {
-        try {
-            const db = getDb(); // Initial load to memory
-            if(db.settings?.telegramBotToken) {
-                const tgModule = await safeImport('./backend/telegram.js');
-                if(tgModule) tgModule.initTelegram(db.settings.telegramBotToken);
-            }
-            if(db.settings?.baleBotToken) {
-                const baleModule = await safeImport('./backend/bale.js');
-                if(baleModule) baleModule.initBaleBot(db.settings.baleBotToken);
-            }
-            const waAuthPath = path.join(ROOT_DIR, 'wauth');
-            if (fs.existsSync(waAuthPath) && process.env.DISABLE_WHATSAPP_DEV !== 'true') {
-                const waModule = await safeImport('./backend/whatsapp.js');
-                if (waModule) waModule.initWhatsApp(waAuthPath);
-            }
-        } catch (err) {
-            console.error("Background services initialization error:", err);
-        }
-        setupAutoBackup();
-        setupDailyReports();
-        setupLegacyDailyReports();
-        setupWarehouseInventoryDailySync();
-        setupTaskRecurringReminders();
-        sayanOrderAuto.initAutomationCron();
-    }, 1000);
-});
-
-// WebSocket proxy support for ONLYOFFICE coauthoring and docservice
-server.on('upgrade', (req, socket, head) => {
-    if (req.url && (req.url.startsWith('/onlyoffice-proxy') || req.url.startsWith('/docservice') || req.url.startsWith('/spellchecker') || req.url.startsWith('/coauthoring'))) {
-        const targetBase = process.env.ONLYOFFICE_DOC_SERVER_INTERNAL_URL || 'http://127.0.0.1:8088';
-        try {
-            const parsedTarget = new URL(targetBase);
-            const targetPath = req.url.replace(/^\/onlyoffice-proxy/, '') || '/';
-            const proxyReq = http.request({
-                hostname: parsedTarget.hostname,
-                port: parsedTarget.port || 80,
-                path: targetPath,
-                method: req.method,
-                headers: {
-                    ...req.headers,
-                    host: parsedTarget.host,
-                    'x-forwarded-host': req.headers.host,
-                    'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'http',
-                }
-            });
-            proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
-                socket.write(
-                    `HTTP/1.1 101 Switching Protocols\r\n` +
-                    Object.keys(proxyRes.headers).map(key => `${key}: ${proxyRes.headers[key]}`).join('\r\n') +
-                    '\r\n\r\n'
-                );
-                proxySocket.pipe(socket);
-                socket.pipe(proxySocket);
-            });
-            proxyReq.on('error', () => {
-                socket.destroy();
-            });
-            proxyReq.end();
-        } catch (e) {
-            socket.destroy();
-        }
-    }
-});
-
-server.on('error', (err) => {
-    if (err && err.code === 'EADDRINUSE') {
-        console.error(`\n=======================================================================`);
-        console.error(`[خطا / Port In Use] پورت ${PORT} در حال حاضر اشغال است!`);
-        console.error(`علت: سرویس ویندوز (از طریق manager.bat) یا یک نمونه دیگر از سرور در حال اجراست.`);
-        console.error(`1. اگر قبلاً با manager.bat سرویس را نصب کرده‌اید، برنامه در حال اجراست و کافیست`);
-        console.error(`   مرورگر را باز کنید و آدرس زیر را وارد نمایید:`);
-        console.error(`   --> http://localhost:${PORT}`);
-        console.error(`2. برای متوقف کردن سرویس پس‌زمینه، در CMD بزنید: net stop PaymentSystem`);
-        console.error(`=======================================================================\n`);
-    } else {
-        console.error(`[Server Error]:`, err);
-    }
-});
-
-
 // Serve static assets from public
 app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
 app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
@@ -14359,6 +14277,93 @@ if (isExplicitDev) {
         `);
     });
 }
+
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n  VITE v5.4.21  ready in 120 ms\n`);
+    console.log(`  ➜  Local:   http://localhost:${PORT}/`);
+    console.log(`  ➜  Network: http://0.0.0.0:${PORT}/`);
+    console.log(`  ➜  press h + enter to show help\n`);
+    console.log(`Server running on http://localhost:${PORT}`);
+    setTimeout(async () => {
+        try {
+            const db = getDb(); // Initial load to memory
+            if(db.settings?.telegramBotToken) {
+                const tgModule = await safeImport('./backend/telegram.js');
+                if(tgModule) tgModule.initTelegram(db.settings.telegramBotToken);
+            }
+            if(db.settings?.baleBotToken) {
+                const baleModule = await safeImport('./backend/bale.js');
+                if(baleModule) baleModule.initBaleBot(db.settings.baleBotToken);
+            }
+            const waAuthPath = path.join(ROOT_DIR, 'wauth');
+            if (fs.existsSync(waAuthPath) && process.env.DISABLE_WHATSAPP_DEV !== 'true') {
+                const waModule = await safeImport('./backend/whatsapp.js');
+                if (waModule) waModule.initWhatsApp(waAuthPath);
+            }
+        } catch (err) {
+            console.error("Background services initialization error:", err);
+        }
+        setupAutoBackup();
+        setupDailyReports();
+        setupLegacyDailyReports();
+        setupWarehouseInventoryDailySync();
+        setupTaskRecurringReminders();
+        sayanOrderAuto.initAutomationCron();
+    }, 1000);
+});
+
+// WebSocket proxy support for ONLYOFFICE coauthoring and docservice
+server.on('upgrade', (req, socket, head) => {
+    if (req.url && (req.url.startsWith('/onlyoffice-proxy') || req.url.startsWith('/docservice') || req.url.startsWith('/spellchecker') || req.url.startsWith('/coauthoring'))) {
+        const targetBase = process.env.ONLYOFFICE_DOC_SERVER_INTERNAL_URL || 'http://127.0.0.1:8088';
+        try {
+            const parsedTarget = new URL(targetBase);
+            const targetPath = req.url.replace(/^\/onlyoffice-proxy/, '') || '/';
+            const proxyReq = http.request({
+                hostname: parsedTarget.hostname,
+                port: parsedTarget.port || 80,
+                path: targetPath,
+                method: req.method,
+                headers: {
+                    ...req.headers,
+                    host: parsedTarget.host,
+                    'x-forwarded-host': req.headers.host,
+                    'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'http',
+                }
+            });
+            proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+                socket.write(
+                    `HTTP/1.1 101 Switching Protocols\r\n` +
+                    Object.keys(proxyRes.headers).map(key => `${key}: ${proxyRes.headers[key]}`).join('\r\n') +
+                    '\r\n\r\n'
+                );
+                proxySocket.pipe(socket);
+                socket.pipe(proxySocket);
+            });
+            proxyReq.on('error', () => {
+                socket.destroy();
+            });
+            proxyReq.end();
+        } catch (e) {
+            socket.destroy();
+        }
+    }
+});
+
+server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+        console.error(`\n=======================================================================`);
+        console.error(`[خطا / Port In Use] پورت ${PORT} در حال حاضر اشغال است!`);
+        console.error(`علت: سرویس ویندوز (از طریق manager.bat) یا یک نمونه دیگر از سرور در حال اجراست.`);
+        console.error(`1. اگر قبلاً با manager.bat سرویس را نصب کرده‌اید، برنامه در حال اجراست و کافیست`);
+        console.error(`   مرورگر را باز کنید و آدرس زیر را وارد نمایید:`);
+        console.error(`   --> http://localhost:${PORT}`);
+        console.error(`2. برای متوقف کردن سرویس پس‌زمینه، در CMD بزنید: net stop PaymentSystem`);
+        console.error(`=======================================================================\n`);
+    } else {
+        console.error(`[Server Error]:`, err);
+    }
+});
 
 
 

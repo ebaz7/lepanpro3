@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { PaymentOrder, OrderStatus, PaymentMethod, SystemSettings, User, UserRole, PaymentOrderAttachment, PaymentDetail } from '../types';
 import { formatCurrency, formatDate, getStatusLabel, numberToPersianWords, formatNumberString, getShamsiDateFromIso } from '../constants';
-import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers, MessageSquare, Paperclip, Upload, Trash2, Image, FileCheck, Sparkles } from 'lucide-react';
+import { X, Printer, FileDown, Loader2, CheckCircle, XCircle, Pencil, Share2, Users, Search, RotateCcw, AlertTriangle, FileText, LayoutTemplate, EyeOff, Eye, Settings2, ChevronLeft, ChevronRight, Calendar, MapPin, Layers, MessageSquare, Paperclip, Upload, Trash2, Image, FileCheck, Sparkles, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { apiCall, resolveImageUrl } from '../services/apiService';
 import { generatePdf } from '../utils/pdfGenerator'; 
 import { executeCrossPlatformPrint } from '../utils/mobilePrintService';
@@ -56,9 +56,15 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   // Dual Print Mode State (full, withdrawal, deposit)
   const [dualPrintMode, setDualPrintMode] = useState<'full' | 'withdrawal' | 'deposit'>('full');
 
-  // Scale State for Mobile Fit
+  // Scale & Pinch-to-Zoom State for Mobile Fit & Touch Zoom
   const [scale, setScale] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
   const containerWrapperRef = useRef<HTMLDivElement>(null);
+  const touchZoomRef = useRef<{ initialDistance: number | null; initialScale: number; lastTap: number }>({
+    initialDistance: null,
+    initialScale: 1,
+    lastTap: 0
+  });
 
   // File Viewer Modal State
   const [activeViewer, setActiveViewer] = useState<{ isOpen: boolean; url: string; fileName: string; fileType?: 'image' | 'pdf' | 'auto' }>({
@@ -120,27 +126,64 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
   const [overrideDate, setOverrideDate] = useState({ year: '', month: '', day: '' });
   const [overridePlace, setOverridePlace] = useState('');
 
-  // Auto-Scale Logic
+  // Auto-Scale & Pinch-to-Zoom Logic
   useEffect(() => {
     const handleResize = () => {
         if (embed) return; 
         const wrapper = containerWrapperRef.current;
-        if (wrapper) {
-            const wrapperWidth = wrapper.clientWidth;
-            const targetWidth = 794; 
-            if (wrapperWidth < targetWidth + 40) {
-                const newScale = (wrapperWidth - 32) / targetWidth;
-                setScale(newScale);
-            } else {
-                setScale(1);
-            }
+        const availableWidth = wrapper ? wrapper.clientWidth : window.innerWidth;
+        const targetWidth = 794; 
+        if (availableWidth < targetWidth + 24) {
+            const newScale = Math.max(0.3, Number(((availableWidth - 20) / targetWidth).toFixed(3)));
+            setFitScale(newScale);
+            setScale(newScale);
+        } else {
+            setFitScale(1);
+            setScale(1);
         }
     };
 
     handleResize(); 
+    const timer = setTimeout(handleResize, 100);
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
   }, [embed, printMode]);
+
+  const handleVoucherTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      touchZoomRef.current.initialDistance = Math.hypot(dx, dy);
+      touchZoomRef.current.initialScale = scale;
+    } else if (e.touches.length === 1) {
+      const now = Date.now();
+      if (now - touchZoomRef.current.lastTap < 280) {
+        setScale(prev => (Math.abs(prev - fitScale) < 0.08 ? 1.15 : fitScale));
+        touchZoomRef.current.lastTap = 0;
+      } else {
+        touchZoomRef.current.lastTap = now;
+      }
+    }
+  };
+
+  const handleVoucherTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && touchZoomRef.current.initialDistance !== null) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const ratio = dist / touchZoomRef.current.initialDistance;
+      const nextScale = Math.min(2.8, Math.max(0.3, Number((touchZoomRef.current.initialScale * ratio).toFixed(3))));
+      setScale(nextScale);
+    }
+  };
+
+  const handleVoucherTouchEnd = () => {
+    touchZoomRef.current.initialDistance = null;
+  };
 
   // Reset Dual Print Mode when line changes
   useEffect(() => {
@@ -810,6 +853,15 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
                  {canPrintBankForm && (
                      <button onClick={() => setPrintMode(printMode === 'receipt' ? 'bank_form' : 'receipt')} className={`px-3 py-1 rounded-lg flex items-center gap-1 text-[10px] font-bold transition-colors border ${printMode === 'bank_form' ? 'bg-teal-100 text-teal-700 border-teal-200' : 'bg-white text-gray-600 hover:bg-gray-50 border-gray-200'}`}><LayoutTemplate size={12}/> {printMode === 'receipt' ? `قالب بانکی` : 'رسید داخلی'}</button>
                  )}
+                 <div className="h-4 w-[1px] bg-gray-200 mx-0.5"></div>
+                 {/* Interactive Zoom Controls for Mobile & Desktop */}
+                 <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-lg border border-slate-200">
+                     <button type="button" onClick={() => setScale(s => Math.max(0.3, Number((s - 0.15).toFixed(2))))} className="p-1 rounded bg-white text-slate-700 border border-slate-200 active:scale-95" title="کوچک‌نمایی"><ZoomOut size={12}/></button>
+                     <span className="text-[10px] font-mono font-bold text-slate-700 min-w-[36px] text-center" dir="ltr">{Math.round(scale * 100)}%</span>
+                     <button type="button" onClick={() => setScale(s => Math.min(2.8, Number((s + 0.15).toFixed(2))))} className="p-1 rounded bg-white text-slate-700 border border-slate-200 active:scale-95" title="بزرگ‌نمایی"><ZoomIn size={12}/></button>
+                     <button type="button" onClick={() => setScale(fitScale)} className={`px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-0.5 ${Math.abs(scale - fitScale) < 0.03 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}`} title="برازش به صفحه"><Maximize2 size={10}/><span>برازش</span></button>
+                     <button type="button" onClick={() => setScale(1)} className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${Math.abs(scale - 1) < 0.03 ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}`} title="اندازه واقعی">۱۰۰٪</button>
+                 </div>
              </div>
 
              {sharePlatform && (
@@ -1006,8 +1058,47 @@ const PrintVoucher: React.FC<PrintVoucherProps> = ({ order, onClose, settings, c
              )}
          </div>
       </div>
-      <div className="flex-1 w-full overflow-y-auto flex justify-center pb-10" ref={containerWrapperRef}>
-          <div style={{ width: (printMode === 'bank_form' && dynamicTemplate) ? `${dynamicTemplate.width || 210}mm` : '210mm', height: (printMode === 'bank_form' && dynamicTemplate) ? `${dynamicTemplate.height || 297}mm` : '148mm', backgroundColor: 'white', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', transform: `scale(${scale})`, transformOrigin: 'top center', marginBottom: `${(1 - scale) * -100}px` }}>{contentToRender}</div>
+      <div
+        className="flex-1 w-full overflow-auto pb-12 touch-pan-x touch-pan-y"
+        style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+        ref={containerWrapperRef}
+        onTouchStart={handleVoucherTouchStart}
+        onTouchMove={handleVoucherTouchMove}
+        onTouchEnd={handleVoucherTouchEnd}
+        onTouchCancel={handleVoucherTouchEnd}
+      >
+        {(() => {
+          const docWidthMm = (printMode === 'bank_form' && dynamicTemplate) ? (dynamicTemplate.width || 210) : 210;
+          const docHeightMm = (printMode === 'bank_form' && dynamicTemplate) ? (dynamicTemplate.height || 297) : 148;
+          const docWidthPx = Math.round(docWidthMm * 3.779527559);
+          const docHeightPx = Math.round(docHeightMm * 3.779527559);
+          return (
+            <div
+              style={{
+                width: `${Math.round(docWidthPx * scale)}px`,
+                minHeight: `${Math.round(docHeightPx * scale)}px`,
+                margin: '0 auto',
+                position: 'relative',
+              }}
+            >
+              <div
+                style={{
+                  width: `${docWidthMm}mm`,
+                  minHeight: `${docHeightMm}mm`,
+                  backgroundColor: 'white',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+                  transform: `scale(${scale})`,
+                  transformOrigin: 'top left',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                }}
+              >
+                {contentToRender}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       <FileViewerModal 

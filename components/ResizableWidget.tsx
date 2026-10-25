@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   ChevronUp, ChevronDown, X, Maximize2, Minimize2, RotateCcw, 
   ArrowLeftRight, Lock, Eye, EyeOff, ChevronsUpDown, GripVertical, Move
@@ -69,6 +69,16 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
   const [isResizing, setIsResizing] = useState(false);
   const [resizeMode, setResizeMode] = useState<'both' | 'width' | 'height' | null>(null);
   const [tempSize, setTempSize] = useState<WidgetSize | null>(null);
+
+  const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobileScreen(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Active size calculation
   const currentWidthPercent = tempSize?.widthPercent ?? size?.widthPercent ?? defaultWidthPercent;
@@ -169,8 +179,14 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
       order: orderIndex,
     };
 
-    // On desktop, apply width percentage and flex-basis
-    if (currentWidthPercent && currentWidthPercent < 100) {
+    // On mobile (< 768px), always use 100% full width to fit screen edge-to-edge
+    if (isMobileScreen) {
+      style.flex = '1 1 100%';
+      style.width = '100%';
+      style.maxWidth = '100%';
+      style.minWidth = '0';
+    } else if (currentWidthPercent && currentWidthPercent < 100) {
+      // On desktop, apply custom width percentage and flex-basis
       style.flex = `0 0 calc(${currentWidthPercent}% - 0.75rem)`;
       style.maxWidth = `calc(${currentWidthPercent}% - 0.75rem)`;
       style.minWidth = '160px';
@@ -178,6 +194,7 @@ export const ResizableWidget: React.FC<ResizableWidgetProps> = ({
       style.flex = '1 1 100%';
       style.width = '100%';
       style.maxWidth = '100%';
+      style.minWidth = '0';
     }
 
     if (currentMinHeight && !isCollapsed) {

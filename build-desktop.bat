@@ -28,7 +28,7 @@ echo serde_json = "1.0"
 echo serde = { version = "1.0", features = ["derive"] }
 echo tauri = { version = "1.4", default-features = false, features = ["wry", "custom-protocol", "shell-open", "http-request"] }
 echo tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
-echo reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+echo reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "native-tls"] }
 echo axum = { version = "0.6", default-features = false, features = ["http1", "json", "tokio"] }
 echo tower = { version = "0.4", default-features = false, features = ["util"] }
 echo tower-http = { version = "0.4", default-features = false, features = ["cors", "fs"] }
@@ -42,6 +42,18 @@ echo incremental = false
 echo strip = true
 ) > src-tauri\Cargo.toml
 
+if not exist src-tauri\.cargo mkdir src-tauri\.cargo
+(
+echo [build]
+echo jobs = 1
+echo.
+echo [env]
+echo CARGO_BUILD_JOBS = "1"
+echo.
+echo [target.x86_64-pc-windows-msvc]
+echo rustflags = ["-C", "link-args=/STACK:16777216"]
+) > src-tauri\.cargo\config.toml
+
 echo [2/3] Cleaning previous target cache to prevent LLVM OOM...
 cd src-tauri
 call cargo clean
@@ -53,6 +65,7 @@ set RUSTFLAGS=-C link-args=/STACK:16777216
 set CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
 set CARGO_PROFILE_RELEASE_OPT_LEVEL=1
 set CARGO_PROFILE_RELEASE_LTO=false
+set _CL_=/Zm2000
 call npx tauri build -- --jobs 1
 
 echo.

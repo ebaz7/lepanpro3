@@ -49,6 +49,9 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
+    const [isAiEnabled, setIsAiEnabled] = useState<boolean>(() => {
+        return localStorage.getItem('app_ai_copilot_enabled') !== 'false';
+    });
     const [inputMessage, setInputMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -80,11 +83,28 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
         const handleVisibilityChange = (e: any) => {
             setIsBottomBarVisible(!!e.detail);
         };
+        const handleAiToggle = (e: any) => {
+            const enabled = typeof e.detail === 'boolean' ? e.detail : localStorage.getItem('app_ai_copilot_enabled') !== 'false';
+            setIsAiEnabled(enabled);
+            if (!enabled) setIsOpen(false);
+        };
         window.addEventListener('BOTTOM_NAV_VISIBLE', handleVisibilityChange);
+        window.addEventListener('APP_AI_COPILOT_CHANGED', handleAiToggle);
         return () => {
             window.removeEventListener('BOTTOM_NAV_VISIBLE', handleVisibilityChange);
+            window.removeEventListener('APP_AI_COPILOT_CHANGED', handleAiToggle);
         };
     }, []);
+
+    const handleDisableAiWidget = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        localStorage.setItem('app_ai_copilot_enabled', 'false');
+        document.documentElement.classList.add('ai-features-disabled');
+        setIsAiEnabled(false);
+        setIsOpen(false);
+        window.dispatchEvent(new CustomEvent('APP_AI_COPILOT_CHANGED', { detail: false }));
+        toast('گزینه هوش مصنوعی غیرفعال شد (از منوی کناری یا بالای صفحه قابل فعال‌سازی مجدد است)', { icon: '🤖' });
+    };
 
     // Handle Text Send
     const handleSendMessage = async (textToSend?: string) => {
@@ -370,6 +390,10 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
         window.addEventListener('pointerup', handlePointerUp);
     };
 
+    if (!isAiEnabled) {
+        return null;
+    }
+
     // Floating Button when Closed
     if (!isOpen) {
         return (
@@ -380,25 +404,35 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
                 }}
                 dir="rtl"
             >
-                <button
-                    type="button"
-                    onPointerDown={handlePointerDown}
-                    onClick={() => {
-                        if (!isDraggingRef.current) {
-                            setIsOpen(true);
-                        }
-                    }}
-                    className="relative group p-2 px-3.5 bg-gradient-to-tr from-indigo-700 via-indigo-600 to-violet-500 hover:from-indigo-800 hover:to-violet-600 text-white rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 border border-indigo-300/40 cursor-grab active:cursor-grabbing backdrop-blur-md"
-                    title="ایجنت هوش مصنوعی و فرمان صوتی (قابل جابجایی)"
-                >
-                    <div className="relative">
-                        <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-indigo-900 animate-ping" />
-                    </div>
-                    <span className="text-[11px] font-black tracking-tight">
-                        دستیار هوشمند AI
-                    </span>
-                </button>
+                <div className="relative flex items-center">
+                    <button
+                        type="button"
+                        onPointerDown={handlePointerDown}
+                        onClick={() => {
+                            if (!isDraggingRef.current) {
+                                setIsOpen(true);
+                            }
+                        }}
+                        className="relative group p-2 pl-7 pr-3.5 bg-gradient-to-tr from-indigo-700 via-indigo-600 to-violet-500 hover:from-indigo-800 hover:to-violet-600 text-white rounded-2xl shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2 border border-indigo-300/40 cursor-grab active:cursor-grabbing"
+                        title="ایجنت هوش مصنوعی و فرمان صوتی (قابل جابجایی)"
+                    >
+                        <div className="relative">
+                            <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full ring-2 ring-indigo-900 animate-ping" />
+                        </div>
+                        <span className="text-[11px] font-black tracking-tight">
+                            دستیار هوشمند AI
+                        </span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleDisableAiWidget}
+                        className="absolute left-1.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-black/25 hover:bg-rose-500 text-white/90 hover:text-white flex items-center justify-center transition-colors z-10 cursor-pointer"
+                        title="غیرفعال کردن و بستن گزینه هوش مصنوعی"
+                    >
+                        <X size={10} />
+                    </button>
+                </div>
             </div>
         );
     }

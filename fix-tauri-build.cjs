@@ -31,7 +31,7 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "1.4", default-features = false, features = ["wry", "custom-protocol", "shell-open", "http-request"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
-reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "native-tls"] }
 
 # Embedded Server & Dual-Role Networking Dependencies
 axum = { version = "0.6", default-features = false, features = ["http1", "json", "tokio"] }
@@ -50,7 +50,23 @@ strip = true
 fs.writeFileSync(cargoPath, cleanCargo, 'utf8');
 console.log('✅ src-tauri/Cargo.toml: Replaced with lightweight, memory-efficient configuration.');
 
-// 2. Fix tauri.conf.json: Ensure updater block is completely removed and valid
+// 2. Ensure .cargo/config.toml enforces single-job compilation
+const cargoDir = path.join(rootDir, 'src-tauri', '.cargo');
+if (!fs.existsSync(cargoDir)) fs.mkdirSync(cargoDir, { recursive: true });
+const cargoConfigPath = path.join(cargoDir, 'config.toml');
+const cargoConfigContent = `[build]
+jobs = 1
+
+[env]
+CARGO_BUILD_JOBS = "1"
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:16777216"]
+`;
+fs.writeFileSync(cargoConfigPath, cargoConfigContent, 'utf8');
+console.log('✅ src-tauri/.cargo/config.toml: Configured single-threaded compilation.');
+
+// 3. Fix tauri.conf.json: Ensure updater block is completely removed and valid
 if (fs.existsSync(confPath)) {
   try {
     const raw = fs.readFileSync(confPath, 'utf8');
