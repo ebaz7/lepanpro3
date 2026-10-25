@@ -1959,7 +1959,8 @@ app.get('/api/sayan/order-automation/pending', async (req, res) => {
         const db = getDb();
         const config = sayanOrderAuto.getAutomationConfig(db);
         const fiscalYear = req.query.fiscalYear || config.fiscalYear || '4';
-        const pending = await sayanOrderAuto.getPendingPurchaseRequests(fiscalYear);
+        const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
+        const pending = await sayanOrderAuto.getPendingPurchaseRequests(fiscalYear, forceRefresh);
         res.json({
             success: true,
             fiscalYear,
@@ -1979,7 +1980,8 @@ app.get('/api/sayan/order-automation/archived', async (req, res) => {
         const db = getDb();
         const config = sayanOrderAuto.getAutomationConfig(db);
         const fiscalYear = req.query.fiscalYear || config.fiscalYear || '4';
-        const archived = await sayanOrderAuto.getArchivedPurchaseRequests(fiscalYear);
+        const forceRefresh = req.query.forceRefresh === 'true' || req.query.refresh === 'true';
+        const archived = await sayanOrderAuto.getArchivedPurchaseRequests(fiscalYear, forceRefresh);
         res.json({
             success: true,
             fiscalYear,

@@ -54,10 +54,10 @@ echo [target.x86_64-pc-windows-msvc]
 echo rustflags = ["-C", "link-args=/STACK:16777216"]
 ) > src-tauri\.cargo\config.toml
 
-echo [2/3] Cleaning previous target cache to prevent LLVM OOM...
-cd src-tauri
-call cargo clean
-cd ..
+echo [2/3] Verifying and generating desktop icons...
+if not exist src-tauri\icons\icon.ico (
+  call node setup-desktop-icons.cjs
+)
 
 echo [3/3] Compiling Tauri Desktop App in single-thread memory-safe mode...
 set CARGO_BUILD_JOBS=1

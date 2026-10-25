@@ -273,7 +273,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
         }
     };
 
-    const fetchStatusAndData = async (targetFy?: '4' | '3', isSilent = false) => {
+    const fetchStatusAndData = async (targetFy?: '4' | '3', isSilent = false, forceRefresh = false) => {
         const fy = targetFy || selectedFiscalYear;
         if (!isSilent) {
             setLoading(true);
@@ -297,7 +297,8 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
             }
 
             // Pending list (در جریان - strictly requests without pre-invoices)
-            const pendingData = await fetchApiJson(`/api/sayan/order-automation/pending?fiscalYear=${fy}`);
+            const refreshParam = forceRefresh ? '&forceRefresh=true' : '';
+            const pendingData = await fetchApiJson(`/api/sayan/order-automation/pending?fiscalYear=${fy}${refreshParam}`);
             if (pendingData && pendingData.success) {
                 setPendingList(pendingData.items || []);
             } else if (pendingData && pendingData.error) {
@@ -305,7 +306,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
             }
 
             // Archived list (بایگانی - requests that already have pre-invoice 57 issued)
-            const archivedData = await fetchApiJson(`/api/sayan/order-automation/archived?fiscalYear=${fy}`);
+            const archivedData = await fetchApiJson(`/api/sayan/order-automation/archived?fiscalYear=${fy}${refreshParam}`);
             if (archivedData && archivedData.success) {
                 setArchivedList(archivedData.items || []);
             } else if (archivedData && archivedData.error) {
@@ -514,7 +515,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                     `عملیات انجام شد: ${total} سند بررسی شد | ${converted} پیش‌فاکتور جدید صادر شد ${errors > 0 ? `| ${errors} خطا` : ''}`,
                     errors > 0 ? 'info' : 'success'
                 );
-                await fetchStatusAndData();
+                await fetchStatusAndData(selectedFiscalYear, false, true);
             } else {
                 showToast(data.error || data.message || 'خطا در اجرای فرآیند', 'error');
             }
@@ -550,7 +551,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                 } else {
                     showToast(`پیش‌فاکتور جدید با شماره ${data.createdDocNo} در سایان صادر شد و سند بایگانی گردید.`, 'success');
                     setEditingDoc(null);
-                    await fetchStatusAndData();
+                    await fetchStatusAndData(selectedFiscalYear, false, true);
                 }
             } else {
                 showToast(data.error || data.message || 'خطا در صدور پیش‌فاکتور در سایان', 'error');
@@ -879,7 +880,7 @@ export const SayanRegistrationsModule: React.FC<Props> = ({ currentUser, setting
                                 </div>
 
                                 <button
-                                    onClick={() => fetchStatusAndData(selectedFiscalYear, false)}
+                                    onClick={() => fetchStatusAndData(selectedFiscalYear, false, true)}
                                     disabled={loading}
                                     className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 hover:text-slate-900 transition-colors shadow-sm"
                                     title="بروزرسانی دستی داده‌ها از سایان"

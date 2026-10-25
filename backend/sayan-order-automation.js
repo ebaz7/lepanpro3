@@ -220,7 +220,16 @@ export const getHistoricalVendorMap = async (forceRefresh = false) => {
         { note: 'شیری', personCode: '3095', personName: 'رسول شیری دوک' },
         { note: 'رسول شیری', personCode: '3095', personName: 'رسول شیری دوک' },
         { note: 'آقای شیری', personCode: '3095', personName: 'رسول شیری دوک' },
-        { note: 'ارسالی آقای شیری (دوک کارکرده)', personCode: '3095', personName: 'رسول شیری دوک' }
+        { note: 'ارسالی آقای شیری (دوک کارکرده)', personCode: '3095', personName: 'رسول شیری دوک' },
+        { note: 'مختار', personCode: '3159', personName: 'امیر مختار' },
+        { note: 'امیر مختار', personCode: '3159', personName: 'امیر مختار' },
+        { note: 'شریفی مختار', personCode: '3159', personName: 'امیر مختار' },
+        { note: 'شریفی (مختار)', personCode: '3159', personName: 'امیر مختار' },
+        { note: 'ارسالی آقای شریفی (مختار)', personCode: '3159', personName: 'امیر مختار' },
+        { note: 'ترخیصی از گمرک (ترکیه)', personCode: '3280', personName: 'پروفرم چیپس 2504 (گمرک ترکیه)' },
+        { note: 'ترخیص شده از گمرک (ترکیه)', personCode: '3279', personName: 'پروفرم چیپس 2501 (گمرک ترکیه)' },
+        { note: 'پروفرم چیپس 2504', personCode: '3280', personName: 'پروفرم چیپس 2504 (گمرک ترکیه)' },
+        { note: 'پروفرم چیپس 2501', personCode: '3279', personName: 'پروفرم چیپس 2501 (گمرک ترکیه)' }
     ];
 
     for (const s of SEED_VENDORS) {
@@ -309,10 +318,15 @@ let cachedStatusList = null;
 let lastStatusFetch = 0;
 let pendingStatusPromise = null;
 
+export const clearStatusCache = () => {
+    cachedStatusList = null;
+    lastStatusFetch = 0;
+};
+
 export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRefresh = false) => {
     const now = Date.now();
     const cacheKey = String(fiscalYear);
-    if (!forceRefresh && cachedStatusList && cachedStatusList[cacheKey] && (now - lastStatusFetch < 15000)) {
+    if (!forceRefresh && cachedStatusList && cachedStatusList[cacheKey] && (now - lastStatusFetch < 10000)) {
         return cachedStatusList[cacheKey];
     }
     if (pendingStatusPromise) {
@@ -323,7 +337,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
         try {
             const fYear = Number(fiscalYear) || 4;
 
-            // 1. Fetch recent Opcode 53 and 57 documents strictly for the requested Fiscal Year
+            // 1. Fetch Opcode 53 (Purchase Requests) for the requested Fiscal Year
             const docsSql = `
                 SELECT 
                     t10.Field_001 as Doc53Id,
@@ -341,6 +355,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 ORDER BY CAST(t10.Field_005 as int) DESC
             `;
 
+            // 2. Fetch Opcode 57 (Pre-Invoices) for the requested Fiscal Year
             const pre57Sql = `
                 SELECT 
                     Field_001 as PreInvoiceDocId,
@@ -357,22 +372,37 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 ORDER BY CAST(Field_005 as int) DESC
             `;
 
-            const [allDocRows, allPre57Rows, vendorMap, allPersons] = await Promise.all([
+            // 3. Fetch authentic STR_TBL_029 relation table (Base Doc -> Target Doc)
+            const str29Sql = `
+                SELECT 
+                    Field_003 as Doc53Id, 
+                    Field_009 as Doc57Id 
+                FROM STR_TBL_029 WITH (NOLOCK) 
+                WHERE Field_004 = ${fYear} AND Field_009 > 0
+            `;
+
+            // 4. Fetch authentic item-level linking in STR_TBL_011 (57 item.Field_018 -> 53 item.Field_001)
+            const itemLinksSql = `
+                SELECT DISTINCT 
+                    t57.Field_004 as Pre57ArchiveCode, 
+                    t53.Field_004 as Req53ArchiveCode 
+                FROM STR_TBL_011 t57 WITH (NOLOCK) 
+                JOIN STR_TBL_011 t53 WITH (NOLOCK) ON t57.Field_018 = t53.Field_001 
+                WHERE t57.Field_003 = ${fYear} AND t57.Field_012 = 3 
+                  AND t53.Field_003 = ${fYear} AND t53.Field_012 = 3
+            `;
+
+            const [allDocRows, allPre57Rows, str29Rows, itemLinkRows, vendorMap, allPersons] = await Promise.all([
                 executeSayanQuery(docsSql).catch(() => []),
                 executeSayanQuery(pre57Sql).catch(() => []),
+                executeSayanQuery(str29Sql).catch(() => []),
+                executeSayanQuery(itemLinksSql).catch(() => []),
                 getHistoricalVendorMap().catch(() => new Map()),
                 getAllPersonsList().catch(() => [])
             ]);
 
             const docRows = allDocRows.filter(r => {
                 if (String(r.FiscalYear) !== String(fiscalYear)) return false;
-                const note = (r.Note || '').trim();
-                const desc = (r.DescText || '').trim();
-                const cleanDesc = desc.replace(/درخواست کننده:\s*\d+\s*\|\s*کد فرعی:\s*\d*\s*\|\s*توضیحات:\s*/g, '').trim();
-                const subCode = (r.SubCode || '').trim();
-                
-                // Keep legitimate requests with notes, subcodes or descriptions
-                if (!note && !subCode && !cleanDesc) return false;
                 return true;
             });
             const pre57Rows = allPre57Rows.filter(r => String(r.FiscalYear) === String(fiscalYear));
@@ -380,7 +410,7 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
             if (!docRows || docRows.length === 0) return [];
             docRows.sort((a, b) => Number(b.DocNo || b.ArchiveCode) - Number(a.DocNo || a.ArchiveCode));
 
-            // Accurately batch-fetch actual item counts & total quantities from STR_TBL_011 using ArchiveCodes (Field_004)
+            // Accurately batch-fetch actual item counts & total quantities from STR_TBL_011
             const archiveCodes = docRows.map(r => r.ArchiveCode).filter(Boolean);
             const itemsStatsMap = new Map();
             if (archiveCodes.length > 0) {
@@ -411,10 +441,19 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 }
             }
 
-            // Index 57 pre-invoices strictly by SubCode and DocNo
+            // Build fast index maps for 57 Pre-Invoices
+            const pre57ById = new Map();
+            const pre57ByArchive = new Map();
             const preDocsBySubCode = new Map();
             const preDocsByDocNo = new Map();
+
             for (const pr of pre57Rows) {
+                if (pr.PreInvoiceDocId) {
+                    pre57ById.set(String(pr.PreInvoiceDocId), pr);
+                }
+                if (pr.PreInvoiceArchiveCode) {
+                    pre57ByArchive.set(String(pr.PreInvoiceArchiveCode), pr);
+                }
                 if (pr.PreInvoiceDocNo) {
                     preDocsByDocNo.set(String(pr.PreInvoiceDocNo).trim(), pr);
                 }
@@ -423,35 +462,54 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
                 }
             }
 
+            // Map STR_TBL_029: Doc53Id -> PreInvoice 57 Doc
+            const str29Map = new Map();
+            for (const sr of str29Rows) {
+                if (sr.Doc57Id && pre57ById.has(String(sr.Doc57Id))) {
+                    str29Map.set(String(sr.Doc53Id), pre57ById.get(String(sr.Doc57Id)));
+                }
+            }
+
+            // Map item links: Req53ArchiveCode -> PreInvoice 57 Doc
+            const itemLinkMap = new Map();
+            for (const il of itemLinkRows) {
+                if (il.Pre57ArchiveCode && pre57ByArchive.has(String(il.Pre57ArchiveCode))) {
+                    itemLinkMap.set(String(il.Req53ArchiveCode), pre57ByArchive.get(String(il.Pre57ArchiveCode)));
+                }
+            }
+
             const result = docRows.map(r => {
                 const noteText = r.Note || r.DescText || '';
                 const vendor = resolveVendorForNote(noteText, vendorMap, allPersons);
                 const stat = itemsStatsMap.get(String(r.ArchiveCode)) || { count: 1, totalQty: 0 };
                 
-                // Comprehensive authentic 53 -> 57 linking:
-                // 1. Check SubCode matching (Sayan ERP standard: 53 and 57 share identical SubCode)
-                let preInvoice = null;
+                const idStr = String(r.Doc53Id);
+                const archStr = String(r.ArchiveCode);
                 const cleanSubCode = r.SubCode ? String(r.SubCode).trim() : '';
-                const cleanNote = (r.Note || r.DescText || '').trim();
+                const cleanDocNo = String(r.DocNo || '').trim();
 
-                if (cleanSubCode && preDocsBySubCode.has(cleanSubCode)) {
+                // Multi-tier authentic Sayan 53 -> 57 linking:
+                // Tier 1: Authentic STR_TBL_029 relation table link
+                let preInvoice = null;
+                if (str29Map.has(idStr)) {
+                    preInvoice = str29Map.get(idStr);
+                }
+                // Tier 2: Authentic STR_TBL_011 item-level reference link
+                else if (itemLinkMap.has(archStr)) {
+                    preInvoice = itemLinkMap.get(archStr);
+                }
+                // Tier 3: Identical SubCode matching
+                else if (cleanSubCode && preDocsBySubCode.has(cleanSubCode)) {
                     preInvoice = preDocsBySubCode.get(cleanSubCode);
                 }
-
-                // 2. Check if 57 SubCode explicitly points to 53 DocNo or ArchiveCode
-                if (!preInvoice && (r.DocNo || r.ArchiveCode)) {
-                    const cleanDocNo = String(r.DocNo || '').trim();
-                    const cleanArch = String(r.ArchiveCode || '').trim();
-                    if (cleanDocNo && preDocsBySubCode.has(cleanDocNo)) {
-                        preInvoice = preDocsBySubCode.get(cleanDocNo);
-                    } else if (cleanArch && preDocsBySubCode.has(cleanArch)) {
-                        preInvoice = preDocsBySubCode.get(cleanArch);
-                    }
+                // Tier 4: Explicit 57 SubCode pointing to 53 DocNo or ArchiveCode
+                else if (cleanDocNo && preDocsBySubCode.has(cleanDocNo)) {
+                    preInvoice = preDocsBySubCode.get(cleanDocNo);
+                } else if (archStr && preDocsBySubCode.has(archStr)) {
+                    preInvoice = preDocsBySubCode.get(archStr);
                 }
 
-                // Internal customs batch requests (explicit keyword 'گمرک' یا 'اسکله')
-                const isInternalBatch = cleanNote.includes('گمرک') || cleanNote.includes('اسکله');
-                const hasPreInvoice = Boolean((preInvoice && preInvoice.PreInvoiceDocNo) || isInternalBatch);
+                const hasPreInvoice = Boolean(preInvoice && preInvoice.PreInvoiceDocNo);
 
                 return {
                     doc53Id: r.Doc53Id,
@@ -493,16 +551,16 @@ export const getAllPurchaseRequestsWithStatus = async (fiscalYear = '4', forceRe
  * Get all pending Purchase Requests (Opcode 53) in Fiscal Year (e.g. 4 for Current Year, 3 for Previous Year)
  * STRICTLY excludes any request that already has a Pre-Invoice (Opcode 57) issued in Sayan
  */
-export const getPendingPurchaseRequests = async (fiscalYear = '4') => {
-    const all = await getAllPurchaseRequestsWithStatus(fiscalYear);
+export const getPendingPurchaseRequests = async (fiscalYear = '4', forceRefresh = false) => {
+    const all = await getAllPurchaseRequestsWithStatus(fiscalYear, forceRefresh);
     return all.filter(r => !r.hasPreInvoice);
 };
 
 /**
  * Get all archived / processed Purchase Requests (Opcode 53) that have Pre-Invoices (Opcode 57) in Sayan
  */
-export const getArchivedPurchaseRequests = async (fiscalYear = '4') => {
-    const all = await getAllPurchaseRequestsWithStatus(fiscalYear);
+export const getArchivedPurchaseRequests = async (fiscalYear = '4', forceRefresh = false) => {
+    const all = await getAllPurchaseRequestsWithStatus(fiscalYear, forceRefresh);
     return all.filter(r => r.hasPreInvoice);
 };
 
@@ -771,6 +829,9 @@ export const convert53To57 = async (doc53Id, options = {}) => {
         success: true
     };
     addAutomationLog(db, logRecord);
+    if (!isDryRun) {
+        clearStatusCache();
+    }
 
     return {
         success: true,
@@ -849,6 +910,9 @@ export const runAutomationCycle = async (options = {}) => {
     config.lastRunStatus = summary.failedCount === 0 ? 'success' : 'partial_success';
     config.lastRunSummary = summary;
     saveAutomationConfig(db, config);
+    if (summary.convertedCount > 0) {
+        clearStatusCache();
+    }
 
     return summary;
 };

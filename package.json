@@ -16,6 +16,7 @@
     "android:sync": "npx cap sync android",
     "android:open": "npx cap open android",
     "tauri": "tauri",
+    "desktop:icons": "node setup-desktop-icons.cjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "assets:generate": "node setup-assets.cjs && npx @capacitor/assets generate --android && node setup-assets.cjs",
