@@ -6,6 +6,10 @@ import ErrorBoundary from './components/ErrorBoundary'; // Import ErrorBoundary
 import './index.css'; 
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { installSafeStorageGlobalPolyfill } from './utils/safeStorage';
+
+// Protect against localStorage QuotaExceededError crashes everywhere
+installSafeStorageGlobalPolyfill();
 
 // Expose libraries globally
 (window as any).html2canvas = html2canvas;

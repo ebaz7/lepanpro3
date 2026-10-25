@@ -26,7 +26,9 @@ import {
   Sparkles,
   MessageSquare,
   Loader2,
-  Barcode
+  Barcode,
+  Camera,
+  Zap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { shareElementToChat } from '../services/chatShareService';
@@ -191,6 +193,7 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
   const [isSharingDoc, setIsSharingDoc] = useState<boolean>(false);
   const [isIssuerOpen, setIsIssuerOpen] = useState<boolean>(false);
+  const [issuerAutoCamera, setIssuerAutoCamera] = useState<boolean>(false);
 
   const handleSendToChat = async () => {
     if (!selectedRemittance) return;
@@ -777,12 +780,28 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
           </div>
 
           <button
-            onClick={() => setIsIssuerOpen(true)}
+            onClick={() => {
+              setIssuerAutoCamera(false);
+              setIsIssuerOpen(true);
+            }}
             className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-lg text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
             title="صدور سریع حواله فروش با بارکدخوان و ثبت مستقیم در دیتابیس سایان"
           >
             <Barcode size={14} />
             <span>صدور حواله با بارکدخوان (ثبت در سایان)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setIssuerAutoCamera(true);
+              setIsIssuerOpen(true);
+            }}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/25 cursor-pointer"
+            title="اسکن سریع کارتن‌ها با دوربین گوشی (وب موبایل و اندروید) با روشن شدن خودکار فلش و ثبت برای مشتری در سایان"
+          >
+            <Camera size={14} className="stroke-[2.5]" />
+            <span>اسکن با دوربین گوشی + فلش خودکار</span>
+            <Zap size={13} className="fill-slate-950" />
           </button>
 
           <button
@@ -1402,8 +1421,10 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
             <SayanSalesRemittanceIssuer
               currentUser={currentUser}
               settings={settings}
+              autoStartCamera={issuerAutoCamera}
               onClose={() => {
                 setIsIssuerOpen(false);
+                setIssuerAutoCamera(false);
                 loadRemittances();
               }}
               onSuccessRegistered={() => {

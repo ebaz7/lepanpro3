@@ -923,10 +923,11 @@ function App() {
 
                 const validTabs = ['dashboard', 'create', 'manage', 'chat', 'trade', 'users', 'settings', 'create-exit', 'manage-exit', 'manage-invoices', 'warehouse', 'security', 'purchase', 'balances', 'meetings', 'knowledge', 'ccti', 'sayan', 'cheque-receipts'];
                 if (validTabs.includes(path) || path === '') {
-                    setActiveTab(path || 'dashboard');
-                    if (url.search) {
-                       window.history.pushState({}, '', url.href);
-                    }
+                    const targetTab = path || 'dashboard';
+                    setActiveTab(targetTab);
+                    try {
+                        window.history.replaceState({ tab: targetTab }, '', `/#${targetTab}`);
+                    } catch (e) {}
                 }
             } catch(e) {}
         }
@@ -951,8 +952,8 @@ function App() {
         });
         setActiveTab('chat');
         try {
-            const urlWithoutParams = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.hash;
-            window.history.replaceState({ path: urlWithoutParams }, '', urlWithoutParams);
+            const urlWithoutParams = window.location.protocol + "//" + window.location.host + "/#chat";
+            window.history.replaceState({ path: urlWithoutParams, tab: 'chat' }, '', urlWithoutParams);
         } catch (e) {}
     } else if (sharedFileUrl || sharedText || sharedTitle) {
       setSharedData({
@@ -965,11 +966,16 @@ function App() {
       
       // Clean up URL query parameters so refresh doesn't trigger again
       try {
-        const urlWithoutParams = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.hash;
-        window.history.replaceState({ path: urlWithoutParams }, '', urlWithoutParams);
+        const urlWithoutParams = window.location.protocol + "//" + window.location.host + "/#chat";
+        window.history.replaceState({ path: urlWithoutParams, tab: 'chat' }, '', urlWithoutParams);
       } catch (e) {
         console.error("Failed to clean query parameters", e);
       }
+    } else if (window.location.pathname === '/chat') {
+      setActiveTab('chat');
+      try {
+        window.history.replaceState({ tab: 'chat' }, '', '/#chat');
+      } catch (e) {}
     }
   }, []);
 
@@ -1065,12 +1071,16 @@ function App() {
 
   useEffect(() => {
     if (currentUser && !isNative) {
+        let lastReset = 0;
         const resetIdleTimer = () => {
+            const now = Date.now();
+            if (now - lastReset < 5000) return;
+            lastReset = now;
             if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
             idleTimeoutRef.current = setTimeout(() => { handleLogout(); alert("به دلیل عدم فعالیت به مدت ۱ ساعت، از سیستم خارج شدید."); }, IDLE_LIMIT);
         };
         const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
-        events.forEach(event => window.addEventListener(event, resetIdleTimer));
+        events.forEach(event => window.addEventListener(event, resetIdleTimer, { passive: true }));
         resetIdleTimer();
         return () => { events.forEach(event => window.removeEventListener(event, resetIdleTimer)); if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current); };
     }
@@ -1341,6 +1351,11 @@ function App() {
                 }
             });
 
+            // If a notification was read on another device while toast was open, auto-close toast
+            if (toast && mappedNotifs.some(n => n.read && (n.title === toast.title || n.message === toast.message))) {
+                setToast(null);
+            }
+
             const prevIds = notificationsRef.current.map(n => n.id);
             // Filter unread notifications that have not been shown on this device yet
             const unnotifiedUnread = mappedNotifs.filter(n => {
@@ -1394,6 +1409,13 @@ function App() {
         }
 
         if (safeMessages && safeMessages.length > 0) {
+            // Cross-device read sync: mark all messages read by currentUser as shown so they never alert
+            const currentU = currentUser.username.toLowerCase();
+            safeMessages.forEach(m => {
+                if (m.readBy?.some((u: string) => u.toLowerCase() === currentU)) {
+                    markNotificationAsShown(m.id);
+                }
+            });
             const lastMsg = safeMessages[safeMessages.length - 1];
             lastChatMsgIdRef.current = lastMsg.id;
         }
@@ -1633,15 +1655,16 @@ function App() {
   useEffect(() => {
       if (!currentUser) return;
       
-      // If we are on the chat tab, poll messages more frequently (every 2 seconds) for a real-time experience!
       let fastChatInterval: any = null;
+      let isFetchingChat = false;
       if (activeTab === 'chat') {
           const fetchChatMessages = async () => {
+              if (isFetchingChat || document.hidden) return;
+              isFetchingChat = true;
               try {
                   const messagesData = await getMessages();
                   const safeMessages = Array.isArray(messagesData) ? messagesData : [];
                   setChatMessages(prev => {
-                      // Compare to see if updated
                       if (prev.length !== safeMessages.length) return safeMessages;
                       if (prev.length > 0 && safeMessages.length > 0) {
                           const pLast = prev[prev.length - 1];
@@ -1654,10 +1677,12 @@ function App() {
                   });
               } catch (e) {
                   console.error("Fast chat poll failed", e);
+              } finally {
+                  isFetchingChat = false;
               }
           };
           
-          fastChatInterval = setInterval(fetchChatMessages, 2000);
+          fastChatInterval = setInterval(fetchChatMessages, 3000);
       }
       
       return () => {

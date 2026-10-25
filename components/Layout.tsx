@@ -22,6 +22,7 @@ import { apiCall, resolveImageUrl } from '../services/apiService';
 import { DEFAULT_MOBILE_NAV_ORDER } from '../constants';
 import { Capacitor } from '@capacitor/core';
 import { getAppNavItems } from '../utils/navigationItems';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -276,7 +277,7 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleLowSpecMode = () => {
     setLowSpecMode(prev => {
       const next = !prev;
-      localStorage.setItem('app_low_spec_mode', String(next));
+      safeLocalStorage.setItem('app_low_spec_mode', String(next));
       if (next) {
         document.documentElement.classList.add('low-spec-mode');
       } else {
@@ -289,7 +290,7 @@ const Layout: React.FC<LayoutProps> = ({
 
   // AI Copilot & AI Options Global/Local Toggle State (فعال و غیرفعال کردن هوش مصنوعی در اندروید، وب‌اپ و ویندوز)
   const [aiCopilotEnabled, setAiCopilotEnabled] = useState<boolean>(() => {
-    const saved = localStorage.getItem('app_ai_copilot_enabled');
+    const saved = safeLocalStorage.getItem('app_ai_copilot_enabled');
     if (saved !== null) return saved !== 'false';
     return true;
   });
@@ -297,7 +298,11 @@ const Layout: React.FC<LayoutProps> = ({
   const toggleAiCopilot = () => {
     setAiCopilotEnabled(prev => {
       const next = !prev;
-      localStorage.setItem('app_ai_copilot_enabled', String(next));
+      try {
+        safeLocalStorage.setItem('app_ai_copilot_enabled', String(next));
+      } catch (err) {
+        console.warn('Could not save ai toggle to local storage:', err);
+      }
       if (!next) {
         document.documentElement.classList.add('ai-features-disabled');
       } else {

@@ -2,6 +2,7 @@
 import { PaymentOrder, User, UserRole, SystemSettings, ChatMessage, ChatGroup, GroupTask, TradeRecord, WarehouseItem, WarehouseTransaction } from '../types';
 import { INITIAL_ORDERS } from '../constants';
 import { Capacitor } from '@capacitor/core';
+import { isTauriDesktop } from '../utils/platformDetection';
 
 // تنظیمات آدرس سرور با اولویت متغیر محیطی
 const ENV_API_URL = typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_BASE_URL;
@@ -98,8 +99,11 @@ const refreshAccessToken = async (): Promise<string | null> => {
 };
 
 export const getServerHost = () => {
+    const inTauri = isTauriDesktop();
+    const isNativeCapacitor = Capacitor.isNativePlatform();
+
     // Check if we are running strictly in the Cloud Run/AI Studio preview environment in the browser
-    const isDevEnvironment = !Capacitor.isNativePlatform() && (
+    const isDevEnvironment = !isNativeCapacitor && !inTauri && (
         window.location.hostname.includes('run.app') || 
         window.location.hostname.includes('google.com')
     );
@@ -112,9 +116,27 @@ export const getServerHost = () => {
         return '';
     }
 
-    // On Web (Desktop/Mobile browser), if accessed via Local LAN IP or localhost, always use relative origin
+    // On Native client containers (Tauri Windows Desktop OR Capacitor Android/iOS App):
+    // Prioritize explicitly stored host or fallback to DEFAULT_SERVER_URL
+    if (inTauri || isNativeCapacitor) {
+        const stored = localStorage.getItem('app_server_host');
+        if (stored && stored.trim()) {
+            let cleanStored = stored.trim().replace(/\/+$/, '');
+            cleanStored = cleanStored.replace(/\/api\/?$/i, '');
+            return cleanStored;
+        }
+        if (DEFAULT_SERVER_URL) {
+            let cleanDef = DEFAULT_SERVER_URL.trim().replace(/\/+$/, '');
+            cleanDef = cleanDef.replace(/\/api\/?$/i, '');
+            return cleanDef;
+        }
+        return '';
+    }
+
+    // On standard Web browser:
+    // If accessed via Local LAN IP or localhost, always use relative origin
     // so offline LAN mode works seamlessly even if a public domain was previously cached in localStorage.
-    if (!Capacitor.isNativePlatform() && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
         const hn = window.location.hostname;
         const isLocalLan = hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hn);
         if (isLocalLan) {
@@ -127,17 +149,10 @@ export const getServerHost = () => {
         let cleanStored = stored.trim().replace(/\/+$/, '');
         cleanStored = cleanStored.replace(/\/api\/?$/i, '');
         // On Web, if stored host matches current origin, return empty string to use clean relative paths
-        if (!Capacitor.isNativePlatform() && typeof window !== 'undefined' && cleanStored === window.location.origin) {
+        if (typeof window !== 'undefined' && cleanStored === window.location.origin) {
             return '';
         }
         return cleanStored;
-    }
-    if (Capacitor.isNativePlatform()) {
-        if (DEFAULT_SERVER_URL) {
-            let cleanDef = DEFAULT_SERVER_URL.trim().replace(/\/+$/, '');
-            cleanDef = cleanDef.replace(/\/api\/?$/i, '');
-            return cleanDef;
-        }
     }
     return '';
 };
@@ -381,24 +396,29 @@ export const apiCall = async <T>(
                 if (method === 'GET' || ((method === 'POST' || method === 'PUT' || method === 'DELETE') && Array.isArray(data))) {
                     setTimeout(() => {
                         try {
-                            if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, JSON.stringify(data));
-                            else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, JSON.stringify(data));
+                            const capArray = (arr: any, limit: number = 100) => {
+                                if (Array.isArray(arr)) {
+                                    return JSON.stringify(arr.slice(-limit));
+                                }
+                                return JSON.stringify(arr);
+                            };
+                            if (endpoint === '/orders') localStorage.setItem(LS_KEYS.ORDERS, capArray(data, 100));
+                            else if (endpoint === '/users') localStorage.setItem(LS_KEYS.USERS, capArray(data, 100));
                             else if (endpoint === '/settings') localStorage.setItem(LS_KEYS.SETTINGS, JSON.stringify(data));
-                            else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, JSON.stringify(data));
-                            else if (endpoint === '/trade' || endpoint.startsWith('/trade/')) localStorage.setItem(LS_KEYS.TRADE, JSON.stringify(data));
-                            else if (endpoint === '/customer-balances') localStorage.setItem('app_data_balances', JSON.stringify(data));
-                            else if (endpoint === '/customer-balances/chat-codes') localStorage.setItem('app_data_balances_mappings', JSON.stringify(data));
-                            else if (endpoint === '/customer-balances/statements/all') localStorage.setItem('app_data_balances_statements', JSON.stringify(data));
-                            else if (endpoint === '/warehouse/items') localStorage.setItem(LS_KEYS.WH_ITEMS, JSON.stringify(data));
-                            else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, JSON.stringify(data));
-                            else if (endpoint === '/notes') localStorage.setItem(LS_KEYS.NOTES, JSON.stringify(data));
-                            else if (endpoint === '/exit-permits') localStorage.setItem(LS_KEYS.EXIT_PERMITS, JSON.stringify(data));
-                            else if (endpoint === '/meetings') localStorage.setItem(LS_KEYS.MEETINGS, JSON.stringify(data));
-                            else if (endpoint === '/purchase-requests') localStorage.setItem(LS_KEYS.PURCHASE_REQS, JSON.stringify(data));
-                            else if (endpoint === '/announcements') localStorage.setItem(LS_KEYS.ANNOUNCEMENTS, JSON.stringify(data));
-                            else if (endpoint === '/groups') localStorage.setItem(LS_KEYS.GROUPS, JSON.stringify(data));
-                            else if (endpoint === '/task-groups') localStorage.setItem(LS_KEYS.TASK_GROUPS, JSON.stringify(data));
-                            else if (endpoint === '/tasks') localStorage.setItem(LS_KEYS.TASKS, JSON.stringify(data));
+                            else if (endpoint === '/chat') localStorage.setItem(LS_KEYS.CHAT, capArray(data, 50));
+                            else if (endpoint === '/trade' || endpoint.startsWith('/trade/')) localStorage.setItem(LS_KEYS.TRADE, capArray(data, 50));
+                            else if (endpoint === '/customer-balances') localStorage.setItem('app_data_balances', capArray(data, 100));
+                            else if (endpoint === '/customer-balances/chat-codes') localStorage.setItem('app_data_balances_mappings', capArray(data, 100));
+                            else if (endpoint === '/warehouse/items') localStorage.setItem(LS_KEYS.WH_ITEMS, capArray(data, 100));
+                            else if (endpoint === '/warehouse/transactions') localStorage.setItem(LS_KEYS.WH_TX, capArray(data, 50));
+                            else if (endpoint === '/notes') localStorage.setItem(LS_KEYS.NOTES, capArray(data, 50));
+                            else if (endpoint === '/exit-permits') localStorage.setItem(LS_KEYS.EXIT_PERMITS, capArray(data, 50));
+                            else if (endpoint === '/meetings') localStorage.setItem(LS_KEYS.MEETINGS, capArray(data, 50));
+                            else if (endpoint === '/purchase-requests') localStorage.setItem(LS_KEYS.PURCHASE_REQS, capArray(data, 50));
+                            else if (endpoint === '/announcements') localStorage.setItem(LS_KEYS.ANNOUNCEMENTS, capArray(data, 30));
+                            else if (endpoint === '/groups') localStorage.setItem(LS_KEYS.GROUPS, capArray(data, 50));
+                            else if (endpoint === '/task-groups') localStorage.setItem(LS_KEYS.TASK_GROUPS, capArray(data, 50));
+                            else if (endpoint === '/tasks') localStorage.setItem(LS_KEYS.TASKS, capArray(data, 50));
                         } catch (cacheError) {
                             console.warn("Cache write failed (storage full?)", cacheError);
                         }

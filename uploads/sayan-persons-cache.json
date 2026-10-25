@@ -3528,6 +3528,36 @@
     "levelCode": "1601061001"
   },
   {
+    "personCode": "1013",
+    "tafsiliCode": "16010610011013",
+    "fullName": "پروفرم چیپس  LCH2510 ثبت سفارش 67317219",
+    "levelCode": "1601061001"
+  },
+  {
+    "personCode": "1014",
+    "tafsiliCode": "16010610011014",
+    "fullName": "پروفرم چیپس  LCH2511 ثبت سفارش 73222834",
+    "levelCode": "1601061001"
+  },
+  {
+    "personCode": "1010",
+    "tafsiliCode": "16010610011010",
+    "fullName": "پروفرم چیپس  LCH2613 ثبت سفارش 10293904",
+    "levelCode": "1601061001"
+  },
+  {
+    "personCode": "1011",
+    "tafsiliCode": "16010610011011",
+    "fullName": "پروفرم چیپس  LCH2614 ثبت سفارش 103009913",
+    "levelCode": "1601061001"
+  },
+  {
+    "personCode": "1012",
+    "tafsiliCode": "16010610011012",
+    "fullName": "پروفرم چیپس  LCH2615 ثبت سفارش 10301346",
+    "levelCode": "1601061001"
+  },
+  {
     "personCode": "3279",
     "tafsiliCode": "113279",
     "fullName": "پروفرم چیپس 2501",
@@ -13407,6 +13437,12 @@
     "personCode": "2502",
     "tafsiliCode": "112502",
     "fullName": "محمد نیازی",
+    "levelCode": "11"
+  },
+  {
+    "personCode": "3310",
+    "tafsiliCode": "113310",
+    "fullName": "محمد هادی اشرفی",
     "levelCode": "11"
   },
   {

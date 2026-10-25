@@ -22,6 +22,7 @@ import {
     RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { safeLocalStorage } from '../utils/safeStorage';
 
 interface Message {
     id: string;
@@ -50,7 +51,7 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
     const [isOpen, setIsOpen] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [isAiEnabled, setIsAiEnabled] = useState<boolean>(() => {
-        return localStorage.getItem('app_ai_copilot_enabled') !== 'false';
+        return safeLocalStorage.getItem('app_ai_copilot_enabled') !== 'false';
     });
     const [inputMessage, setInputMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
@@ -84,7 +85,7 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
             setIsBottomBarVisible(!!e.detail);
         };
         const handleAiToggle = (e: any) => {
-            const enabled = typeof e.detail === 'boolean' ? e.detail : localStorage.getItem('app_ai_copilot_enabled') !== 'false';
+            const enabled = typeof e.detail === 'boolean' ? e.detail : safeLocalStorage.getItem('app_ai_copilot_enabled') !== 'false';
             setIsAiEnabled(enabled);
             if (!enabled) setIsOpen(false);
         };
@@ -98,7 +99,7 @@ export const AiExecutiveCopilot: React.FC<AiExecutiveCopilotProps> = ({
 
     const handleDisableAiWidget = (e: React.MouseEvent) => {
         e.stopPropagation();
-        localStorage.setItem('app_ai_copilot_enabled', 'false');
+        safeLocalStorage.setItem('app_ai_copilot_enabled', 'false');
         document.documentElement.classList.add('ai-features-disabled');
         setIsAiEnabled(false);
         setIsOpen(false);

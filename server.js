@@ -212,15 +212,13 @@ app.use(compression({ level: 5 }));
 app.use(express.json({ limit: '1024mb' })); 
 app.use(express.urlencoded({ limit: '1024mb', extended: true }));
 
-// --- ANTI-CACHE MIDDLEWARE (OPTIMIZED) ---
-// We allow ETag/Last-Modified validation (no-cache) but remove no-store to allow 304 Not Modified.
-// This significantly speeds up reloads on CDNs/Domains by avoiding full data transfer if unchanged.
+// --- ANTI-CACHE MIDDLEWARE (OPTIMIZED & SAFE AGAINST JSON/HTML CACHE COLLISION) ---
 app.use((req, res, next) => {
-    if (req.method === 'GET') {
+    res.setHeader('Vary', 'Accept, X-Requested-With');
+    if (req.method === 'GET' && !req.path.startsWith('/api')) {
         res.set('Cache-Control', 'no-cache, must-revalidate, private');
-        // Remove Pragma and Expires to allow ETag validation
     } else {
-        // For mutations, we still want to be strict
+        // For API routes and mutations, strictly prevent proxy/browser caching
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
         res.set('Pragma', 'no-cache');
         res.set('Expires', '0');
@@ -6969,8 +6967,37 @@ app.post('/api/notifications/add', async (req, res) => {
     }
 });
 
+// Test push / notification endpoint for Android, Tauri, and Web
+app.post(['/api/send-test-push', '/send-test-push'], async (req, res) => {
+    try {
+        const { username } = req.body || {};
+        if (!username) return res.status(400).json({ error: 'Username required' });
+        const notif = await broadcastNotification(
+            "اعلان آزمایشی دلکام (سیستم تست)",
+            "این یک پیام تستی از سامانه دلکام است. سیستم اعلان‌ها و نوتیفیکیشن با موفقیت روی دستگاه شما فعال و متصل است.",
+            "/chat",
+            null,
+            [username],
+            null
+        );
+        res.json({ success: true, notification: notif, message: 'پیام تستی با موفقیت ارسال شد' });
+    } catch (e) {
+        console.error("POST /api/send-test-push error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // 8. CHAT & COMMUNICATION
-app.get(['/api/chat', '/chat'], (req, res) => {
+app.get(['/api/chat', '/chat'], (req, res, next) => {
+    // If a browser is navigating directly to /chat (e.g. from a notification click or page reload),
+    // pass through to the SPA index.html handler instead of dumping raw JSON in the browser tab!
+    const acceptHeader = String(req.headers.accept || '');
+    const secFetchMode = String(req.headers['sec-fetch-mode'] || '');
+    if (req.path === '/chat' && (secFetchMode === 'navigate' || acceptHeader.includes('text/html'))) {
+        return next();
+    }
+
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const db = getDb();
     const msgs = (db.messages || []).map(m => {
         let ts = m.timestamp;
@@ -7010,6 +7037,20 @@ app.post('/api/chat/read-batch', (req, res) => {
             }
         }
     });
+
+    // Cross-Device Sync: When messages are read on any device, mark corresponding notifications as read
+    if (!db.notifications) db.notifications = [];
+    db.notifications.forEach(n => {
+        if (!n.readBy) n.readBy = [];
+        if (!n.readBy.includes(username)) {
+            const isChatNotif = (n.url && (n.url === '/chat' || n.url.startsWith('/chat?') || n.url.startsWith('chat')));
+            if (isChatNotif && (idSet.has(n.id) || (n.targetUsernames && n.targetUsernames.includes(username)))) {
+                n.readBy.push(username);
+                changed = true;
+            }
+        }
+    });
+
     if (changed) saveDb(db);
     res.json({ success: true, count: messageIds.length });
 });
@@ -7041,6 +7082,25 @@ app.post('/api/chat/read-all', (req, res) => {
             changed = true;
         }
     });
+
+    // Cross-Device Sync: When all messages are read in a channel, mark notifications as read
+    if (!db.notifications) db.notifications = [];
+    db.notifications.forEach(n => {
+        if (!n.readBy) n.readBy = [];
+        if (!n.readBy.includes(username)) {
+            const isChatNotif = (n.url && (n.url === '/chat' || n.url.startsWith('/chat?') || n.url.startsWith('chat')));
+            if (isChatNotif) {
+                if (!channelId || channelId === 'all') {
+                    n.readBy.push(username);
+                    changed = true;
+                } else if (n.url.includes(channelId)) {
+                    n.readBy.push(username);
+                    changed = true;
+                }
+            }
+        }
+    });
+
     if (changed) saveDb(db);
     res.json({ success: true });
 });
@@ -14190,36 +14250,69 @@ app.get('/api/customer-feedbacks', (req, res) => {
 });
 
 
-// Serve static assets from public
+// Serve static assets from public (ensure sw.js, manifest.json, and html are NEVER cached stale)
 app.use('/fonts', express.static(path.join(ROOT_DIR, 'public', 'fonts'), { maxAge: '30d' }));
 app.use('/tesseract', express.static(path.join(ROOT_DIR, 'public', 'tesseract'), { maxAge: '30d' }));
-app.use(express.static(path.join(ROOT_DIR, 'public'), { maxAge: '7d' }));
+app.use(express.static(path.join(ROOT_DIR, 'public'), {
+    maxAge: '7d',
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html') || filePath.endsWith('sw.js') || filePath.endsWith('manifest.json')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
 
 if (isExplicitDev) {
-    try {
-        console.log("Starting in Development mode with Vite Middleware...");
-        const { createServer: createViteServer } = await import("vite");
-        const vite = await createViteServer({
-            server: { middlewareMode: true, hmr: false },
-            appType: "spa",
-        });
-        app.use(vite.middlewares);
+    console.log("Starting in Development mode with non-blocking Vite Middleware...");
+    let viteInstance = null;
+    const viteReadyPromise = (async () => {
+        try {
+            const { createServer: createViteServer } = await import("vite");
+            viteInstance = await createViteServer({
+                server: { middlewareMode: true, hmr: false },
+                appType: "spa",
+                optimizeDeps: {
+                    entries: ['index.html']
+                }
+            });
+            return viteInstance;
+        } catch (err) {
+            console.error("Vite dev middleware failed to load:", err?.message);
+            return null;
+        }
+    })();
 
-        // Fallback SPA HTML handler for Vite dev server
-        app.use('*', async (req, res, next) => {
-            if (req.originalUrl.startsWith('/api')) return next();
-            try {
-                let template = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf-8');
-                template = await vite.transformIndexHtml(req.originalUrl, template);
-                res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-            } catch (e) {
-                vite.ssrFixStacktrace(e);
-                next(e);
+    app.use(async (req, res, next) => {
+        if (req.originalUrl.startsWith('/api')) return next();
+        const vite = viteInstance || await viteReadyPromise;
+        if (!vite) return next();
+        return vite.middlewares(req, res, next);
+    });
+
+    // Fallback SPA HTML handler for Vite dev server
+    app.use('*', async (req, res, next) => {
+        if (req.originalUrl.startsWith('/api')) return next();
+        const vite = viteInstance || await viteReadyPromise;
+        if (!vite) {
+            if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+                return res.sendFile(path.join(DIST_DIR, 'index.html'));
             }
-        });
-    } catch (err) {
-        console.error("Vite dev middleware failed to load, falling back to static dist:", err?.message);
-    }
+            return next();
+        }
+        try {
+            let template = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf-8');
+            template = await vite.transformIndexHtml(req.originalUrl, template);
+            res.status(200).set({
+                'Content-Type': 'text/html',
+                'Cache-Control': 'no-cache, no-store, must-revalidate'
+            }).end(template);
+        } catch (e) {
+            vite.ssrFixStacktrace(e);
+            next(e);
+        }
+    });
 } else if (fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
     let buildTime = "Unknown";
     try {

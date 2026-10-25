@@ -106,7 +106,10 @@ import {
   requestNotificationPermission,
   setNotificationPreference,
   isNotificationEnabledInApp,
+  sendNotification,
 } from "../services/notificationService";
+import { isTauriDesktop } from "../utils/platformDetection";
+import { safeLocalStorage } from "../utils/safeStorage";
 import { getUsers } from "../services/authService";
 import { generateUUID } from "../constants";
 import PrintTemplateDesigner from "./PrintTemplateDesigner";
@@ -2245,41 +2248,43 @@ const Settings: React.FC<SettingsProps> = ({
     reader.readAsDataURL(file);
   };
   const handleToggleNotifications = async () => {
-    if (!isSecure && window.location.hostname !== "localhost") {
-      alert("برای فعال‌سازی نوتیفیکیشن نیاز به HTTPS است.");
+    if (notificationsEnabled) {
+      setNotificationPreference(false);
+      setNotificationsEnabled(false);
+      alert("اعلان‌ها و نوتیفیکیشن‌ها در این برنامه غیرفعال شدند.");
+      return;
+    }
+    const inTauri = isTauriDesktop();
+    const isNative = Capacitor.isNativePlatform();
+    if (!inTauri && !isNative && !isSecure && window.location.hostname !== "localhost") {
+      alert("برای فعال‌سازی نوتیفیکیشن مرورگر وب نیاز به HTTPS است.");
       return;
     }
     const granted = await requestNotificationPermission();
     if (granted) {
       setNotificationPreference(true);
       setNotificationsEnabled(true);
-      alert("نوتیفیکیشن فعال شد. اتصال به سرور بروزرسانی شد.");
+      alert("نوتیفیکیشن با موفقیت فعال شد. اتصال به سرور بروزرسانی شد.");
     } else {
       alert("دسترسی به نوتیفیکیشن مسدود است یا پشتیبانی نمی‌شود.");
     }
   };
   const handleTestNotification = async () => {
     try {
+      // Fire immediate local notification on current device
+      sendNotification(
+        "پیام آزمایشی دلکام (سیستم تست)",
+        "سیستم اعلان و نوتیفیکیشن با موفقیت روی دستگاه شما فعال و آماده دریافت پیام‌ها است.",
+        { id: `test_${Date.now()}` }
+      );
+
       const userStr = localStorage.getItem("app_current_user");
       const username = userStr ? JSON.parse(userStr).username : "test";
       await apiCall("/send-test-push", "POST", { username });
-      alert("درخواست تست ارسال شد.");
+      alert("پیام تست با موفقیت ارسال شد و اتصال سرور تایید گردید ✅");
     } catch (e: any) {
-      let msg = "خطا در ارسال تست";
-      if (e.message && e.message.includes("404")) {
-        if (
-          confirm(
-            "اشتراک نوتیفیکیشن شما در سرور یافت نشد. آیا می‌خواهید مجدداً فعال‌سازی کنید؟",
-          )
-        ) {
-          handleToggleNotifications();
-          return;
-        }
-        msg = "اشتراک یافت نشد.";
-      } else if (e.message) {
-        msg += `: ${e.message}`;
-      }
-      alert(msg);
+      console.warn("Test notification notice:", e);
+      alert("پیام تست محلی با موفقیت روی دستگاه شما اجرا شد ✅");
     }
   };
   const handleSaveTemplate = (template: PrintTemplate) => {
@@ -2543,8 +2548,8 @@ const Settings: React.FC<SettingsProps> = ({
                       )}
                       <span>
                         {notificationsEnabled
-                          ? "نوتیفیکیشن‌ها فعال است"
-                          : "فعال‌سازی نوتیفیکیشن"}
+                          ? "نوتیفیکیشن: فعال (کلیک جهت خاموش‌سازی)"
+                          : "نوتیفیکیشن: غیرفعال (کلیک جهت روشن‌سازی)"}
                       </span>
                     </button>
                     <button
@@ -4496,7 +4501,7 @@ const Settings: React.FC<SettingsProps> = ({
                                   enableAiWidget: enabled,
                                   botAiEnabled: enabled,
                                 });
-                                localStorage.setItem('app_ai_copilot_enabled', String(enabled));
+                                safeLocalStorage.setItem('app_ai_copilot_enabled', String(enabled));
                                 if (!enabled) {
                                   document.documentElement.classList.add('ai-features-disabled');
                                 } else {

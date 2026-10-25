@@ -4,6 +4,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Preferences } from '@capacitor/preferences';
 import { apiCall } from './apiService';
+import { isTauriDesktop } from '../utils/platformDetection';
 
 const PREF_KEY = 'app_notification_pref';
 
@@ -69,6 +70,32 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
           console.error("Push Registration Error:", e);
           return false;
       }
+  }
+
+  // Tauri Desktop Windows/Mac/Linux Logic
+  if (isTauriDesktop()) {
+      try {
+          if ((window as any).__TAURI__?.notification) {
+              const tauriNotif = (window as any).__TAURI__.notification;
+              let isGranted = await tauriNotif.isPermissionGranted();
+              if (!isGranted) {
+                  const perm = await tauriNotif.requestPermission();
+                  isGranted = perm === 'granted';
+              }
+              if (isGranted) return true;
+          }
+      } catch (e) {
+          console.warn('Tauri native notification check:', e);
+      }
+      if (typeof window !== 'undefined' && 'Notification' in window && typeof Notification !== 'undefined') {
+          try {
+              const perm = await Notification.requestPermission();
+              return perm === 'granted';
+          } catch (e) {
+              return true;
+          }
+      }
+      return true;
   }
 
   // Web Logic - Safe check for iOS Safari & unsupported browsers
@@ -519,6 +546,40 @@ export const sendNotification = async (title: string, body: string, data?: any) 
               ]
           });
       } catch (e) { console.error('LocalNotifications error', e); }
+      return;
+  }
+
+  if (isTauriDesktop()) {
+      try {
+          if ((window as any).__TAURI__?.notification) {
+              const tauriNotif = (window as any).__TAURI__.notification;
+              const isGranted = await tauriNotif.isPermissionGranted();
+              if (isGranted) {
+                  tauriNotif.sendNotification({ title, body });
+                  return;
+              }
+          }
+      } catch (e) {
+          console.warn('Tauri native notification dispatch error:', e);
+      }
+
+      // Flash user attention on Windows taskbar if available
+      try {
+          if ((window as any).__TAURI__?.window?.appWindow) {
+              (window as any).__TAURI__.window.appWindow.requestUserAttention(1);
+          }
+      } catch {}
+
+      // Fallback to webview Notification if permitted
+      if (typeof window !== 'undefined' && 'Notification' in window && typeof Notification === 'function') {
+          try {
+              if (Notification.permission === 'granted') {
+                  const iconUrl = getPwaIconUrl();
+                  new Notification(title, { body, icon: iconUrl, dir: 'rtl', lang: 'fa' });
+                  return;
+              }
+          } catch (e) {}
+      }
       return;
   }
 

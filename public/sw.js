@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finance-app-v8';
+const CACHE_NAME = 'finance-app-v9';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -81,16 +81,49 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle page navigation
+  const reqUrl = event.request.url;
+
+  // Never intercept or cache API requests
+  if (
+    reqUrl.includes('/api/') ||
+    reqUrl.endsWith('/vapid-key') ||
+    reqUrl.includes('/search-everything')
+  ) {
+    return;
+  }
+
+  // Handle page navigation strictly as HTML SPA
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          // Clone and cache the navigated page
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
+      fetch(event.request, {
+        headers: {
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      })
+        .then(async (response) => {
+          const contentType = (response.headers && response.headers.get('content-type')) || '';
+          // Guard: If the response is JSON or not HTML (e.g. legacy /chat route or proxy glitch),
+          // force-fetch /index.html so the browser never renders raw JSON on navigation!
+          if (!response.ok || contentType.includes('application/json') || !contentType.includes('text/html')) {
+            try {
+              const htmlFallback = await fetch('/index.html', { cache: 'no-store' });
+              if (htmlFallback && htmlFallback.ok) {
+                const clone = htmlFallback.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', clone)).catch(() => {});
+                return htmlFallback;
+              }
+            } catch (_) {}
+            const cachedHtml = await caches.match('/index.html');
+            if (cachedHtml) return cachedHtml;
+          }
+
+          // Only cache valid HTML navigation responses under canonical '/index.html'
+          if (response.status === 200 && contentType.includes('text/html')) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put('/index.html', responseClone);
+            }).catch(() => {});
+          }
           return response;
         })
         .catch(() => caches.match('/index.html'))
@@ -98,16 +131,23 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network first with cache fallback
+  // Network first with cache fallback ONLY for static assets (never cache JSON API responses)
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // If it's a valid successful response, cache it for offline use (if it's not an API call)
         const url = event.request.url;
         const contentType = (response.headers && response.headers.get('content-type')) || '';
         const isStaticAssetRequest = /\.(js|mjs|css|woff2?|ttf|wasm|png|jpe?g|svg|ico)(\?.*)?$/i.test(url);
         const isHtmlFallbackForAsset = isStaticAssetRequest && contentType.includes('text/html');
-        if (response.status === 200 && !isHtmlFallbackForAsset && !url.includes('/api/') && !url.includes('chrome-extension')) {
+        const isJsonResponse = contentType.includes('application/json');
+        if (
+          response.status === 200 &&
+          isStaticAssetRequest &&
+          !isHtmlFallbackForAsset &&
+          !isJsonResponse &&
+          !url.includes('/api/') &&
+          !url.includes('chrome-extension')
+        ) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);
@@ -200,7 +240,7 @@ self.addEventListener('push', (event) => {
           icon: '/lepan-logo.png',
           badge: '/lepan-logo.png',
           data: {
-            url: data.url || '/',
+            url: data.url || '/#chat',
             id: data.id
           },
           vibrate: [200, 100, 200],
@@ -224,8 +264,12 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   
-  let targetUrl = event.notification.data ? event.notification.data.url : '/';
-  if (!targetUrl || targetUrl === '/') targetUrl = '/chat'; // default to chat for now if missing
+  let targetUrl = event.notification.data ? event.notification.data.url : '/#chat';
+  if (!targetUrl || targetUrl === '/' || targetUrl === '/chat') {
+    targetUrl = '/#chat';
+  } else if (targetUrl.startsWith('/chat?')) {
+    targetUrl = '/?' + targetUrl.substring(6) + '#chat';
+  }
   
   if (!targetUrl.startsWith('http')) {
     targetUrl = new URL(targetUrl, self.location.origin).href;

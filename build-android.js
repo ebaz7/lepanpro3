@@ -15,10 +15,14 @@ try {
     execSync('npm run build', { stdio: 'inherit' });
     console.log('✅ Web build finished successfully.\n');
 
-    // 2. Sync with Capacitor
+    // 2. Sync with Capacitor & Generate Frameless Transparent Android Icons
     console.log('🔄 Step 2/4: Syncing assets with Android project (Capacitor)...');
     execSync('npx cap sync android', { stdio: 'inherit' });
-    console.log('✅ Capacitor assets synchronized.\n');
+    if (existsSync(join(process.cwd(), 'setup-assets.cjs'))) {
+        console.log('🎨 Applying frameless transparent Android icons (no background)...');
+        execSync('node setup-assets.cjs', { stdio: 'inherit' });
+    }
+    console.log('✅ Capacitor assets & transparent icons synchronized.\n');
 
     // Auto-create/validate local.properties
     const localPropertiesPath = join(gradleDir, 'local.properties');

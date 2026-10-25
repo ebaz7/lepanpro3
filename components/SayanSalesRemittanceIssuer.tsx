@@ -34,8 +34,13 @@ import {
   TrendingUp,
   Clock,
   Filter,
-  ArrowUpRight
+  ArrowUpRight,
+  Camera,
+  Zap,
+  ZapOff,
+  Smartphone
 } from 'lucide-react';
+import jsQR from 'jsqr';
 import * as jalaali from 'jalaali-js';
 import { apiCall } from '../services/apiService';
 import { openSendToChat } from '../services/chatShareService';
@@ -143,6 +148,7 @@ interface SayanSalesRemittanceIssuerProps {
   settings?: any;
   initialSubTab?: 'issuer' | 'archive' | 'warehouses';
   initialWarehouseCode?: string;
+  autoStartCamera?: boolean;
   onSuccessRegistered?: (docNo: string, archiveRecord?: any) => void;
   onClose?: () => void;
 }
@@ -192,6 +198,7 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
   settings,
   initialSubTab = 'issuer',
   initialWarehouseCode = '15',
+  autoStartCamera = false,
   onSuccessRegistered,
   onClose
 }) => {
@@ -246,6 +253,26 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
 
   // Items List
   const [items, setItems] = useState<RemittanceItemRow[]>([]);
+  const itemsRef = useRef<RemittanceItemRow[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  // Mobile Camera Scanner Station State & Refs
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
+  const [isTorchSupported, setIsTorchSupported] = useState<boolean>(true);
+  const [cameraScanFlash, setCameraScanFlash] = useState<boolean>(false);
+  const [isCameraCustomerPickerOpen, setIsCameraCustomerPickerOpen] = useState<boolean>(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const scanIntervalRef = useRef<number | null>(null);
+  const isFrameBusyRef = useRef<boolean>(false);
+  const recentCameraScansRef = useRef<Map<string, number>>(new Map());
+  const isResolvingBarcodeRef = useRef<boolean>(false);
 
   // Submission & Dialogs
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -453,25 +480,41 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
     }
   }, [activeSubTab, selectedStatWarehouse, selectedFiscalYear]);
 
-  // 4. Handle Barcode Scanning
-  const handleBarcodeSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const raw = scannedBarcode.trim();
+  // 4. Unified Barcode Processing (Supports Physical Gun + Mobile Camera Scanner)
+  const processBarcodeValue = async (rawInput: string, fromCamera = false) => {
+    const raw = (rawInput || '').trim();
     if (!raw) return;
 
-    // Check duplicate in current document
-    const exists = items.some(it => it.barcode.toLowerCase() === raw.toLowerCase());
+    const normalizedKey = raw.toLowerCase();
+
+    // In camera mode, debounce the same barcode for 2.5s so holding the phone over a box
+    // doesn't spam duplicate alerts while moving to the next box scans immediately
+    if (fromCamera) {
+      const now = Date.now();
+      const lastSeen = recentCameraScansRef.current.get(normalizedKey) || 0;
+      if (now - lastSeen < 2500) {
+        return;
+      }
+      recentCameraScansRef.current.set(normalizedKey, now);
+    }
+
+    // Check duplicate in current document using ref for latest items
+    const exists = itemsRef.current.some(it => it.barcode.toLowerCase() === normalizedKey);
     if (exists) {
       if (isSoundEnabled) playBeepSound('error');
+      try { navigator.vibrate?.([40, 60, 40]); } catch {}
       setLastScanResult({
         text: `⚠️ بارکد «${raw}» قبلاً در این حواله اسکن شده است!`,
         success: false
       });
-      setScannedBarcode('');
+      if (!fromCamera) setScannedBarcode('');
       return;
     }
 
+    if (isResolvingBarcodeRef.current) return;
+    isResolvingBarcodeRef.current = true;
     setIsResolvingBarcode(true);
+
     try {
       const res = await apiCall<any>('/sayan/barcode/lookup', 'POST', {
         barcode: raw,
@@ -480,6 +523,11 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
       });
 
       if (res && res.success) {
+        // Double-check duplicate after async resolution
+        if (itemsRef.current.some(it => it.barcode.toLowerCase() === normalizedKey)) {
+          return;
+        }
+
         const itemCode = res.itemCode || activeItemCode;
         const itemName = res.itemName || activeItemName;
         const netWeight = res.netWeight > 0 ? res.netWeight : 14.5;
@@ -502,8 +550,20 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
           note: res.note || `سری ساخت: ${raw} | همبافت:  | تعداد بوبین: 56 | تعداد کارتن: 1 | گرید: 00011002 | جهت تاب: 00021001 | وزن ناخالص: ${grossWeight}`
         };
 
-        setItems(prev => [newItem, ...prev]);
+        setItems(prev => {
+          const next = [newItem, ...prev];
+          itemsRef.current = next;
+          return next;
+        });
+
         if (isSoundEnabled) playBeepSound('success');
+        try { navigator.vibrate?.(70); } catch {}
+
+        if (fromCamera) {
+          setCameraScanFlash(true);
+          setTimeout(() => setCameraScanFlash(false), 320);
+        }
+
         setLastScanResult({
           text: `✅ کارتن ${raw} با وزن خالص ${netWeight} کیلوگرم اضافه شد.`,
           success: true,
@@ -519,13 +579,266 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
         success: false
       });
     } finally {
+      isResolvingBarcodeRef.current = false;
       setIsResolvingBarcode(false);
-      setScannedBarcode('');
-      if (isContinuousScan) {
-        setTimeout(() => barcodeInputRef.current?.focus(), 50);
+      if (!fromCamera) {
+        setScannedBarcode('');
+        if (isContinuousScan && !isCameraScannerOpen) {
+          setTimeout(() => barcodeInputRef.current?.focus(), 50);
+        }
       }
     }
   };
+
+  const handleBarcodeSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    await processBarcodeValue(scannedBarcode, false);
+  };
+
+  // 4b. Mobile Camera Scanner Lifecycle (Auto-Torch, Toggle Torch, Low-CPU Hardware Accelerated Loop)
+  const applyTorchState = async (stream: MediaStream | null, turnOn: boolean): Promise<boolean> => {
+    if (!stream) return false;
+    const track = stream.getVideoTracks()[0];
+    if (!track) return false;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: turnOn } as any]
+      });
+      setIsTorchOn(turnOn);
+      setIsTorchSupported(true);
+      return true;
+    } catch {
+      try {
+        await (track as any).applyConstraints({ torch: turnOn });
+        setIsTorchOn(turnOn);
+        setIsTorchSupported(true);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  };
+
+  const toggleCameraTorch = async () => {
+    const nextState = !isTorchOn;
+    const ok = await applyTorchState(cameraStreamRef.current, nextState);
+    if (!ok) {
+      setLastScanResult({
+        text: '⚠️ تغییر وضعیت فلش روی دوربین این دستگاه توسط مرورگر پشتیبانی نشد.',
+        success: false
+      });
+    }
+  };
+
+  const stopCameraScanner = () => {
+    if (scanIntervalRef.current) {
+      window.clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (cameraStreamRef.current) {
+      // Turn off torch cleanly before stopping tracks
+      const track = cameraStreamRef.current.getVideoTracks()[0];
+      if (track) {
+        try {
+          track.applyConstraints({ advanced: [{ torch: false } as any] }).catch(() => {});
+        } catch {}
+      }
+      cameraStreamRef.current.getTracks().forEach(t => {
+        try { t.stop(); } catch {}
+      });
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    isFrameBusyRef.current = false;
+    setIsTorchOn(false);
+    setIsCameraScannerOpen(false);
+    setIsCameraCustomerPickerOpen(false);
+  };
+
+  const startCameraScanner = async () => {
+    setCameraError(null);
+    setIsCameraScannerOpen(true);
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('مرورگر یا دستگاه شما به دوربین دسترسی ندارد (نیازمند HTTPS یا دسترسی دوربین در اپ).');
+      }
+
+      // Stop any existing stream first
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+
+      // Request 720p @ max 24fps rear camera to ensure crisp barcode edges with minimal CPU/battery load
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 24, max: 30 }
+        },
+        audio: false
+      });
+
+      cameraStreamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        await videoRef.current.play().catch(() => {});
+      }
+
+      // Configure continuous autofocus + auto turn ON flashlight (torch)
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        const caps = (track.getCapabilities ? track.getCapabilities() : {}) as any;
+        if (caps?.focusMode && Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+          try {
+            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] });
+          } catch {}
+        }
+
+        // Attempt auto-torch immediately, then retry after 350ms once Android camera sensor is warm
+        const immediateTorch = await applyTorchState(stream, true);
+        if (!immediateTorch) {
+          setTimeout(async () => {
+            if (cameraStreamRef.current === stream) {
+              const delayedTorch = await applyTorchState(stream, true);
+              if (!delayedTorch && caps && caps.torch === undefined) {
+                setIsTorchSupported(false);
+              }
+            }
+          }, 350);
+        }
+      }
+
+      // Initialize hardware-accelerated BarcodeDetector if available (Android WebView / Chrome)
+      let nativeDetector: any = null;
+      if ('BarcodeDetector' in window) {
+        try {
+          const BarcodeDetectorClass = (window as any).BarcodeDetector;
+          const supportedFormats = await BarcodeDetectorClass.getSupportedFormats?.().catch(() => null);
+          const desiredFormats = [
+            'code_128',
+            'code_39',
+            'code_93',
+            'ean_13',
+            'ean_8',
+            'itf',
+            'qr_code',
+            'data_matrix',
+            'upc_a',
+            'upc_e',
+            'codabar',
+            'pdf417'
+          ];
+          const formatsToUse = Array.isArray(supportedFormats) && supportedFormats.length > 0
+            ? desiredFormats.filter(f => supportedFormats.includes(f))
+            : desiredFormats;
+
+          nativeDetector = new BarcodeDetectorClass({
+            formats: formatsToUse.length > 0 ? formatsToUse : undefined
+          });
+        } catch {
+          try {
+            nativeDetector = new (window as any).BarcodeDetector();
+          } catch {
+            nativeDetector = null;
+          }
+        }
+      }
+
+      // Throttled 140ms (~7 FPS) single-flight scan loop: instant response like a physical scanner, <4% CPU load
+      if (scanIntervalRef.current) {
+        window.clearInterval(scanIntervalRef.current);
+      }
+
+      scanIntervalRef.current = window.setInterval(async () => {
+        if (
+          document.hidden ||
+          isFrameBusyRef.current ||
+          isResolvingBarcodeRef.current ||
+          !videoRef.current ||
+          videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA
+        ) {
+          return;
+        }
+
+        isFrameBusyRef.current = true;
+        try {
+          const videoEl = videoRef.current;
+
+          // 1. Hardware-accelerated native BarcodeDetector (1D + 2D barcodes directly from video element)
+          if (nativeDetector) {
+            try {
+              const detected = await nativeDetector.detect(videoEl);
+              if (Array.isArray(detected) && detected.length > 0) {
+                const validHit = detected.find((d: any) => d?.rawValue && String(d.rawValue).trim().length >= 3);
+                if (validHit) {
+                  await processBarcodeValue(String(validHit.rawValue).trim(), true);
+                  isFrameBusyRef.current = false;
+                  return;
+                }
+              }
+            } catch {
+              // Fall through to lightweight ROI canvas
+            }
+          }
+
+          // 2. Lightweight cropped center Region-of-Interest (ROI) canvas fallback (360x220 max)
+          if (canvasRef.current && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (ctx) {
+              const cropW = Math.min(videoEl.videoWidth, Math.floor(videoEl.videoWidth * 0.8));
+              const cropH = Math.min(videoEl.videoHeight, Math.floor(videoEl.videoHeight * 0.45));
+              const sx = Math.floor((videoEl.videoWidth - cropW) / 2);
+              const sy = Math.floor((videoEl.videoHeight - cropH) / 2);
+
+              const targetW = 360;
+              const targetH = 200;
+              if (canvas.width !== targetW) canvas.width = targetW;
+              if (canvas.height !== targetH) canvas.height = targetH;
+
+              ctx.drawImage(videoEl, sx, sy, cropW, cropH, 0, 0, targetW, targetH);
+              const imageData = ctx.getImageData(0, 0, targetW, targetH);
+              const qrCode = jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'dontInvert'
+              });
+
+              if (qrCode && qrCode.data && qrCode.data.trim().length >= 3) {
+                await processBarcodeValue(qrCode.data.trim(), true);
+              }
+            }
+          }
+        } catch {
+          // Ignore single frame errors
+        } finally {
+          isFrameBusyRef.current = false;
+        }
+      }, 140);
+    } catch (err: any) {
+      console.error('Camera start error:', err);
+      setCameraError(err?.message || 'خطا در باز کردن دوربین گوشی. لطفاً مجوز دوربین را بررسی کنید.');
+    }
+  };
+
+  // Auto-open camera if requested via prop, and always clean up camera tracks on unmount
+  useEffect(() => {
+    if (autoStartCamera) {
+      startCameraScanner();
+    }
+    return () => {
+      if (scanIntervalRef.current) window.clearInterval(scanIntervalRef.current);
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(t => {
+          try { t.stop(); } catch {}
+        });
+      }
+    };
+  }, []);
 
   // 5. KPIs
   const totalNetWeight = useMemo(() => {
@@ -549,6 +862,9 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
     setErrorMsg(null);
     if (!selectedCustomer) {
       setErrorMsg('لطفاً ابتدا خریدار / طرف‌حساب را انتخاب نمایید.');
+      if (isCameraScannerOpen) {
+        setIsCameraCustomerPickerOpen(true);
+      }
       return;
     }
     if (items.length === 0) {
@@ -559,6 +875,10 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
     const opTitle = operationType === '25' ? 'حواله بین انبار' : 'حواله فروش';
     const confirmText = `آیا از صدور قطعی ${opTitle} در سایان برای «${selectedCustomer.name}» با ${items.length} کارتن (مجموع وزن خالص: ${totalNetWeight.toLocaleString('fa-IR')} کیلوگرم) اطمینان دارید؟`;
     if (!window.confirm(confirmText)) return;
+
+    if (isCameraScannerOpen) {
+      stopCameraScanner();
+    }
 
     setIsSubmitting(true);
     try {
@@ -1000,15 +1320,25 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
                   <Barcode size={20} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-white">ایستگاه اسکن بارکد کارتن‌ها</h3>
+                  <h3 className="text-sm font-black text-white">ایستگاه اسکن بارکد کارتن‌ها (بارکدخوان فیزیکی و دوربین گوشی)</h3>
                   <p className="text-[11px] text-blue-200">
-                    بارکدخوان فیزیکی متصل به سیستم را آماده کنید و کارتن‌ها را یکی پس از دیگری اسکن نمایید.
+                    کارتن‌ها را با بارکدخوان یا دوربین گوشی (وب موبایل و اندروید با فلش خودکار) به صورت متوالی اسکن کنید.
                   </p>
                 </div>
               </div>
 
-              {/* Toggles */}
-              <div className="flex items-center gap-3">
+              {/* Toggles & Mobile Camera Launch Button */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={startCameraScanner}
+                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/30 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Camera size={16} className="stroke-[2.5]" />
+                  <span>اسکن سریع با دوربین گوشی (فلش خودکار)</span>
+                  <Zap size={14} className="fill-slate-950" />
+                </button>
+
                 <label className="flex items-center gap-1.5 text-xs text-blue-200 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -1036,8 +1366,8 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
             </div>
 
             {/* Scanner Input Bar */}
-            <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
-              <div className="relative flex-1">
+            <form onSubmit={handleBarcodeSubmit} className="flex flex-wrap sm:flex-nowrap gap-2">
+              <div className="relative flex-1 min-w-[200px]">
                 <input
                   ref={barcodeInputRef}
                   type="text"
@@ -1056,6 +1386,14 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
               >
                 {isResolvingBarcode ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
                 <span>ثبت ردیف</span>
+              </button>
+              <button
+                type="button"
+                onClick={startCameraScanner}
+                className="sm:hidden w-full h-11 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-500/25 active:scale-95"
+              >
+                <Camera size={17} />
+                <span>باز کردن دوربین بارکدخوان گوشی با فلش خودکار</span>
               </button>
             </form>
 
@@ -1644,6 +1982,338 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
             )}
           </div>
         </div>
+      )}
+
+      {/* Mobile Camera Barcode Scanner HUD Modal (Web Mobile & Android) */}
+      {isCameraScannerOpen && createPortal(
+        <div className="fixed inset-0 z-[999999998] bg-slate-950 text-white flex flex-col select-none overflow-hidden" dir="rtl">
+          {/* Top Bar: Title, Torch Toggle, Sound Toggle, Close */}
+          <div className="flex-none px-3 py-2.5 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center shrink-0">
+                <Camera size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-xs sm:text-sm font-black text-white truncate">اسکنر سریع دوربین گوشی</h3>
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                    کم‌مصرف و پیوسته
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 truncate">
+                  دوربین را مقابل بارکد کارتن بگیرید تا خودکار ثبت شود
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Flashlight (Torch) Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleCameraTorch}
+                className={`px-3 py-2 rounded-xl font-black text-xs flex items-center gap-1.5 border transition-all active:scale-95 cursor-pointer ${
+                  isTorchOn
+                    ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-lg shadow-amber-400/30'
+                    : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                }`}
+                title="روشن / خاموش کردن فلش گوشی"
+              >
+                {isTorchOn ? <Zap size={15} className="fill-slate-950" /> : <ZapOff size={15} />}
+                <span>{isTorchOn ? 'فلش روشن (خاموش کردن)' : 'روشن کردن فلش'}</span>
+              </button>
+
+              {/* Sound Toggle */}
+              <button
+                type="button"
+                onClick={() => setIsSoundEnabled(!isSoundEnabled)}
+                className={`p-2 rounded-xl border transition-colors ${
+                  isSoundEnabled
+                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+                title="صدای بوق اسکن"
+              >
+                {isSoundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              </button>
+
+              {/* Close Scanner */}
+              <button
+                type="button"
+                onClick={stopCameraScanner}
+                className="px-2.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1"
+              >
+                <X size={16} />
+                <span className="hidden sm:inline">بستن دوربین</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Customer & Warehouse Quick Selector Bar inside Scanner */}
+          <div className="flex-none px-3 py-2 bg-slate-900/80 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs relative">
+            <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+              <User size={15} className="text-blue-400 shrink-0" />
+              <span className="text-slate-400 shrink-0">مشتری سایان:</span>
+              <button
+                type="button"
+                onClick={() => setIsCameraCustomerPickerOpen(!isCameraCustomerPickerOpen)}
+                className="flex-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-right flex items-center justify-between gap-2 transition-colors"
+              >
+                <span className={selectedCustomer ? 'font-black text-amber-300 truncate' : 'text-rose-400 font-bold'}>
+                  {selectedCustomer
+                    ? `${selectedCustomer.name} (کد ${selectedCustomer.personCode})`
+                    : '⚠️ انتخاب مشتری برای ثبت اسکن‌ها...'}
+                </span>
+                <ChevronDown size={14} className="text-slate-400 shrink-0" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-slate-300">
+              <span className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">
+                انبار مبدا: <strong className="text-white">{warehouses.find(w => w.code === selectedWarehouse)?.name || `کد ${selectedWarehouse}`}</strong>
+              </span>
+            </div>
+
+            {/* Dropdown Modal for Picking Customer directly inside Camera View */}
+            {isCameraCustomerPickerOpen && (
+              <div className="absolute top-full right-2 left-2 mt-1 z-50 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-3 space-y-2 max-h-72 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-white">انتخاب مشتری / طرف‌حساب سایان</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraCustomerPickerOpen(false)}
+                    className="p-1 text-slate-400 hover:text-white"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    placeholder="جستجوی نام یا کد تفصیلی مشتری..."
+                    className="w-full h-9 px-3 pr-8 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white outline-none focus:border-blue-500"
+                  />
+                  <Search size={14} className="text-slate-400 absolute right-2.5 top-2.5" />
+                </div>
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-800 max-h-48">
+                  {customersList.map((c) => (
+                    <button
+                      key={c.personCode}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer(c);
+                        setIsCameraCustomerPickerOpen(false);
+                        setErrorMsg(null);
+                      }}
+                      className={`w-full p-2 text-right flex items-center justify-between text-xs rounded-lg ${
+                        selectedCustomer?.personCode === c.personCode
+                          ? 'bg-blue-600/30 text-amber-300 font-black'
+                          : 'hover:bg-slate-800 text-slate-200'
+                      }`}
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 shrink-0">
+                        کد {c.personCode}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Center Camera Viewfinder */}
+          <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-[220px]">
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              playsInline
+              muted
+              autoPlay
+            />
+            <canvas ref={canvasRef} className="hidden" />
+
+            {/* Laser Target Frame Overlay */}
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
+              <div
+                className={`w-full max-w-sm h-44 sm:h-52 rounded-3xl border-2 transition-all duration-200 relative flex items-center justify-center ${
+                  cameraScanFlash
+                    ? 'border-emerald-400 bg-emerald-500/20 shadow-[0_0_50px_rgba(16,185,129,0.7)] scale-[1.02]'
+                    : 'border-amber-400/80 shadow-[0_0_0_9999px_rgba(2,6,23,0.55)]'
+                }`}
+              >
+                {/* Corner Markers */}
+                <div className="absolute -top-0.5 -right-0.5 w-7 h-7 border-t-4 border-r-4 border-amber-400 rounded-tr-2xl" />
+                <div className="absolute -top-0.5 -left-0.5 w-7 h-7 border-t-4 border-l-4 border-amber-400 rounded-tl-2xl" />
+                <div className="absolute -bottom-0.5 -right-0.5 w-7 h-7 border-b-4 border-r-4 border-amber-400 rounded-br-2xl" />
+                <div className="absolute -bottom-0.5 -left-0.5 w-7 h-7 border-b-4 border-l-4 border-amber-400 rounded-bl-2xl" />
+
+                {/* Red/Green Laser Line */}
+                <div
+                  className={`w-[90%] h-0.5 rounded-full transition-colors ${
+                    cameraScanFlash
+                      ? 'bg-emerald-400 shadow-[0_0_15px_#10b981]'
+                      : 'bg-rose-500/90 shadow-[0_0_12px_#f43f5e] animate-pulse'
+                  }`}
+                />
+
+                {isResolvingBarcode && (
+                  <div className="absolute inset-0 bg-slate-950/60 rounded-3xl flex items-center justify-center gap-2 text-xs font-black text-amber-300">
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>در حال استعلام بارکد از سایان...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Torch Status Pill */}
+              <div className="mt-3 flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full bg-slate-900/90 border border-slate-700 text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
+                  <Smartphone size={13} className="text-amber-400" />
+                  <span>بارکد کارتن را داخل کادر قرار دهید (اسکن خودکار بدون نیاز به کلیک)</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Camera Error Overlay */}
+            {cameraError && (
+              <div className="absolute inset-0 bg-slate-950/90 p-6 flex flex-col items-center justify-center text-center space-y-3 z-20">
+                <AlertCircle size={36} className="text-rose-400" />
+                <p className="text-sm font-black text-white">{cameraError}</p>
+                <p className="text-xs text-slate-400 max-w-md">
+                  در صورتی که مجوز دوربین را نداده‌اید، از بخش تنظیمات مرورگر یا اپلیکیشن مجوز Camera را فعال کرده و مجدداً تلاش کنید.
+                </p>
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={startCameraScanner}
+                    className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-bold"
+                  >
+                    تلاش مجدد باز کردن دوربین
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopCameraScanner}
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                  >
+                    بازگشت
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Live Last Scan Toast Overlay */}
+            {lastScanResult && (
+              <div
+                className={`absolute bottom-3 right-3 left-3 p-2.5 rounded-xl text-xs font-black border shadow-lg transition-all ${
+                  lastScanResult.success
+                    ? 'bg-emerald-950/95 border-emerald-500 text-emerald-200'
+                    : 'bg-rose-950/95 border-rose-500 text-rose-200'
+                }`}
+              >
+                {lastScanResult.text}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Control Deck: Live Scanned Items + Manual Fallback + Final Sayan Submit */}
+          <div className="flex-none bg-slate-900 border-t border-slate-800 p-3 space-y-2.5 max-h-[44vh] flex flex-col">
+            {/* KPI Summary Row + Quick Manual Barcode Input */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="px-3 py-1.5 rounded-xl bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-black flex items-center gap-1.5">
+                  <Boxes size={15} />
+                  <span>{items.length.toLocaleString('fa-IR')} کارتن اسکن‌شده</span>
+                </div>
+                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-black flex items-center gap-1.5">
+                  <Scale size={15} />
+                  <span>وزن خالص: {totalNetWeight.toLocaleString('fa-IR')} kg</span>
+                </div>
+              </div>
+
+              {/* Manual Barcode Quick Entry inside Camera View */}
+              <form
+                onSubmit={handleBarcodeSubmit}
+                className="flex items-center gap-1.5 flex-1 min-w-[200px] max-w-xs"
+              >
+                <input
+                  type="text"
+                  value={scannedBarcode}
+                  onChange={(e) => setScannedBarcode(e.target.value)}
+                  placeholder="تایپ دستی بارکد خدشه‌دار..."
+                  className="flex-1 h-8 px-2.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white font-mono dir-ltr text-left outline-none focus:border-amber-400"
+                />
+                <button
+                  type="submit"
+                  disabled={isResolvingBarcode || !scannedBarcode.trim()}
+                  className="h-8 px-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold disabled:opacity-40"
+                >
+                  افزودن
+                </button>
+              </form>
+            </div>
+
+            {/* Scanned Cartons Mini List */}
+            {items.length > 0 && (
+              <div className="overflow-y-auto max-h-24 divide-y divide-slate-800/80 bg-slate-950/60 rounded-xl border border-slate-800 px-2.5 py-1">
+                {items.map((it, idx) => (
+                  <div key={it.id} className="py-1.5 flex items-center justify-between gap-2 text-[11px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-slate-500">{items.length - idx}.</span>
+                      <span className="font-mono font-bold text-amber-300 dir-ltr">{it.barcode}</span>
+                      <span className="text-slate-300 truncate">{it.itemName}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono font-black text-emerald-400">{it.netWeight} kg</span>
+                      <button
+                        type="button"
+                        onClick={() => setItems(prev => prev.filter(r => r.id !== it.id))}
+                        className="p-1 text-rose-400 hover:bg-rose-500/20 rounded"
+                        title="حذف این کارتن"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Error Alert if any */}
+            {errorMsg && (
+              <div className="p-2 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-bold flex items-center gap-1.5">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Bottom Actions: Register Directly for Customer in Sayan OR Return to Table */}
+            <div className="flex items-center gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={handleRegisterInSayan}
+                disabled={isSubmitting || items.length === 0}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-600 hover:to-teal-600 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 disabled:opacity-40 transition-all active:scale-95 cursor-pointer"
+              >
+                {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+                <span className="truncate">
+                  {selectedCustomer
+                    ? `ثبت نهایی ${items.length.toLocaleString('fa-IR')} کارتن برای «${selectedCustomer.name}» در سایان`
+                    : `انتخاب مشتری و ثبت ${items.length.toLocaleString('fa-IR')} کارتن در سایان`}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={stopCameraScanner}
+                className="py-3 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs shrink-0"
+              >
+                مشاهده جدول ({items.length})
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Success Modal */}

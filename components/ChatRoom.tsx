@@ -50,6 +50,52 @@ interface ChannelItem {
     hasMention?: boolean;
 }
 
+// Singleton Persian Intl formatters & caches to avoid expensive Intl.DateTimeFormat instantiation on every render in Tauri/Android WebView
+const faTimeFormatter = new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit' });
+const faDateKeyFormatter = new Intl.DateTimeFormat('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+const faFullDateFormatter = new Intl.DateTimeFormat('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+const timeFormatCache = new Map<number, string>();
+const dateKeyCache = new Map<number, string>();
+const humanDateCache = new Map<string, string>();
+
+const formatTimeFa = (ts: any): string => {
+    const num = typeof ts === 'number' ? ts : Number(ts) || 0;
+    const minuteBucket = Math.floor(num / 60000);
+    let cached = timeFormatCache.get(minuteBucket);
+    if (!cached) {
+        cached = faTimeFormatter.format(new Date(num || Date.now()));
+        if (timeFormatCache.size > 2000) timeFormatCache.clear();
+        timeFormatCache.set(minuteBucket, cached);
+    }
+    return cached;
+};
+
+const formatDateKeyFa = (ts: number): string => {
+    const tenMinBucket = Math.floor(ts / 600000);
+    let cached = dateKeyCache.get(tenMinBucket);
+    if (!cached) {
+        cached = faDateKeyFormatter.format(new Date(ts || Date.now()));
+        if (dateKeyCache.size > 1000) dateKeyCache.clear();
+        dateKeyCache.set(tenMinBucket, cached);
+    }
+    return cached;
+};
+
+const formatHumanDateFa = (ts: number, dateKey: string): string => {
+    const todayKey = faDateKeyFormatter.format(new Date());
+    if (dateKey === todayKey) return 'امروز';
+    const yestKey = faDateKeyFormatter.format(new Date(Date.now() - 86400000));
+    if (dateKey === yestKey) return 'دیروز';
+    let cached = humanDateCache.get(dateKey);
+    if (!cached) {
+        cached = faFullDateFormatter.format(new Date(ts || Date.now()));
+        if (humanDateCache.size > 500) humanDateCache.clear();
+        humanDateCache.set(dateKey, cached);
+    }
+    return cached;
+};
+
 const AudioPlayer: React.FC<{ url: string; isMe: boolean; duration?: number }> = ({ url, isMe, duration: propDuration }) => {
     const [playing, setPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -323,22 +369,29 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const [showContactInfo, setShowContactInfo] = useState<User | null>(null);
     const [isDownloading, setIsDownloading] = useState<{ [key: string]: boolean }>({});
     
-    // Check if files are downloaded
+    // Check if files are downloaded (only check unverified attachments to avoid native FS bridge spam)
+    const checkedAttachmentIdsRef = useRef<Set<string>>(new Set());
     useEffect(() => {
         if (!Capacitor.isNativePlatform()) return;
+        const unchecked = displayMessages.filter(
+            msg => msg.attachment?.fileName && !checkedAttachmentIdsRef.current.has(msg.id)
+        );
+        if (unchecked.length === 0) return;
+
+        let cancelled = false;
         const checkDownloads = async () => {
             const checks: Record<string, boolean> = {};
             let hasChanges = false;
-            for (const msg of displayMessages) {
-                if (msg.attachment && msg.attachment.fileName) {
-                    const fileName = msg.attachment.fileName || 'file';
-                    const uniqueLocalName = `${msg.id}_${fileName}`;
-                    const exists = await checkFileExists(uniqueLocalName);
-                    checks[msg.id] = exists;
-                    if (downloadedFiles[msg.id] !== exists) hasChanges = true;
-                }
+            for (const msg of unchecked) {
+                if (cancelled) return;
+                checkedAttachmentIdsRef.current.add(msg.id);
+                const fileName = msg.attachment?.fileName || 'file';
+                const uniqueLocalName = `${msg.id}_${fileName}`;
+                const exists = await checkFileExists(uniqueLocalName);
+                checks[msg.id] = exists;
+                if (downloadedFiles[msg.id] !== exists) hasChanges = true;
             }
-            if (hasChanges) {
+            if (!cancelled && hasChanges) {
                 setDownloadedFiles(prev => {
                     const updated = { ...prev, ...checks };
                     try {
@@ -349,7 +402,14 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             }
         };
         checkDownloads();
+        return () => { cancelled = true; };
     }, [displayMessages]);
+
+    // Windowed message count to keep DOM fast on Tauri & Android
+    const [visibleMessagesLimit, setVisibleMessagesLimit] = useState<number>(80);
+    useEffect(() => {
+        setVisibleMessagesLimit(80);
+    }, [activeChannel?.id, activeChannel?.type]);
     
     // --- Selection & Actions ---
     const [selectionMode, setSelectionMode] = useState(false);
@@ -685,22 +745,43 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         }, 10);
     };
 
-    const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        const text = e.target.value;
-        setInputText(text);
-        e.target.style.height = 'auto';
-        e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+    const textareaResizeRafRef = useRef<number | null>(null);
 
-        const cursorPos = e.target.selectionStart || text.length;
-        const textBeforeCursor = text.slice(0, cursorPos);
-        const match = /(?:^|\s)@([^\s@]*)$/.exec(textBeforeCursor);
-        if (match) {
-            setMentionQuery({
-                query: match[1],
-                index: match.index + (match[0].startsWith('@') ? 0 : 1)
+    const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const target = e.target;
+        const text = target.value;
+        setInputText(text);
+
+        // Avoid synchronous layout reflow on every single character typed; only resize in rAF when needed
+        if (textareaResizeRafRef.current) {
+            cancelAnimationFrame(textareaResizeRafRef.current);
+        }
+        if (!text) {
+            target.style.height = '28px';
+        } else if (text.includes('\n') || text.length > 45 || target.scrollHeight > 36) {
+            textareaResizeRafRef.current = requestAnimationFrame(() => {
+                if (inputAreaRef.current) {
+                    inputAreaRef.current.style.height = 'auto';
+                    inputAreaRef.current.style.height = `${Math.min(inputAreaRef.current.scrollHeight, 140)}px`;
+                }
             });
-            setMentionSelectedIndex(0);
-        } else {
+        }
+
+        // Only run regex mention check if text actually contains '@'
+        if (text.includes('@')) {
+            const cursorPos = target.selectionStart || text.length;
+            const textBeforeCursor = text.slice(0, cursorPos);
+            const match = /(?:^|\s)@([^\s@]*)$/.exec(textBeforeCursor);
+            if (match) {
+                setMentionQuery({
+                    query: match[1],
+                    index: match.index + (match[0].startsWith('@') ? 0 : 1)
+                });
+                setMentionSelectedIndex(0);
+            } else if (mentionQuery) {
+                setMentionQuery(null);
+            }
+        } else if (mentionQuery) {
             setMentionQuery(null);
         }
     };
@@ -781,7 +862,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
     useEffect(() => { 
         loadMeta();
-        const interval = setInterval(loadMeta, 5000); 
+        const interval = setInterval(loadMeta, 20000); 
         return () => clearInterval(interval);
     }, []);
 
@@ -861,25 +942,40 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
     }, []);
 
-    // Notification Trigger
+    // Notification Trigger with Cross-Device Seen/Read Synchronization
     useEffect(() => {
         if (messages.length === 0 || !currentUser) return;
+        const currentU = currentUser.username.toLowerCase();
 
-        // Find genuinely new messages that have not been registered in notifiedMessageIdsRef
-        const newMessages = messages.filter(m => !notifiedMessageIdsRef.current.has(m.id));
+        // Find genuinely new unread messages that have not been registered in notifiedMessageIdsRef
+        // and have NOT been seen/read on any other device by the current user
+        const newMessages = messages.filter(m => {
+            if (notifiedMessageIdsRef.current.has(m.id)) return false;
+            // If already read by this user on another device, register as processed and never notify
+            if (m.readBy?.some(u => u.toLowerCase() === currentU)) {
+                notifiedMessageIdsRef.current.add(m.id);
+                return false;
+            }
+            return true;
+        });
 
         // Mark them as processed instantly
         newMessages.forEach(m => notifiedMessageIdsRef.current.add(m.id));
 
         // If the window is hidden, process the last newly arrived message
         const lastNewMsg = newMessages[newMessages.length - 1];
-        if (lastNewMsg && lastNewMsg.senderUsername !== currentUser.username && document.hidden) {
+        if (lastNewMsg && lastNewMsg.senderUsername?.toLowerCase() !== currentU && document.hidden) {
+            // Guard: If seen on another device or already marked read, skip alert
+            if (lastNewMsg.readBy?.some(u => u.toLowerCase() === currentU)) {
+                return;
+            }
+
             const channelId = lastNewMsg.groupId || lastNewMsg.senderUsername;
             
             // Validate if message is intended for the current user
             const isPublic = !lastNewMsg.groupId && (!lastNewMsg.recipient || lastNewMsg.recipient.trim() === '');
             const isGroupForMe = lastNewMsg.groupId && groups.some(g => g.id === lastNewMsg.groupId);
-            const isPrivateForMe = lastNewMsg.recipient && lastNewMsg.recipient.trim() !== '' && lastNewMsg.recipient === currentUser.username;
+            const isPrivateForMe = lastNewMsg.recipient && lastNewMsg.recipient.trim() !== '' && lastNewMsg.recipient.toLowerCase() === currentU;
             const isIntendedForMe = isPublic || isGroupForMe || isPrivateForMe;
 
             if (!mutedChannels.has(channelId) && isIntendedForMe) {
@@ -910,17 +1006,20 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
     const loadMeta = async () => {
         try {
-            console.log("ChatRoom: Starting loadMeta");
             const [usrList, grpList, taskGps, tskList] = await Promise.all([
                 getUsers(),
                 getGroups(),
                 getTaskGroups(),
                 getTasks()
             ]);
-            console.log("ChatRoom: Meta preloads loaded in parallel");
             
             const safeUsrList = Array.isArray(usrList) ? usrList : (Array.isArray((usrList as any)?.users) ? (usrList as any).users : []);
-            setUsers(safeUsrList);
+            setUsers(prev => {
+                if (prev.length === safeUsrList.length && prev.every((u, idx) => u.username === safeUsrList[idx]?.username && u.lastSeen === safeUsrList[idx]?.lastSeen && u.avatar === safeUsrList[idx]?.avatar)) {
+                    return prev;
+                }
+                return safeUsrList;
+            });
             
             const safeGrpList = Array.isArray(grpList) ? grpList : [];
             const safeTaskGps = Array.isArray(taskGps) ? taskGps : [];
@@ -928,12 +1027,27 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
             const isManager = currentUser && [UserRole.ADMIN, UserRole.MANAGER, UserRole.CEO].includes(currentUser.role as UserRole);
             const visibleGroups = safeGrpList.filter(g => isManager || (Array.isArray(g.members) && g.members.includes(currentUser?.username)) || g.createdBy === currentUser?.username);
-            setGroups(visibleGroups);
+            setGroups(prev => {
+                if (prev.length === visibleGroups.length && prev.every((g, idx) => g.id === visibleGroups[idx]?.id && g.name === visibleGroups[idx]?.name && g.members?.length === visibleGroups[idx]?.members?.length)) {
+                    return prev;
+                }
+                return visibleGroups;
+            });
 
             const visibleTaskGps = safeTaskGps.filter(g => isManager || (Array.isArray(g.members) && g.members.includes(currentUser?.username)) || g.createdBy === currentUser?.username);
-            setTaskGroups(visibleTaskGps);
+            setTaskGroups(prev => {
+                if (prev.length === visibleTaskGps.length && prev.every((g, idx) => g.id === visibleTaskGps[idx]?.id && g.name === visibleTaskGps[idx]?.name && g.members?.length === visibleTaskGps[idx]?.members?.length)) {
+                    return prev;
+                }
+                return visibleTaskGps;
+            });
             
-            setTasks(safeTskList);
+            setTasks(prev => {
+                if (prev.length === safeTskList.length && prev.every((t, idx) => t.id === safeTskList[idx]?.id && t.status === safeTskList[idx]?.status && t.replies?.length === safeTskList[idx]?.replies?.length)) {
+                    return prev;
+                }
+                return safeTskList;
+            });
         } catch (e) { 
             console.error("Chat load error", e); 
         }
@@ -1121,7 +1235,69 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         return list;
     };
 
-    const getSortedChannels = (): ChannelItem[] => {
+    // Pre-index all channel statistics (lastMsg, unread, hasMention) in a single O(N) pass over displayMessages
+    const channelStatsMap = useMemo(() => {
+        const stats = new Map<string, { lastMsg: ChatMessage | null; unread: number; hasMention: boolean }>();
+        if (!currentUser || !currentUser.username) return stats;
+        const currentU = currentUser.username.toLowerCase();
+
+        const ensureStat = (key: string) => {
+            let entry = stats.get(key);
+            if (!entry) {
+                entry = { lastMsg: null, unread: 0, hasMention: false };
+                stats.set(key, entry);
+            }
+            return entry;
+        };
+
+        for (let i = 0; i < displayMessages.length; i++) {
+            const m = displayMessages[i];
+            const senderLower = m.senderUsername?.toLowerCase() || '';
+            const recipientLower = m.recipient?.toLowerCase() || '';
+            const isSystem = senderLower === 'system' || m.role === 'system' || m.sender === 'سیستم';
+
+            let channelKey = '';
+            let isForUnread = false;
+
+            if (isSystem) {
+                if (!recipientLower || recipientLower === currentU) {
+                    channelKey = 'system';
+                    isForUnread = true;
+                }
+            } else if (m.groupId) {
+                channelKey = `group:${m.groupId}`;
+                isForUnread = senderLower !== '' && senderLower !== currentU;
+            } else if (!recipientLower) {
+                channelKey = 'public';
+                isForUnread = senderLower !== '' && senderLower !== currentU;
+            } else if (recipientLower === currentU && senderLower) {
+                channelKey = `private:${senderLower}`;
+                isForUnread = senderLower !== currentU;
+            } else if (senderLower === currentU && recipientLower) {
+                channelKey = `private:${recipientLower}`;
+                isForUnread = false;
+            }
+
+            if (!channelKey) continue;
+
+            const stat = ensureStat(channelKey);
+            stat.lastMsg = m;
+
+            if (isForUnread) {
+                const isRead = m.readBy?.some(u => u.toLowerCase() === currentU);
+                if (!isRead) {
+                    stat.unread++;
+                    if (!stat.hasMention && channelKey !== 'system' && checkIfMessageMentionsUser(m.message, currentUser)) {
+                        stat.hasMention = true;
+                    }
+                }
+            }
+        }
+
+        return stats;
+    }, [displayMessages, currentUser]);
+
+    const sortedChannels = useMemo((): ChannelItem[] => {
         const list: ChannelItem[] = [];
         const term = searchTerm.toLowerCase().trim();
         const safeUsers = Array.isArray(users) ? users : [];
@@ -1131,70 +1307,54 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         const currentU = currentUsername.toLowerCase();
         const isAdmin = currentUser?.role === UserRole.ADMIN;
 
-        const checkChannelHasMention = (channelId: string, type: 'private' | 'group' | 'public' | 'task_group' | 'system'): boolean => {
-            if (!currentUser || !currentUser.username) return false;
-            return messages.some(m => {
-                if (!m.senderUsername || (m.senderUsername.toLowerCase() === currentU && type !== 'system')) return false;
-                const isRead = m.readBy?.some(u => u.toLowerCase() === currentU);
-                if (isRead) return false;
-                
-                let belongsToChannel = false;
-                if (type === 'public') belongsToChannel = !m.recipient && !m.groupId;
-                else if (type === 'group' || type === 'task_group') belongsToChannel = m.groupId === channelId;
-                else if (type === 'private') belongsToChannel = (m.senderUsername?.toLowerCase() === channelId?.toLowerCase() && m.recipient?.toLowerCase() === currentU);
-                
-                if (!belongsToChannel) return false;
-                return checkIfMessageMentionsUser(m.message, currentUser);
-            });
-        };
+        const getStat = (key: string) => channelStatsMap.get(key) || { lastMsg: null, unread: 0, hasMention: false };
 
         if (activeTab === 'ALL') {
             // 1. System Channel (Cartable / approvals / notices)
-            const lastSys = getLastMessage('system', 'system');
-            const unreadSys = getUnreadCount('system', 'system');
+            const sysStat = getStat('system');
             const sysMatch = !term || 'پیام ها و اعلانات هوشمند سیستم سیستم کارتابل اطلاعیه صورتجلسه'.includes(term);
             if (sysMatch) {
                 list.push({
                     type: 'system', id: 'system', name: 'پیام‌ها و اعلانات سیستم', 
                     avatar: null, isOnline: true, 
-                    lastMsg: lastSys, unread: unreadSys,
+                    lastMsg: sysStat.lastMsg, unread: sysStat.unread,
                     hasMention: false
                 });
             }
 
             // 2. Public Channel
-            const lastPub = getLastMessage('public', 'public');
+            const pubStat = getStat('public');
             list.push({
                 type: 'public', id: 'public', name: 'کانال عمومی', 
                 avatar: null, isOnline: true, 
-                lastMsg: lastPub, unread: getUnreadCount('public', 'public'),
-                hasMention: checkChannelHasMention('public', 'public')
+                lastMsg: pubStat.lastMsg, unread: pubStat.unread,
+                hasMention: pubStat.hasMention
             });
 
             // 3. Groups (with avatars)
             safeGroups.forEach(g => {
-                const last = getLastMessage(g.id, 'group');
+                const gStat = getStat(`group:${g.id}`);
                 const isMember = isAdmin || (Array.isArray(g.members) && g.members.some(mem => mem?.toLowerCase() === currentU)) || g.createdBy?.toLowerCase() === currentU;
-                if (isMember || last || term) {
+                if (isMember || gStat.lastMsg || term) {
                     list.push({
                         type: 'group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'group'),
-                        hasMention: checkChannelHasMention(g.id, 'group')
+                        lastMsg: gStat.lastMsg, unread: gStat.unread,
+                        hasMention: gStat.hasMention
                     });
                 }
             });
 
             // 4. Task Groups (with avatars)
             safeTaskGroups.forEach(g => {
-                const last = getLastMessage(g.id, 'task_group');
+                const tgStat = getStat(`group:${g.id}`);
                 const isMember = isAdmin || (Array.isArray(g.members) && g.members.some(mem => mem?.toLowerCase() === currentU)) || g.createdBy?.toLowerCase() === currentU;
-                if (isMember || last || term) {
+                if (isMember || tgStat.lastMsg || term) {
                     list.push({
                         type: 'task_group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'task_group'),
-                        hasMention: checkChannelHasMention(g.id, 'task_group')
+                        lastMsg: tgStat.lastMsg, unread: tgStat.unread,
+                        hasMention: tgStat.hasMention
                     });
                 }
             });
@@ -1202,18 +1362,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             // 5. Private chats
             safeUsers.forEach(u => {
                 if (currentUsername && u.username?.toLowerCase() === currentU) return;
-                const last = getLastMessage(u.username, 'private');
+                const uStat = getStat(`private:${(u.username || '').toLowerCase()}`);
                 const isOnline = isUserOnline(u);
                 
                 list.push({
                     type: 'private', id: u.username, name: u.fullName || u.username,
                     avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: parseTimestamp(u.lastSeen),
-                    lastMsg: last, unread: getUnreadCount(u.username, 'private'),
-                    hasMention: checkChannelHasMention(u.username, 'private')
+                    lastMsg: uStat.lastMsg, unread: uStat.unread,
+                    hasMention: uStat.hasMention
                 });
             });
 
-            // If empty, add some users for accessibility
             if (list.length <= 1 && !term) {
                  safeUsers.slice(0, 10).forEach(u => {
                      if (currentUsername && u.username?.toLowerCase() === currentU) return;
@@ -1229,69 +1388,64 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             }
         } else if (activeTab === 'CHATS') {
             // 1. System Channel
-            const lastSys = getLastMessage('system', 'system');
-            const unreadSys = getUnreadCount('system', 'system');
+            const sysStat = getStat('system');
             const sysMatch = !term || 'پیام ها و اعلانات هوشمند سیستم سیستم کارتابل اطلاعیه صورتجلسه'.includes(term);
             if (sysMatch) {
                 list.push({
                     type: 'system', id: 'system', name: 'پیام‌ها و اعلانات سیستم', 
                     avatar: null, isOnline: true, 
-                    lastMsg: lastSys, unread: unreadSys,
+                    lastMsg: sysStat.lastMsg, unread: sysStat.unread,
                     hasMention: false
                 });
             }
 
-            const lastPub = getLastMessage('public', 'public');
+            const pubStat = getStat('public');
             list.push({
                 type: 'public', id: 'public', name: 'کانال عمومی', 
                 avatar: null, isOnline: true, 
-                lastMsg: lastPub, unread: getUnreadCount('public', 'public'),
-                hasMention: checkChannelHasMention('public', 'public')
+                lastMsg: pubStat.lastMsg, unread: pubStat.unread,
+                hasMention: pubStat.hasMention
             });
 
-            // Include ALL groups that I am a member of, created, or if Admin
             safeGroups.forEach(g => {
-                const last = getLastMessage(g.id, 'group');
+                const gStat = getStat(`group:${g.id}`);
                 const isMember = isAdmin || (Array.isArray(g.members) && g.members.some(mem => mem?.toLowerCase() === currentU)) || g.createdBy?.toLowerCase() === currentU;
-                if (isMember || last || term) {
+                if (isMember || gStat.lastMsg || term) {
                     list.push({
                         type: 'group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'group'),
-                        hasMention: checkChannelHasMention(g.id, 'group')
+                        lastMsg: gStat.lastMsg, unread: gStat.unread,
+                        hasMention: gStat.hasMention
                     });
                 }
             });
 
-            // Include task groups too if they have messages, match search, or if Admin
             safeTaskGroups.forEach(g => {
-                const last = getLastMessage(g.id, 'task_group');
+                const tgStat = getStat(`group:${g.id}`);
                 const isMember = isAdmin || (Array.isArray(g.members) && g.members.some(mem => mem?.toLowerCase() === currentU)) || g.createdBy?.toLowerCase() === currentU;
-                if (last || isMember || term) {
+                if (tgStat.lastMsg || isMember || term) {
                     list.push({
                         type: 'task_group', id: g.id, name: g.name,
                         avatar: g.avatar || null, isOnline: false,
-                        lastMsg: last, unread: getUnreadCount(g.id, 'task_group'),
-                        hasMention: checkChannelHasMention(g.id, 'task_group')
+                        lastMsg: tgStat.lastMsg, unread: tgStat.unread,
+                        hasMention: tgStat.hasMention
                     });
                 }
             });
 
-            // Include all users for direct messaging in CHATS tab
             safeUsers.forEach(u => {
                 if (currentUsername && u.username?.toLowerCase() === currentU) return;
-                const last = getLastMessage(u.username, 'private');
+                const uStat = getStat(`private:${(u.username || '').toLowerCase()}`);
                 const isOnline = isUserOnline(u);
                 
                 list.push({
                     type: 'private', id: u.username, name: u.fullName || u.username,
                     avatar: resolveImageUrl(u.avatar), isOnline, lastSeen: parseTimestamp(u.lastSeen),
-                    lastMsg: last, unread: getUnreadCount(u.username, 'private'),
-                    hasMention: checkChannelHasMention(u.username, 'private')
+                    lastMsg: uStat.lastMsg, unread: uStat.unread,
+                    hasMention: uStat.hasMention
                 });
             });
 
-            // If list is still very empty (just Public), add some frequent users or just all users for accessibility
             if (list.length <= 1 && !term) {
                  safeUsers.slice(0, 10).forEach(u => {
                      if (currentUsername && u.username?.toLowerCase() === currentU) return;
@@ -1307,22 +1461,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             }
         } else if (activeTab === 'GROUPS') {
             safeGroups.forEach(g => {
-                const last = getLastMessage(g.id, 'group');
+                const gStat = getStat(`group:${g.id}`);
                 list.push({
                     type: 'group', id: g.id, name: g.name,
                     avatar: g.avatar || null, isOnline: false,
-                    lastMsg: last, unread: getUnreadCount(g.id, 'group'),
-                    hasMention: checkChannelHasMention(g.id, 'group')
+                    lastMsg: gStat.lastMsg, unread: gStat.unread,
+                    hasMention: gStat.hasMention
                 });
             });
         } else if (activeTab === 'TASKS') {
             safeTaskGroups.forEach(g => {
-                const last = getLastMessage(g.id, 'task_group');
+                const tgStat = getStat(`group:${g.id}`);
                 list.push({
                     type: 'task_group', id: g.id, name: g.name,
                     avatar: g.avatar || null, isOnline: false,
-                    lastMsg: last, unread: getUnreadCount(g.id, 'task_group'),
-                    hasMention: checkChannelHasMention(g.id, 'task_group')
+                    lastMsg: tgStat.lastMsg, unread: tgStat.unread,
+                    hasMention: tgStat.hasMention
                 });
             });
         }
@@ -1333,7 +1487,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             if (timeA || timeB) return timeB - timeA;
             return a.name.localeCompare(b.name);
         });
-    };
+    }, [channelStatsMap, activeTab, searchTerm, users, groups, taskGroups, currentUser]);
 
     // --- Actions ---
     const handleSendSticker = async (sticker: StickerItem) => {
@@ -2056,55 +2210,55 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         await handleUpdateGroup(groupId, { admins: newAdmins });
     };
 
-    // --- Render Logic ---
-    if (!currentUser) return null;
+    // --- Render Logic & Memoized Views ---
+    const filteredMessages = useMemo(() => {
+        if (!activeChannel || !currentUser) return [];
+        const currentU = currentUser.username?.toLowerCase() || '';
+        const channelIdLower = activeChannel.id?.toLowerCase() || '';
 
-    const filteredMessages = displayMessages.filter(msg => {
-        if (!activeChannel) return false;
-        let match = false;
-        if (activeChannel.type === 'public') match = !msg.recipient && !msg.groupId;
-        else if (activeChannel.type === 'system') match = (
-            (msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم') &&
-            (!msg.recipient || msg.recipient.toLowerCase() === currentUser.username?.toLowerCase())
-        );
-        else if (activeChannel.type === 'private') match = (
-            (msg.senderUsername?.toLowerCase() === activeChannel.id?.toLowerCase() && msg.recipient?.toLowerCase() === currentUser.username?.toLowerCase()) || 
-            (msg.senderUsername?.toLowerCase() === currentUser.username?.toLowerCase() && msg.recipient?.toLowerCase() === activeChannel.id?.toLowerCase())
-        );
-        else if (activeChannel.type === 'group' || activeChannel.type === 'task_group') match = msg.groupId === activeChannel.id;
-        
-        if (!match) return false;
-        if (innerSearchTerm) {
-            return (msg.message?.includes(innerSearchTerm) || msg.sender?.includes(innerSearchTerm));
+        return displayMessages.filter(msg => {
+            let match = false;
+            if (activeChannel.type === 'public') match = !msg.recipient && !msg.groupId;
+            else if (activeChannel.type === 'system') match = (
+                (msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم') &&
+                (!msg.recipient || msg.recipient.toLowerCase() === currentU)
+            );
+            else if (activeChannel.type === 'private') {
+                const sLower = msg.senderUsername?.toLowerCase() || '';
+                const rLower = msg.recipient?.toLowerCase() || '';
+                match = (sLower === channelIdLower && rLower === currentU) || (sLower === currentU && rLower === channelIdLower);
+            }
+            else if (activeChannel.type === 'group' || activeChannel.type === 'task_group') match = msg.groupId === activeChannel.id;
+            
+            if (!match) return false;
+            if (innerSearchTerm) {
+                return (msg.message?.includes(innerSearchTerm) || msg.sender?.includes(innerSearchTerm));
+            }
+            return true;
+        });
+    }, [displayMessages, activeChannel?.type, activeChannel?.id, innerSearchTerm, currentUser?.username]);
+
+    const windowedMessages = useMemo(() => {
+        if (innerSearchTerm || filteredMessages.length <= visibleMessagesLimit) {
+            return filteredMessages;
         }
-        return true;
-    });
+        return filteredMessages.slice(filteredMessages.length - visibleMessagesLimit);
+    }, [filteredMessages, visibleMessagesLimit, innerSearchTerm]);
 
     const groupedMessagesByDay = useMemo(() => {
         const groups: { dateKey: string; title: string; messages: ChatMessage[] }[] = [];
-        const getHumanDateTitle = (ts: number) => {
-            const now = new Date();
-            const todayKey = now.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-            const yest = new Date(Date.now() - 86400000);
-            const yestKey = yest.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-            const d = new Date(ts);
-            const dKey = d.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
-            
-            if (dKey === todayKey) return 'امروز';
-            if (dKey === yestKey) return 'دیروز';
-            return d.toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-        };
 
-        filteredMessages.forEach((msg) => {
+        windowedMessages.forEach((msg) => {
             const msgTimestamp = parseTimestamp(msg.timestamp);
-            const msgDate = new Date(msgTimestamp);
-            const msgDateKey = msgDate.toLocaleDateString('fa-IR', { year: 'numeric', month: 'numeric', day: 'numeric' });
+            const msgDateKey = formatDateKeyFa(msgTimestamp);
             
-            let existingGroup = groups.find(g => g.dateKey === msgDateKey);
+            let existingGroup = groups.length > 0 && groups[groups.length - 1].dateKey === msgDateKey
+                ? groups[groups.length - 1]
+                : groups.find(g => g.dateKey === msgDateKey);
             if (!existingGroup) {
                 existingGroup = {
                     dateKey: msgDateKey,
-                    title: getHumanDateTitle(msgTimestamp),
+                    title: formatHumanDateFa(msgTimestamp, msgDateKey),
                     messages: []
                 };
                 groups.push(existingGroup);
@@ -2112,7 +2266,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             existingGroup.messages.push(msg);
         });
         return groups;
-    }, [filteredMessages]);
+    }, [windowedMessages]);
 
     const renderMessageWithMentions = (text: string) => {
         if (!text) return null;
@@ -2195,6 +2349,343 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         });
     };
 
+    const renderedMessageGroups = useMemo(() => {
+        if (!currentUser || !activeChannel) return null;
+        return groupedMessagesByDay.map((group) => {
+            return (
+                <div key={group.dateKey} className="w-full relative flex flex-col gap-2">
+                    <div className="flex justify-center my-3 select-none pointer-events-none transition-opacity duration-300">
+                        <span className="px-3 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-slate-200/90 dark:bg-zinc-800/90 rounded-full shadow-xs border border-slate-300/50 dark:border-zinc-700/50">
+                            {group.title}
+                        </span>
+                    </div>
+                    
+                    {group.messages.map((msg: ChatMessage) => {
+                        const isMe = msg.senderUsername === currentUser.username;
+                        const isSystemMsg = msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم' || activeChannel.type === 'system';
+                        const isSelected = selectedMessages.has(msg.id);
+                        const isHighlighted = highlightedMessageId === msg.id;
+                        const isMentionedInMsg = checkIfMessageMentionsUser(msg.message, currentUser);
+
+                        const bubbleStyles = isHighlighted 
+                            ? `bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-400 dark:border-amber-500 text-amber-950 dark:text-amber-100 ring-4 ring-amber-300/60 dark:ring-amber-600/60 scale-[1.02] shadow-md transition-all duration-350 ${
+                                isSystemMsg ? 'rounded-2xl w-full max-w-[92%] md:max-w-[85%]' : 
+                                isMe ? 'rounded-xl rounded-tr-none max-w-[75%] md:max-w-[70%]' : 
+                                'rounded-xl rounded-tl-none max-w-[75%] md:max-w-[70%]'
+                              }`
+                            : isSystemMsg 
+                                ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm'
+                                : isMe 
+                                    ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] dark:bg-[#1a2f16] dark:text-[#eeffde] rounded-xl rounded-tr-none shadow-sm'
+                                    : isMentionedInMsg
+                                        ? 'max-w-[75%] md:max-w-[70%] bg-amber-50/90 dark:bg-amber-950/40 border-r-4 border-amber-500 text-amber-950 dark:text-amber-100 rounded-xl rounded-tl-none shadow-sm ring-1 ring-amber-300/30'
+                                        : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm';
+                        
+                        return (
+                            <div 
+                                key={msg.id}
+                                id={`msg-${msg.id}`}
+                                className={`chat-msg-row flex w-full mb-1 group ${isSystemMsg ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'} items-end gap-2 ${selectionMode ? 'cursor-pointer' : ''}`}
+                                onClick={() => { if(selectionMode) toggleSelection(msg.id); }}
+                                onContextMenu={(e) => { e.preventDefault(); if(!selectionMode) setContextMenuMsg({msg, x: e.clientX, y: e.clientY}); }}
+                            >
+                                {isMe && !isSystemMsg && (
+                                    <div className="flex flex-col gap-1 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                         <button onClick={() => setReplyingTo(msg)} className="p-1.5 glass-panel rounded-full text-blue-600 shadow-sm hover:scale-110" title="پاسخ"><CornerUpLeft size={12}/></button>
+                                         <button onClick={() => { setSelectedMessages(new Set([msg.id])); setShowForwardModal(true); }} className="p-1.5 glass-panel rounded-full text-green-600 shadow-sm hover:scale-110" title="فوروارد"><Forward size={12}/></button>
+                                         <button onClick={() => handleCopyMessage(msg)} className="p-1.5 glass-panel rounded-full text-gray-600 shadow-sm hover:scale-110" title="کپی"><Copy size={12}/></button>
+                                         {(msg.attachment || msg.audioUrl) && <button onClick={() => handleNativeShare(msg)} className="p-1.5 glass-panel rounded-full text-orange-600 shadow-sm hover:scale-110" title="اشتراک"><Share2 size={12}/></button>}
+                                    </div>
+                                )}
+
+                                {selectionMode && (
+                                    <div className={`mx-2 self-center w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-400 bg-white/50'}`}>
+                                        {isSelected && <Check size={12} className="text-white"/>}
+                                    </div>
+                                )}
+                                
+                                <div className={`relative ${bubbleStyles} px-3.5 py-2.5 text-sm ${isSelected ? 'ring-2 ring-blue-400' : ''}`}>
+                                    {!isMe && !isSystemMsg && isMentionedInMsg && (
+                                        <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-800 dark:text-amber-200 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-lg mb-1.5 w-fit border border-amber-300 dark:border-amber-700 shadow-xs">
+                                            <AtSign size={11} className="text-amber-600 dark:text-amber-400" />
+                                            <span>شما در این پیام تگ شده‌اید</span>
+                                        </div>
+                                    )}
+
+                                    {isSystemMsg && (
+                                        <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-indigo-200/60 dark:border-indigo-800/50">
+                                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                                                <span className="p-1 bg-indigo-100 dark:bg-indigo-900/60 rounded-lg text-[13px]">📢</span>
+                                                <span>پیام و اعلان هوشمند سیستم</span>
+                                            </div>
+                                            <span className="text-[10px] bg-indigo-100/70 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-full font-medium">کارتابل</span>
+                                        </div>
+                                    )}
+
+                                    {msg.isForwarded && msg.forwardFrom && (
+                                        <div className="text-[10px] text-blue-600 font-bold mb-1 flex items-center gap-1">
+                                            <Forward size={10}/> نقل قول از {msg.forwardFrom}
+                                        </div>
+                                    )}
+
+                                    {msg.replyTo && (
+                                        <div 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                scrollToMessage(msg.replyTo.id);
+                                            }}
+                                            className={`mb-1 px-2 py-1 rounded border-r-4 text-[10px] bg-black/5 dark:bg-white/5 cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10 ${isMe ? 'border-green-600' : 'border-blue-600'}`}
+                                            title="برای رفتن به پیام کلیک کنید"
+                                        >
+                                            <div className="font-bold opacity-80">{msg.replyTo.sender}</div>
+                                            <div className="truncate opacity-70">{msg.replyTo.message ? msg.replyTo.message.substring(0, 30) : 'فایل/پیوست'}...</div>
+                                        </div>
+                                    )}
+
+                                    {!isMe && !isSystemMsg && activeChannel.type !== 'private' && (
+                                        <div className="text-[11px] font-bold text-[#e17076] mb-0.5">{msg.sender}</div>
+                                    )}
+
+                                    {msg.sticker ? (
+                                        <div className="py-1">
+                                            {msg.sticker.preview ? (
+                                                <div 
+                                                    className="w-32 h-32 md:w-40 md:h-40 select-none transition-transform hover:scale-105 filter drop-shadow-md"
+                                                    dangerouslySetInnerHTML={{ __html: msg.sticker.preview }}
+                                                />
+                                            ) : msg.sticker.url ? (
+                                                <img 
+                                                    src={resolveImageUrl(msg.sticker.url)} 
+                                                    alt={msg.sticker.name || 'استیکر'} 
+                                                    className="w-32 h-32 md:w-40 md:h-40 object-contain filter drop-shadow-sm select-none transition-transform hover:scale-105"
+                                                    loading="lazy"
+                                                />
+                                            ) : (
+                                                <span className="text-5xl">{msg.sticker.emoji || '🌟'}</span>
+                                            )}
+                                        </div>
+                                    ) : msg.attachment ? (
+                                        <>
+                                        <div className="mb-1">
+                                            {msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                <div className="relative group/img overflow-hidden rounded-xl inline-block max-w-full">
+                                                    <img 
+                                                        src={resolveImageUrl(msg.attachment.url)} 
+                                                        alt={msg.attachment.fileName}
+                                                        loading="lazy"
+                                                        className="rounded-xl max-h-60 object-cover cursor-pointer hover:opacity-95 transition-opacity shadow-xs"
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName }); 
+                                                        }}
+                                                    />
+                                                    <button 
+                                                        onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
+                                                        className="absolute bottom-2 left-2 p-1.5 bg-black/65 hover:bg-black/85 text-white rounded-lg opacity-0 group-hover/img:opacity-100 transition-opacity cursor-pointer shadow-sm"
+                                                        title="دانلود تصویر"
+                                                    >
+                                                        <Download size={14} />
+                                                    </button>
+                                                </div>
+                                            ) : (msg.attachment.fileName.match(/\.pdf$/i) || msg.attachment.url.match(/\.pdf$/i)) ? (
+                                                <div className={`border rounded-2xl p-2.5 flex items-center justify-between gap-2.5 transition-all shadow-xs min-w-[220px] sm:min-w-[270px] max-w-full ${
+                                                    isMe 
+                                                        ? 'bg-white/85 dark:bg-zinc-800/85 border-rose-200/90 dark:border-rose-900/50 hover:border-rose-400' 
+                                                        : 'bg-white/95 dark:bg-zinc-900/95 border-rose-200/80 dark:border-rose-900/50 hover:border-rose-400 dark:hover:border-rose-700'
+                                                }`}>
+                                                    <div 
+                                                        onClick={() => setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName })}
+                                                        className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group/pdf"
+                                                        title="مشاهده مستقیم سند PDF بدون نیاز به دانلود"
+                                                    >
+                                                        <div className="w-10 h-10 bg-rose-50 dark:bg-rose-950/50 border border-rose-200/70 dark:border-rose-900/50 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 group-hover/pdf:scale-105 transition-transform shadow-xs">
+                                                            <FileText size={20} />
+                                                        </div>
+                                                        <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full group-hover/pdf:text-rose-600 dark:group-hover/pdf:text-rose-400 transition-colors" dir="ltr" title={msg.attachment.fileName}>
+                                                                {msg.attachment.fileName}
+                                                            </span>
+                                                            <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-100 dark:border-rose-900/30">
+                                                                <Eye size={11} />
+                                                                <span>مشاهده سند PDF</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="shrink-0 flex items-center gap-1 border-r border-zinc-200/80 dark:border-zinc-700/80 pr-1.5 mr-0.5">
+                                                        <button 
+                                                            onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
+                                                            disabled={isDownloading[msg.id]}
+                                                            className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                                                                downloadedFiles[msg.id] 
+                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100' 
+                                                                    : 'bg-rose-50/80 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 hover:scale-105'
+                                                            }`}
+                                                            title={downloadedFiles[msg.id] ? 'دانلود شده (دانلود مجدد)' : 'دانلود مستقیم PDF'}
+                                                        >
+                                                            {isDownloading[msg.id] ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <Loader2 size={16} className="animate-spin text-rose-600"/>
+                                                                    <span className="text-[9px] font-black text-rose-600">{fileProgress[msg.id]}%</span>
+                                                                </div>
+                                                            ) : downloadedFiles[msg.id] ? (
+                                                                <Check size={16} className="text-emerald-600" />
+                                                            ) : (
+                                                                <Download size={16} />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className={`border rounded-2xl p-2.5 flex items-center justify-between gap-2.5 transition-all shadow-xs min-w-[210px] sm:min-w-[260px] max-w-full ${
+                                                    isMe 
+                                                        ? 'bg-white/85 dark:bg-zinc-800/85 border-blue-200 dark:border-blue-900/40 hover:border-blue-400' 
+                                                        : 'bg-white/95 dark:bg-zinc-900/95 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-700'
+                                                }`}>
+                                                    <div 
+                                                        onClick={() => setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName })}
+                                                        className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group/file"
+                                                        title="مشاهده و بررسی فایل"
+                                                    >
+                                                        <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/50 border border-blue-200/70 dark:border-blue-900/50 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 group-hover/file:scale-105 transition-transform shadow-xs">
+                                                            <File size={20} />
+                                                        </div>
+                                                        <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
+                                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full group-hover/file:text-blue-600 dark:group-hover/file:text-blue-400 transition-colors" dir="ltr" title={msg.attachment.fileName}>
+                                                                {msg.attachment.fileName}
+                                                            </span>
+                                                            <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
+                                                                <Eye size={11} />
+                                                                <span>پیش‌نمایش / دریافت</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="shrink-0 flex items-center gap-1 border-r border-zinc-200/80 dark:border-zinc-700/80 pr-1.5 mr-0.5">
+                                                        <button 
+                                                            onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
+                                                            disabled={isDownloading[msg.id]}
+                                                            className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                                                                downloadedFiles[msg.id] 
+                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100' 
+                                                                    : 'bg-blue-50/80 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:scale-105'
+                                                            }`}
+                                                            title={downloadedFiles[msg.id] ? 'دانلود شده (دانلود مجدد)' : 'دانلود مستقیم فایل'}
+                                                        >
+                                                            {isDownloading[msg.id] ? (
+                                                                <div className="flex items-center gap-1">
+                                                                    <Loader2 size={16} className="animate-spin text-blue-600"/>
+                                                                    <span className="text-[9px] font-black text-blue-600">{fileProgress[msg.id]}%</span>
+                                                                </div>
+                                                            ) : downloadedFiles[msg.id] ? (
+                                                                <Check size={16} className="text-emerald-600" />
+                                                            ) : (
+                                                                <Download size={16} />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        {msg.attachment && msg.message && (
+                                            <div 
+                                                className="whitespace-pre-wrap leading-relaxed message-content cursor-pointer mt-1.5 pt-1 text-xs sm:text-sm text-zinc-800 dark:text-zinc-100 select-text"
+                                                onClick={(e) => { e.stopPropagation(); handleCopyMessage(msg); }}
+                                                title="برای کپی کلیک کنید"
+                                            >
+                                                {renderMessageWithMentions(msg.message)}
+                                            </div>
+                                        )}
+                                        </>
+                                     ) : msg.audioUrl ? (
+                                        <div className="flex items-center gap-2 min-w-[200px] py-1">
+                                            <AudioPlayer url={msg.audioUrl} isMe={isMe} duration={msg.audioDuration} />
+                                        </div>
+                                    ) : (
+                                        <div 
+                                            className="whitespace-pre-wrap leading-relaxed message-content cursor-pointer"
+                                            onClick={(e) => { e.stopPropagation(); handleCopyMessage(msg); }}
+                                            title="برای کپی کلیک کنید"
+                                        >
+                                            {renderMessageWithMentions(msg.message)}
+                                        </div>
+                                    )}
+
+                                    {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5 pt-1 border-t border-black/5 dark:border-white/5">
+                                            {Object.entries(msg.reactions).map(([emoji, usersList]) => {
+                                                if (!usersList || usersList.length === 0) return null;
+                                                const hasReacted = usersList.includes(currentUser.username);
+                                                return (
+                                                    <button
+                                                        key={emoji}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleToggleReaction(msg.id, emoji);
+                                                        }}
+                                                        title={`${usersList.join('، ')}`}
+                                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs transition-all active:scale-90 ${
+                                                            hasReacted 
+                                                                ? 'bg-blue-100 dark:bg-blue-900/60 border border-blue-400 dark:border-blue-700 text-blue-800 dark:text-blue-200 scale-105 font-bold shadow-xs' 
+                                                                : 'bg-black/5 dark:bg-white/10 hover:bg-black/10 text-gray-700 dark:text-gray-300'
+                                                        }`}
+                                                    >
+                                                        <span className="text-sm">{emoji}</span>
+                                                        <span className="text-[10px]">{usersList.length}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    <div className="hidden group-hover:flex absolute -top-7 right-2 bg-white dark:bg-gray-800 shadow-md rounded-full px-1.5 py-0.5 border border-gray-200 dark:border-gray-700 items-center gap-1 z-20 animate-scale-in">
+                                        {['👍', '❤️', '😂', '🔥', '👏', '🎉'].map(emoji => (
+                                            <button
+                                                key={emoji}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleToggleReaction(msg.id, emoji);
+                                                }}
+                                                className="hover:scale-125 transition-transform text-xs p-0.5 active:scale-95"
+                                                title={`واکنش با ${emoji}`}
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex justify-end items-center gap-1 mt-1 opacity-90 select-none text-slate-600 dark:text-slate-300">
+                                        {msg.uploadProgress !== undefined && (
+                                            <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-900 dark:text-blue-200 px-1 rounded font-mono font-bold">{msg.uploadProgress}%</span>
+                                        )}
+                                        {msg.isEdited && <span className="text-[9px] font-bold">ویرایش شده</span>}
+                                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{formatTimeFa(msg.timestamp)}</span>
+                                        {isMe && (
+                                            msg.isPending ? <Clock size={12} className="text-slate-500 dark:text-slate-400"/> :
+                                            (msg.readBy && msg.readBy.length > 0) ? <CheckCheck size={14} className="text-emerald-600 dark:text-emerald-400" /> :
+                                            <Check size={14} className="text-slate-600 dark:text-slate-400" />
+                                        )}
+                                    </div>
+                                </div>
+
+                                {!isMe && (
+                                    <div className="flex flex-col gap-1 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                         <button onClick={() => setReplyingTo(msg)} className="p-1.5 glass-panel rounded-full text-blue-600 shadow-sm hover:scale-110" title="پاسخ"><CornerUpLeft size={12}/></button>
+                                         <button onClick={() => { setSelectedMessages(new Set([msg.id])); setShowForwardModal(true); }} className="p-1.5 glass-panel rounded-full text-green-600 shadow-sm hover:scale-110" title="فوروارد"><Forward size={12}/></button>
+                                         <button onClick={() => handleCopyMessage(msg)} className="p-1.5 glass-panel rounded-full text-gray-600 shadow-sm hover:scale-110" title="کپی"><Copy size={12}/></button>
+                                         {(msg.attachment || msg.audioUrl) && <button onClick={() => handleNativeShare(msg)} className="p-1.5 glass-panel rounded-full text-orange-600 shadow-sm hover:scale-110" title="اشتراک"><Share2 size={12}/></button>}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        });
+    }, [groupedMessagesByDay, currentUser, activeChannel?.type, selectedMessages, highlightedMessageId, selectionMode, isDownloading, fileProgress, downloadedFiles, users]);
+
+    if (!currentUser) return null;
+
     return (
         <div className="w-full h-full flex flex-col flex-1 min-h-0 bg-white dark:bg-[#1c1c1e] text-gray-800 dark:text-gray-200 md:p-2 font-sans no-print overflow-hidden relative">
             <div className="flex-1 flex flex-row bg-white dark:bg-[#1c1c1e] md:rounded-2xl overflow-hidden md:shadow-xl md:border border-gray-200/50 dark:border-white/5 relative w-full h-full min-h-0">
@@ -2251,17 +2742,17 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                             </div>
                         </div>
                     )}
-                    {getSortedChannels().length === 0 && !searchTerm && (
+                    {sortedChannels.length === 0 && !searchTerm && (
                         <div className="flex flex-col items-center justify-center h-40 text-slate-500 p-10 text-center">
                             <MessageCircle size={32} className="mb-2 opacity-30" />
                             <p className="text-xs font-semibold">پیامی یافت نشد</p>
                         </div>
                     )}
-                    {getSortedChannels().map((item: ChannelItem) => (
+                    {sortedChannels.map((item: ChannelItem) => (
                         <div key={item.id} onClick={() => { setActiveChannel({type: item.type, id: item.id}); markAsRead(item.id, item.type); }} className={`flex items-center gap-3 p-3 hover:bg-slate-100/70 dark:hover:bg-white/10 cursor-pointer border-b border-slate-100 dark:border-white/5 relative group ${activeChannel?.id === item.id ? 'bg-blue-50/80 dark:bg-blue-500/15' : ''}`}>
                             <div className="relative">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-sm ${item.type === 'system' ? 'bg-gradient-to-br from-indigo-500 to-purple-700' : item.type === 'private' ? 'bg-gradient-to-br from-blue-400 to-blue-600' : item.type === 'task_group' ? 'bg-gradient-to-br from-purple-400 to-purple-600' : 'bg-gradient-to-br from-orange-400 to-orange-600'}`}>
-                                    {item.type === 'system' ? '🤖' : (item.avatar ? <img src={resolveImageUrl(item.avatar)} className="w-full h-full rounded-full object-cover"/> : item.name.charAt(0))}
+                                    {item.type === 'system' ? '🤖' : (item.avatar ? <img src={resolveImageUrl(item.avatar)} loading="lazy" className="w-full h-full rounded-full object-cover"/> : item.name.charAt(0))}
                                 </div>
                                 {item.isOnline && item.type !== 'system' && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>}
                             </div>
@@ -2271,7 +2762,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         <span className="font-bold text-slate-900 dark:text-slate-50 text-sm truncate">{item.name}</span>
                                         {mutedChannels.has(item.id) && <BellOff size={10} className="text-slate-500 opacity-70"/>}
                                     </div>
-                                    {item.lastMsg && <span className="text-[11px] text-slate-600 dark:text-slate-300 font-bold font-mono tracking-tight">{new Date(item.lastMsg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>}
+                                    {item.lastMsg && <span className="text-[11px] text-slate-600 dark:text-slate-300 font-bold font-mono tracking-tight">{formatTimeFa(item.lastMsg.timestamp)}</span>}
                                 </div>
                                 <div className="flex justify-between items-center">
                                     <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate max-w-[170px]">
@@ -2664,355 +3155,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
 
                                 {/* Messages List */}
                                 <div 
-                                    className="flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative bg-white dark:bg-black"
+                                    className="chat-messages-Viewport flex-1 overflow-y-auto p-4 flex flex-col gap-2 relative bg-white dark:bg-black"
                                     onDragOver={handleDragOver}
                                     onDrop={handleDrop}
                                     onPaste={handlePaste}
                                 >
-                            {groupedMessagesByDay.map((group) => {
-                                return (
-                                    <div key={group.dateKey} className="w-full relative flex flex-col gap-2">
-                                        {/* Date Separator per Day Container - scrolls naturally with messages without stacking or colliding */}
-                                        <div className="flex justify-center my-3 select-none pointer-events-none transition-opacity duration-300">
-                                            <span className="px-3 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-200 bg-slate-200/90 dark:bg-zinc-800/90 backdrop-blur-md rounded-full shadow-xs border border-slate-300/50 dark:border-zinc-700/50">
-                                                {group.title}
-                                            </span>
-                                        </div>
-                                        
-                                        {group.messages.map((msg: ChatMessage) => {
-                                            const isMe = msg.senderUsername === currentUser.username;
-                                            const isSystemMsg = msg.senderUsername?.toLowerCase() === 'system' || msg.role === 'system' || msg.sender === 'سیستم' || activeChannel.type === 'system';
-                                            const isSelected = selectedMessages.has(msg.id);
-                                            const isHighlighted = highlightedMessageId === msg.id;
-                                            const isMentionedInMsg = checkIfMessageMentionsUser(msg.message, currentUser);
-
-                                            const bubbleStyles = isHighlighted 
-                                                ? `bg-amber-100 dark:bg-amber-950/80 border-2 border-amber-400 dark:border-amber-500 text-amber-950 dark:text-amber-100 ring-4 ring-amber-300/60 dark:ring-amber-600/60 scale-[1.02] shadow-md transition-all duration-350 ${
-                                                    isSystemMsg ? 'rounded-2xl w-full max-w-[92%] md:max-w-[85%]' : 
-                                                    isMe ? 'rounded-xl rounded-tr-none max-w-[75%] md:max-w-[70%]' : 
-                                                    'rounded-xl rounded-tl-none max-w-[75%] md:max-w-[70%]'
-                                                  }`
-                                                : isSystemMsg 
-                                                    ? 'w-full max-w-[92%] md:max-w-[85%] bg-gradient-to-br from-indigo-50/95 via-blue-50/90 to-indigo-50/95 dark:from-indigo-950/60 dark:via-blue-950/40 dark:to-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/60 text-indigo-950 dark:text-indigo-100 rounded-2xl shadow-sm transition-all duration-350'
-                                                    : isMe 
-                                                        ? 'max-w-[75%] md:max-w-[70%] bg-[#eeffde] dark:bg-[#1a2f16] dark:text-[#eeffde] rounded-xl rounded-tr-none shadow-sm transition-all duration-350'
-                                                        : isMentionedInMsg
-                                                            ? 'max-w-[75%] md:max-w-[70%] bg-amber-50/90 dark:bg-amber-950/40 border-r-4 border-amber-500 text-amber-950 dark:text-amber-100 rounded-xl rounded-tl-none shadow-sm transition-all duration-350 ring-1 ring-amber-300/30'
-                                                            : 'max-w-[75%] md:max-w-[70%] glass-panel rounded-xl rounded-tl-none shadow-sm transition-all duration-350';
-                                            
-                                            return (
-                                                <div 
-                                                    key={msg.id}
-                                                    id={`msg-${msg.id}`}
-                                            className={`flex w-full mb-1 group ${isSystemMsg ? 'justify-center' : isMe ? 'justify-end' : 'justify-start'} items-end gap-2 ${selectionMode ? 'cursor-pointer' : ''}`}
-                                            onClick={() => { if(selectionMode) toggleSelection(msg.id); }}
-                                            onContextMenu={(e) => { e.preventDefault(); if(!selectionMode) setContextMenuMsg({msg, x: e.clientX, y: e.clientY}); }}
-                                        >
-                                        {/* Actions Button - LEFT for ME, RIGHT for OTHER */}
-                                        {isMe && !isSystemMsg && (
-                                            <div className="flex flex-col gap-1 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                 <button onClick={() => setReplyingTo(msg)} className="p-1.5 glass-panel rounded-full text-blue-600 shadow-sm hover:scale-110" title="پاسخ"><CornerUpLeft size={12}/></button>
-                                                 <button onClick={() => { setSelectedMessages(new Set([msg.id])); setShowForwardModal(true); }} className="p-1.5 glass-panel rounded-full text-green-600 shadow-sm hover:scale-110" title="فوروارد"><Forward size={12}/></button>
-                                                 <button onClick={() => handleCopyMessage(msg)} className="p-1.5 glass-panel rounded-full text-gray-600 shadow-sm hover:scale-110" title="کپی"><Copy size={12}/></button>
-                                                 {(msg.attachment || msg.audioUrl) && <button onClick={() => handleNativeShare(msg)} className="p-1.5 glass-panel rounded-full text-orange-600 shadow-sm hover:scale-110" title="اشتراک"><Share2 size={12}/></button>}
-                                            </div>
-                                        )}
-
-                                        {selectionMode && (
-                                            <div className={`mx-2 self-center w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'bg-green-500 border-green-500' : 'border-gray-400 bg-white/50'}`}>
-                                                {isSelected && <Check size={12} className="text-white"/>}
-                                            </div>
-                                        )}
-                                        
-                                        <div className={`relative ${bubbleStyles} px-3.5 py-2.5 text-sm ${isSelected ? 'ring-2 ring-blue-400' : ''}`}>
-                                            
-                                            {/* Mention Tag Banner if user was mentioned */}
-                                            {!isMe && !isSystemMsg && isMentionedInMsg && (
-                                                <div className="flex items-center gap-1.5 text-[10px] font-black text-amber-800 dark:text-amber-200 bg-amber-200/80 dark:bg-amber-900/60 px-2 py-0.5 rounded-lg mb-1.5 w-fit border border-amber-300 dark:border-amber-700 shadow-xs">
-                                                    <AtSign size={11} className="text-amber-600 dark:text-amber-400" />
-                                                    <span>شما در این پیام تگ شده‌اید</span>
-                                                </div>
-                                            )}
-
-                                            {/* System Message Header */}
-                                            {isSystemMsg && (
-                                                <div className="flex items-center justify-between pb-1.5 mb-2 border-b border-indigo-200/60 dark:border-indigo-800/50">
-                                                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-                                                        <span className="p-1 bg-indigo-100 dark:bg-indigo-900/60 rounded-lg text-[13px]">📢</span>
-                                                        <span>پیام و اعلان هوشمند سیستم</span>
-                                                    </div>
-                                                    <span className="text-[10px] bg-indigo-100/70 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-full font-medium">کارتابل</span>
-                                                </div>
-                                            )}
-
-                                            {/* Forward Header */}
-                                            {msg.isForwarded && msg.forwardFrom && (
-                                                <div className="text-[10px] text-blue-600 font-bold mb-1 flex items-center gap-1">
-                                                    <Forward size={10}/> نقل قول از {msg.forwardFrom}
-                                                </div>
-                                            )}
-
-                                            {/* Reply Header */}
-                                            {msg.replyTo && (
-                                                <div 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        scrollToMessage(msg.replyTo.id);
-                                                    }}
-                                                    className={`mb-1 px-2 py-1 rounded border-r-4 text-[10px] bg-black/5 dark:bg-white/5 cursor-pointer transition-all hover:bg-black/10 dark:hover:bg-white/10 ${isMe ? 'border-green-600' : 'border-blue-600'}`}
-                                                    title="برای رفتن به پیام کلیک کنید"
-                                                >
-                                                    <div className="font-bold opacity-80">{msg.replyTo.sender}</div>
-                                                    <div className="truncate opacity-70">{msg.replyTo.message ? msg.replyTo.message.substring(0, 30) : 'فایل/پیوست'}...</div>
-                                                </div>
-                                            )}
-
-                                            {/* Sender Name in Group */}
-                                            {!isMe && !isSystemMsg && activeChannel.type !== 'private' && (
-                                                <div className="text-[11px] font-bold text-[#e17076] mb-0.5">{msg.sender}</div>
-                                            )}
-
-                                            {/* Content */}
-                                            {msg.sticker ? (
-                                                <div className="py-1">
-                                                    {msg.sticker.preview ? (
-                                                        <div 
-                                                            className="w-32 h-32 md:w-40 md:h-40 select-none transition-transform hover:scale-105 filter drop-shadow-md"
-                                                            dangerouslySetInnerHTML={{ __html: msg.sticker.preview }}
-                                                        />
-                                                    ) : msg.sticker.url ? (
-                                                        <img 
-                                                            src={resolveImageUrl(msg.sticker.url)} 
-                                                            alt={msg.sticker.name || 'استیکر'} 
-                                                            className="w-32 h-32 md:w-40 md:h-40 object-contain filter drop-shadow-sm select-none transition-transform hover:scale-105"
-                                                            loading="lazy"
-                                                        />
-                                                    ) : (
-                                                        <span className="text-5xl">{msg.sticker.emoji || '🌟'}</span>
-                                                    )}
-                                                </div>
-                                            ) : msg.attachment ? (
-                                                <>
-                                                <div className="mb-1">
-                                                    {msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
-                                                        <div className="relative group/img overflow-hidden rounded-xl inline-block max-w-full">
-                                                            <img 
-                                                                src={resolveImageUrl(msg.attachment.url)} 
-                                                                alt={msg.attachment.fileName}
-                                                                className="rounded-xl max-h-60 object-cover cursor-pointer hover:opacity-95 transition-opacity shadow-xs"
-                                                                onClick={(e) => { 
-                                                                    e.stopPropagation(); 
-                                                                    setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName }); 
-                                                                }}
-                                                            />
-                                                            <button 
-                                                                onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
-                                                                className="absolute bottom-2 left-2 p-1.5 bg-black/65 hover:bg-black/85 text-white rounded-lg opacity-0 group-hover/img:opacity-100 transition-opacity cursor-pointer shadow-sm"
-                                                                title="دانلود تصویر"
-                                                            >
-                                                                <Download size={14} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (msg.attachment.fileName.match(/\.pdf$/i) || msg.attachment.url.match(/\.pdf$/i)) ? (
-                                                        <div className={`border rounded-2xl p-2.5 flex items-center justify-between gap-2.5 transition-all shadow-xs min-w-[220px] sm:min-w-[270px] max-w-full ${
-                                                            isMe 
-                                                                ? 'bg-white/85 dark:bg-zinc-800/85 border-rose-200/90 dark:border-rose-900/50 hover:border-rose-400' 
-                                                                : 'bg-white/95 dark:bg-zinc-900/95 border-rose-200/80 dark:border-rose-900/50 hover:border-rose-400 dark:hover:border-rose-700'
-                                                        }`}>
-                                                            <div 
-                                                                onClick={() => setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName })}
-                                                                className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group/pdf"
-                                                                title="مشاهده مستقیم سند PDF بدون نیاز به دانلود"
-                                                            >
-                                                                <div className="w-10 h-10 bg-rose-50 dark:bg-rose-950/50 border border-rose-200/70 dark:border-rose-900/50 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 group-hover/pdf:scale-105 transition-transform shadow-xs">
-                                                                    <FileText size={20} />
-                                                                </div>
-                                                                <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
-                                                                    <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full group-hover/pdf:text-rose-600 dark:group-hover/pdf:text-rose-400 transition-colors" dir="ltr" title={msg.attachment.fileName}>
-                                                                        {msg.attachment.fileName}
-                                                                    </span>
-                                                                    <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-100 dark:border-rose-900/30">
-                                                                        <Eye size={11} />
-                                                                        <span>مشاهده سند PDF</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="shrink-0 flex items-center gap-1 border-r border-zinc-200/80 dark:border-zinc-700/80 pr-1.5 mr-0.5">
-                                                                <button 
-                                                                    onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
-                                                                    disabled={isDownloading[msg.id]}
-                                                                    className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
-                                                                        downloadedFiles[msg.id] 
-                                                                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100' 
-                                                                            : 'bg-rose-50/80 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 hover:scale-105'
-                                                                    }`}
-                                                                    title={downloadedFiles[msg.id] ? 'دانلود شده (دانلود مجدد)' : 'دانلود مستقیم PDF'}
-                                                                >
-                                                                    {isDownloading[msg.id] ? (
-                                                                        <div className="flex items-center gap-1">
-                                                                            <Loader2 size={16} className="animate-spin text-rose-600"/>
-                                                                            <span className="text-[9px] font-black text-rose-600">{fileProgress[msg.id]}%</span>
-                                                                        </div>
-                                                                    ) : downloadedFiles[msg.id] ? (
-                                                                        <Check size={16} className="text-emerald-600" />
-                                                                    ) : (
-                                                                        <Download size={16} />
-                                                                    )}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className={`border rounded-2xl p-2.5 flex items-center justify-between gap-2.5 transition-all shadow-xs min-w-[210px] sm:min-w-[260px] max-w-full ${
-                                                            isMe 
-                                                                ? 'bg-white/85 dark:bg-zinc-800/85 border-blue-200 dark:border-blue-900/40 hover:border-blue-400' 
-                                                                : 'bg-white/95 dark:bg-zinc-900/95 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-700'
-                                                        }`}>
-                                                            <div 
-                                                                onClick={() => setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName })}
-                                                                className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group/file"
-                                                                title="مشاهده و بررسی فایل"
-                                                            >
-                                                                <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/50 border border-blue-200/70 dark:border-blue-900/50 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 group-hover/file:scale-105 transition-transform shadow-xs">
-                                                                    <File size={20} />
-                                                                </div>
-                                                                <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
-                                                                    <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full group-hover/file:text-blue-600 dark:group-hover/file:text-blue-400 transition-colors" dir="ltr" title={msg.attachment.fileName}>
-                                                                        {msg.attachment.fileName}
-                                                                    </span>
-                                                                    <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
-                                                                        <Eye size={11} />
-                                                                        <span>پیش‌نمایش / دریافت</span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="shrink-0 flex items-center gap-1 border-r border-zinc-200/80 dark:border-zinc-700/80 pr-1.5 mr-0.5">
-                                                                <button 
-                                                                    onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
-                                                                    disabled={isDownloading[msg.id]}
-                                                                    className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
-                                                                        downloadedFiles[msg.id] 
-                                                                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100' 
-                                                                            : 'bg-blue-50/80 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:scale-105'
-                                                                    }`}
-                                                                    title={downloadedFiles[msg.id] ? 'دانلود شده (دانلود مجدد)' : 'دانلود مستقیم فایل'}
-                                                                >
-                                                                    {isDownloading[msg.id] ? (
-                                                                        <div className="flex items-center gap-1">
-                                                                            <Loader2 size={16} className="animate-spin text-blue-600"/>
-                                                                            <span className="text-[9px] font-black text-blue-600">{fileProgress[msg.id]}%</span>
-                                                                        </div>
-                                                                    ) : downloadedFiles[msg.id] ? (
-                                                                        <Check size={16} className="text-emerald-600" />
-                                                                    ) : (
-                                                                        <Download size={16} />
-                                                                    )}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                {/* Caption beneath attachment if message text exists */}
-                                                {msg.attachment && msg.message && (
-                                                    <div 
-                                                        className="whitespace-pre-wrap leading-relaxed message-content cursor-pointer mt-1.5 pt-1 text-xs sm:text-sm text-zinc-800 dark:text-zinc-100 select-text"
-                                                        onClick={(e) => { e.stopPropagation(); handleCopyMessage(msg); }}
-                                                        title="برای کپی کلیک کنید"
-                                                    >
-                                                        {renderMessageWithMentions(msg.message)}
-                                                    </div>
-                                                )}
-                                                </>
-                                             ) : msg.audioUrl ? (
-                                                <div className="flex items-center gap-2 min-w-[200px] py-1">
-                                                    <AudioPlayer url={msg.audioUrl} isMe={isMe} duration={msg.audioDuration} />
-                                                </div>
-                                            ) : (
-                                                <div 
-                                                    className="whitespace-pre-wrap leading-relaxed message-content cursor-pointer"
-                                                    onClick={(e) => { e.stopPropagation(); handleCopyMessage(msg); }}
-                                                    title="برای کپی کلیک کنید"
-                                                >
-                                                    {renderMessageWithMentions(msg.message)}
-                                                </div>
-                                            )}
-
-                                            {/* Reactions Badges */}
-                                            {msg.reactions && Object.keys(msg.reactions).length > 0 && (
-                                                <div className="flex flex-wrap gap-1 mt-1.5 pt-1 border-t border-black/5 dark:border-white/5">
-                                                    {Object.entries(msg.reactions).map(([emoji, users]) => {
-                                                        if (!users || users.length === 0) return null;
-                                                        const hasReacted = users.includes(currentUser.username);
-                                                        return (
-                                                            <button
-                                                                key={emoji}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleToggleReaction(msg.id, emoji);
-                                                                }}
-                                                                title={`${users.join('، ')}`}
-                                                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs transition-all active:scale-90 ${
-                                                                    hasReacted 
-                                                                        ? 'bg-blue-100 dark:bg-blue-900/60 border border-blue-400 dark:border-blue-700 text-blue-800 dark:text-blue-200 scale-105 font-bold shadow-xs' 
-                                                                        : 'bg-black/5 dark:bg-white/10 hover:bg-black/10 text-gray-700 dark:text-gray-300'
-                                                                }`}
-                                                            >
-                                                                <span className="text-sm">{emoji}</span>
-                                                                <span className="text-[10px]">{users.length}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-
-                                            {/* Quick Reaction Bar on hover */}
-                                            <div className="hidden group-hover:flex absolute -top-7 right-2 bg-white dark:bg-gray-800 shadow-md rounded-full px-1.5 py-0.5 border border-gray-200 dark:border-gray-700 items-center gap-1 z-20 animate-scale-in">
-                                                {['👍', '❤️', '😂', '🔥', '👏', '🎉'].map(emoji => (
-                                                    <button
-                                                        key={emoji}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleToggleReaction(msg.id, emoji);
-                                                        }}
-                                                        className="hover:scale-125 transition-transform text-xs p-0.5 active:scale-95"
-                                                        title={`واکنش با ${emoji}`}
-                                                    >
-                                                        {emoji}
-                                                    </button>
-                                                ))}
-                                            </div>
-
-                                            {/* Footer */}
-                                            <div className="flex justify-end items-center gap-1 mt-1 opacity-90 select-none text-slate-600 dark:text-slate-300">
-                                                {msg.uploadProgress !== undefined && (
-                                                    <span className="text-[10px] bg-blue-100 dark:bg-blue-900/60 text-blue-900 dark:text-blue-200 px-1 rounded font-mono font-bold">{msg.uploadProgress}%</span>
-                                                )}
-                                                {msg.isEdited && <span className="text-[9px] font-bold">ویرایش شده</span>}
-                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{new Date(msg.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
-                                                {isMe && (
-                                                    msg.isPending ? <Clock size={12} className="text-slate-500 dark:text-slate-400"/> :
-                                                    (msg.readBy && msg.readBy.length > 0) ? <CheckCheck size={14} className="text-emerald-600 dark:text-emerald-400" /> :
-                                                    <Check size={14} className="text-slate-600 dark:text-slate-400" />
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Actions Button - LEFT for ME, RIGHT for OTHER */}
-                                        {!isMe && (
-                                            <div className="flex flex-col gap-1 opacity-60 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                 <button onClick={() => setReplyingTo(msg)} className="p-1.5 glass-panel rounded-full text-blue-600 shadow-sm hover:scale-110" title="پاسخ"><CornerUpLeft size={12}/></button>
-                                                 <button onClick={() => { setSelectedMessages(new Set([msg.id])); setShowForwardModal(true); }} className="p-1.5 glass-panel rounded-full text-green-600 shadow-sm hover:scale-110" title="فوروارد"><Forward size={12}/></button>
-                                                 <button onClick={() => handleCopyMessage(msg)} className="p-1.5 glass-panel rounded-full text-gray-600 shadow-sm hover:scale-110" title="کپی"><Copy size={12}/></button>
-                                                 {(msg.attachment || msg.audioUrl) && <button onClick={() => handleNativeShare(msg)} className="p-1.5 glass-panel rounded-full text-orange-600 shadow-sm hover:scale-110" title="اشتراک"><Share2 size={12}/></button>}
-                                            </div>
-                                        )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            })}
+                            {!innerSearchTerm && filteredMessages.length > visibleMessagesLimit && (
+                                <div className="flex justify-center my-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setVisibleMessagesLimit(prev => prev + 80)}
+                                        className="px-4 py-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-full border border-blue-200 dark:border-blue-800/60 transition-colors cursor-pointer shadow-2xs"
+                                    >
+                                        نمایش پیام‌های قدیمی‌تر ({filteredMessages.length - visibleMessagesLimit} پیام دیگر)
+                                    </button>
+                                </div>
+                            )}
+                            {renderedMessageGroups}
                             <div ref={messagesEndRef} />
                         </div>
 

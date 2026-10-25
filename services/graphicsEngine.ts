@@ -36,45 +36,22 @@ class HybridGraphicsEngineClient {
     // 3. Optimize touch scrolling and input latency for mobile devices
     this.optimizeInputAndTouch();
 
-    // 4. Start real-time FPS & stutter monitor
-    this.startFrameLoop();
-
-    console.log('[GraphicsEngine] Hybrid GPU + Server Acceleration initialized at target refresh rate:', this.targetRefreshRate + 'Hz');
+    console.log('[GraphicsEngine] Hybrid GPU + Server Acceleration initialized');
   }
 
   private detectCapabilities() {
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const cores = navigator.hardwareConcurrency || 4;
-
-    // Check high refresh rate
-    let frameTimes: number[] = [];
-    let count = 0;
-    const testRefreshRate = (time: number) => {
-      if (count > 0) {
-        frameTimes.push(time - frameTimes[frameTimes.length - 1] || 16.6);
-      } else {
-        frameTimes.push(time);
-      }
-      count++;
-      if (count < 15) {
-        requestAnimationFrame(testRefreshRate);
-      } else {
-        const intervals = frameTimes.slice(1);
-        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-        if (avgInterval <= 9.5) {
-          this.targetRefreshRate = 120;
-        } else if (avgInterval <= 12) {
-          this.targetRefreshRate = 90;
-        } else {
-          this.targetRefreshRate = 60;
-        }
-      }
-    };
-    requestAnimationFrame(testRefreshRate);
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+    const isCapacitor = typeof window !== 'undefined' && Boolean((window as any).Capacitor?.isNativePlatform?.());
 
     // Apply root attributes
     document.documentElement.setAttribute('data-gpu-active', 'true');
     document.documentElement.setAttribute('data-device-category', isMobile ? 'mobile' : 'desktop');
+
+    // Enable WebView turbo mode automatically on Tauri Desktop & Android Capacitor
+    if (isTauri || isCapacitor || isMobile) {
+      this.enableTurboMode(true);
+    }
   }
 
   private applyHardwareAccelerationCSS() {
@@ -84,11 +61,14 @@ class HybridGraphicsEngineClient {
     const styleEl = document.createElement('style');
     styleEl.id = styleId;
     styleEl.textContent = `
-      /* Zero-Lag Hardware Acceleration Pipeline */
+      /* Zero-Lag Hardware Acceleration Pipeline (avoid optimizeLegibility on * which lags RTL Persian in WebView2/Android) */
       *, *::before, *::after {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        text-rendering: optimizeLegibility;
+      }
+
+      input, textarea {
+        text-rendering: optimizeSpeed;
       }
 
       /* Ultra-Smooth Passive Momentum Touch Scroll */
@@ -101,8 +81,7 @@ class HybridGraphicsEngineClient {
 
       /* Turbo Optimization for High-Density Views */
       .gpu-fast-layer {
-        will-change: transform, opacity;
-        contain: layout style paint;
+        contain: layout style;
       }
 
       /* Input responsiveness - 0ms touch delay */
@@ -115,10 +94,20 @@ class HybridGraphicsEngineClient {
         touch-action: manipulation;
       }
 
-      /* Performance Turbo Mode (activated if device drops below 40fps) */
+      /* Performance Turbo Mode for Tauri WebView2 & Android WebView */
       html.perf-turbo .glass-panel {
-        backdrop-filter: blur(8px) !important;
-        -webkit-backdrop-filter: blur(8px) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      /* Avoid expensive per-bubble backdrop blur inside scrollable message lists */
+      .chat-messages-Viewport .glass-panel {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+
+      .chat-msg-row {
+        contain: layout style;
       }
     `;
     document.head.appendChild(styleEl);
@@ -136,36 +125,7 @@ class HybridGraphicsEngineClient {
   }
 
   private startFrameLoop() {
-    let frames = 0;
-    let prevCheck = performance.now();
-
-    const monitorLoop = (now: number) => {
-      frames++;
-      const elapsed = now - prevCheck;
-
-      if (elapsed >= 1000) {
-        this.fps = Math.round((frames * 1000) / elapsed);
-        frames = 0;
-        prevCheck = now;
-
-        // If severe frame drops happen, enable Turbo optimizations
-        if (this.fps < 38) {
-          this.consecutiveSlowFrames++;
-          if (this.consecutiveSlowFrames >= 3 && !this.isTurboMode) {
-            this.enableTurboMode(true);
-          }
-        } else {
-          this.consecutiveSlowFrames = 0;
-          if (this.isTurboMode && this.fps >= 55) {
-            this.enableTurboMode(false);
-          }
-        }
-      }
-
-      this.rafId = requestAnimationFrame(monitorLoop);
-    };
-
-    this.rafId = requestAnimationFrame(monitorLoop);
+    // No-op: removed perpetual 60fps requestAnimationFrame loop to keep main thread & GPU idle when not animating
   }
 
   private enableTurboMode(enable: boolean) {
