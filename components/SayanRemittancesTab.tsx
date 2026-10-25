@@ -926,7 +926,150 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* 1. MOBILE CARDS VIEW (Only visible on mobile screens - NO horizontal scrolling) */}
+        <div className="block md:hidden divide-y divide-slate-100 dark:divide-zinc-800">
+          {isLoading ? (
+            <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+              <RefreshCw size={24} className="animate-spin text-blue-600" />
+              <span className="text-xs font-semibold">در حال استخراج حواله‌ها از سایان ERP...</span>
+            </div>
+          ) : filteredRemittances.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+              <Package size={32} className="text-slate-300" />
+              <span className="text-xs font-semibold">هیچ حواله فروشی یافت نشد.</span>
+            </div>
+          ) : (
+            filteredRemittances.map((r, idx) => (
+              <div key={r.docNo || idx} className="p-3.5 hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors">
+                
+                {/* Header Row: Remittance Number + Date */}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[10px] font-bold flex items-center justify-center font-mono shrink-0">
+                      {idx + 1}
+                    </span>
+                    <span className="text-blue-700 dark:text-blue-400 font-black text-base font-mono">
+                      حواله {r.remittanceNumber || r.docNo}
+                    </span>
+                    {r.docNo && r.docNo !== r.remittanceNumber && (
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        (سند: {r.docNo})
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-left font-mono text-xs font-bold text-slate-700 dark:text-slate-300">
+                    {r.shamsiDate}
+                    {r.dayOfWeek && (
+                      <span className="text-[10px] text-slate-400 mr-1 font-sans">({r.dayOfWeek})</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Customer Row */}
+                <div className="flex items-center justify-between text-xs bg-slate-50 dark:bg-zinc-800/60 p-2 rounded-lg mb-2.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <User size={13} className="text-slate-400 shrink-0" />
+                    <span className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {r.personFullName || 'نامشخص'}
+                    </span>
+                  </div>
+                  {r.personCode && (
+                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                      کد: {r.personCode}
+                    </span>
+                  )}
+                </div>
+
+                {/* Key Metrics Grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-0.5">وزن خالص:</span>
+                    <span className="font-black text-emerald-700 dark:text-emerald-400 font-mono text-sm">
+                      {r.totalNetWeight.toLocaleString('fa-IR')} kg
+                    </span>
+                  </div>
+
+                  <div className="bg-blue-50/70 dark:bg-blue-950/30 p-2 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-0.5">بسته‌بندی:</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 font-mono text-xs">
+                      {r.totalCartons} کارتن / {r.totalBobbins} بوبین
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-zinc-800/40 p-2 rounded-lg border border-slate-100 dark:border-zinc-800">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-0.5">نوع سند:</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300 text-xs">
+                      {r.docTypeLabel || `کد ${r.docType}`}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-zinc-800/40 p-2 rounded-lg border border-slate-100 dark:border-zinc-800">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-0.5">انبار مبدأ:</span>
+                    <span className="font-bold text-slate-700 dark:text-slate-300 text-xs font-mono">
+                      انبار {r.storeId || '---'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Main Item Preview */}
+                {r.items.length > 0 && (
+                  <div className="text-[11px] text-slate-600 dark:text-slate-300 mb-3 truncate bg-slate-100/50 dark:bg-zinc-800/30 px-2 py-1.5 rounded">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">کالا: </span>
+                    <span>{r.items[0].goodsName}</span>
+                    {r.items.length > 1 && (
+                      <span className="text-[10px] text-blue-600 font-bold mr-1">
+                        (+{r.items.length - 1} قلم دیگر)
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Card Footer Actions */}
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-zinc-800">
+                  <button
+                    onClick={() => {
+                      setSelectedRemittance(r);
+                      setIsDetailModalOpen(true);
+                    }}
+                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <Eye size={14} />
+                    <span>مشاهده ریز اقلام</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedRemittance(r);
+                      setIsPrintModalOpen(true);
+                    }}
+                    className="py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer shadow-sm"
+                    title="چاپ سند"
+                  >
+                    <Printer size={14} />
+                    <span>چاپ</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedRemittance(r);
+                      setIsPrintModalOpen(true);
+                      setTimeout(() => handleSendToChat(), 300);
+                    }}
+                    className="py-2 px-3 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                    title="ارسال چت"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
+                </div>
+
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 2. DESKTOP TABLE VIEW (Visible on desktop screens) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-right text-xs">
             <thead className="bg-slate-100/80 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-700 select-none">
               <tr>
@@ -1225,9 +1368,71 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
               </div>
             </div>
 
-            {/* Line Items Table */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-              <PinchZoomContainer contentWidth={860} autoFitMobile={true} showToolbar={true}>
+            {/* Modal Items List: High-Density Mobile Item Cards (on mobile) & Standard Table (on desktop) */}
+            <div className="flex-1 overflow-y-auto p-2 sm:p-4 custom-scrollbar min-h-0">
+              
+              {/* MOBILE ITEM CARDS (No canvas zoom squishing on mobile!) */}
+              <div className="block sm:hidden space-y-2">
+                {selectedRemittance.items.map((item, idx) => (
+                  <div key={item.lineId || idx} className="p-3 bg-slate-50 dark:bg-zinc-800/60 rounded-xl border border-slate-200 dark:border-zinc-700/60 text-xs">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold text-[10px] flex items-center justify-center font-mono shrink-0">
+                          {item.rowNo || idx + 1}
+                        </span>
+                        <span className="font-extrabold text-slate-900 dark:text-slate-100 text-xs">
+                          {item.goodsName}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] text-slate-400 bg-slate-200/60 dark:bg-zinc-700 px-1.5 py-0.5 rounded shrink-0">
+                        {item.itemCode}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 bg-white dark:bg-zinc-900 p-2 rounded-lg my-1.5 border border-slate-100 dark:border-zinc-800">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">وزن خالص:</span>
+                        <span className="font-black text-emerald-600 font-mono text-xs">
+                          {item.netQty.toLocaleString('fa-IR')} kg
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">وزن ناخالص:</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300 font-mono text-xs">
+                          {item.grossQty ? item.grossQty.toLocaleString('fa-IR') : item.netQty.toLocaleString('fa-IR')} kg
+                        </span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">کارتن / بوبین:</span>
+                        <span className="font-bold text-slate-800 dark:text-slate-200 font-mono text-xs">
+                          {item.cartonCount || '-'} کارتن / {item.bobbinCount || '-'} بوبین
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 rounded font-bold font-mono text-[10px]">
+                          گرید {item.grade || 'AA'}
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 rounded font-mono text-[10px]">
+                          تاب {item.twistDirection || 'Z'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {(item.description || item.detailNote) && (
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 pt-1 border-t border-slate-200/60 dark:border-zinc-700/60">
+                        <span className="font-semibold text-slate-600 dark:text-slate-300">توضیحات: </span>
+                        <span>{item.description || item.detailNote}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* DESKTOP TABLE VIEW */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200 dark:border-zinc-700 sticky top-0">
                     <tr>
@@ -1280,10 +1485,10 @@ export const SayanRemittancesTab: React.FC<SayanRemittancesTabProps> = ({
                     ))}
                   </tbody>
                 </table>
-              </PinchZoomContainer>
+              </div>
 
               {selectedRemittance.note && (
-                <div className="mt-4 p-3 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+                <div className="mt-3 p-2.5 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl text-xs text-amber-800 dark:text-amber-300 shrink-0">
                   <span className="font-bold">یادداشت سربرگ حواله: </span>
                   <span>{selectedRemittance.note}</span>
                 </div>

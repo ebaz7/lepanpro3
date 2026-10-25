@@ -126,10 +126,17 @@ try {
             console.log('🔑 Keystore file not found. Generating automatic release keystore...');
             try {
                 let keytoolCmd = 'keytool';
-                if (process.env.JAVA_HOME) {
-                    const javaKeytool = join(process.env.JAVA_HOME, 'bin', isWindows ? 'keytool.exe' : 'keytool');
-                    if (existsSync(javaKeytool)) {
-                        keytoolCmd = `"${javaKeytool}"`;
+                const keytoolCandidates = [
+                    process.env.JAVA_HOME ? join(process.env.JAVA_HOME, 'bin', isWindows ? 'keytool.exe' : 'keytool') : '',
+                    'C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool.exe',
+                    'C:\\Program Files\\Java\\jdk-17\\bin\\keytool.exe',
+                    'C:\\Program Files\\Java\\jdk1.8.0_301\\bin\\keytool.exe'
+                ].filter(Boolean);
+
+                for (const cand of keytoolCandidates) {
+                    if (existsSync(cand)) {
+                        keytoolCmd = `"${cand}"`;
+                        break;
                     }
                 }
                 const genKeyCmd = `${keytoolCmd} -genkeypair -v -keystore "${keystorePath}" -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Sayan, OU=Debagaran, O=Debagaran, L=Tehran, S=Tehran, C=IR"`;

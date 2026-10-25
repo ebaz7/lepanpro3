@@ -3,6 +3,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const TRANSPARENT_BG = { r: 0, g: 0, b: 0, alpha: 0 };
+const DARK_SLATE_BG = { r: 15, g: 23, b: 42, alpha: 1 };
 
 const ANDROID_MIPMAPS = [
   { folder: 'mipmap-ldpi', legacySize: 36, adaptiveSize: 81 },
@@ -13,6 +14,16 @@ const ANDROID_MIPMAPS = [
   { folder: 'mipmap-xxxhdpi', legacySize: 192, adaptiveSize: 432 },
 ];
 
+const SPLASH_DRAWABLE_FOLDERS = [
+  'drawable',
+  'drawable-night',
+  'drawable-port-mdpi',
+  'drawable-port-hdpi',
+  'drawable-port-xhdpi',
+  'drawable-port-xxhdpi',
+  'drawable-port-xxxhdpi'
+];
+
 async function prepareAssets() {
   const assetsDir = path.join(__dirname, 'assets');
   if (!fs.existsSync(assetsDir)) {
@@ -21,10 +32,13 @@ async function prepareAssets() {
 
   const sourceIcon = fs.existsSync(path.join(__dirname, 'app-icon.png'))
     ? path.join(__dirname, 'app-icon.png')
-    : path.join(__dirname, 'modern-frameless-logo.png');
-  console.log(`Using source icon (transparent/frameless): ${sourceIcon}`);
+    : (fs.existsSync(path.join(__dirname, 'public', 'assets', 'aistudio', 'image_ac0aff99.png'))
+      ? path.join(__dirname, 'public', 'assets', 'aistudio', 'image_ac0aff99.png')
+      : path.join(__dirname, 'modern-frameless-logo.png'));
+      
+  console.log(`Using source icon: ${sourceIcon}`);
 
-  // 1. Generate 1024x1024 icon.png and icon-only.png WITH TRANSPARENT BACKGROUND (NO SOLID BACK)
+  // 1. Generate 1024x1024 icon.png and icon-only.png
   await sharp(sourceIcon)
     .ensureAlpha()
     .resize(1024, 1024, { fit: 'contain', background: TRANSPARENT_BG })
@@ -37,7 +51,7 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'icon-only.png'));
 
-  // 2. Generate icon-foreground.png and 100% transparent icon-background.png
+  // 2. Generate icon-foreground.png and transparent icon-background.png
   await sharp(sourceIcon)
     .ensureAlpha()
     .resize(860, 860, { fit: 'contain', background: TRANSPARENT_BG })
@@ -51,7 +65,6 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'icon-foreground.png'));
 
-  // Transparent background for adaptive icon (never create a solid box behind the icon)
   await sharp({
     create: {
       width: 1024,
@@ -63,7 +76,7 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'icon-background.png'));
 
-  // 3. Directly populate Android mipmap directories with frameless transparent icons
+  // 3. Directly populate Android mipmap directories
   const androidResDir = path.join(__dirname, 'android', 'app', 'src', 'main', 'res');
   if (fs.existsSync(androidResDir)) {
     for (const { folder, legacySize, adaptiveSize } of ANDROID_MIPMAPS) {
@@ -72,7 +85,6 @@ async function prepareAssets() {
         fs.mkdirSync(targetDir, { recursive: true });
       }
 
-      // ic_launcher.png & ic_launcher_round.png (full frameless transparent icon)
       await sharp(sourceIcon)
         .ensureAlpha()
         .resize(legacySize, legacySize, { fit: 'contain', background: TRANSPARENT_BG })
@@ -85,7 +97,6 @@ async function prepareAssets() {
         .png()
         .toFile(path.join(targetDir, 'ic_launcher_round.png'));
 
-      // ic_launcher_foreground.png (transparent foreground)
       const fgInner = Math.round(adaptiveSize * 0.78);
       const padTop = Math.floor((adaptiveSize - fgInner) / 2);
       const padBottom = adaptiveSize - fgInner - padTop;
@@ -105,7 +116,6 @@ async function prepareAssets() {
         .png()
         .toFile(path.join(targetDir, 'ic_launcher_foreground.png'));
 
-      // ic_launcher_background.png (100% transparent, no background box)
       await sharp({
         create: {
           width: adaptiveSize,
@@ -118,7 +128,7 @@ async function prepareAssets() {
         .toFile(path.join(targetDir, 'ic_launcher_background.png'));
     }
 
-    // Remove mipmap-anydpi-v26 adaptive-icon XML wrappers so Android launchers render the frameless transparent PNG directly without adding a forced background plate
+    // Remove mipmap-anydpi-v26 wrappers so launcher renders PNG icons directly
     const anyDpiDir = path.join(androidResDir, 'mipmap-anydpi-v26');
     if (fs.existsSync(anyDpiDir)) {
       for (const xmlFile of ['ic_launcher.xml', 'ic_launcher_round.xml']) {
@@ -133,10 +143,33 @@ async function prepareAssets() {
         }
       } catch (_) {}
     }
-    console.log('✅ Android mipmap icons updated (100% transparent background, frameless).');
+
+    // 4. Populate Android splash screen drawables
+    console.log('🖼️ Generating Android splash screens from app logo...');
+    const splashBuf = await sharp(sourceIcon)
+      .ensureAlpha()
+      .resize(280, 280, { fit: 'contain', background: TRANSPARENT_BG })
+      .extend({
+        top: 260,
+        bottom: 260,
+        left: 260,
+        right: 260,
+        background: DARK_SLATE_BG,
+      })
+      .png()
+      .toBuffer();
+
+    for (const drawableFolder of SPLASH_DRAWABLE_FOLDERS) {
+      const targetDir = path.join(androidResDir, drawableFolder);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(targetDir, 'splash.png'), splashBuf);
+    }
+    console.log('✅ Android splash screens updated across all drawables.');
   }
 
-  // 4. Generate 2732x2732 Splash Screens
+  // 5. Generate root assets splash
   await sharp(sourceIcon)
     .ensureAlpha()
     .resize(512, 512, { fit: 'contain', background: TRANSPARENT_BG })
@@ -145,7 +178,7 @@ async function prepareAssets() {
       bottom: 1110,
       left: 1110,
       right: 1110,
-      background: { r: 15, g: 23, b: 42, alpha: 1 },
+      background: DARK_SLATE_BG,
     })
     .png()
     .toFile(path.join(assetsDir, 'splash.png'));
@@ -158,13 +191,12 @@ async function prepareAssets() {
       bottom: 1110,
       left: 1110,
       right: 1110,
-      background: { r: 15, g: 23, b: 42, alpha: 1 },
+      background: DARK_SLATE_BG,
     })
     .png()
     .toFile(path.join(assetsDir, 'splash-dark.png'));
 
-  console.log('✅ Assets generated in ./assets directory:');
-  console.log(fs.readdirSync(assetsDir));
+  console.log('🎉 Assets and Android splash screens generated successfully.');
 }
 
 prepareAssets().catch((err) => {

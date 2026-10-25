@@ -289,9 +289,12 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
       return;
     }
 
-    // 4. Desktop Tauri platform: trigger native updater or installer download
+    // 4. Desktop Tauri platform: trigger native updater or open download URL in system browser
     if (isDesktop) {
       const win = window as any;
+      const downloadUrl = serverInfo?.downloadUrl || getEffectiveApiUrl('/downloads/dlkam-desktop-setup.msi');
+
+      // 4a. If Tauri built-in auto-updater is active
       if (win.__TAURI__?.updater?.installUpdate) {
         try {
           await win.__TAURI__.updater.installUpdate();
@@ -300,20 +303,47 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
             return;
           }
         } catch (e) {
-          console.warn('Tauri updater failed, checking desktop download URL:', e);
+          console.warn('Tauri updater failed, falling back to direct browser download:', e);
         }
       }
 
-      if (serverInfo?.downloadUrl) {
-        const link = document.createElement('a');
-        link.href = serverInfo.downloadUrl;
-        link.target = '_blank';
-        link.download = '';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        return;
+      // 4b. Open download link in user's default system browser using Tauri shell API
+      let openedByTauri = false;
+      try {
+        if (win.__TAURI__?.shell?.open) {
+          await win.__TAURI__.shell.open(downloadUrl);
+          openedByTauri = true;
+        } else if (win.__TAURI_IPC__) {
+          const { invoke } = win.__TAURI__?.tauri || win.__TAURI__ || {};
+          if (invoke) {
+            await invoke('tauri', {
+              __tauriModule: 'Shell',
+              message: { cmd: 'openWith', path: downloadUrl }
+            });
+            openedByTauri = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Tauri shell.open failed:', err);
       }
+
+      // 4c. Fallback for standard link invocation
+      if (!openedByTauri) {
+        try {
+          const link = document.createElement('a');
+          link.href = downloadUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.download = '';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (_) {
+          window.open(downloadUrl, '_blank');
+        }
+      }
+
+      return; // Handled desktop update cleanly!
     }
 
     // 5. Web Browser Platform: Purge caches, instruct ServiceWorker, and hard-refresh
@@ -353,8 +383,9 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
   } catch (e) {
     console.error('Error during applyApplicationUpdate:', e);
   } finally {
-    // For Web, perform a clean hard reload with cache-buster parameter
-    if (!isAndroid) {
+    // CRITICAL FIX: Only hard-reload for pure Web browsers!
+    // Never refresh the WebView on Tauri Desktop or Android!
+    if (isWeb) {
       setTimeout(() => {
         const cleanUrl = window.location.origin + window.location.pathname;
         window.location.replace(`${cleanUrl}?v=${Date.now()}`);
