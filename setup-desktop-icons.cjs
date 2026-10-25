@@ -10,67 +10,88 @@ if (!fs.existsSync(iconsDir)) {
   fs.mkdirSync(iconsDir, { recursive: true });
 }
 
-function getValidSource() {
-  const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-  const candidates = [
-    'public/assets/aistudio/image_ac0aff99.png',
+function findUserAppIcon() {
+  // 1. Check root directory for any file named app-icon or app-icon.* (e.g. app-icon.png, app-icon.jpg, app-icon.webp, app-icon.png.png, app-icon)
+  const searchDirs = [rootDir, path.join(rootDir, 'public')];
+  const exactPreferred = [
     'app-icon.png',
-    'public/app-icon.png'
+    'app-icon.webp',
+    'app-icon.jpg',
+    'app-icon.jpeg',
+    'app-icon.ico',
+    'app-icon.svg',
+    'app-icon'
   ];
 
-  for (const file of candidates) {
-    const fullPath = path.join(rootDir, file);
-    if (fs.existsSync(fullPath)) {
-      try {
-        const buf = fs.readFileSync(fullPath);
-        if (buf.length > 8 && buf.subarray(0, 8).equals(pngHeader)) {
-          console.log(`[Icon Generator] Strictly using user PNG source: ${file} (${buf.length} bytes)`);
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue;
+
+    // Check preferred names first
+    for (const name of exactPreferred) {
+      const fullPath = path.join(dir, name);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
+        console.log(`[Icon Generator] Found user app-icon file: ${fullPath}`);
+        return fullPath;
+      }
+    }
+
+    // Also match any app-icon* file (e.g. if Windows Explorer added a double extension like app-icon.png.png or app-icon.jpg)
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      if (/^app-icon(\.[a-z0-9]+)*$/i.test(file) && !file.endsWith('.tmp')) {
+        const fullPath = path.join(dir, file);
+        if (fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
+          console.log(`[Icon Generator] Auto-detected user app-icon file: ${fullPath}`);
           return fullPath;
         }
-      } catch (err) {
-        console.warn(`[Icon Generator] Could not read ${file}:`, err.message);
       }
     }
   }
+
   return null;
 }
 
 async function run() {
-  const rawSource = getValidSource();
+  const rawSource = findUserAppIcon();
   if (!rawSource) {
-    console.error('[Icon Generator] Error: No valid user app-icon.png found!');
+    console.error('[Icon Generator] Error: Could not find app-icon in the project root folder!');
     process.exit(1);
   }
 
   const appIconPath = path.join(rootDir, 'app-icon.png');
-  
-  // Always prepare pristine 1024x1024 1:1 square PNG from user image (required by Tauri CLI)
-  console.log(`[Icon Generator] Converting user logo to 1024x1024 square PNG...`);
+  const tmpPath = appIconPath + '.tmp';
+
+  // Always prepare a 1024x1024 1:1 square RGBA PNG from the user's app-icon file (required by Tauri CLI)
+  console.log(`[Icon Generator] Normalizing user app-icon (${path.basename(rawSource)}) to 1024x1024 RGBA PNG...`);
   await sharp(rawSource)
+    .ensureAlpha()
     .resize(1024, 1024, {
       fit: 'contain',
       background: { r: 0, g: 0, b: 0, alpha: 0 }
     })
     .png()
-    .toFile(appIconPath + '.tmp');
+    .toFile(tmpPath);
 
-  fs.renameSync(appIconPath + '.tmp', appIconPath);
-  console.log('✅ app-icon.png converted to 1024x1024 square format.');
+  fs.renameSync(tmpPath, appIconPath);
+  console.log('✅ app-icon.png prepared in 1024x1024 square format.');
 
-  // Also sync to public folder for Web/PWA
-  fs.copyFileSync(appIconPath, path.join(rootDir, 'public', 'app-icon.png'));
-  fs.copyFileSync(appIconPath, path.join(rootDir, 'public', 'icon.png'));
+  // Sync to public folder for Web/PWA & Desktop runtime window icon
+  const publicDir = path.join(rootDir, 'public');
+  if (fs.existsSync(publicDir)) {
+    fs.copyFileSync(appIconPath, path.join(publicDir, 'app-icon.png'));
+    fs.copyFileSync(appIconPath, path.join(publicDir, 'icon.png'));
+  }
 
-  console.log('[Icon Generator] Building Tauri desktop icons using Tauri CLI...');
+  console.log('[Icon Generator] Building all Tauri desktop icons (.ico, .icns, .png) from app-icon.png...');
   execSync('npx tauri icon app-icon.png -o src-tauri/icons', { stdio: 'inherit', cwd: rootDir });
 
   const icoPath = path.join(iconsDir, 'icon.ico');
   if (fs.existsSync(icoPath)) {
     const icoSize = fs.statSync(icoPath).size;
-    console.log(`✅ icon.ico built strictly from user logo (${icoSize} bytes).`);
+    console.log(`✅ src-tauri/icons/icon.ico generated (${icoSize} bytes).`);
   }
 
-  console.log('🎉 Tauri icons updated strictly from user logo!');
+  console.log('🎉 Tauri desktop icons successfully generated from your app-icon!');
 }
 
 run().catch((err) => {

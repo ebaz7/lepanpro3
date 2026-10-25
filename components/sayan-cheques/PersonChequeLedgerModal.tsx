@@ -665,28 +665,28 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-2 sm:p-4 overflow-hidden" dir="rtl">
-            <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-2xl w-full max-w-7xl max-h-[96vh] flex flex-col overflow-hidden text-slate-800 dark:text-zinc-100 animate-scale-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4 overflow-hidden" dir="rtl">
+            <div className="bg-white dark:bg-zinc-900 border-0 sm:border border-slate-200 dark:border-zinc-800 rounded-none sm:rounded-3xl shadow-2xl w-full max-w-7xl h-[100dvh] sm:h-auto sm:max-h-[96vh] flex flex-col overflow-hidden text-slate-800 dark:text-zinc-100 animate-scale-in">
                 
-                {/* MODAL HEADER */}
-                <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 border-b border-white/10">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-2xl shadow-inner">
+                {/* MODAL HEADER - Ultra-compact on Android/Mobile */}
+                <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-3 sm:px-6 py-2 sm:py-3.5 flex items-center justify-between gap-2 shrink-0 border-b border-white/10">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                        <div className="hidden sm:flex p-2.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-2xl shadow-inner shrink-0">
                             <CreditCard size={22} />
                         </div>
-                        <div>
+                        <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                                <h3 className="text-base sm:text-lg font-black text-white">
-                                    پرونده اسناد چک و راس‌گیری پیشرفته سایان
+                                <h3 className="text-xs sm:text-lg font-black text-white truncate">
+                                    پرونده اسناد چک و راس‌گیری سایان
                                 </h3>
-                                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full">
+                                <span className="hidden md:inline-block bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full">
                                     Sayan Treasury & Ras Engine
                                 </span>
                             </div>
-                            <p className="text-xs text-slate-300 flex items-center gap-2 mt-0.5">
+                            <p className="text-[10px] sm:text-xs text-slate-300 flex items-center gap-1.5 mt-0.5 truncate">
                                 <span>طرف‌حساب:</span>
-                                <b className="text-white bg-white/10 px-2 py-0.5 rounded-lg">{selectedName || 'همه مشتریان و طرف‌های حساب'}</b>
-                                {selectedCode && <span className="font-mono text-emerald-400">({selectedCode})</span>}
+                                <b className="text-white bg-white/10 px-1.5 py-0.2 rounded-lg truncate">{selectedName || 'همه مشتریان و طرف‌های حساب'}</b>
+                                {selectedCode && <span className="font-mono text-emerald-400 shrink-0">({selectedCode})</span>}
                             </p>
                         </div>
                     </div>
@@ -716,78 +716,78 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     )}
 
                     {/* Header Action Buttons */}
-                    <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                         <button
                             onClick={fetchCheques}
                             disabled={isLoading}
-                            className="p-2 bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white rounded-xl transition-colors cursor-pointer"
+                            className="p-1.5 sm:p-2 bg-white/10 hover:bg-white/20 text-slate-200 hover:text-white rounded-xl transition-colors cursor-pointer"
                             title="تازه‌سازی اطلاعات از سرور سایان"
                         >
-                            <RefreshCw size={17} className={isLoading ? 'animate-spin text-emerald-400' : ''} />
+                            <RefreshCw size={16} className={isLoading ? 'animate-spin text-emerald-400' : ''} />
                         </button>
 
                         <button
                             onClick={() => handleExportExcel()}
-                            className="p-2 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
+                            className="p-1.5 sm:p-2 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
                             title="خروجی کامل اکسل چک‌ها"
                         >
-                            <FileSpreadsheet size={16} />
+                            <FileSpreadsheet size={15} />
                             <span className="hidden sm:inline">اکسل چک‌ها</span>
                         </button>
 
                         <button
                             onClick={handleShareToChat}
-                            className="p-2 bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
+                            className="p-1.5 sm:p-2 bg-blue-600/80 hover:bg-blue-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
                             title="اشتراک‌گذاری خلاصه گزارش در چت"
                         >
-                            <Share2 size={16} />
+                            <Share2 size={15} />
                             <span className="hidden sm:inline">ارسال به چت</span>
                         </button>
 
                         <button
                             onClick={handlePrint}
-                            className="p-2 bg-purple-600/80 hover:bg-purple-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
+                            className="p-1.5 sm:p-2 bg-purple-600/80 hover:bg-purple-600 text-white rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold shadow-xs"
                             title="چاپ رسمی برگه چک‌ها و راس‌گیری"
                         >
-                            <Printer size={16} />
+                            <Printer size={15} />
                             <span className="hidden sm:inline">چاپ</span>
                         </button>
 
                         <button
                             onClick={onClose}
-                            className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer mr-1"
+                            className="p-1.5 sm:p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
                             title="بستن پنجره"
                         >
-                            <X size={20} />
+                            <X size={19} />
                         </button>
                     </div>
                 </div>
 
-                {/* KPI STATS CARDS RIBBON */}
-                <div className="bg-slate-50 dark:bg-zinc-950/60 border-b border-slate-200 dark:border-zinc-800 p-3 sm:px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 shrink-0">
+                {/* KPI STATS CARDS RIBBON - Full Unshortened Numbers (Zero Truncation) */}
+                <div className="bg-slate-50 dark:bg-zinc-950/60 border-b border-slate-200 dark:border-zinc-800 p-2 sm:p-3 sm:px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-3 shrink-0">
                     {/* Card 1: Received */}
                     <div 
                         onClick={() => {
                             setFilterChequeType('received');
                             setFilterStatus('all');
                         }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                        className={`bg-white dark:bg-zinc-900 border rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all ${
                             filterChequeType === 'received' && filterStatus === 'all'
                                 ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-emerald-50/20'
                                 : 'border-emerald-500/30 hover:border-emerald-500'
                         }`}
                     >
-                        <div className="flex items-center justify-between text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
-                            <span>چک‌های دریافتی (از مشتری)</span>
-                            <span className="bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
+                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-emerald-600 dark:text-emerald-400 font-bold gap-1">
+                            <span>چک‌های دریافتی</span>
+                            <span className="bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-mono shrink-0">
                                 {stats.countReceived} فقره
                             </span>
                         </div>
-                        <div className="mt-1">
-                            <div className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
-                                {formatMoney(stats.totalReceived)} <span className="text-[10px] font-normal text-slate-400">ریال</span>
+                        <div className="mt-0.5 sm:mt-1">
+                            <div className="text-[11px] sm:text-base font-black text-slate-900 dark:text-white font-mono break-all leading-tight">
+                                {formatMoney(stats.totalReceived)} <span className="text-[9px] sm:text-[10px] font-sans font-normal text-slate-400">ریال</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-medium truncate">
+                            <div className="hidden sm:block text-[10px] text-slate-400 font-medium break-all">
                                 {formatToman(stats.totalReceived)} تومان
                             </div>
                         </div>
@@ -799,23 +799,23 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             setFilterChequeType('spent');
                             setFilterStatus('all');
                         }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                        className={`bg-white dark:bg-zinc-900 border rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all ${
                             filterChequeType === 'spent' && filterStatus === 'all'
                                 ? 'border-blue-500 ring-2 ring-blue-500/30 bg-blue-50/20'
                                 : 'border-blue-500/30 hover:border-blue-500'
                         }`}
                     >
-                        <div className="flex items-center justify-between text-[11px] text-blue-600 dark:text-blue-400 font-bold">
-                            <span>چک‌های خرج‌شده (واگذار به این شخص)</span>
-                            <span className="bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.5 rounded-full text-[10px] font-mono">
+                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-blue-600 dark:text-blue-400 font-bold gap-1">
+                            <span>چک‌های خرج‌شده</span>
+                            <span className="bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-mono shrink-0">
                                 {stats.countSpent} فقره
                             </span>
                         </div>
-                        <div className="mt-1">
-                            <div className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
-                                {formatMoney(stats.totalSpent)} <span className="text-[10px] font-normal text-slate-400">ریال</span>
+                        <div className="mt-0.5 sm:mt-1">
+                            <div className="text-[11px] sm:text-base font-black text-slate-900 dark:text-white font-mono break-all leading-tight">
+                                {formatMoney(stats.totalSpent)} <span className="text-[9px] sm:text-[10px] font-sans font-normal text-slate-400">ریال</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-medium truncate">
+                            <div className="hidden sm:block text-[10px] text-slate-400 font-medium break-all">
                                 {formatToman(stats.totalSpent)} تومان
                             </div>
                         </div>
@@ -827,21 +827,21 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             setFilterChequeType('all');
                             setFilterStatus('in_hand');
                         }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                        className={`bg-white dark:bg-zinc-900 border rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all ${
                             filterStatus === 'in_hand'
                                 ? 'border-amber-500 ring-2 ring-amber-500/30 bg-amber-50/20'
                                 : 'border-amber-500/30 hover:border-amber-500'
                         }`}
                     >
-                        <div className="flex items-center justify-between text-[11px] text-amber-600 dark:text-amber-400 font-bold">
-                            <span>نزد صندوق / در جریان وصول</span>
-                            <Clock size={13} />
+                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-amber-600 dark:text-amber-400 font-bold">
+                            <span>نزد صندوق / در جریان</span>
+                            <Clock size={12} />
                         </div>
-                        <div className="mt-1">
-                            <div className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
-                                {formatMoney(stats.totalInHand)} <span className="text-[10px] font-normal text-slate-400">ریال</span>
+                        <div className="mt-0.5 sm:mt-1">
+                            <div className="text-[11px] sm:text-base font-black text-slate-900 dark:text-white font-mono break-all leading-tight">
+                                {formatMoney(stats.totalInHand)} <span className="text-[9px] sm:text-[10px] font-sans font-normal text-slate-400">ریال</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-medium truncate">
+                            <div className="hidden sm:block text-[10px] text-slate-400 font-medium break-all">
                                 {formatToman(stats.totalInHand)} تومان
                             </div>
                         </div>
@@ -853,21 +853,21 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             setFilterChequeType('all');
                             setFilterStatus('cleared');
                         }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:scale-[1.02] ${
+                        className={`bg-white dark:bg-zinc-900 border rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-xs flex flex-col justify-between cursor-pointer transition-all ${
                             filterStatus === 'cleared'
                                 ? 'border-teal-500 ring-2 ring-teal-500/30 bg-teal-50/20'
                                 : 'border-teal-500/30 hover:border-teal-500'
                         }`}
                     >
-                        <div className="flex items-center justify-between text-[11px] text-teal-600 dark:text-teal-400 font-bold">
+                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-teal-600 dark:text-teal-400 font-bold">
                             <span>وصول‌شده / پاس‌شده</span>
-                            <CheckCircle2 size={13} />
+                            <CheckCircle2 size={12} />
                         </div>
-                        <div className="mt-1">
-                            <div className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
-                                {formatMoney(stats.totalCleared)} <span className="text-[10px] font-normal text-slate-400">ریال</span>
+                        <div className="mt-0.5 sm:mt-1">
+                            <div className="text-[11px] sm:text-base font-black text-slate-900 dark:text-white font-mono break-all leading-tight">
+                                {formatMoney(stats.totalCleared)} <span className="text-[9px] sm:text-[10px] font-sans font-normal text-slate-400">ریال</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-medium truncate">
+                            <div className="hidden sm:block text-[10px] text-slate-400 font-medium break-all">
                                 {formatToman(stats.totalCleared)} تومان
                             </div>
                         </div>
@@ -879,71 +879,71 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             setFilterChequeType('all');
                             setFilterStatus('returned');
                         }}
-                        className={`bg-white dark:bg-zinc-900 border rounded-2xl p-2.5 sm:p-3 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1 cursor-pointer transition-all hover:scale-[1.02] ${
+                        className={`bg-white dark:bg-zinc-900 border rounded-xl sm:rounded-2xl p-2 sm:p-3 shadow-xs flex flex-col justify-between col-span-2 sm:col-span-1 cursor-pointer transition-all ${
                             filterStatus === 'returned'
                                 ? 'border-rose-500 ring-2 ring-rose-500/30 bg-rose-50/20'
                                 : 'border-rose-500/30 hover:border-rose-500'
                         }`}
                     >
-                        <div className="flex items-center justify-between text-[11px] text-rose-600 dark:text-rose-400 font-bold">
+                        <div className="flex items-center justify-between text-[10px] sm:text-[11px] text-rose-600 dark:text-rose-400 font-bold">
                             <span>چک‌های برگشتی</span>
-                            <AlertCircle size={13} />
+                            <AlertCircle size={12} />
                         </div>
-                        <div className="mt-1">
-                            <div className="text-sm sm:text-base font-black text-rose-600 dark:text-rose-400 truncate">
-                                {formatMoney(stats.totalReturned)} <span className="text-[10px] font-normal text-slate-400">ریال</span>
+                        <div className="mt-0.5 sm:mt-1">
+                            <div className="text-[11px] sm:text-base font-black text-rose-600 dark:text-rose-400 font-mono break-all leading-tight">
+                                {formatMoney(stats.totalReturned)} <span className="text-[9px] sm:text-[10px] font-sans font-normal text-slate-400">ریال</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 font-medium truncate">
+                            <div className="hidden sm:block text-[10px] text-slate-400 font-medium break-all">
                                 {formatToman(stats.totalReturned)} تومان
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* NAVIGATION TABS & FILTER BAR */}
-                <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 p-3 sm:px-6 space-y-3 shrink-0">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* NAVIGATION TABS & FILTER BAR - Compact on Mobile */}
+                <div className="bg-white dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 p-2 sm:p-3 sm:px-6 space-y-2 shrink-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                         {/* Tabs */}
-                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl border border-slate-200 dark:border-zinc-700">
+                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-zinc-700 w-full sm:w-auto justify-between sm:justify-start">
                             <button
                                 onClick={() => setActiveTab('list')}
-                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`flex-1 sm:flex-initial px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
                                     activeTab === 'list'
                                         ? 'bg-white dark:bg-zinc-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
                                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                                 }`}
                             >
-                                <CreditCard size={15} />
-                                <span>لیست و گردش چک‌ها ({filteredCheques.length})</span>
+                                <CreditCard size={14} />
+                                <span>لیست چک‌ها ({filteredCheques.length})</span>
                             </button>
 
                             <button
                                 onClick={() => setActiveTab('ras')}
-                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`flex-1 sm:flex-initial px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
                                     activeTab === 'ras'
                                         ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
                                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                                 }`}
                             >
-                                <Sparkles size={15} />
-                                <span>ماشین‌حساب راس‌گیری</span>
+                                <Sparkles size={14} />
+                                <span>راس‌گیری</span>
                             </button>
 
                             <button
                                 onClick={() => setActiveTab('smart_match')}
-                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`flex-1 sm:flex-initial px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer ${
                                     activeTab === 'smart_match'
                                         ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
                                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                                 }`}
                             >
-                                <SlidersHorizontal size={15} />
-                                <span>🎯 انتخاب هوشمند با مبلغ و راس هدف</span>
+                                <SlidersHorizontal size={14} />
+                                <span>انتخاب هوشمند</span>
                             </button>
                         </div>
 
                         {/* Quick Presets Chips */}
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <div className="hidden sm:flex flex-wrap items-center gap-1.5 text-[11px]">
                             <span className="text-slate-400 font-bold text-[10px] ml-1">شروط سریع:</span>
                             <button
                                 type="button"
@@ -1026,16 +1026,16 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     </div>
 
                     {/* Detailed Filter Inputs Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-zinc-800 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 pt-1 border-t border-slate-100 dark:border-zinc-800 text-xs">
                         {/* Search Input */}
-                        <div className="relative">
-                            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <div className="relative flex-1 sm:flex-initial min-w-[140px]">
+                            <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="جستجوی شماره چک، صیادی، بانک، صادرکننده..."
-                                className="bg-slate-50 dark:bg-zinc-800/90 border border-slate-200 dark:border-zinc-700 text-xs rounded-xl pr-8 pl-3 py-1.5 w-48 sm:w-56 focus:outline-none focus:border-indigo-500"
+                                placeholder="جستجوی چک، صیادی، بانک..."
+                                className="bg-slate-50 dark:bg-zinc-800/90 border border-slate-200 dark:border-zinc-700 text-[11px] sm:text-xs rounded-xl pr-7 pl-2.5 py-1 sm:py-1.5 w-full sm:w-56 focus:outline-none focus:border-indigo-500"
                             />
                         </div>
 
@@ -1043,30 +1043,30 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                         <select
                             value={filterChequeType}
                             onChange={(e) => setFilterChequeType(e.target.value as any)}
-                            className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-slate-200 font-bold outline-none"
+                            className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[11px] sm:text-xs rounded-xl px-2 py-1 sm:py-1.5 text-slate-700 dark:text-slate-200 font-bold outline-none"
                         >
-                            <option value="all">همه انواع چک‌ها</option>
-                            <option value="received">فقط چک‌های دریافتی</option>
-                            <option value="spent">فقط چک‌های خرج‌شده به شخص</option>
-                            <option value="issued">فقط چک‌های صادره/پرداختی</option>
+                            <option value="all">همه انواع</option>
+                            <option value="received">دریافتی</option>
+                            <option value="spent">خرج‌شده</option>
+                            <option value="issued">پرداختی</option>
                         </select>
 
                         {/* Status Filter */}
                         <select
                             value={filterStatus}
                             onChange={(e) => setFilterStatus(e.target.value)}
-                            className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-slate-200 font-bold outline-none"
+                            className="bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-[11px] sm:text-xs rounded-xl px-2 py-1 sm:py-1.5 text-slate-700 dark:text-slate-200 font-bold outline-none"
                         >
                             <option value="all">همه وضعیت‌ها</option>
-                            <option value="in_hand">نزد صندوق / در جریان</option>
+                            <option value="in_hand">نزد صندوق</option>
                             <option value="at_bank">واگذار به بانک</option>
-                            <option value="cleared">وصول شده / پاس شده</option>
+                            <option value="cleared">وصول شده</option>
                             <option value="returned">برگشتی</option>
                             <option value="spent">خرج شده</option>
                         </select>
 
                         {/* Receive/Spent Date Filter */}
-                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-zinc-800/80 px-2 py-1 rounded-xl border border-slate-200 dark:border-zinc-700">
+                        <div className="hidden lg:flex items-center gap-1 bg-slate-50 dark:bg-zinc-800/80 px-2 py-1 rounded-xl border border-slate-200 dark:border-zinc-700">
                             <span className="text-[10px] text-slate-500 font-bold">ثبت/خرج:</span>
                             <input
                                 type="text"
@@ -1086,7 +1086,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                         </div>
 
                         {/* Due Date Filter */}
-                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-zinc-800/80 px-2 py-1 rounded-xl border border-slate-200 dark:border-zinc-700">
+                        <div className="hidden sm:flex items-center gap-1 bg-slate-50 dark:bg-zinc-800/80 px-2 py-1 rounded-xl border border-slate-200 dark:border-zinc-700">
                             <span className="text-[10px] text-slate-500 font-bold">سررسید:</span>
                             <input
                                 type="text"
@@ -1117,18 +1117,18 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                     setFilterChequeType('all');
                                     setFilterStatus('all');
                                 }}
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-0.5"
+                                className="p-1 sm:p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg text-[10px] sm:text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-0.5"
                                 title="پاک کردن تمام فیلترها"
                             >
-                                <RotateCcw size={13} />
-                                <span>حذف فیلترها</span>
+                                <RotateCcw size={12} />
+                                <span>حذف فیلتر</span>
                             </button>
                         )}
                     </div>
                 </div>
 
-                {/* MAIN CONTENT AREA */}
-                <div className="flex-1 overflow-y-auto p-3 sm:p-6 custom-scrollbar">
+                {/* MAIN CONTENT AREA - Zero Horizontal Scroll */}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 sm:p-6 custom-scrollbar">
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400">
                             <RefreshCw size={36} className="animate-spin text-emerald-500" />
@@ -1153,11 +1153,11 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             <p className="text-xs text-slate-400">می‌توانید فیلترهای تاریخ یا جستجو را تغییر دهید یا دکمه تازه‌سازی را بزنید.</p>
                         </div>
                     ) : activeTab === 'list' ? (
-                        /* ================= TAB 1: CHEQUE LIST TABLE ================= */
-                        <div className="space-y-4">
+                        /* ================= TAB 1: CHEQUE LIST TABLE & MOBILE CARDS ================= */
+                        <div className="space-y-3 sm:space-y-4">
                             {/* Category Specific Banner */}
                             {filterStatus === 'returned' && (
-                                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-rose-900 dark:text-rose-200 animate-fadeIn">
+                                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-rose-900 dark:text-rose-200 animate-fadeIn">
                                     <div className="flex items-center gap-2">
                                         <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
                                         <div>
@@ -1167,7 +1167,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                     </div>
                                     <button
                                         onClick={() => handleExportExcel(filteredCheques, 'چک‌های_برگشتی')}
-                                        className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                                     >
                                         <FileSpreadsheet size={15} />
                                         <span>دانلود اکسل چک‌های برگشتی</span>
@@ -1176,7 +1176,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             )}
 
                             {filterChequeType === 'spent' && (
-                                <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-blue-900 dark:text-blue-200 animate-fadeIn">
+                                <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-blue-900 dark:text-blue-200 animate-fadeIn">
                                     <div className="flex items-center gap-2">
                                         <Coins className="w-5 h-5 text-blue-600 shrink-0" />
                                         <div>
@@ -1186,7 +1186,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                     </div>
                                     <button
                                         onClick={() => handleExportExcel(filteredCheques, 'چک‌های_خرج‌شده')}
-                                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                                     >
                                         <FileSpreadsheet size={15} />
                                         <span>دانلود اکسل چک‌های خرج‌شده</span>
@@ -1195,7 +1195,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             )}
 
                             {filterChequeType === 'received' && filterStatus === 'all' && (
-                                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-emerald-900 dark:text-emerald-200 animate-fadeIn">
+                                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-emerald-900 dark:text-emerald-200 animate-fadeIn">
                                     <div className="flex items-center gap-2">
                                         <CreditCard className="w-5 h-5 text-emerald-600 shrink-0" />
                                         <div>
@@ -1205,7 +1205,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                     </div>
                                     <button
                                         onClick={() => handleExportExcel(filteredCheques, 'چک‌های_دریافتی')}
-                                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
                                     >
                                         <FileSpreadsheet size={15} />
                                         <span>دانلود اکسل چک‌های دریافتی</span>
@@ -1213,7 +1213,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                 </div>
                             )}
 
-                            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={handleToggleSelectAll}
@@ -1227,12 +1227,12 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                         ) : (
                                             <>
                                                 <Square size={16} />
-                                                <span>انتخاب همه برای راس‌گیری</span>
+                                                <span>انتخاب همه</span>
                                             </>
                                         )}
                                     </button>
                                     <span className="text-slate-300">|</span>
-                                    <span>تعداد چک‌های نمایش داده شده: <b>{filteredCheques.length} فقره</b></span>
+                                    <span className="text-[11px] sm:text-xs">تعداد: <b>{filteredCheques.length} فقره</b></span>
                                 </div>
 
                                 <button
@@ -1240,15 +1240,130 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                         setRasScope('selected');
                                         setActiveTab('ras');
                                     }}
-                                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1 text-xs shadow-xs transition-colors cursor-pointer"
+                                    className="px-2.5 sm:px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center gap-1 text-[11px] sm:text-xs shadow-xs transition-colors cursor-pointer"
                                 >
-                                    <Sparkles size={14} />
-                                    <span>انتقال چک‌های انتخابی ({selectedChequeIds.size}) به راس‌گیری</span>
+                                    <Sparkles size={13} />
+                                    <span>انتقال انتخابی ({selectedChequeIds.size}) به راس‌گیری</span>
                                 </button>
                             </div>
 
-                            {/* Table */}
-                            <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xs">
+                            {/* MOBILE / ANDROID NATIVE CHEQUE CARDS (Zero Horizontal Scroll, Full Numbers) */}
+                            <div className="block md:hidden space-y-2">
+                                {filteredCheques.map((c) => {
+                                    const isSelected = selectedChequeIds.has(c.id);
+                                    const dueD = shamsiToDate(c.dueDate);
+                                    const nowMs = new Date().setHours(0, 0, 0, 0);
+                                    const daysLeft = dueD ? Math.round((dueD.getTime() - nowMs) / (24 * 60 * 60 * 1000)) : 0;
+
+                                    return (
+                                        <div
+                                            key={c.id}
+                                            onClick={() => handleToggleSelectOne(c.id)}
+                                            className={`rounded-2xl border p-3 transition-all cursor-pointer space-y-2 shadow-2xs ${
+                                                isSelected
+                                                    ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20'
+                                                    : 'border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900'
+                                            }`}
+                                        >
+                                            {/* Row 1: Checkbox, Type Badge, Cheque No, Status Badge */}
+                                            <div className="flex items-center justify-between gap-1.5 border-b border-slate-100 dark:border-zinc-800 pb-1.5">
+                                                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => handleToggleSelectOne(c.id)}
+                                                        className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
+                                                    />
+                                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                                        c.chequeType === 'received'
+                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                                            : c.chequeType === 'spent'
+                                                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                                    }`}>
+                                                        {c.chequeType === 'received' ? 'دریافتی' : (c.chequeType === 'spent' ? 'خرج‌شده' : 'پرداختی')}
+                                                    </span>
+                                                    <span className="font-mono font-black text-xs text-slate-900 dark:text-white" dir="ltr">
+                                                        #{c.chequeNo}
+                                                    </span>
+                                                </div>
+
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                    c.statusGroup === 'cleared'
+                                                        ? 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300'
+                                                        : c.statusGroup === 'returned'
+                                                            ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-black'
+                                                            : c.statusGroup === 'spent'
+                                                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300'
+                                                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                                }`}>
+                                                    {c.statusDesc || 'نزد صندوق'}
+                                                </span>
+                                            </div>
+
+                                            {/* Row 2: Full Amount (Rial & Toman) + Due Date */}
+                                            <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-zinc-800/60 px-2.5 py-1.5 rounded-xl">
+                                                <div>
+                                                    <div className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                                                        {formatMoney(c.amount)} <span className="text-[10px] font-sans font-normal text-slate-500">ریال</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold">
+                                                        {formatToman(c.amount)} تومان
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-left">
+                                                    <div className="text-[11px] font-mono font-black text-indigo-600 dark:text-indigo-400">
+                                                        سررسید: {c.dueDate}
+                                                    </div>
+                                                    <div className="mt-0.5">
+                                                        {daysLeft >= 0 ? (
+                                                            <span className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                {daysLeft} روز مانده
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                                                {Math.abs(daysLeft)} روز گذشته
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Row 3: Bank, Drawer, Target Person, Description */}
+                                            <div className="grid grid-cols-2 gap-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                                                <div>
+                                                    <span className="text-slate-400 text-[10px]">بانک: </span>
+                                                    <b className="text-slate-800 dark:text-slate-200">{c.bankName}</b>
+                                                    {c.branch && <span className="text-[10px] text-slate-400"> ({c.branch})</span>}
+                                                </div>
+                                                <div className="text-left">
+                                                    <span className="text-slate-400 text-[10px]">ثبت/خرج: </span>
+                                                    <span className="font-mono">{c.receiveDate || '-'}</span>
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <span className="text-slate-400 text-[10px]">صاحب حساب/واگذارکننده: </span>
+                                                    <b className="text-slate-800 dark:text-slate-200">{c.drawerName || '-'}</b>
+                                                    {c.targetPersonName && (
+                                                        <span className="text-blue-600 dark:text-blue-400 font-bold mr-2">
+                                                            (واگذار به: {c.targetPersonName})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {(c.docNo || c.docDesc) && (
+                                                    <div className="col-span-2 text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-zinc-800 pt-1 break-words">
+                                                        {c.docNo && <b className="text-slate-700 dark:text-slate-200 ml-1">[سند {c.docNo}]</b>}
+                                                        {c.docDesc}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* DESKTOP TABLE VIEW */}
+                            <div className="hidden md:block border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-xs">
                                 <table className="w-full text-right text-xs border-collapse">
                                     <thead>
                                         <tr className="bg-slate-100 dark:bg-zinc-800/90 text-slate-700 dark:text-slate-200 font-black border-b border-slate-200 dark:border-zinc-700">
@@ -1355,7 +1470,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                                             {c.statusDesc || 'نزد صندوق'}
                                                         </span>
                                                     </td>
-                                                    <td className="p-3 text-slate-500 dark:text-slate-400 text-[11px] max-w-xs truncate" title={c.docDesc}>
+                                                    <td className="p-3 text-slate-500 dark:text-slate-400 text-[11px] max-w-xs break-words">
                                                         {c.docNo && <b className="text-slate-700 dark:text-slate-200 ml-1">[{c.docNo}]</b>}
                                                         {c.docDesc || '-'}
                                                     </td>
@@ -1542,7 +1657,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                             {/* Ras Breakdown Table & Actions */}
                             {rasResult && (
                                 <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
                                             <span>جدول ریز محاسبات و ضرایب وزنی هر چک در راس</span>
                                             <span className="text-[11px] text-slate-400 font-normal">({rasResult.breakdown.length} ردیف)</span>
@@ -1557,7 +1672,40 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                         </button>
                                     </div>
 
-                                    <div className="border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-hidden shadow-xs">
+                                    {/* Mobile Breakdown Cards (Zero Horizontal Scroll) */}
+                                    <div className="block md:hidden space-y-2">
+                                        {rasResult.breakdown.map((b, idx) => (
+                                            <div key={b.cheque.id} className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2.5 space-y-1.5 shadow-2xs text-xs">
+                                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-mono font-bold text-slate-400">#{idx + 1}</span>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                                            b.cheque.chequeType === 'received'
+                                                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                                                : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                                        }`}>
+                                                            {b.cheque.chequeType === 'received' ? 'دریافتی' : 'خرج‌شده'}
+                                                        </span>
+                                                        <span className="font-mono font-bold" dir="ltr">#{b.cheque.chequeNo}</span>
+                                                    </div>
+                                                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">سررسید: {b.cheque.dueDate}</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-1.5 bg-slate-50 dark:bg-zinc-800/60 p-2 rounded-lg text-[11px]">
+                                                    <div>
+                                                        <span className="text-[10px] text-slate-400 block">مبلغ چک:</span>
+                                                        <span className="font-mono font-black text-slate-900 dark:text-white">{formatMoney(b.cheque.amount)} ریال</span>
+                                                    </div>
+                                                    <div className="text-left">
+                                                        <span className="text-[10px] text-slate-400 block">فاصله از مبدأ:</span>
+                                                        <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{b.daysFromBase} روز ({b.percentOfTotal.toFixed(1)}٪)</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Breakdown Table */}
+                                    <div className="hidden md:block border border-slate-200 dark:border-zinc-800 rounded-2xl overflow-x-auto shadow-xs">
                                         <table className="w-full text-right text-xs border-collapse">
                                             <thead>
                                                 <tr className="bg-slate-100 dark:bg-zinc-800/90 text-slate-700 dark:text-slate-200 font-black border-b border-slate-200 dark:border-zinc-700">
@@ -1582,7 +1730,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                                                     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                                                     : 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
                                                             }`}>
-                                                                {b.cheque.chequeType === 'received' ? 'دریافتی' : 'خرج‌شده'}
+                                                                 {b.cheque.chequeType === 'received' ? 'دریافتی' : 'خرج‌شده'}
                                                             </span>
                                                         </td>
                                                         <td className="p-3 font-mono font-bold" dir="ltr">{b.cheque.chequeNo}</td>
@@ -1638,17 +1786,17 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                         </div>
                     ) : activeTab === 'smart_match' ? (
                         /* ================= TAB 3: SMART MATCH TARGET FINDER ================= */
-                        <div className="space-y-6 animate-fade-in">
+                        <div className="space-y-4 sm:space-y-6 animate-fade-in">
                             {/* Input Form Banner */}
-                            <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-purple-950 text-white rounded-3xl p-5 shadow-xl border border-indigo-500/30 space-y-4">
+                            <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-purple-950 text-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-xl border border-indigo-500/30 space-y-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-500/30 pb-3">
                                     <div className="flex items-center gap-2">
-                                        <div className="p-2.5 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-2xl shadow-md">
+                                        <div className="p-2 sm:p-2.5 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-2xl shadow-md">
                                             <SlidersHorizontal className="w-5 h-5 text-white" />
                                         </div>
                                         <div>
-                                            <h3 className="font-black text-sm sm:text-base">🎯 ابزار انتخاب هوشمند چک بابت تسویه با مبلغ و راس هدف</h3>
-                                            <p className="text-xs text-indigo-200">
+                                            <h3 className="font-black text-xs sm:text-base">🎯 ابزار انتخاب هوشمند چک بابت تسویه با مبلغ و راس هدف</h3>
+                                            <p className="text-[11px] sm:text-xs text-indigo-200">
                                                 مبلغ و تاریخ راس مدنظر خود را مشخص کنید تا سیستم بهترین ترکیب چک‌های تطبیقی را از بین {cheques.length} چک موجود به صورت اتوماتیک انتخاب کند.
                                             </p>
                                         </div>
@@ -1657,7 +1805,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                     <button
                                         type="button"
                                         onClick={handleRunSmartMatch}
-                                        className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-black rounded-2xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 flex items-center gap-2 cursor-pointer text-xs"
+                                        className="w-full sm:w-auto justify-center px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-black rounded-2xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 flex items-center gap-2 cursor-pointer text-xs"
                                     >
                                         <Sparkles size={16} />
                                         <span>⚡ محاسبه و انتخاب اتوماتیک چک‌ها</span>
@@ -1757,10 +1905,10 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                                 <span>مجموع چک‌های منطبق</span>
                                                 <CheckCircle2 size={16} className="text-emerald-500" />
                                             </div>
-                                            <div className="text-xl font-black text-slate-900 dark:text-white mt-1">
+                                            <div className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-1 font-mono break-all">
                                                 {formatMoney(smartMatchResult.totalMatchedSum)} <span className="text-xs font-normal text-slate-400">ریال</span>
                                             </div>
-                                            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                                            <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold break-all">
                                                 {formatToman(smartMatchResult.totalMatchedSum)} تومان
                                             </div>
                                             <div className="mt-2 text-[11px] font-bold text-slate-500 border-t pt-1">
@@ -1781,7 +1929,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                                 راس هدف: {targetRasInput}
                                             </div>
                                             <div className="mt-2 text-[11px] font-bold text-slate-500 border-t pt-1">
-                                                اختلاف با راس هدف: {smartMatchResult.rasDaysDiff === 0 ? 'دقیقاً مطبق' : `${Math.abs(smartMatchResult.rasDaysDiff)} روز (${smartMatchResult.rasDaysDiff > 0 ? 'دیرتر' : 'زودتر'})`}
+                                                اختلاف با راس هدف: {smartMatchResult.rasDaysDiff === 0 ? 'دقیقاً منطبق' : `${Math.abs(smartMatchResult.rasDaysDiff)} روز (${smartMatchResult.rasDaysDiff > 0 ? 'دیرتر' : 'زودتر'})`}
                                             </div>
                                         </div>
 
@@ -1821,8 +1969,8 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                         </div>
                                     </div>
 
-                                    {/* Matched Cheques List Table */}
-                                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-4 space-y-3">
+                                    {/* Matched Cheques List Table & Mobile Cards */}
+                                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-2xl p-3 sm:p-4 space-y-3">
                                         <div className="flex items-center justify-between border-b pb-2">
                                             <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-2">
                                                 <span>لیست چک‌های منتخب بر اساس الگوریتم هوشمند</span>
@@ -1832,7 +1980,27 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                             </h4>
                                         </div>
 
-                                        <div className="overflow-x-auto custom-scrollbar">
+                                        {/* Mobile Cards (Zero Horizontal Scroll) */}
+                                        <div className="block md:hidden space-y-2">
+                                            {smartMatchResult.matchedCheques.map((c, idx) => (
+                                                <div key={c.id} className="rounded-xl border border-slate-200 dark:border-zinc-800 p-2.5 space-y-1.5 text-xs">
+                                                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-1">
+                                                        <span className="font-mono font-bold text-indigo-600">#{idx + 1} - چک {c.chequeNo}</span>
+                                                        <span className="font-mono font-bold">سررسید: {c.dueDate}</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between bg-slate-50 dark:bg-zinc-800/60 px-2 py-1 rounded-lg">
+                                                        <span className="font-mono font-black text-slate-900 dark:text-white">{formatMoney(c.amount)} ریال</span>
+                                                        <span className="font-mono text-emerald-600 font-bold text-[11px]">{formatToman(c.amount)} ت</span>
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500">
+                                                        {c.bankName} | {c.drawerName || '-'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Desktop Table */}
+                                        <div className="hidden md:block overflow-x-auto custom-scrollbar">
                                             <table className="w-full text-right text-xs">
                                                 <thead>
                                                     <tr className="bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-bold border-b">
@@ -1864,7 +2032,7 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                                                             <td className="p-2.5 font-mono text-emerald-600 dark:text-emerald-400 font-bold">{formatToman(c.amount)}</td>
                                                             <td className="p-2.5">{c.bankName} - {c.branch || '-'}</td>
                                                             <td className="p-2.5 font-bold">{c.drawerName || '-'}</td>
-                                                            <td className="p-2.5 text-slate-500 text-[11px] truncate max-w-[200px]">{c.docDesc || c.statusDesc}</td>
+                                                            <td className="p-2.5 text-slate-500 text-[11px] break-words max-w-[240px]">{c.docDesc || c.statusDesc}</td>
                                                         </tr>
                                                     ))}
                                                 </tbody>
@@ -1895,24 +2063,24 @@ export const PersonChequeLedgerModal: React.FC<PersonChequeLedgerModalProps> = (
                     ) : null}
                 </div>
 
-                {/* MODAL FOOTER */}
-                <div className="bg-slate-50 dark:bg-zinc-950 px-4 sm:px-6 py-3 flex items-center justify-between border-t border-slate-200 dark:border-zinc-800 shrink-0 text-xs">
-                    <div className="flex items-center gap-2 text-slate-500">
+                {/* MODAL FOOTER - Compact on Mobile */}
+                <div className="bg-slate-50 dark:bg-zinc-950 px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between border-t border-slate-200 dark:border-zinc-800 shrink-0 text-[11px] sm:text-xs">
+                    <div className="hidden sm:flex items-center gap-2 text-slate-500">
                         <span>پایگاه داده: <b>سایان ERP (خزانه‌داری BUR_TBL_012 & BUR_TBL_009)</b></span>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                         <button
                             onClick={() => handleExportExcel()}
-                            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                            className="px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                         >
-                            <Download size={15} />
+                            <Download size={14} />
                             <span>خروجی اکسل</span>
                         </button>
 
                         <button
                             onClick={onClose}
-                            className="px-5 py-2 bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-200 text-white dark:text-black rounded-xl font-bold transition-colors cursor-pointer"
+                            className="px-4 sm:px-5 py-1.5 sm:py-2 bg-slate-900 hover:bg-black dark:bg-white dark:hover:bg-slate-200 text-white dark:text-black rounded-xl font-bold transition-colors cursor-pointer"
                         >
                             بستن
                         </button>

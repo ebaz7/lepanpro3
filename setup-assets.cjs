@@ -21,8 +21,50 @@ const SPLASH_DRAWABLE_FOLDERS = [
   'drawable-port-hdpi',
   'drawable-port-xhdpi',
   'drawable-port-xxhdpi',
-  'drawable-port-xxxhdpi'
+  'drawable-port-xxxhdpi',
+  'drawable-land-mdpi',
+  'drawable-land-hdpi',
+  'drawable-land-xhdpi',
+  'drawable-land-xxhdpi',
+  'drawable-land-xxxhdpi'
 ];
+
+function findUserAppIcon() {
+  const rootDir = __dirname;
+  const searchDirs = [rootDir, path.join(rootDir, 'public')];
+  const exactPreferred = [
+    'app-icon.png',
+    'app-icon.webp',
+    'app-icon.jpg',
+    'app-icon.jpeg',
+    'app-icon.ico',
+    'app-icon.svg',
+    'app-icon'
+  ];
+
+  for (const dir of searchDirs) {
+    if (!fs.existsSync(dir)) continue;
+
+    for (const name of exactPreferred) {
+      const fullPath = path.join(dir, name);
+      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
+        return fullPath;
+      }
+    }
+
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      if (/^app-icon(\.[a-z0-9]+)*$/i.test(file) && !file.endsWith('.tmp')) {
+        const fullPath = path.join(dir, file);
+        if (fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
+          return fullPath;
+        }
+      }
+    }
+  }
+
+  return null;
+}
 
 async function prepareAssets() {
   const assetsDir = path.join(__dirname, 'assets');
@@ -30,13 +72,32 @@ async function prepareAssets() {
     fs.mkdirSync(assetsDir, { recursive: true });
   }
 
-  const sourceIcon = fs.existsSync(path.join(__dirname, 'app-icon.png'))
-    ? path.join(__dirname, 'app-icon.png')
-    : (fs.existsSync(path.join(__dirname, 'public', 'assets', 'aistudio', 'image_ac0aff99.png'))
-      ? path.join(__dirname, 'public', 'assets', 'aistudio', 'image_ac0aff99.png')
-      : path.join(__dirname, 'modern-frameless-logo.png'));
-      
-  console.log(`Using source icon: ${sourceIcon}`);
+  const rawSource = findUserAppIcon();
+  if (!rawSource) {
+    console.error('❌ Error: Could not find app-icon in the root folder!');
+    process.exit(1);
+  }
+
+  console.log(`🎨 Using user app-icon from root folder: ${rawSource}`);
+
+  // Normalize user's app-icon into a clean 1024x1024 RGBA PNG in root (app-icon.png)
+  const normalizedAppIcon = path.join(__dirname, 'app-icon.png');
+  const tmpNormalized = normalizedAppIcon + '.tmp';
+  await sharp(rawSource)
+    .ensureAlpha()
+    .resize(1024, 1024, { fit: 'contain', background: TRANSPARENT_BG })
+    .png()
+    .toFile(tmpNormalized);
+  fs.renameSync(tmpNormalized, normalizedAppIcon);
+
+  const sourceIcon = normalizedAppIcon;
+
+  // Sync to public folder as well
+  const publicDir = path.join(__dirname, 'public');
+  if (fs.existsSync(publicDir)) {
+    fs.copyFileSync(sourceIcon, path.join(publicDir, 'app-icon.png'));
+    fs.copyFileSync(sourceIcon, path.join(publicDir, 'icon.png'));
+  }
 
   // 1. Generate 1024x1024 icon.png and icon-only.png
   await sharp(sourceIcon)
@@ -144,8 +205,8 @@ async function prepareAssets() {
       } catch (_) {}
     }
 
-    // 4. Populate Android splash screen drawables
-    console.log('🖼️ Generating Android splash screens from app logo...');
+    // 4. Populate Android splash screen drawables from app-icon
+    console.log('🖼️ Generating Android splash screens from app-icon...');
     const splashBuf = await sharp(sourceIcon)
       .ensureAlpha()
       .resize(280, 280, { fit: 'contain', background: TRANSPARENT_BG })
@@ -166,7 +227,7 @@ async function prepareAssets() {
       }
       fs.writeFileSync(path.join(targetDir, 'splash.png'), splashBuf);
     }
-    console.log('✅ Android splash screens updated across all drawables.');
+    console.log('✅ Android launcher icons & splash screens updated across all drawables.');
   }
 
   // 5. Generate root assets splash
@@ -196,9 +257,10 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'splash-dark.png'));
 
-  console.log('🎉 Assets and Android splash screens generated successfully.');
+  console.log('🎉 Android & Web assets generated strictly from your app-icon.');
 }
 
 prepareAssets().catch((err) => {
   console.error('Failed generating assets:', err);
+  process.exit(1);
 });

@@ -7,7 +7,7 @@
     "dev": "node server.js --dev",
     "build": "node -e \"import('fs').then(fs => { if(fs.existsSync('dist')) fs.rmSync('dist', {recursive: true, force: true}); })\" && node --max-old-space-size=4096 ./node_modules/vite/bin/vite.js build",
     "preview": "vite preview",
-    "lint": "node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc --noEmit --skipLibCheck",
+    "lint": "tsc --noEmit --skipLibCheck",
     "start": "node server.js",
     "mobile": "npm run build && npx cap sync android && npx cap open android",
     "build:apk": "node build-android.js",
@@ -18,7 +18,7 @@
     "tauri": "tauri",
     "desktop:icons": "node setup-desktop-icons.cjs",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build",
+    "desktop:build": "node setup-desktop-icons.cjs && tauri build",
     "assets:generate": "node setup-assets.cjs && npx @capacitor/assets generate --android && node setup-assets.cjs",
     "postinstall": "node patch-dependencies.js"
   },

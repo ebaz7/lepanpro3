@@ -9114,89 +9114,92 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
             {/* Individual Customer Detailed Statement Modal */}
             {isStatementModalOpen && createPortal(
-                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-7xl xl:max-w-[95vw] 2xl:max-w-[1650px] h-[92vh] max-h-[94vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
-                        {/* Modal Header */}
-                        <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex flex-wrap justify-between items-center gap-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-white/20">
-                                    <FileText className="w-6 h-6 text-white" />
+                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-0 sm:p-3 md:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-none sm:rounded-2xl shadow-2xl w-full max-w-7xl xl:max-w-[95vw] 2xl:max-w-[1650px] h-[100dvh] sm:h-[92vh] max-h-[100dvh] sm:max-h-[94vh] flex flex-col overflow-hidden border-0 sm:border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
+                        {/* Modal Header - Ultra-compact on Android/Mobile */}
+                        <div className="flex-none px-3 py-2 sm:p-4 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center gap-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 text-white">
+                            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                <div className="hidden sm:flex p-2 rounded-xl bg-white/20 shrink-0">
+                                    <FileText className="w-5 h-5 text-white" />
                                 </div>
-                                <div>
-                                    <h3 className="font-black text-base sm:text-lg">
-                                        صورتحساب تفصیلی: {modalTafsiliName || (tafsilis.find(t => t.Code === (modalTafsiliCode || selectedTafsili))?.Name) || 'شخص'}
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="font-black text-xs sm:text-base md:text-lg truncate">
+                                        صورتحساب: {modalTafsiliName || (tafsilis.find(t => t.Code === (modalTafsiliCode || selectedTafsili))?.Name) || 'شخص'}
                                     </h3>
-                                    <p className="text-xs text-blue-100 mt-0.5">
-                                        کد تفصیلی: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded">{modalTafsiliCode || selectedTafsili}</span> | بازه زمانی: {dateFrom} تا {dateTo}
+                                    <p className="text-[10px] sm:text-xs text-blue-100 mt-0.5 truncate">
+                                        کد: <span className="font-mono font-bold bg-white/20 px-1.5 py-0.2 rounded">{modalTafsiliCode || selectedTafsili}</span> | {dateFrom} تا {dateTo}
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
                                 <button
                                     onClick={handleShareStatementToChat}
-                                    className="px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer min-h-[38px]"
+                                    className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-[11px] sm:text-xs font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer"
                                     title="ارسال PDF این صورتحساب به گفتگو"
                                 >
-                                    <Send className="w-4 h-4" />
-                                    <span>ارسال به گفتگو (PDF)</span>
+                                    <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    <span className="hidden sm:inline">ارسال به گفتگو (PDF)</span>
+                                    <span className="sm:hidden">ارسال</span>
                                 </button>
                                 <button
                                     onClick={() => handlePrintStatement()}
-                                    className="px-3.5 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer min-h-[38px]"
+                                    className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="چاپ / PDF"
                                 >
-                                    <Printer className="w-4 h-4" />
-                                    <span>چاپ / PDF</span>
+                                    <Printer className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    <span className="hidden sm:inline">چاپ / PDF</span>
                                 </button>
                                 <button
                                     onClick={() => setIsStatementModalOpen(false)}
-                                    className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/20 transition-colors cursor-pointer"
+                                    className="p-1.5 sm:p-2 text-white/90 hover:text-white rounded-xl hover:bg-white/20 transition-colors cursor-pointer"
                                     title="بستن"
                                 >
-                                    <X className="w-6 h-6" />
+                                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Modal Body */}
-                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-                            {/* Statement Summary KPIs */}
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="bg-rose-50 dark:bg-rose-950/30 p-3.5 rounded-2xl border border-rose-100 dark:border-rose-900/50 flex flex-col justify-between">
-                                    <span className="text-xs text-rose-600 font-extrabold block">مجموع بدهکار (واریزی‌ها / بدهی)</span>
-                                    <span className="text-base sm:text-xl font-black text-rose-900 dark:text-rose-200 font-mono mt-1 whitespace-nowrap">
-                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bed, 0))} <span className="text-xs font-normal text-rose-600">ریال</span>
+                        {/* Compact Statement Summary KPIs Strip (Fixed at top so statement scrolls freely below) */}
+                        <div className="flex-none px-2.5 py-2 sm:px-5 sm:py-3 bg-slate-50/90 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800">
+                            <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
+                                <div className="bg-rose-50 dark:bg-rose-950/30 p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-rose-100 dark:border-rose-900/50 flex flex-col justify-between">
+                                    <span className="text-[10px] sm:text-xs text-rose-600 font-extrabold block">مجموع بدهکار (ریال)</span>
+                                    <span className="text-[11px] sm:text-lg font-black text-rose-900 dark:text-rose-200 font-mono mt-0.5 break-all leading-tight">
+                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bed, 0))}
                                     </span>
                                 </div>
-                                <div className="bg-emerald-50 dark:bg-emerald-950/40 p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 flex flex-col justify-between">
-                                    <span className="text-xs text-emerald-900 dark:text-emerald-300 font-black block">مجموع بستانکار (فاکتورها / طلب)</span>
-                                    <span className="text-base sm:text-xl font-black text-emerald-950 dark:text-emerald-200 font-mono mt-1 whitespace-nowrap">
-                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bes, 0))} <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400">ریال</span>
+                                <div className="bg-emerald-50 dark:bg-emerald-950/40 p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-emerald-200 dark:border-emerald-900/60 flex flex-col justify-between">
+                                    <span className="text-[10px] sm:text-xs text-emerald-900 dark:text-emerald-300 font-black block">مجموع بستانکار (ریال)</span>
+                                    <span className="text-[11px] sm:text-lg font-black text-emerald-950 dark:text-emerald-200 font-mono mt-0.5 break-all leading-tight">
+                                        {formatMoney(filteredStatementData.reduce((sum, r) => sum + r.bes, 0))}
                                     </span>
                                 </div>
                                 {(() => {
                                     const lastBal = filteredStatementData[filteredStatementData.length - 1]?.balance || 0;
                                     const isBed = lastBal > 0;
                                     return (
-                                        <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                                        <div className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl border flex flex-col justify-between ${
                                             isBed 
                                                 ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900' 
                                                 : (lastBal < 0 ? 'bg-emerald-100/90 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800' : 'bg-slate-50 dark:bg-zinc-800 border-slate-200')
                                         }`}>
-                                            <span className="text-xs font-extrabold flex items-center justify-between">
-                                                <span className={isBed ? 'text-rose-700 dark:text-rose-300 font-black' : 'text-emerald-950 dark:text-emerald-200 font-black'}>مانده نهایی حساب</span>
-                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${isBed ? 'bg-rose-200 text-rose-950' : (lastBal < 0 ? 'bg-emerald-300 text-emerald-950 dark:bg-emerald-800 dark:text-white' : 'bg-slate-200 text-slate-800')}`}>
-                                                    {isBed ? 'بدهکار' : (lastBal < 0 ? 'بستانکار' : 'تسویه')}
+                                            <span className="text-[10px] sm:text-xs font-extrabold flex items-center justify-between gap-1">
+                                                <span className={isBed ? 'text-rose-700 dark:text-rose-300 font-black' : 'text-emerald-950 dark:text-emerald-200 font-black'}>مانده نهایی</span>
+                                                <span className={`px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black ${isBed ? 'bg-rose-200 text-rose-950' : (lastBal < 0 ? 'bg-emerald-300 text-emerald-950 dark:bg-emerald-800 dark:text-white' : 'bg-slate-200 text-slate-800')}`}>
+                                                    {isBed ? 'بد' : (lastBal < 0 ? 'بس' : 'تسویه')}
                                                 </span>
                                             </span>
-                                            <span className={`text-base sm:text-xl font-black font-mono mt-1 whitespace-nowrap ${isBed ? 'text-rose-700 dark:text-rose-300' : (lastBal < 0 ? 'text-emerald-900 dark:text-emerald-200 font-black' : 'text-slate-700')}`}>
-                                                {formatMoney(Math.abs(lastBal))} <span className="text-xs font-normal">ریال</span>
+                                            <span className={`text-[11px] sm:text-lg font-black font-mono mt-0.5 break-all leading-tight ${isBed ? 'text-rose-700 dark:text-rose-300' : (lastBal < 0 ? 'text-emerald-900 dark:text-emerald-200 font-black' : 'text-slate-700')}`}>
+                                                {formatMoney(Math.abs(lastBal))}
                                             </span>
                                         </div>
                                     );
                                 })()}
                             </div>
+                        </div>
 
-                            {/* Table - Auto-Fits Mobile Screen Width with 2-Finger Pinch-to-Zoom */}
+                        {/* Modal Body - Dedicated 80%+ Viewport Height for Statement Records */}
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 sm:p-5">
                             {isLoading ? (
                                 <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
                                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -9207,8 +9210,82 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     هیچ رکوردی برای این شخص در بازه زمانی انتخابی یافت نشد.
                                 </div>
                             ) : (
-                                <PinchZoomContainer contentWidth={920} autoFitMobile={true} showToolbar={true}>
-                                    <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 md:overflow-x-auto md:overflow-y-auto md:max-h-[62vh] w-full shadow-xs">
+                                <>
+                                    {/* MOBILE / ANDROID NATIVE STATEMENT LIST (Zero Horizontal Scroll, 100% Full Numbers) */}
+                                    <div className="block md:hidden space-y-2">
+                                        {filteredStatementData.map((row, idx) => {
+                                            const isBed = row.balance > 0;
+                                            const isBes = row.balance < 0;
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2.5 shadow-2xs space-y-1.5"
+                                                >
+                                                    {/* Row 1: Index, Date, SanadNo, Moein */}
+                                                    <div className="flex items-center justify-between gap-1 text-[11px] border-b border-slate-100 dark:border-zinc-800 pb-1.5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 font-mono font-bold text-[10px]">
+                                                                #{idx + 1}
+                                                            </span>
+                                                            <span className="font-bold text-slate-800 dark:text-slate-100">
+                                                                {formatDateToJalali(row.Date)}
+                                                            </span>
+                                                            {row.SanadNo && (
+                                                                <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
+                                                                    (سند {row.SanadNo})
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                                                            {row.MoeinName || 'سایر'}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Row 2: Full Description */}
+                                                    <div className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed break-words">
+                                                        {row.Description || '-'}
+                                                    </div>
+
+                                                    {/* Row 3: Full Unshortened Amounts (Bed / Bes / Balance) */}
+                                                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-100 dark:border-zinc-800/80 text-[11px]">
+                                                        {row.bed > 0 && (
+                                                            <div className="bg-rose-50/70 dark:bg-rose-950/30 px-2 py-1 rounded-lg flex items-center justify-between gap-1">
+                                                                <span className="text-rose-600 dark:text-rose-400 font-bold text-[10px]">بدهکار:</span>
+                                                                <span className="font-mono font-black text-rose-700 dark:text-rose-300">
+                                                                    {formatMoney(row.bed)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {row.bes > 0 && (
+                                                            <div className="bg-emerald-50/70 dark:bg-emerald-950/30 px-2 py-1 rounded-lg flex items-center justify-between gap-1">
+                                                                <span className="text-emerald-700 dark:text-emerald-400 font-bold text-[10px]">بستانکار:</span>
+                                                                <span className="font-mono font-black text-emerald-800 dark:text-emerald-300">
+                                                                    {formatMoney(row.bes)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <div className={`px-2 py-1 rounded-lg flex items-center justify-between gap-1 ${
+                                                            (row.bed > 0 && row.bes > 0) ? 'col-span-2' : ''
+                                                        } ${
+                                                            isBed
+                                                                ? 'bg-rose-100/60 dark:bg-rose-950/50 text-rose-900 dark:text-rose-200'
+                                                                : isBes
+                                                                    ? 'bg-emerald-100/60 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-200'
+                                                                    : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-slate-300'
+                                                        }`}>
+                                                            <span className="font-bold text-[10px]">مانده:</span>
+                                                            <span className="font-mono font-black">
+                                                                {formatMoney(Math.abs(row.balance))} {isBed ? '(بد)' : (isBes ? '(بس)' : '')}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* DESKTOP TABLE VIEW */}
+                                    <div className="hidden md:block rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto w-full shadow-xs">
                                         <table className="w-full text-right text-xs border-collapse">
                                             <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700 sticky top-0 z-10 shadow-xs">
                                                 <tr>
@@ -9248,28 +9325,28 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                             </tbody>
                                         </table>
                                     </div>
-                                </PinchZoomContainer>
+                                </>
                             )}
                         </div>
 
-                        {/* Modal Footer */}
-                        <div className="flex-none p-3.5 sm:p-4 bg-slate-50 dark:bg-zinc-800/60 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap justify-between items-center gap-3">
-                            <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                                تعداد آرتیکل‌ها: <span className="font-mono text-sm text-blue-700 dark:text-blue-400">{filteredStatementData.length.toLocaleString('fa-IR')}</span> رکورد ثبت شده
+                        {/* Modal Footer - Compact on Android/Mobile */}
+                        <div className="flex-none px-3 py-2 sm:p-3.5 bg-slate-50 dark:bg-zinc-800/60 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center gap-2">
+                            <span className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                                تعداد آرتیکل‌ها: <span className="font-mono text-xs sm:text-sm text-blue-700 dark:text-blue-400">{filteredStatementData.length.toLocaleString('fa-IR')}</span> رکورد
                             </span>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5 sm:gap-2">
                                 <button
                                     type="button"
                                     onClick={handleShareStatementToChat}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer min-h-[38px]"
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] sm:text-xs font-black flex items-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
                                 >
-                                    <Send className="w-4 h-4" />
-                                    <span>ارسال این صورتحساب به گفتگو (PDF)</span>
+                                    <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                    <span>ارسال PDF به گفتگو</span>
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setIsStatementModalOpen(false)}
-                                    className="px-5 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[38px]"
+                                    className="px-4 sm:px-5 py-1.5 sm:py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] sm:text-xs font-bold transition-colors cursor-pointer"
                                 >
                                     بستن
                                 </button>
@@ -9282,70 +9359,70 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
             {/* Live Sayan Ras & FIFO Aging Breakdown Modal */}
             {selectedAgingParty && createPortal(
-                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl w-full max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
+                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-0 sm:p-4 md:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-zinc-900 rounded-none sm:rounded-2xl shadow-2xl w-full max-w-5xl xl:max-w-6xl h-[100dvh] sm:h-auto sm:max-h-[90vh] flex flex-col overflow-hidden border-0 sm:border border-slate-200 dark:border-zinc-800 animate-in zoom-in-95 duration-200 text-right" dir="rtl">
                         {/* Header */}
-                        <div className="flex-none p-4 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-white/20">
-                                    <Clock className="w-6 h-6 text-white" />
+                        <div className="flex-none px-3 py-2.5 sm:p-5 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white">
+                            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                                <div className="hidden sm:flex p-2.5 rounded-xl bg-white/20 shrink-0">
+                                    <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                                 </div>
-                                <div>
-                                    <h3 className="font-black text-base sm:text-lg">
-                                        تحلیل اصول حسابداری و بازاری راس: {selectedAgingParty.name}
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="font-black text-xs sm:text-base md:text-lg truncate">
+                                        تحلیل راس: {selectedAgingParty.name}
                                     </h3>
-                                    <p className="text-xs text-amber-100 mt-0.5">
-                                        کد تفصیلی: <span className="font-mono font-bold bg-white/20 px-2 py-0.5 rounded">{selectedAgingParty.code}</span> | مانده نهایی: {formatMoney(Math.abs(selectedAgingParty.balance))} ریال {selectedAgingParty.balance > 0 ? '(بدهکار)' : '(بستانکار)'}
+                                    <p className="text-[10px] sm:text-xs text-amber-100 mt-0.5 truncate">
+                                        کد: <span className="font-mono font-bold bg-white/20 px-1.5 py-0.2 rounded">{selectedAgingParty.code}</span> | مانده: {formatMoney(Math.abs(selectedAgingParty.balance))} ریال {selectedAgingParty.balance > 0 ? '(بدهکار)' : '(بستانکار)'}
                                     </p>
                                 </div>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setSelectedAgingParty(null)}
-                                className="p-2 text-white/80 hover:text-white rounded-xl hover:bg-white/20 transition-colors cursor-pointer"
+                                className="p-1.5 sm:p-2 text-white/90 hover:text-white rounded-xl hover:bg-white/20 transition-colors cursor-pointer shrink-0"
                             >
-                                <X className="w-6 h-6" />
+                                <X className="w-5 h-5 sm:w-6 sm:h-6" />
                             </button>
                         </div>
 
                         {/* Body */}
-                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden p-2.5 sm:p-6 space-y-3 sm:space-y-5">
                             {/* KPI cards: Dual Market Ras & FIFO Aging */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                <div className="bg-amber-50 dark:bg-amber-950/30 p-3.5 rounded-2xl border border-amber-100 dark:border-amber-900/50">
-                                    <span className="text-[11px] text-amber-700 font-extrabold block">روزهای تاخیر راس مانده</span>
-                                    <span className="text-lg font-black text-amber-900 dark:text-amber-200 font-mono mt-1 block">
-                                        {selectedAgingParty.daysOverdue ?? 0} <span className="text-xs font-normal">روز</span>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                                <div className="bg-amber-50 dark:bg-amber-950/30 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-amber-100 dark:border-amber-900/50">
+                                    <span className="text-[10px] sm:text-[11px] text-amber-700 font-extrabold block">تاخیر راس مانده</span>
+                                    <span className="text-sm sm:text-lg font-black text-amber-900 dark:text-amber-200 font-mono mt-0.5 block">
+                                        {selectedAgingParty.daysOverdue ?? 0} <span className="text-[10px] sm:text-xs font-normal">روز</span>
                                     </span>
                                     <span className="text-[10px] text-amber-600 font-sans block mt-0.5">
-                                        تاریخ راس وزنی: {selectedAgingParty.weightedDateJalali || '---'}
+                                        راس وزنی: {selectedAgingParty.weightedDateJalali || '---'}
                                     </span>
                                 </div>
 
-                                <div className="bg-blue-50 dark:bg-blue-950/30 p-3.5 rounded-2xl border border-blue-100 dark:border-blue-900/50">
-                                    <span className="text-[11px] text-blue-700 font-extrabold block">راس کل فاکتورها</span>
-                                    <span className="text-sm font-black text-blue-950 dark:text-blue-200 font-mono mt-1 block">
+                                <div className="bg-blue-50 dark:bg-blue-950/30 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-blue-100 dark:border-blue-900/50">
+                                    <span className="text-[10px] sm:text-[11px] text-blue-700 font-extrabold block">راس کل فاکتورها</span>
+                                    <span className="text-xs sm:text-sm font-black text-blue-950 dark:text-blue-200 font-mono mt-0.5 block">
                                         {selectedAgingParty.invoicesRasJalali || selectedAgingParty.weightedDateJalali || '---'}
                                     </span>
-                                    <span className="text-[10px] text-blue-600 font-sans block mt-0.5">
-                                        مبلغ فاکتورها: {formatMoney(selectedAgingParty.totalInvoicesAmt || 0)} ریال
+                                    <span className="text-[10px] text-blue-600 font-sans block mt-0.5 break-all">
+                                        مبلغ: {formatMoney(selectedAgingParty.totalInvoicesAmt || 0)} ریال
                                     </span>
                                 </div>
 
-                                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3.5 rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
-                                    <span className="text-[11px] text-emerald-700 font-extrabold block">راس کل دریافت‌ها / تسویه‌ها</span>
-                                    <span className="text-sm font-black text-emerald-950 dark:text-emerald-200 font-mono mt-1 block">
+                                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-emerald-100 dark:border-emerald-900/50">
+                                    <span className="text-[10px] sm:text-[11px] text-emerald-700 font-extrabold block">راس کل دریافت‌ها</span>
+                                    <span className="text-xs sm:text-sm font-black text-emerald-950 dark:text-emerald-200 font-mono mt-0.5 block">
                                         {selectedAgingParty.receiptsRasJalali || '---'}
                                     </span>
-                                    <span className="text-[10px] text-emerald-600 font-sans block mt-0.5">
-                                        مجموع دریافت‌ها: {formatMoney(selectedAgingParty.totalReceiptsAmt || 0)} ریال
+                                    <span className="text-[10px] text-emerald-600 font-sans block mt-0.5 break-all">
+                                        مبلغ: {formatMoney(selectedAgingParty.totalReceiptsAmt || 0)} ریال
                                     </span>
                                 </div>
 
-                                <div className="bg-purple-50 dark:bg-purple-950/30 p-3.5 rounded-2xl border border-purple-100 dark:border-purple-900/50">
-                                    <span className="text-[11px] text-purple-700 font-extrabold block">دوره تسویه بازاری (تاخیر تسویه)</span>
-                                    <span className="text-lg font-black text-purple-950 dark:text-purple-200 font-mono mt-1 block">
-                                        {selectedAgingParty.settlementLagDays ?? 0} <span className="text-xs font-normal">روز</span>
+                                <div className="bg-purple-50 dark:bg-purple-950/30 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl border border-purple-100 dark:border-purple-900/50">
+                                    <span className="text-[10px] sm:text-[11px] text-purple-700 font-extrabold block">دوره تسویه بازاری</span>
+                                    <span className="text-sm sm:text-lg font-black text-purple-950 dark:text-purple-200 font-mono mt-0.5 block">
+                                        {selectedAgingParty.settlementLagDays ?? 0} <span className="text-[10px] sm:text-xs font-normal">روز</span>
                                     </span>
                                     <span className="text-[10px] text-purple-600 font-sans block mt-0.5">
                                         فاصله راس فاکتور تا دریافت
@@ -9353,19 +9430,47 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                 </div>
                             </div>
 
-                            {/* Breakdown table */}
+                            {/* Breakdown list/table */}
                             <div>
-                                <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 mb-2.5 flex items-center gap-1.5">
-                                    <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                                    ریز فاکتورهای تشکیل‌دهنده مانده باز (به روش تطبیق FIFO حسابداری و بازار):
+                                <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+                                    <FileSpreadsheet className="w-4 h-4 text-amber-600 shrink-0" />
+                                    <span>ریز فاکتورهای تشکیل‌دهنده مانده باز (FIFO):</span>
                                 </h4>
                                 {(!selectedAgingParty.unpaidInvoices || selectedAgingParty.unpaidInvoices.length === 0) ? (
                                     <div className="py-10 text-center text-slate-400 text-xs border border-dashed rounded-2xl bg-slate-50 dark:bg-zinc-800/40">
                                         فاکتور بازی در اسناد اخیر برای این شخص یافت نشد یا حساب به صورت کامل تسویه است.
                                     </div>
                                 ) : (
-                                    <PinchZoomContainer contentWidth={780} autoFitMobile={true} showToolbar={true}>
-                                        <div className="rounded-2xl border border-slate-200 dark:border-zinc-700 md:overflow-x-auto w-full">
+                                    <>
+                                        {/* Mobile Card View (Zero Horizontal Scroll) */}
+                                        <div className="block md:hidden space-y-2">
+                                            {selectedAgingParty.unpaidInvoices.map((inv: any, iIdx: number) => (
+                                                <div key={iIdx} className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-2.5 space-y-1.5 shadow-2xs">
+                                                    <div className="flex items-center justify-between text-[11px] border-b border-slate-100 dark:border-zinc-800 pb-1">
+                                                        <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                            #{iIdx + 1} | تاریخ: {inv.dateJalali}
+                                                        </span>
+                                                        <span className="font-mono text-slate-500">سند: {inv.sanadNo}</span>
+                                                    </div>
+                                                    <div className="text-xs text-slate-700 dark:text-slate-300 break-words">
+                                                        {inv.description || '-'}
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-100 dark:border-zinc-800 text-[11px]">
+                                                        <div className="bg-slate-50 dark:bg-zinc-800/70 px-2 py-1 rounded-lg">
+                                                            <span className="text-[10px] text-slate-500 block">مبلغ کل فاکتور:</span>
+                                                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{formatMoney(inv.totalAmount)} ریال</span>
+                                                        </div>
+                                                        <div className="bg-amber-50 dark:bg-amber-950/40 px-2 py-1 rounded-lg">
+                                                            <span className="text-[10px] text-amber-700 dark:text-amber-400 block">مانده تسویه‌نشده:</span>
+                                                            <span className="font-mono font-black text-amber-800 dark:text-amber-300">{formatMoney(inv.unpaidPortion)} ریال</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Desktop Table View */}
+                                        <div className="hidden md:block rounded-2xl border border-slate-200 dark:border-zinc-700 overflow-x-auto w-full">
                                             <table className="w-full text-right text-xs">
                                                 <thead className="bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-slate-100 font-extrabold border-b border-slate-200 dark:border-zinc-700">
                                                     <tr>
@@ -9391,13 +9496,13 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                                 </tbody>
                                             </table>
                                         </div>
-                                    </PinchZoomContainer>
+                                    </>
                                 )}
                             </div>
                         </div>
 
                         {/* Footer */}
-                        <div className="flex-none p-4 border-t border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-900">
+                        <div className="flex-none px-3 py-2.5 sm:p-4 border-t border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-900">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -9410,15 +9515,15 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                     setIsStatementModalOpen(true);
                                     fetchStatement(c);
                                 }}
-                                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer min-h-[38px]"
+                                className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] sm:text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
                             >
-                                <FileText className="w-4 h-4" />
+                                <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                 <span>مشاهده صورتحساب کامل این شخص</span>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setSelectedAgingParty(null)}
-                                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer min-h-[38px]"
+                                className="px-4 sm:px-5 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] sm:text-xs font-bold transition-colors cursor-pointer"
                             >
                                 بستن
                             </button>

@@ -1,6 +1,6 @@
 @echo off
 echo ====================================================
-echo    🤖 Android APK Build & Setup (Node.js Core) 🤖  
+echo    🤖 Android Signed Release APK Builder (Auto) 🤖  
 echo ====================================================
-node build-android.js
+node build-android.js --release
 pause
