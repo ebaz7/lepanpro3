@@ -36,7 +36,7 @@
     "@capacitor/share": "^6.0.0",
     "@capacitor/status-bar": "^6.0.0",
     "@capgo/capacitor-share-target": "^8.0.35",
-    "@google/genai": "latest",
+    "@google/genai": "^1.51.0",
     "@onlyoffice/document-editor-react": "^2.2.0",
     "@puppeteer/browsers": "^3.2.3",
     "@types/qrcode": "^1.5.6",
