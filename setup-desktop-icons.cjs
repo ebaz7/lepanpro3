@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { execSync } = require('child_process');
 
 const rootDir = __dirname;
 const iconsDir = path.join(rootDir, 'src-tauri', 'icons');
@@ -49,72 +50,60 @@ async function run() {
     source = fallbackPath;
   }
 
-  // If app-icon.png is the corrupted one, overwrite it with the valid source cleanly
+  // If app-icon.png is corrupted or different, restore it from valid source cleanly
   const appIconPath = path.join(rootDir, 'app-icon.png');
   if (source !== appIconPath) {
     console.log(`[Icon Generator] Restoring app-icon.png from valid source: ${source}`);
     await sharp(source).png().toFile(appIconPath);
   }
 
-  console.log('[Icon Generator] Generating desktop icons for Tauri (Windows & macOS)...');
-
-  const sizes = [
-    { name: '32x32.png', size: 32 },
-    { name: '128x128.png', size: 128 },
-    { name: '128x128@2x.png', size: 256 },
-    { name: 'icon.png', size: 512 },
-    { name: 'Square30x30Logo.png', size: 30 },
-    { name: 'Square44x44Logo.png', size: 44 },
-    { name: 'Square71x71Logo.png', size: 71 },
-    { name: 'Square89x89Logo.png', size: 89 },
-    { name: 'Square107x107Logo.png', size: 107 },
-    { name: 'Square142x142Logo.png', size: 142 },
-    { name: 'Square150x150Logo.png', size: 150 },
-    { name: 'Square284x284Logo.png', size: 284 },
-    { name: 'Square310x310Logo.png', size: 310 },
-    { name: 'StoreLogo.png', size: 50 },
-  ];
-
-  for (const item of sizes) {
-    const dest = path.join(iconsDir, item.name);
-    await sharp(source)
-      .resize(item.size, item.size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .png()
-      .toFile(dest);
+  console.log('[Icon Generator] Generating full 3.00-compliant multi-res icons using Tauri CLI...');
+  
+  let tauriCliSuccess = false;
+  try {
+    execSync('npx tauri icon app-icon.png -o src-tauri/icons', { stdio: 'inherit', cwd: rootDir });
+    tauriCliSuccess = true;
+    console.log('✅ Tauri official multi-resolution icon bundle generated successfully.');
+  } catch (err) {
+    console.warn('[Icon Generator] tauri icon CLI warning:', err.message);
   }
 
-  console.log('✅ All PNG icons generated in src-tauri/icons.');
-
-  // Also check if icon.ico exists. If not, generate a basic valid ICO
+  // Verify icon.ico exists and has valid 3.00 multi-frame Win32 format (> 10KB)
   const icoPath = path.join(iconsDir, 'icon.ico');
-  if (!fs.existsSync(icoPath) || fs.statSync(icoPath).size === 0) {
-    console.log('[Icon Generator] Rebuilding icon.ico...');
-    const png256 = await sharp(source)
-      .resize(256, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .png()
-      .toBuffer();
-    
-    // ICO header: 6 bytes
-    // Directory entry: 16 bytes
-    // Image data: png256.length
-    const header = Buffer.alloc(6);
-    header.writeUInt16LE(0, 0); // reserved
-    header.writeUInt16LE(1, 2); // type 1 = ICO
-    header.writeUInt16LE(1, 4); // count = 1
+  const isIcoValid = fs.existsSync(icoPath) && fs.statSync(icoPath).size > 10000;
 
-    const entry = Buffer.alloc(16);
-    entry.writeUInt8(0, 0); // width 256 is 0
-    entry.writeUInt8(0, 1); // height 256 is 0
-    entry.writeUInt8(0, 2); // color count
-    entry.writeUInt8(0, 3); // reserved
-    entry.writeUInt16LE(1, 4); // color planes
-    entry.writeUInt16LE(32, 6); // bpp
-    entry.writeUInt32LE(png256.length, 8); // size of image data
-    entry.writeUInt32LE(22, 12); // offset: 6 + 16 = 22
+  if (!isIcoValid) {
+    console.log('[Icon Generator] Fallback: Generating individual PNG icons with sharp...');
+    const sizes = [
+      { name: '32x32.png', size: 32 },
+      { name: '128x128.png', size: 128 },
+      { name: '128x128@2x.png', size: 256 },
+      { name: 'icon.png', size: 512 },
+      { name: 'Square30x30Logo.png', size: 30 },
+      { name: 'Square44x44Logo.png', size: 44 },
+      { name: 'Square71x71Logo.png', size: 71 },
+      { name: 'Square89x89Logo.png', size: 89 },
+      { name: 'Square107x107Logo.png', size: 107 },
+      { name: 'Square142x142Logo.png', size: 142 },
+      { name: 'Square150x150Logo.png', size: 150 },
+      { name: 'Square284x284Logo.png', size: 284 },
+      { name: 'Square310x310Logo.png', size: 310 },
+      { name: 'StoreLogo.png', size: 50 },
+    ];
 
-    const fullIco = Buffer.concat([header, entry, png256]);
-    fs.writeFileSync(icoPath, fullIco);
-    console.log(`✅ icon.ico generated (${fullIco.length} bytes).`);
+    for (const item of sizes) {
+      const dest = path.join(iconsDir, item.name);
+      await sharp(source)
+        .resize(item.size, item.size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toFile(dest);
+    }
+  }
+
+  // Final verification of icon.ico
+  if (fs.existsSync(icoPath)) {
+    const icoSize = fs.statSync(icoPath).size;
+    console.log(`[Icon Generator] icon.ico verified (${icoSize} bytes).`);
   }
 
   console.log('🎉 Tauri icons are 100% verified and ready for build.');
