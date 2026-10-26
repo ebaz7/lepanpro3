@@ -16,11 +16,13 @@
     "android:sync": "npx cap sync android",
     "android:open": "npx cap open android",
     "tauri": "tauri",
-    "desktop:icons": "node setup-desktop-icons.cjs",
+    "desktop:icons": "node generate-all-icons.cjs",
+    "generate-icons": "node generate-all-icons.cjs",
+    "icons": "node generate-all-icons.cjs",
     "desktop:dev": "tauri dev",
-    "desktop:build": "node setup-desktop-icons.cjs && node setup-build-version.cjs && tauri build",
-    "tauri:build": "node setup-desktop-icons.cjs && node setup-build-version.cjs && tauri build",
-    "assets:generate": "node setup-assets.cjs && npx @capacitor/assets generate --android && node setup-assets.cjs",
+    "desktop:build": "node generate-all-icons.cjs && node setup-build-version.cjs && tauri build",
+    "tauri:build": "node generate-all-icons.cjs && node setup-build-version.cjs && tauri build",
+    "assets:generate": "node generate-all-icons.cjs",
     "postinstall": "node patch-dependencies.js"
   },
   "dependencies": {
