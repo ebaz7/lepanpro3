@@ -31,7 +31,11 @@ const SPLASH_DRAWABLE_FOLDERS = [
 
 function findUserAppIcon() {
   const rootDir = __dirname;
-  const searchDirs = [rootDir, path.join(rootDir, 'public')];
+  const searchDirs = [
+    rootDir,
+    path.join(rootDir, 'public'),
+    path.join(rootDir, 'public', 'assets', 'aistudio')
+  ];
   const exactPreferred = [
     'app-icon.png',
     'app-icon.webp',
@@ -54,7 +58,7 @@ function findUserAppIcon() {
 
     const files = fs.readdirSync(dir);
     for (const file of files) {
-      if (/^app-icon(\.[a-z0-9]+)*$/i.test(file) && !file.endsWith('.tmp')) {
+      if (/^app-icon.*$/i.test(file) && !file.endsWith('.tmp')) {
         const fullPath = path.join(dir, file);
         if (fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
           return fullPath;

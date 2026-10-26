@@ -13,8 +13,8 @@ export interface AppVersionInfo {
 
 // Current client build embedded in the bundle
 export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
-  version: '1.3.2',
-  buildNumber: '20260901.103',
+  version: '1.0.0',
+  buildNumber: '100',
   title: 'نسخه جاری',
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'
 };
@@ -57,6 +57,39 @@ export function dismissUpdate(serverInfo?: AppVersionInfo | null): void {
   } catch (_) {}
 }
 
+// Get native client version asynchronously if running on Tauri or Android Capacitor
+export async function getNativeClientVersion(): Promise<{ version: string; buildNumber: string }> {
+  if (typeof window === 'undefined') {
+    return { version: CURRENT_CLIENT_BUILD.version, buildNumber: CURRENT_CLIENT_BUILD.buildNumber };
+  }
+
+  const win = window as any;
+
+  // 1. Check Tauri app.getVersion()
+  try {
+    if (win.__TAURI__?.app?.getVersion) {
+      const ver = await win.__TAURI__.app.getVersion();
+      if (ver) return { version: ver, buildNumber: ver };
+    }
+  } catch (_) {}
+
+  // 2. Check Capacitor App.getInfo()
+  try {
+    if (win.Capacitor?.Plugins?.App?.getInfo) {
+      const info = await win.Capacitor.Plugins.App.getInfo();
+      if (info?.version) return { version: info.version, buildNumber: info.build || info.version };
+    }
+  } catch (_) {}
+
+  // 3. Check stored client version
+  const storedVer = localStorage.getItem('app_native_client_version') || localStorage.getItem('installed_client_version');
+  if (storedVer) {
+    return { version: storedVer, buildNumber: localStorage.getItem('installed_client_build') || storedVer };
+  }
+
+  return { version: CURRENT_CLIENT_BUILD.version, buildNumber: CURRENT_CLIENT_BUILD.buildNumber };
+}
+
 // Check for updates by querying /api/version and /api/desktop/check-update
 export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverInfo: AppVersionInfo | null }> {
   try {
@@ -93,8 +126,8 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
             desktopDownloadUrl = desktopData.directDownloadUrl || desktopData.updateUrl || '';
             if (!data || !data.version) {
               data = {
-                version: desktopData.latestVersion || '1.3.2',
-                buildNumber: desktopData.latestVersion || '20260901.103',
+                version: desktopData.latestVersion || '',
+                buildNumber: desktopData.latestVersion || '',
                 releaseNotes: desktopData.releaseNotes || 'به‌روزرسانی نرم‌افزار دسکتاپ',
                 title: 'نسخه جدید سامانه'
               };
@@ -132,9 +165,10 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // Compare server version against client embedded version and baseline/applied signatures
-    const clientBuild = CURRENT_CLIENT_BUILD.buildNumber;
-    const clientVer = CURRENT_CLIENT_BUILD.version;
+    // Determine actual native client version (Tauri, Capacitor, or Web baseline)
+    const nativeClient = await getNativeClientVersion();
+    const clientBuild = nativeClient.buildNumber;
+    const clientVer = nativeClient.version;
     const currentServerSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
 
     // 1. Check if user dismissed this exact update in current session
@@ -161,21 +195,17 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
     const baselineBuild = localStorage.getItem('baseline_server_build');
     const baselineTimestamp = Number(localStorage.getItem('baseline_server_timestamp')) || 0;
 
-    // If server version is strictly older than client bundle version, no update
+    // If server version is strictly older than client version, no update
     if (semVerComp < 0) {
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // If server version is strictly newer than client bundle version
+    // If server version is strictly newer than client version
     if (semVerComp > 0) {
-      // If user already applied this server build, no update
-      if (baselineBuild && baselineBuild === serverBuild) {
-        return { hasUpdate: false, serverInfo: data };
-      }
       return { hasUpdate: true, serverInfo: data };
     }
 
-    // When semVer is equal (e.g. 1.3.2 == 1.3.2), check build number or timestamp
+    // When semVer is equal (e.g. 1.0.0 == 1.0.0), check build number or timestamp if server was updated
     if (serverBuild !== clientBuild && baselineBuild !== serverBuild) {
       if (serverTimestamp > 0 && baselineTimestamp > 0) {
         if (serverTimestamp > baselineTimestamp) {
@@ -234,14 +264,15 @@ export async function publishApplicationUpdate(payload: {
   }
 }
 
-// Apply update: clear caches, instruct SW to skip waiting, download APK if Android, and reload
+// Apply update: clear caches, instruct SW to skip waiting, download APK if Android, download MSI if Desktop
 export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null): Promise<void> {
   const isAndroid = isCapacitorAndroid();
   const isDesktop = isTauriDesktop();
   const isWeb = !isAndroid && !isDesktop;
+  const win = typeof window !== 'undefined' ? (window as any) : {};
 
   try {
-    // 1. Send automated backup to bots asynchronously with strict 1.5s timeout (never hang the update)
+    // 1. Send automated backup to bots asynchronously with strict 1.5s timeout
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1500);
@@ -273,26 +304,50 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
 
     // 3. Android platform: Trigger direct download/installation of APK
     if (isAndroid) {
-      const apkUrl = serverInfo?.androidDownloadUrl || getEffectiveApiUrl('/downloads/dlkam-android-latest.apk');
-      try {
-        window.open(apkUrl, '_system');
-        const link = document.createElement('a');
-        link.href = apkUrl;
-        link.target = '_blank';
-        link.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch (e) {
-        window.open(apkUrl, '_blank');
+      let rawApk = serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || '/downloads/dlkam-android-latest.apk';
+      if (!rawApk.startsWith('http://') && !rawApk.startsWith('https://')) {
+        rawApk = getEffectiveApiUrl(rawApk);
       }
+      const apkUrl = rawApk.includes('?') ? `${rawApk}&t=${Date.now()}` : `${rawApk}?t=${Date.now()}`;
+
+      // 3a. Try Capacitor Browser Plugin
+      try {
+        if (win.Capacitor?.Plugins?.Browser?.open) {
+          await win.Capacitor.Plugins.Browser.open({ url: apkUrl });
+          return;
+        }
+      } catch (_) {}
+
+      // 3b. Trigger location navigation to start download in Android system
+      try {
+        window.location.href = apkUrl;
+      } catch (_) {}
+
+      // 3c. Programmatic fallback link invocation
+      setTimeout(() => {
+        try {
+          const a = document.createElement('a');
+          a.href = apkUrl;
+          a.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
+          a.target = '_self';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+        } catch (_) {
+          window.open(apkUrl, '_blank');
+        }
+      }, 300);
+
       return;
     }
 
-    // 4. Desktop Tauri platform: trigger native updater or open download URL in system browser
+    // 4. Desktop Tauri platform: trigger native updater or open download URL
     if (isDesktop) {
-      const win = window as any;
-      const downloadUrl = serverInfo?.downloadUrl || getEffectiveApiUrl('/downloads/dlkam-desktop-setup.msi');
+      let rawDesktop = serverInfo?.downloadUrl || '/downloads/dlkam-desktop-setup.msi';
+      if (!rawDesktop.startsWith('http://') && !rawDesktop.startsWith('https://')) {
+        rawDesktop = getEffectiveApiUrl(rawDesktop);
+      }
+      const downloadUrl = rawDesktop.includes('?') ? `${rawDesktop}&t=${Date.now()}` : `${rawDesktop}?t=${Date.now()}`;
 
       // 4a. If Tauri built-in auto-updater is active
       if (win.__TAURI__?.updater?.installUpdate) {
@@ -307,7 +362,7 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         }
       }
 
-      // 4b. Open download link in user's default system browser using Tauri shell API
+      // 4b. Open download link using Tauri shell API
       let openedByTauri = false;
       try {
         if (win.__TAURI__?.shell?.open) {
@@ -327,28 +382,26 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         console.warn('Tauri shell.open failed:', err);
       }
 
-      // 4c. Fallback for standard link invocation
+      // 4c. Direct location navigation for WebView2 installer download
       if (!openedByTauri) {
         try {
+          window.location.href = downloadUrl;
+        } catch (_) {
           const link = document.createElement('a');
           link.href = downloadUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.download = '';
+          link.target = '_self';
+          link.download = 'dlkam-desktop-setup.msi';
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
-        } catch (_) {
-          window.open(downloadUrl, '_blank');
         }
       }
 
-      return; // Handled desktop update cleanly!
+      return;
     }
 
     // 5. Web Browser Platform: Purge caches, instruct ServiceWorker, and hard-refresh
     if (isWeb) {
-      // Clear CacheStorage (excluding login session and shown notifications)
       if ('caches' in window) {
         try {
           const cacheKeys = await caches.keys();
@@ -365,7 +418,6 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         }
       }
 
-      // Tell Service Worker to skip waiting and force update
       if ('serviceWorker' in navigator) {
         try {
           const registrations = await navigator.serviceWorker.getRegistrations();
@@ -383,8 +435,6 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
   } catch (e) {
     console.error('Error during applyApplicationUpdate:', e);
   } finally {
-    // CRITICAL FIX: Only hard-reload for pure Web browsers!
-    // Never refresh the WebView on Tauri Desktop or Android!
     if (isWeb) {
       setTimeout(() => {
         const cleanUrl = window.location.origin + window.location.pathname;

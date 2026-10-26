@@ -721,10 +721,24 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const [publishingNewRelease, setPublishingNewRelease] = useState(false);
-  const [releaseVersionInput, setReleaseVersionInput] = useState(() => settings?.desktopLatestVersion || settings?.systemVersion || "1.3.3");
+  const [releaseVersionInput, setReleaseVersionInput] = useState(() => settings?.desktopLatestVersion || settings?.systemVersion || "");
   const [releaseTitleInput, setReleaseTitleInput] = useState(() => settings?.releaseTitle || "نسخه جدید سامانه");
   const [releaseNotesInput, setReleaseNotesInput] = useState(() => settings?.desktopReleaseNotes || settings?.releaseNotes || "بهبود عملکرد، بهینه‌سازی سرعت و اصلاحات پایداری");
   const [releaseSendToBots, setReleaseSendToBots] = useState(true);
+
+  useEffect(() => {
+    if (settings) {
+      if (settings.desktopLatestVersion || settings.systemVersion) {
+        setReleaseVersionInput(settings.desktopLatestVersion || settings.systemVersion || "");
+      }
+      if (settings.releaseTitle) {
+        setReleaseTitleInput(settings.releaseTitle);
+      }
+      if (settings.desktopReleaseNotes || settings.releaseNotes) {
+        setReleaseNotesInput(settings.desktopReleaseNotes || settings.releaseNotes);
+      }
+    }
+  }, [settings?.desktopLatestVersion, settings?.systemVersion, settings?.releaseTitle, settings?.desktopReleaseNotes, settings?.releaseNotes]);
 
   const handlePublishNewRelease = async () => {
     if (!releaseVersionInput.trim()) {
@@ -770,7 +784,7 @@ const Settings: React.FC<SettingsProps> = ({
     setSavingDesktopSettings(true);
     setDesktopSaveMessage("");
     try {
-      const targetVer = settings.desktopLatestVersion?.trim() || settings.systemVersion?.trim() || "1.3.2";
+      const targetVer = settings.desktopLatestVersion?.trim() || settings.systemVersion?.trim() || releaseVersionInput.trim() || "1.0.0";
       const targetNotes = settings.desktopReleaseNotes || settings.releaseNotes || "";
       const targetTitle = settings.releaseTitle || "نسخه جدید سامانه";
 
@@ -9779,8 +9793,12 @@ const Settings: React.FC<SettingsProps> = ({
                     type="text"
                     dir="ltr"
                     placeholder="1.0.1"
-                    value={settings.desktopLatestVersion || "1.0.0"}
-                    onChange={(e) => setSettings({ ...settings, desktopLatestVersion: e.target.value })}
+                    value={settings.desktopLatestVersion || settings.systemVersion || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setReleaseVersionInput(val);
+                      setSettings({ ...settings, desktopLatestVersion: val, systemVersion: val });
+                    }}
                     className="w-full text-xs font-mono p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
                   />
                   <span className="text-[10px] text-gray-400">

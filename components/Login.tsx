@@ -735,7 +735,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
       {/* System Footer Tag */}
       <div className="absolute bottom-4 left-6 text-slate-600 text-[11px] font-mono dir-ltr opacity-60">
-        {isNative ? (serverUrl || 'Native Mode') : 'Enterprise Security v1.3.2'}
+        {isNative ? (serverUrl || 'Native Mode') : 'Enterprise Security System'}
       </div>
 
     </div>

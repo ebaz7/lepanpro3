@@ -314,6 +314,73 @@ app.get(['/downloads/dlkam-android-latest.apk', '/downloads/delkam-android-lates
     });
 });
 
+// --- DYNAMIC DESKTOP INSTALLER (.msi / .exe) DOWNLOAD PROVIDER ---
+const desktopDownloadRoutes = [
+    '/downloads/dlkam-desktop-setup.msi',
+    '/downloads/delkam-desktop-setup.msi',
+    '/downloads/sayan-desktop-setup.msi',
+    '/downloads/desktop-setup.msi',
+    '/downloads/setup.msi',
+    '/api/downloads/dlkam-desktop-setup.msi',
+    '/api/downloads/delkam-desktop-setup.msi',
+    '/api/downloads/sayan-desktop-setup.msi',
+    '/api/downloads/desktop-setup.msi',
+    '/api/downloads/setup.msi'
+];
+
+app.get(desktopDownloadRoutes, (req, res) => {
+    // 1. Direct search paths
+    const directPaths = [
+        path.join(PUBLIC_DOWNLOADS_DIR, 'dlkam-desktop-setup.msi'),
+        path.join(DOWNLOADS_DIR, 'dlkam-desktop-setup.msi'),
+        path.join(PUBLIC_DOWNLOADS_DIR, 'sayan-desktop-setup.msi'),
+        path.join(DOWNLOADS_DIR, 'sayan-desktop-setup.msi'),
+        path.join(ROOT_DIR, 'dlkam-desktop-setup.msi'),
+        path.join(ROOT_DIR, 'sayan-desktop-setup.msi')
+    ];
+
+    for (const fileP of directPaths) {
+        if (fs.existsSync(fileP)) {
+            res.setHeader('Content-Type', 'application/x-msi');
+            res.setHeader('Content-Disposition', 'attachment; filename="dlkam-desktop-setup.msi"');
+            return res.sendFile(fileP);
+        }
+    }
+
+    // 2. Scan downloads directories for any .msi or .exe file
+    const searchDirs = [
+        PUBLIC_DOWNLOADS_DIR,
+        DOWNLOADS_DIR,
+        ROOT_DIR,
+        path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
+        path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
+    ];
+
+    for (const dir of searchDirs) {
+        if (!fs.existsSync(dir)) continue;
+        try {
+            const files = fs.readdirSync(dir);
+            const msiFile = files.find(f => f.toLowerCase().endsWith('.msi') || f.toLowerCase().endsWith('.exe'));
+            if (msiFile) {
+                const fullP = path.join(dir, msiFile);
+                if (fs.statSync(fullP).isFile()) {
+                    const contentType = msiFile.toLowerCase().endsWith('.exe') ? 'application/x-msdownload' : 'application/x-msi';
+                    res.setHeader('Content-Type', contentType);
+                    res.setHeader('Content-Disposition', `attachment; filename="${msiFile}"`);
+                    return res.sendFile(fullP);
+                }
+            }
+        } catch (e) {
+            // Ignore dir read errors
+        }
+    }
+
+    res.status(404).json({
+        success: false,
+        error: 'فایل نصبی دسکتاپ (.msi / .exe) در پوشه downloads یافت نشد. فایل نصبی خروجی tauri build را در پوشه downloads سرور قرار دهید.'
+    });
+});
+
 // --- SAFE FILE SANITIZATION HELPER ---
 const FORBIDDEN_EXTENSIONS = new Set([
     '.exe', '.bat', '.cmd', '.sh', '.ps1', '.vbs', '.js', '.mjs', '.cjs',
@@ -7844,10 +7911,13 @@ app.post('/api/settings', async (req, res) => {
 app.get('/api/desktop/updater.json', (req, res) => {
     const db = getDb();
     const settings = db.settings || {};
-    const version = settings.desktopLatestVersion || '1.0.0';
-    const notes = settings.desktopReleaseNotes || 'نسخه جدید سیستم مدیریت انبار و حسابداری سایان با قابلیت‌های بهبود یافته.';
+    const version = settings.desktopLatestVersion || settings.systemVersion || '1.0.0';
+    const notes = settings.desktopReleaseNotes || settings.releaseNotes || 'نسخه جدید سیستم مدیریت انبار و حسابداری سایان با قابلیت‌های بهبود یافته.';
     const pubDate = new Date().toISOString();
-    const downloadUrl = settings.desktopDirectDownloadUrl || settings.desktopUpdateUrl || `${req.protocol}://${req.get('host')}/downloads/sayan-desktop-setup.msi`;
+    let downloadUrl = settings.desktopDirectDownloadUrl || '';
+    if (!downloadUrl || downloadUrl.includes('/updater.json')) {
+        downloadUrl = `${req.protocol}://${req.get('host')}/downloads/dlkam-desktop-setup.msi`;
+    }
 
     // Standard Tauri v1 Auto-Updater JSON schema
     const updaterManifest = {
@@ -11534,8 +11604,8 @@ app.get('/api/version', (req, res) => {
     try {
         const db = typeof getDb === 'function' ? getDb() : {};
         const settings = (db && db.settings) || {};
-        const version = settings.systemVersion || settings.desktopLatestVersion || '1.3.2';
-        const buildNumber = settings.systemBuildNumber || (settings.systemUpdatePublishedAt ? `b_${settings.systemUpdatePublishedAt}` : '20260901.103');
+        const version = settings.systemVersion || settings.desktopLatestVersion || '1.0.0';
+        const buildNumber = settings.systemBuildNumber || (settings.systemUpdatePublishedAt ? `b_${settings.systemUpdatePublishedAt}` : '100');
         const title = settings.releaseTitle || 'نسخۀ جدید';
         const releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
         const publishedAt = settings.systemUpdatePublishedAt || 0;
@@ -11550,7 +11620,7 @@ app.get('/api/version', (req, res) => {
             androidDownloadUrl
         });
     } catch (e) {
-        res.json({ version: '1.3.2', buildNumber: '20260901.103', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk' });
+        res.json({ version: '1.0.0', buildNumber: '100', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk' });
     }
 });
 

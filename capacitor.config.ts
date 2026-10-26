@@ -1,7 +1,7 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.payment.system',
+  appId: 'com.dikam.paymentorder',
   appName: 'Payment Order System',
   webDir: 'dist',
   server: {

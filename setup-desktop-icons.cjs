@@ -11,8 +11,12 @@ if (!fs.existsSync(iconsDir)) {
 }
 
 function findUserAppIcon() {
-  // 1. Check root directory for any file named app-icon or app-icon.* (e.g. app-icon.png, app-icon.jpg, app-icon.webp, app-icon.png.png, app-icon)
-  const searchDirs = [rootDir, path.join(rootDir, 'public')];
+  // 1. Check root directory, public, and public/assets/aistudio for any app-icon file
+  const searchDirs = [
+    rootDir,
+    path.join(rootDir, 'public'),
+    path.join(rootDir, 'public', 'assets', 'aistudio')
+  ];
   const exactPreferred = [
     'app-icon.png',
     'app-icon.webp',
@@ -35,10 +39,10 @@ function findUserAppIcon() {
       }
     }
 
-    // Also match any app-icon* file (e.g. if Windows Explorer added a double extension like app-icon.png.png or app-icon.jpg)
+    // Also match any app-icon* file (e.g. app-icon_54d17bf7.png or app-icon.png.png)
     const files = fs.readdirSync(dir);
     for (const file of files) {
-      if (/^app-icon(\.[a-z0-9]+)*$/i.test(file) && !file.endsWith('.tmp')) {
+      if (/^app-icon.*$/i.test(file) && !file.endsWith('.tmp')) {
         const fullPath = path.join(dir, file);
         if (fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
           console.log(`[Icon Generator] Auto-detected user app-icon file: ${fullPath}`);
