@@ -1,7 +1,7 @@
 {
   "name": "payment-order-system",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.6",
   "type": "module",
   "scripts": {
     "dev": "node server.js --dev",
@@ -18,7 +18,8 @@
     "tauri": "tauri",
     "desktop:icons": "node setup-desktop-icons.cjs",
     "desktop:dev": "tauri dev",
-    "desktop:build": "node setup-desktop-icons.cjs && tauri build",
+    "desktop:build": "node setup-desktop-icons.cjs && node setup-build-version.cjs && tauri build",
+    "tauri:build": "node setup-desktop-icons.cjs && node setup-build-version.cjs && tauri build",
     "assets:generate": "node setup-assets.cjs && npx @capacitor/assets generate --android && node setup-assets.cjs",
     "postinstall": "node patch-dependencies.js"
   },

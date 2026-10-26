@@ -7,8 +7,8 @@ async function fixIconAndGenerate() {
 
   // Identify available source image
   const candidates = [
-    path.join(__dirname, 'modern-frameless-logo.png'),
     path.join(__dirname, 'app-icon.png'),
+    path.join(__dirname, 'public', 'app-icon.png'),
     path.join(__dirname, 'assets', 'icon.png'),
   ];
 

@@ -13,7 +13,7 @@ export interface AppVersionInfo {
 
 // Current client build embedded in the bundle
 export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
-  version: '1.0.0',
+  version: '1.0.6',
   buildNumber: '100',
   title: 'نسخه جاری',
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'

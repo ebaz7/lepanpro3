@@ -31,39 +31,15 @@ const SPLASH_DRAWABLE_FOLDERS = [
 
 function findUserAppIcon() {
   const rootDir = __dirname;
-  const searchDirs = [
-    rootDir,
-    path.join(rootDir, 'public'),
-    path.join(rootDir, 'public', 'assets', 'aistudio')
-  ];
-  const exactPreferred = [
-    'app-icon.png',
-    'app-icon.webp',
-    'app-icon.jpg',
-    'app-icon.jpeg',
-    'app-icon.ico',
-    'app-icon.svg',
-    'app-icon'
+  const candidates = [
+    path.join(rootDir, 'app-icon.png'),
+    path.join(rootDir, 'public', 'app-icon.png'),
+    path.join(rootDir, 'public', 'icon.png')
   ];
 
-  for (const dir of searchDirs) {
-    if (!fs.existsSync(dir)) continue;
-
-    for (const name of exactPreferred) {
-      const fullPath = path.join(dir, name);
-      if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
-        return fullPath;
-      }
-    }
-
-    const files = fs.readdirSync(dir);
-    for (const file of files) {
-      if (/^app-icon.*$/i.test(file) && !file.endsWith('.tmp')) {
-        const fullPath = path.join(dir, file);
-        if (fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
-          return fullPath;
-        }
-      }
+  for (const fullPath of candidates) {
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
+      return fullPath;
     }
   }
 

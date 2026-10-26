@@ -99,7 +99,7 @@ import {
   ArrowUpCircle,
   QrCode,
 } from "lucide-react";
-import { publishApplicationUpdate } from "../services/updateService";
+import { publishApplicationUpdate, compareSemVer, getNativeClientVersion } from "../services/updateService";
 import { apiCall, getServerHost } from "../services/apiService";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -488,8 +488,15 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  // --- Desktop Client (Tauri) & Auto-Updater State & Actions ---
-  const currentAppVersion = "1.0.0";
+  const [currentAppVersion, setCurrentAppVersion] = useState<string>(() => settings?.systemVersion || "1.0.0");
+
+  useEffect(() => {
+    getNativeClientVersion().then(info => {
+      if (info?.version) {
+        setCurrentAppVersion(info.version);
+      }
+    }).catch(() => {});
+  }, [settings?.systemVersion]);
   const [testingDesktopUpdate, setTestingDesktopUpdate] = useState<boolean>(false);
   const [desktopTestResult, setDesktopTestResult] = useState<{
     success: boolean;
@@ -600,9 +607,9 @@ const Settings: React.FC<SettingsProps> = ({
         rawJson: rawData,
       });
 
-      // Semantic comparison: if fetchedVersion is different or greater than currentAppVersion
-      const isNewer = fetchedVersion !== currentAppVersion && fetchedVersion > currentAppVersion;
-      if (isNewer || fetchedVersion !== currentAppVersion) {
+      // Semantic comparison using compareSemVer
+      const semVerDiff = compareSemVer(fetchedVersion, currentAppVersion);
+      if (semVerDiff > 0 || (fetchedVersion && fetchedVersion !== currentAppVersion)) {
         setUpdateStatus("available");
       } else {
         setUpdateStatus("up_to_date");
@@ -9318,7 +9325,7 @@ const Settings: React.FC<SettingsProps> = ({
                       setReleaseVersionInput(e.target.value);
                       setSettings({ ...settings, desktopLatestVersion: e.target.value, systemVersion: e.target.value });
                     }}
-                    placeholder="مثال: 1.3.3"
+                    placeholder="مثال: 1.0.6"
                     className="w-full text-xs font-mono font-bold p-2.5 bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
                   />
                 </div>
