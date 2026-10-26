@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const { findSourceAppIcon, syncNormalizedMasterIcon } = require('./resolve-app-icon.cjs');
 
 const TRANSPARENT_BG = { r: 0, g: 0, b: 0, alpha: 0 };
 const DARK_SLATE_BG = { r: 15, g: 23, b: 42, alpha: 1 };
@@ -29,71 +30,42 @@ const SPLASH_DRAWABLE_FOLDERS = [
   'drawable-land-xxxhdpi'
 ];
 
-function findUserAppIcon() {
-  const rootDir = __dirname;
-  const candidates = [
-    path.join(rootDir, 'app-icon.png'),
-    path.join(rootDir, 'public', 'app-icon.png'),
-    path.join(rootDir, 'public', 'icon.png')
-  ];
-
-  for (const fullPath of candidates) {
-    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile() && fs.statSync(fullPath).size > 100) {
-      return fullPath;
-    }
-  }
-
-  return null;
-}
-
 async function prepareAssets() {
-  const assetsDir = path.join(__dirname, 'assets');
+  const rootDir = __dirname;
+  const assetsDir = path.join(rootDir, 'assets');
   if (!fs.existsSync(assetsDir)) {
     fs.mkdirSync(assetsDir, { recursive: true });
   }
 
-  const rawSource = findUserAppIcon();
-  if (!rawSource) {
-    console.error('❌ Error: Could not find app-icon in the root folder!');
+  console.log('====================================================');
+  console.log('   📱 Android / Capacitor Assets Generator (Sync)   ');
+  console.log('====================================================');
+
+  const sourceIcon = findSourceAppIcon(rootDir);
+  if (!sourceIcon) {
+    console.error('❌ Error: Could not find user logo or icon in project!');
     process.exit(1);
   }
 
-  console.log(`🎨 Using user app-icon from root folder: ${rawSource}`);
+  // 1. Normalize and sync 1024x1024 master icon across root and public folders
+  const normalizedAppIcon = await syncNormalizedMasterIcon(sourceIcon, rootDir);
 
-  // Normalize user's app-icon into a clean 1024x1024 RGBA PNG in root (app-icon.png)
-  const normalizedAppIcon = path.join(__dirname, 'app-icon.png');
-  const tmpNormalized = normalizedAppIcon + '.tmp';
-  await sharp(rawSource)
-    .ensureAlpha()
-    .resize(1024, 1024, { fit: 'contain', background: TRANSPARENT_BG })
-    .png()
-    .toFile(tmpNormalized);
-  fs.renameSync(tmpNormalized, normalizedAppIcon);
-
-  const sourceIcon = normalizedAppIcon;
-
-  // Sync to public folder as well
-  const publicDir = path.join(__dirname, 'public');
-  if (fs.existsSync(publicDir)) {
-    fs.copyFileSync(sourceIcon, path.join(publicDir, 'app-icon.png'));
-    fs.copyFileSync(sourceIcon, path.join(publicDir, 'icon.png'));
-  }
-
-  // 1. Generate 1024x1024 icon.png and icon-only.png
-  await sharp(sourceIcon)
+  // 2. Generate Capacitor 1024x1024 icon.png and icon-only.png
+  console.log('🎨 Generating Capacitor assets in ./assets folder...');
+  await sharp(normalizedAppIcon)
     .ensureAlpha()
     .resize(1024, 1024, { fit: 'contain', background: TRANSPARENT_BG })
     .png()
     .toFile(path.join(assetsDir, 'icon.png'));
 
-  await sharp(sourceIcon)
+  await sharp(normalizedAppIcon)
     .ensureAlpha()
     .resize(1024, 1024, { fit: 'contain', background: TRANSPARENT_BG })
     .png()
     .toFile(path.join(assetsDir, 'icon-only.png'));
 
-  // 2. Generate icon-foreground.png and transparent icon-background.png
-  await sharp(sourceIcon)
+  // 3. Generate icon-foreground.png and transparent icon-background.png
+  await sharp(normalizedAppIcon)
     .ensureAlpha()
     .resize(860, 860, { fit: 'contain', background: TRANSPARENT_BG })
     .extend({
@@ -117,22 +89,23 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'icon-background.png'));
 
-  // 3. Directly populate Android mipmap directories
-  const androidResDir = path.join(__dirname, 'android', 'app', 'src', 'main', 'res');
+  // 4. Directly populate Android mipmap directories
+  const androidResDir = path.join(rootDir, 'android', 'app', 'src', 'main', 'res');
   if (fs.existsSync(androidResDir)) {
+    console.log('🤖 Generating Android mipmap icons across all DPI resolutions...');
     for (const { folder, legacySize, adaptiveSize } of ANDROID_MIPMAPS) {
       const targetDir = path.join(androidResDir, folder);
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });
       }
 
-      await sharp(sourceIcon)
+      await sharp(normalizedAppIcon)
         .ensureAlpha()
         .resize(legacySize, legacySize, { fit: 'contain', background: TRANSPARENT_BG })
         .png()
         .toFile(path.join(targetDir, 'ic_launcher.png'));
 
-      await sharp(sourceIcon)
+      await sharp(normalizedAppIcon)
         .ensureAlpha()
         .resize(legacySize, legacySize, { fit: 'contain', background: TRANSPARENT_BG })
         .png()
@@ -144,7 +117,7 @@ async function prepareAssets() {
       const padLeft = padTop;
       const padRight = padBottom;
 
-      await sharp(sourceIcon)
+      await sharp(normalizedAppIcon)
         .ensureAlpha()
         .resize(fgInner, fgInner, { fit: 'contain', background: TRANSPARENT_BG })
         .extend({
@@ -185,9 +158,9 @@ async function prepareAssets() {
       } catch (_) {}
     }
 
-    // 4. Populate Android splash screen drawables from app-icon
-    console.log('🖼️ Generating Android splash screens from app-icon...');
-    const splashBuf = await sharp(sourceIcon)
+    // 5. Populate Android splash screen drawables from app-icon
+    console.log('🖼️ Generating Android splash screens from master icon...');
+    const splashBuf = await sharp(normalizedAppIcon)
       .ensureAlpha()
       .resize(280, 280, { fit: 'contain', background: TRANSPARENT_BG })
       .extend({
@@ -210,8 +183,8 @@ async function prepareAssets() {
     console.log('✅ Android launcher icons & splash screens updated across all drawables.');
   }
 
-  // 5. Generate root assets splash
-  await sharp(sourceIcon)
+  // 6. Generate root assets splash
+  await sharp(normalizedAppIcon)
     .ensureAlpha()
     .resize(512, 512, { fit: 'contain', background: TRANSPARENT_BG })
     .extend({
@@ -224,7 +197,7 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'splash.png'));
 
-  await sharp(sourceIcon)
+  await sharp(normalizedAppIcon)
     .ensureAlpha()
     .resize(512, 512, { fit: 'contain', background: TRANSPARENT_BG })
     .extend({
@@ -237,7 +210,7 @@ async function prepareAssets() {
     .png()
     .toFile(path.join(assetsDir, 'splash-dark.png'));
 
-  console.log('🎉 Android & Web assets generated strictly from your app-icon.');
+  console.log('🎉 Android & Web assets successfully generated from your chosen image!\n');
 }
 
 prepareAssets().catch((err) => {
