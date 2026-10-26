@@ -1,6 +1,14 @@
 @echo off
-echo ====================================================
-echo    🤖 Android Signed Release APK Builder (Auto) 🤖  
-echo ====================================================
-node build-android.js --release
+chcp 65001 >nul
+echo ============================================================================
+echo 🚀 ساخت خودکار نسخه جدید اندروید (APK)، ارتقای ورژن و انتقال به پوشه دانلود
+echo ============================================================================
+node build-android.js %*
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ❌ خطا در ساخت نسخه اندروید!
+    pause
+    exit /b %ERRORLEVEL%
+)
+echo.
 pause

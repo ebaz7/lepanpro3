@@ -607,9 +607,11 @@ const Settings: React.FC<SettingsProps> = ({
         rawJson: rawData,
       });
 
-      // Semantic comparison using compareSemVer
-      const semVerDiff = compareSemVer(fetchedVersion, currentAppVersion);
-      if (semVerDiff > 0 || (fetchedVersion && fetchedVersion !== currentAppVersion)) {
+      // Semantic comparison using compareSemVer (only show available when server version is strictly greater)
+      const appliedVer = localStorage.getItem('applied_desktop_version') || localStorage.getItem('applied_android_version') || currentAppVersion;
+      const effectiveInstalledVer = compareSemVer(appliedVer, currentAppVersion) > 0 ? appliedVer : currentAppVersion;
+      const semVerDiff = compareSemVer(fetchedVersion, effectiveInstalledVer);
+      if (semVerDiff > 0) {
         setUpdateStatus("available");
       } else {
         setUpdateStatus("up_to_date");
@@ -672,6 +674,16 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleApplyUpdateAndRelaunch = async () => {
+    const targetVer = updateManifestInfo?.version || settings.desktopLatestVersion || settings.systemVersion || currentAppVersion;
+    if (targetVer) {
+      localStorage.setItem('applied_desktop_version', targetVer);
+      localStorage.setItem('applied_android_version', targetVer);
+      localStorage.setItem('applied_server_version', targetVer);
+      localStorage.setItem('app_native_client_version', targetVer);
+      setCurrentAppVersion(targetVer);
+      setUpdateStatus("up_to_date");
+    }
+
     const isTauri = typeof window !== "undefined" && Boolean((window as any).__TAURI__);
     if (isTauri && (window as any).__TAURI__?.updater?.installUpdate) {
       try {
@@ -692,7 +704,7 @@ const Settings: React.FC<SettingsProps> = ({
       `${window.location.origin}/downloads/dlkam-desktop-setup.msi`;
     
     window.open(dlUrl, "_blank");
-    alert("پکیج نسخه جدید آماده نصب است. فایل ستاپ دانلود و اجرا خواهد شد.");
+    alert("پکیج نسخه جدید آماده نصب است. فایل ستاپ دانلود و اجرا خواهد شد و تا انتشار نسخه بالاتر، پیام آپدیت تکرار نخواهد شد.");
   };
 
   const handleTestDesktopUpdateFeed = async () => {
@@ -766,6 +778,7 @@ const Settings: React.FC<SettingsProps> = ({
           ...settings,
           systemVersion: res.data.version,
           desktopLatestVersion: res.data.version,
+          androidLatestVersion: res.data.version,
           systemBuildNumber: res.data.buildNumber,
           releaseTitle: res.data.title,
           releaseNotes: res.data.releaseNotes,
@@ -775,7 +788,8 @@ const Settings: React.FC<SettingsProps> = ({
         await saveSettings(updated);
         setSettings(updated);
         if (onUpdateSettings) onUpdateSettings(updated);
-        setDesktopSaveMessage(`🚀 نسخه جدید ${res.data.version} با موفقیت در سراسر سامانه منتشر شد و بنر اعلان آن برای کلیه کاربران ارسال گردید!`);
+        window.dispatchEvent(new CustomEvent('app:update-settings-changed', { detail: updated }));
+        setDesktopSaveMessage(`🚀 نسخه جدید ${res.data.version} با موفقیت برای اندروید، تائوری و وب منتشر شد!`);
         setTimeout(() => setDesktopSaveMessage(""), 6000);
       } else {
         setDesktopSaveMessage(`خطا در انتشار نسخه جدید: ${res.error || "خطای ناشناخته"} ❌`);
@@ -792,6 +806,7 @@ const Settings: React.FC<SettingsProps> = ({
     setDesktopSaveMessage("");
     try {
       const targetVer = settings.desktopLatestVersion?.trim() || settings.systemVersion?.trim() || releaseVersionInput.trim() || "1.0.0";
+      const targetAndroidVer = settings.androidLatestVersion?.trim() || targetVer;
       const targetNotes = settings.desktopReleaseNotes || settings.releaseNotes || "";
       const targetTitle = settings.releaseTitle || "نسخه جدید سامانه";
 
@@ -808,6 +823,7 @@ const Settings: React.FC<SettingsProps> = ({
         desktopUpdateUrl: settings.desktopUpdateUrl?.trim() || "",
         desktopDirectDownloadUrl: settings.desktopDirectDownloadUrl?.trim() || "",
         desktopLatestVersion: targetVer,
+        androidLatestVersion: targetAndroidVer,
         systemVersion: targetVer,
         systemBuildNumber: publishRes.data?.buildNumber || settings.systemBuildNumber || `b_${Date.now()}`,
         releaseTitle: targetTitle,
@@ -815,7 +831,7 @@ const Settings: React.FC<SettingsProps> = ({
         desktopReleaseNotes: targetNotes,
         systemUpdatePublishedAt: publishRes.data?.timestamp || Date.now(),
         desktopAutoCheckUpdates: settings.desktopAutoCheckUpdates !== false,
-        desktopUpdateIntervalMinutes: Number(settings.desktopUpdateIntervalMinutes) || 60,
+        desktopUpdateIntervalMinutes: Math.max(1, Number(settings.desktopUpdateIntervalMinutes) || 60),
         desktopUpdateChannel: settings.desktopUpdateChannel || "stable",
         desktopLocalServerUrl: settings.desktopLocalServerUrl?.trim() || "http://localhost:3000",
         desktopCloudServerUrl: settings.desktopCloudServerUrl?.trim() || window.location.origin,
@@ -823,7 +839,8 @@ const Settings: React.FC<SettingsProps> = ({
       await saveSettings(updated);
       setSettings(updated);
       if (onUpdateSettings) onUpdateSettings(updated);
-      setDesktopSaveMessage("تنظیمات بروزرسانی و نسخه سرور با موفقیت ذخیره و در سامانه فعال شد ✅");
+      window.dispatchEvent(new CustomEvent('app:update-settings-changed', { detail: updated }));
+      setDesktopSaveMessage("تنظیمات بروزرسانی، زمان‌بندی بررسی خودکار و نسخه‌های اندروید و تائوری با موفقیت ذخیره شد ✅");
       setTimeout(() => setDesktopSaveMessage(""), 5000);
     } catch (e: any) {
       setDesktopSaveMessage("خطا در ذخیره تنظیمات ❌");
@@ -9671,33 +9688,62 @@ const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {/* Auto-Update Check Interval */}
+                {/* Auto-Update Check Interval (Selectable + Custom Minutes) */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                     <Clock size={14} className="text-purple-600" />
-                    بازه زمانی بررسی خودکار آپدیت (Update Check Interval)
+                    بازه زمانی بررسی خودکار آپدیت در اندروید و تائوری (دقیقه)
                   </label>
-                  <select
-                    value={settings.desktopUpdateIntervalMinutes || 60}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        desktopUpdateIntervalMinutes: Number(e.target.value),
-                      })
-                    }
-                    className="w-full text-xs p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden font-medium"
-                  >
-                    <option value={15}>هر ۱۵ دقیقه (15 Minutes - بلادرنگ و سریع)</option>
-                    <option value={30}>هر ۳۰ دقیقه (30 Minutes)</option>
-                    <option value={60}>هر ۱ ساعت (1 Hour - استاندارد و پیشنهادی)</option>
-                    <option value={180}>هر ۳ ساعت (3 Hours)</option>
-                    <option value={360}>هر ۶ ساعت (6 Hours)</option>
-                    <option value={720}>هر ۱۲ ساعت (12 Hours)</option>
-                    <option value={1440}>روزانه / هر ۲۴ ساعت (Once a Day)</option>
-                    <option value={10080}>هفتگی (Once a Week)</option>
-                  </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <select
+                      value={
+                        [5, 15, 30, 60, 180, 360, 720, 1440, 10080].includes(
+                          Number(settings.desktopUpdateIntervalMinutes) || 60
+                        )
+                          ? Number(settings.desktopUpdateIntervalMinutes) || 60
+                          : 60
+                      }
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          desktopUpdateIntervalMinutes: Number(e.target.value),
+                        })
+                      }
+                      className="sm:col-span-2 w-full text-xs p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden font-medium"
+                    >
+                      <option value={5}>هر ۵ دقیقه (5 Minutes - تست سریع)</option>
+                      <option value={15}>هر ۱۵ دقیقه (15 Minutes - بلادرنگ و سریع)</option>
+                      <option value={30}>هر ۳۰ دقیقه (30 Minutes)</option>
+                      <option value={60}>هر ۱ ساعت (60 Minutes - استاندارد)</option>
+                      <option value={180}>هر ۳ ساعت (180 Minutes)</option>
+                      <option value={360}>هر ۶ ساعت (360 Minutes)</option>
+                      <option value={720}>هر ۱۲ ساعت (720 Minutes)</option>
+                      <option value={1440}>روزانه / هر ۲۴ ساعت (1440 Minutes)</option>
+                      <option value={10080}>هفتگی (10080 Minutes)</option>
+                    </select>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={1}
+                        max={43200}
+                        dir="ltr"
+                        value={settings.desktopUpdateIntervalMinutes || 60}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            desktopUpdateIntervalMinutes: Math.max(1, parseInt(e.target.value, 10) || 1),
+                          })
+                        }
+                        className="w-full text-xs font-mono p-3 pl-12 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden text-center font-bold"
+                        title="تنظیم دستی زمان بر حسب دقیقه"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 font-bold">
+                        دقیقه
+                      </span>
+                    </div>
+                  </div>
                   <span className="text-[10px] text-gray-400">
-                    کلاینت دسکتاپ در پس‌زمینه در این بازه، مانیفست سرور را استعلام می‌کند.
+                    کلاینت‌های اندروید و تائوری در این بازه زمانی، نسخه سرور را بررسی کرده و فقط در صورت وجود نسخه جدیدتر پیشنهاد دانلود می‌دهند.
                   </span>
                 </div>
 
@@ -9790,27 +9836,89 @@ const Settings: React.FC<SettingsProps> = ({
                   </select>
                 </div>
 
-                {/* Target Latest Version on Server (Publisher) */}
+                {/* Target Latest Version on Server (Desktop / Tauri) */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                     <Sliders size={14} className="text-purple-600" />
-                    شماره نسخه اعلامی در سرور (Server Target Version)
+                    شماره نسخه نهایی دسکتاپ تائوری (Tauri Target Version)
                   </label>
                   <input
                     type="text"
                     dir="ltr"
-                    placeholder="1.0.1"
+                    placeholder="1.0.2"
                     value={settings.desktopLatestVersion || settings.systemVersion || ""}
                     onChange={(e) => {
                       const val = e.target.value;
                       setReleaseVersionInput(val);
-                      setSettings({ ...settings, desktopLatestVersion: val, systemVersion: val });
+                      setSettings({
+                        ...settings,
+                        desktopLatestVersion: val,
+                        androidLatestVersion: settings.androidLatestVersion || val,
+                        systemVersion: val,
+                      });
                     }}
                     className="w-full text-xs font-mono p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-purple-500 focus:outline-hidden"
                   />
                   <span className="text-[10px] text-gray-400">
-                    هنگامی که این عدد از نسخه کلاینت نصب‌شده بیشتر باشد، پیام ارتقا به کاربران نشان داده می‌شود.
+                    پس از نصب این نسخه در تائوری، تا زمان انتشار نسخه بالاتر دیگر پیام آپدیت نمایش داده نمی‌شود.
                   </span>
+                </div>
+
+                {/* Target Latest Version on Server (Android APK) */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Smartphone size={14} className="text-emerald-600" />
+                    شماره نسخه نهایی اندروید (Android Target Version)
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    placeholder="1.0.2"
+                    value={settings.androidLatestVersion || settings.desktopLatestVersion || settings.systemVersion || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSettings({ ...settings, androidLatestVersion: val });
+                    }}
+                    className="w-full text-xs font-mono p-3 bg-white dark:bg-slate-900 border border-gray-200 dark:border-gray-800 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                  />
+                  <span className="text-[10px] text-gray-400">
+                    پس از نصب این نسخه در اندروید، تا زمان انتشار نسخه بالاتر دیگر پیام آپدیت نمایش داده نمی‌شود.
+                  </span>
+                </div>
+
+                {/* Quick CLI Commands Guide Card */}
+                <div className="md:col-span-2 p-4 rounded-xl bg-slate-900 text-slate-100 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-purple-300">
+                      ⚡ دستورات خط فرمان (ترمینال سرور) برای ساخت خودکار آیکون‌ها و نسخه‌های نصبی:
+                    </span>
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-md font-mono">
+                      Root Directory
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <div className="p-2.5 rounded-lg bg-slate-800/90 border border-slate-700 space-y-1">
+                      <div className="font-bold text-amber-300 text-[11px]">۱. ساخت تمام آیکون‌ها از app-icon</div>
+                      <code className="block font-mono text-emerald-400 dir-ltr text-left select-all">npm run icons</code>
+                      <div className="text-[10px] text-slate-400">
+                        با حفظ دقیق رنگ بک‌گراند یا شفافیت (بدون بک‌گراند) برای اندروید و تائوری
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-slate-800/90 border border-slate-700 space-y-1">
+                      <div className="font-bold text-sky-300 text-[11px]">۲. ساخت اتومات نسخه تائوری در دانلود</div>
+                      <code className="block font-mono text-emerald-400 dir-ltr text-left select-all">npm run release:tauri</code>
+                      <div className="text-[10px] text-slate-400">
+                        ارتقای خودکار ورژن + ساخت فایل نصبی و قرارگیری در پوشه downloads
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-slate-800/90 border border-slate-700 space-y-1">
+                      <div className="font-bold text-emerald-300 text-[11px]">۳. ساخت اتومات نسخه اندروید در دانلود</div>
+                      <code className="block font-mono text-emerald-400 dir-ltr text-left select-all">npm run release:android</code>
+                      <div className="text-[10px] text-slate-400">
+                        ارتقای خودکار ورژن + ساخت APK نهایی و قرارگیری در پوشه downloads
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Server Release Notes Publisher */}
