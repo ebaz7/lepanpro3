@@ -10,13 +10,9 @@ try {
     const isWindows = process.platform === 'win32';
     const gradleDir = join(process.cwd(), 'android');
 
-    // 0. Auto-Increment Build Version & Prepare Icons
-    if (existsSync(join(process.cwd(), 'setup-build-version.cjs'))) {
-        console.log('🔢 Step 0a/4: Auto-incrementing and synchronizing application version...');
-        execSync('node setup-build-version.cjs --platform=android', { stdio: 'inherit' });
-    }
+    // 0. Prepare Icons & Splash Screens from user's app-icon in root folder
     if (existsSync(join(process.cwd(), 'setup-assets.cjs'))) {
-        console.log('🎨 Step 0b/4: Preparing Android launcher icons & splash screens from app-icon...');
+        console.log('🎨 Step 0/4: Preparing Android launcher icons & splash screens from app-icon...');
         execSync('node setup-assets.cjs', { stdio: 'inherit' });
     }
 
@@ -254,10 +250,6 @@ try {
             } catch (copyErr) {
                 console.warn(`⚠️ Could not copy to ${target}:`, copyErr instanceof Error ? copyErr.message : String(copyErr));
             }
-        }
-
-        if (existsSync(join(process.cwd(), 'publish-build-artifacts.cjs'))) {
-            execSync('node publish-build-artifacts.cjs', { stdio: 'inherit' });
         }
 
         console.log('\n====================================================');

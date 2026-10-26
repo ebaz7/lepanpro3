@@ -1,4 +1,74 @@
 @echo off
+echo ========================================================
+echo   DLKAM - TAURI WINDOWS BUILDER (LOW MEMORY & STACK FIX)
+echo ========================================================
+echo.
+
 cd /d "%~dp0"
-node build-desktop.cjs
+
+echo [1/3] Updating src-tauri/Cargo.toml with memory-safe single-unit configuration...
+(
+echo [package]
+echo name = "sayan-warehouse"
+echo version = "1.0.0"
+echo description = "Dlkam warehouse desktop"
+echo authors = ["Dlkam Team"]
+echo edition = "2021"
+echo rust-version = "1.65"
+echo.
+echo [build-dependencies]
+echo tauri-build = { version = "1.4", features = [] }
+echo.
+echo [features]
+echo default = ["custom-protocol"]
+echo custom-protocol = ["tauri/custom-protocol"]
+echo.
+echo [dependencies]
+echo serde_json = "1.0"
+echo serde = { version = "1.0", features = ["derive"] }
+echo tauri = { version = "1.4", default-features = false, features = ["wry", "custom-protocol", "shell-open", "http-request"] }
+echo tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+echo reqwest = { version = "0.11", default-features = false, features = ["json", "blocking", "native-tls"] }
+echo axum = { version = "0.6", default-features = false, features = ["http1", "json", "tokio"] }
+echo tower = { version = "0.4", default-features = false, features = ["util"] }
+echo tower-http = { version = "0.4", default-features = false, features = ["cors", "fs"] }
+echo.
+echo [profile.release]
+echo panic = "abort"
+echo opt-level = 1
+echo codegen-units = 1
+echo lto = false
+echo incremental = false
+echo strip = true
+) > src-tauri\Cargo.toml
+
+if not exist src-tauri\.cargo mkdir src-tauri\.cargo
+(
+echo [build]
+echo jobs = 1
+echo.
+echo [env]
+echo CARGO_BUILD_JOBS = "1"
+echo.
+echo [target.x86_64-pc-windows-msvc]
+echo rustflags = ["-C", "link-args=/STACK:16777216"]
+) > src-tauri\.cargo\config.toml
+
+echo [2/3] Verifying and generating 3.00-compliant Win32 desktop icons...
+call node setup-desktop-icons.cjs
+
+echo [3/3] Compiling Tauri Desktop App in single-thread memory-safe mode...
+set CARGO_BUILD_JOBS=1
+set RUSTFLAGS=-C link-args=/STACK:16777216
+set CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+set CARGO_PROFILE_RELEASE_OPT_LEVEL=1
+set CARGO_PROFILE_RELEASE_LTO=false
+set _CL_=/Zm2000
+call npx tauri build -- --jobs 1
+
+echo.
+echo ========================================================
+echo   BUILD PROCESS FINISHED!
+echo   Installer location: src-tauri\target\release\bundle\
+echo ========================================================
 pause

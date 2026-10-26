@@ -1,6 +1,6 @@
 [package]
 name = "sayan-warehouse"
-version = "1.0.6"
+version = "1.0.0"
 description = "Sayan warehouse system desktop application with embedded server and client-server dual role support"
 authors = ["Sayan AI Core Team"]
 license = "MIT"
