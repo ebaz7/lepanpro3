@@ -3944,9 +3944,6 @@ export async function fetchProductionDataForDateRange(db, rawFrom, rawTo) {
 
     const rawRows = await executeSayanQuery(db, sql);
 
-    const itemsMap = new Map();
-    let qty_61 = 0, qty_67 = 0, qty_79 = 0, qty_73 = 0, qty_schweiter = 0;
-
     const getKnownYarnNameByCode = (code, docType) => {
         const c = String(code || '').replace(/[^0-9]/g, '');
         if (c.startsWith('01020203') || c.startsWith('010203')) return 'نخ شوایتر 150/48';
@@ -3969,6 +3966,84 @@ export async function fetchProductionDataForDateRange(db, rawFrom, rawTo) {
         return 'کالای تولیدی';
     };
 
+    const getMasterGroupForSayanItem = (code, rawName, grpName, docType) => {
+        const itemCode = String(code || '').trim();
+        const name = String(rawName || '').trim();
+        const grp = String(grpName || '').trim();
+        const c = itemCode.replace(/[^0-9]/g, '');
+
+        if (c.startsWith('0401')) return 'اسپاندکس (کاور)';
+        if (c.startsWith('0402')) return 'کش';
+        if (c.startsWith('0403')) return 'اسپاندکس جوشی ( ساپورت )';
+        if (c.startsWith('0405')) return 'پلی استر شوایتر';
+        if (c.startsWith('0407')) return 'نایلون';
+        if (c.startsWith('0408')) return 'نخ ملت';
+        if (c.startsWith('0409')) return 'الیاف';
+        if (c.startsWith('0410')) return 'FDY';
+
+        if (c.startsWith('0101')) return 'چیپس';
+        if (c.startsWith('010202') || (c.startsWith('0102') && name.includes('شوایتر'))) return 'پلی استر شوایتر';
+        if (c.startsWith('0102')) return 'POY';
+        if (c.startsWith('0103')) return 'dty یا پلی استر';
+        if (c.startsWith('0104')) return 'لاستیک';
+        if (c.startsWith('0105')) {
+            if (name.includes('جوشی') || name.includes('ساپورت')) return 'اسپاندکس جوشی ( ساپورت )';
+            if (name.includes('لاکرا')) return 'لاکرا';
+            return 'اسپاندکس (کاور)';
+        }
+        if (c.startsWith('0106')) return 'پلی استر اسپان';
+        if (c.startsWith('0107')) return 'مستر بچ';
+        if (c.startsWith('0108')) return 'نایلون';
+
+        if (grp) {
+            if (grp.includes('جوشی') || grp.includes('ساپورت')) return 'اسپاندکس جوشی ( ساپورت )';
+            if (grp.includes('کاور')) return 'اسپاندکس (کاور)';
+            if (grp.includes('شوایتر')) return 'پلی استر شوایتر';
+            if (grp.includes('ملت')) return 'نخ ملت';
+            if (grp.includes('الیاف')) return 'الیاف';
+            if (/FDY/i.test(grp)) return 'FDY';
+            if (grp.includes('کش') || grp.includes('قیطان')) return 'کش';
+            if (grp.includes('اسپاندکس')) return 'اسپاندکس (کاور)';
+            if (/POY/i.test(grp)) return 'POY';
+            if (/DTY/i.test(grp) || grp.includes('پلی استر')) return 'dty یا پلی استر';
+            if (grp.includes('نایلون')) return 'نایلون';
+            if (grp.includes('چیپس')) return 'چیپس';
+            if (grp.includes('لاستیک')) return 'لاستیک';
+            if (grp.includes('لاکرا')) return 'لاکرا';
+            if (grp.includes('اسپان')) return 'پلی استر اسپان';
+            if (grp.includes('مستر بچ') || grp.includes('مستربچ')) return 'مستر بچ';
+        }
+
+        if (name.includes('جوشی') || name.includes('ساپورت') || (name.includes('اسپاندکس') && name.includes('جوش'))) return 'اسپاندکس جوشی ( ساپورت )';
+        if (name.includes('شوایتر')) return 'پلی استر شوایتر';
+        if (name.includes('اسپاندکس') || name.includes('کاور')) return 'اسپاندکس (کاور)';
+        if (name.includes('کش') || name.includes('قیطان')) return 'کش';
+        if (name.includes('ملت')) return 'نخ ملت';
+        if (name.includes('الیاف')) return 'الیاف';
+        if (/FDY/i.test(name)) return 'FDY';
+        if (/POY/i.test(name) || name.includes('پوی')) return 'POY';
+        if (/DTY/i.test(name) || name.includes('پلی استر')) return 'dty یا پلی استر';
+        if (name.includes('نایلون')) return 'نایلون';
+        if (name.includes('چیپس')) return 'چیپس';
+        if (name.includes('لاستیک')) return 'لاستیک';
+        if (name.includes('لاکرا')) return 'لاکرا';
+        if (name.includes('اسپان')) return 'پلی استر اسپان';
+        if (name.includes('مستر بچ') || name.includes('مستربچ')) return 'مستر بچ';
+
+        if (docType === '70') return 'پلی استر شوایتر';
+        if (docType === '79') return 'کش';
+        if (docType === '73') return 'اسپاندکس (کاور)';
+        if (docType === '67') return 'dty یا پلی استر';
+        if (docType === '61') return 'POY';
+
+        return 'سایر محصولات';
+    };
+
+    const itemsMap = new Map();
+    const groupsMap = new Map();
+    const timelineMap = new Map();
+    let qty_61 = 0, qty_67 = 0, qty_79 = 0, qty_73 = 0, qty_schweiter = 0;
+
     rawRows.forEach(r => {
         const itemCode = String(r.ItemCode || '').trim();
         let rawName = String(r.ItemName || itemCode || 'کالای بدون نام').trim();
@@ -3982,11 +4057,25 @@ export async function fetchProductionDataForDateRange(db, rawFrom, rawTo) {
             rawName = getKnownYarnNameByCode(itemCode, docType);
         }
 
+        const masterGroup = getMasterGroupForSayanItem(itemCode, rawName, r.GroupName, docType);
+
+        let rowShamsiDate = dateFrom;
+        if (r.Date) {
+            try {
+                const d = new Date(r.Date);
+                if (!isNaN(d.getTime())) {
+                    const j = jalaali.toJalaali(d);
+                    rowShamsiDate = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+                }
+            } catch (err) {}
+        }
+
+        // 1. By Item Map
         if (!itemsMap.has(rawName)) {
             itemsMap.set(rawName, {
                 name: rawName,
                 itemCode: itemCode,
-                groupName: String(r.GroupName || '').trim(),
+                groupName: masterGroup,
                 unit: 'کیلوگرم',
                 qty_61: 0,
                 qty_67: 0,
@@ -4004,15 +4093,71 @@ export async function fetchProductionDataForDateRange(db, rawFrom, rawTo) {
         else if (docType === '73') { item.qty_73 += qty; qty_73 += qty; }
         else if (docType === '70') { item.qty_schweiter += qty; qty_schweiter += qty; }
         item.total += qty;
+
+        // 2. By Group Map
+        if (!groupsMap.has(masterGroup)) {
+            groupsMap.set(masterGroup, {
+                name: masterGroup,
+                groupName: masterGroup,
+                unit: 'کیلوگرم',
+                qty_61: 0,
+                qty_67: 0,
+                qty_79: 0,
+                qty_73: 0,
+                qty_schweiter: 0,
+                total: 0,
+                itemNames: new Set()
+            });
+        }
+        const grp = groupsMap.get(masterGroup);
+        if (docType === '61') grp.qty_61 += qty;
+        else if (docType === '67') grp.qty_67 += qty;
+        else if (docType === '79') grp.qty_79 += qty;
+        else if (docType === '73') grp.qty_73 += qty;
+        else if (docType === '70') grp.qty_schweiter += qty;
+        grp.total += qty;
+        grp.itemNames.add(rawName);
+
+        // 3. Daily Timeline Map
+        if (!timelineMap.has(rowShamsiDate)) {
+            timelineMap.set(rowShamsiDate, {
+                date: rowShamsiDate,
+                total: 0,
+                qty_61: 0,
+                qty_67: 0,
+                qty_79: 0,
+                qty_73: 0,
+                qty_schweiter: 0,
+                groups: {}
+            });
+        }
+        const tObj = timelineMap.get(rowShamsiDate);
+        tObj.total += qty;
+        tObj.groups[masterGroup] = (tObj.groups[masterGroup] || 0) + qty;
+        if (docType === '61') tObj.qty_61 += qty;
+        else if (docType === '67') tObj.qty_67 += qty;
+        else if (docType === '79') tObj.qty_79 += qty;
+        else if (docType === '73') tObj.qty_73 += qty;
+        else if (docType === '70') tObj.qty_schweiter += qty;
     });
 
     const items = Array.from(itemsMap.values());
+    const groups = Array.from(groupsMap.values()).map(g => ({
+        ...g,
+        itemCount: g.itemNames.size,
+        itemNames: Array.from(g.itemNames)
+    }));
+    
+    // Sort timeline ascending by date for smooth charts
+    const dailyTimeline = Array.from(timelineMap.values()).sort((a, b) => a.date.localeCompare(b.date));
     const grandTotal = qty_61 + qty_67 + qty_79 + qty_73 + qty_schweiter;
 
     return {
         dateFrom,
         dateTo,
         items,
+        groups,
+        dailyTimeline,
         totals: {
             qty_61,
             qty_67,
@@ -4031,12 +4176,13 @@ app.get('/api/sayan/production-report', async (req, res) => {
         const rawTo = req.query.dateTo || rawFrom;
 
         const prodData = await fetchProductionDataForDateRange(db, rawFrom, rawTo);
-        const { dateFrom, dateTo, items, totals } = prodData;
+        const { dateFrom, dateTo, items, groups, dailyTimeline, totals } = prodData;
         const { qty_61, qty_67, qty_79, qty_73, qty_schweiter, grandTotal } = totals;
 
         const key = `${dateFrom}_${dateTo}`;
         db.productionReportWastes = db.productionReportWastes || {};
         db.productionWasteArchive = db.productionWasteArchive || [];
+        db.productionIdealTargets = db.productionIdealTargets || { byItem: {}, byGroup: {} };
 
         let waste_61 = 0;
         let waste_67 = 0;
@@ -4096,6 +4242,9 @@ app.get('/api/sayan/production-report', async (req, res) => {
             dateFrom,
             dateTo,
             items,
+            groups,
+            dailyTimeline,
+            idealTargets: db.productionIdealTargets || { byItem: {}, byGroup: {} },
             totals: {
                 qty_61,
                 qty_67,
@@ -4122,6 +4271,18 @@ app.get('/api/sayan/production-report', async (req, res) => {
         });
     } catch (e) {
         console.error("Sayan Production Report Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/sayan/production-report/save-ideal', (req, res) => {
+    try {
+        const db = getDb();
+        const { idealTargets } = req.body;
+        db.productionIdealTargets = idealTargets || { byItem: {}, byGroup: {} };
+        saveDb(db);
+        res.json({ success: true, message: 'مقادیر تولید ایده‌آل با موفقیت ذخیره گردید.', idealTargets: db.productionIdealTargets });
+    } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
@@ -4251,9 +4412,12 @@ app.get('/api/sayan/production-returns', async (req, res) => {
 app.post('/api/sayan/production-report/save-waste', (req, res) => {
     try {
         const db = getDb();
-        const { dateFrom, dateTo, waste_61, waste_67, waste_79, waste_73, waste_schweiter, details, totals, items } = req.body;
+        const { dateFrom, dateTo, waste_61, waste_67, waste_79, waste_73, waste_schweiter, details, totals, items, idealTargets } = req.body;
         if (!dateFrom || !dateTo) {
             return res.status(400).json({ error: 'تاریخ ابتدا و انتها الزامی است' });
+        }
+        if (idealTargets) {
+            db.productionIdealTargets = idealTargets;
         }
         const key = `${dateFrom}_${dateTo}`;
         db.productionReportWastes = db.productionReportWastes || {};

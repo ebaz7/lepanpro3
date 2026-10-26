@@ -65,7 +65,9 @@ import {
     Clock,
     CalendarClock,
     Info,
-    CreditCard
+    CreditCard,
+    MessageSquare,
+    Target
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
 import { 
@@ -78,7 +80,9 @@ import {
     Legend, 
     ResponsiveContainer,
     LineChart,
-    Line
+    Line,
+    AreaChart,
+    Area
 } from 'recharts';
 import { getRolePermissions } from '../services/authService';
 import { uploadFileChunked } from '../services/storageService';
@@ -101,6 +105,80 @@ const getEffectiveApiUrl = (path: string) => {
         return cleanPath;
     }
     return `${host}${cleanPath}`;
+};
+
+export const getSayanMasterGroupName = (item: any): string => {
+    const itemCode = String(item?.itemCode || item?.code || '').trim();
+    const rawName = String(item?.itemName || item?.name || '').trim();
+    const grpName = String(item?.groupName || item?.group || '').trim();
+    const docType = String(item?.docType || '').trim();
+    const c = itemCode.replace(/[^0-9]/g, '');
+
+    if (c.startsWith('0401')) return 'اسپاندکس (کاور)';
+    if (c.startsWith('0402')) return 'کش';
+    if (c.startsWith('0403')) return 'اسپاندکس جوشی ( ساپورت )';
+    if (c.startsWith('0405')) return 'پلی استر شوایتر';
+    if (c.startsWith('0407')) return 'نایلون';
+    if (c.startsWith('0408')) return 'نخ ملت';
+    if (c.startsWith('0409')) return 'الیاف';
+    if (c.startsWith('0410')) return 'FDY';
+
+    if (c.startsWith('0101')) return 'چیپس';
+    if (c.startsWith('010202') || (c.startsWith('0102') && rawName.includes('شوایتر'))) return 'پلی استر شوایتر';
+    if (c.startsWith('0102')) return 'POY';
+    if (c.startsWith('0103')) return 'dty یا پلی استر';
+    if (c.startsWith('0104')) return 'لاستیک';
+    if (c.startsWith('0105')) {
+        if (rawName.includes('جوشی') || rawName.includes('ساپورت')) return 'اسپاندکس جوشی ( ساپورت )';
+        if (rawName.includes('لاکرا')) return 'لاکرا';
+        return 'اسپاندکس (کاور)';
+    }
+    if (c.startsWith('0106')) return 'پلی استر اسپان';
+    if (c.startsWith('0107')) return 'مستر بچ';
+    if (c.startsWith('0108')) return 'نایلون';
+
+    if (grpName) {
+        if (grpName.includes('جوشی') || grpName.includes('ساپورت')) return 'اسپاندکس جوشی ( ساپورت )';
+        if (grpName.includes('کاور')) return 'اسپاندکس (کاور)';
+        if (grpName.includes('شوایتر')) return 'پلی استر شوایتر';
+        if (grpName.includes('ملت')) return 'نخ ملت';
+        if (grpName.includes('الیاف')) return 'الیاف';
+        if (/FDY/i.test(grpName)) return 'FDY';
+        if (grpName.includes('کش') || grpName.includes('قیطان')) return 'کش';
+        if (grpName.includes('اسپاندکس')) return 'اسپاندکس (کاور)';
+        if (/POY/i.test(grpName)) return 'POY';
+        if (/DTY/i.test(grpName) || grpName.includes('پلی استر')) return 'dty یا پلی استر';
+        if (grpName.includes('نایلون')) return 'نایلون';
+        if (grpName.includes('چیپس')) return 'چیپس';
+        if (grpName.includes('لاستیک')) return 'لاستیک';
+        if (grpName.includes('لاکرا')) return 'لاکرا';
+        if (grpName.includes('اسپان')) return 'پلی استر اسپان';
+        if (grpName.includes('مستر بچ') || grpName.includes('مستربچ')) return 'مستر بچ';
+    }
+
+    if (rawName.includes('جوشی') || rawName.includes('ساپورت') || (rawName.includes('اسپاندکس') && rawName.includes('جوش'))) return 'اسپاندکس جوشی ( ساپورت )';
+    if (rawName.includes('شوایتر')) return 'پلی استر شوایتر';
+    if (rawName.includes('اسپاندکس') || rawName.includes('کاور')) return 'اسپاندکس (کاور)';
+    if (rawName.includes('کش') || rawName.includes('قیطان')) return 'کش';
+    if (rawName.includes('ملت')) return 'نخ ملت';
+    if (rawName.includes('الیاف')) return 'الیاف';
+    if (/FDY/i.test(rawName)) return 'FDY';
+    if (/POY/i.test(rawName) || rawName.includes('پوی')) return 'POY';
+    if (/DTY/i.test(rawName) || rawName.includes('پلی استر')) return 'dty یا پلی استر';
+    if (rawName.includes('نایلون')) return 'نایلون';
+    if (rawName.includes('چیپس')) return 'چیپس';
+    if (rawName.includes('لاستیک')) return 'لاستیک';
+    if (rawName.includes('لاکرا')) return 'لاکرا';
+    if (rawName.includes('اسپان')) return 'پلی استر اسپان';
+    if (rawName.includes('مستر بچ') || rawName.includes('مستربچ')) return 'مستر بچ';
+
+    if (docType === '70' || (item?.qty_schweiter && item.qty_schweiter > 0)) return 'پلی استر شوایتر';
+    if (docType === '79' || (item?.qty_79 && item.qty_79 > 0)) return 'کش';
+    if (docType === '73' || (item?.qty_73 && item.qty_73 > 0)) return 'اسپاندکس (کاور)';
+    if (docType === '67' || (item?.qty_67 && item.qty_67 > 0)) return 'dty یا پلی استر';
+    if (docType === '61' || (item?.qty_61 && item.qty_61 > 0)) return 'POY';
+
+    return 'سایر محصولات';
 };
 
 export default function AccountingReports({ currentUser, settings, onNavigateToChat }: { currentUser?: any, settings?: any, onNavigateToChat?: (target: { type: 'private' | 'group' | 'task_group' | 'system', id: string }) => void }) {
@@ -387,6 +465,14 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
     // --- TAB 4: PRODUCTION STATE ---
     const [prodLiveItems, setProdLiveItems] = useState<any[]>([]);
+    const [prodLiveGroups, setProdLiveGroups] = useState<any[]>([]);
+    const [prodDailyTimeline, setProdDailyTimeline] = useState<any[]>([]);
+    const [prodIdealTargets, setProdIdealTargets] = useState<{ byItem: Record<string, number>; byGroup: Record<string, number> }>({ byItem: {}, byGroup: {} });
+    const [prodViewMode, setProdViewMode] = useState<'item' | 'group'>('item'); // default preserves item view 100%
+    const [activeProdSubTab, setActiveProdSubTab] = useState<'table' | 'charts'>('table');
+    const [prodChartPeriod, setProdChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily');
+    const [prodChartGroupFilter, setProdChartGroupFilter] = useState<string>('all');
+    const [isSavingIdeal, setIsSavingIdeal] = useState(false);
     const [prodLiveTotals, setProdLiveTotals] = useState<any>({ qty_61: 0, qty_67: 0, qty_79: 0, qty_73: 0, grandTotal: 0 });
     const [prodWaste, setProdWaste] = useState<any>({ waste_61: 0, waste_67: 0, waste_79: 0, waste_73: 0, waste_schweiter: 0, totalWaste: 0, pct_61: 0, pct_67: 0, pct_79: 0, pct_73: 0, pct_schweiter: 0, totalPct: 0, details: '' });
     const [isSavingWaste, setIsSavingWaste] = useState(false);
@@ -3694,8 +3780,11 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
             const fetchSingleRange = async (from: string, to: string) => {
                 let items: any[] = [];
+                let groups: any[] = [];
+                let dailyTimeline: any[] = [];
                 let totals = { qty_61: 0, qty_67: 0, qty_79: 0, qty_73: 0, qty_schweiter: 0, grandTotal: 0 };
                 let wasteData: any = null;
+                let idealTargetsData: any = null;
 
                 try {
                     const url = `/api/sayan/production-report?dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}`;
@@ -3703,8 +3792,11 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                     const data = await res.json();
                     if (data.success) {
                         items = data.items || [];
+                        groups = data.groups || [];
+                        dailyTimeline = data.dailyTimeline || [];
                         totals = data.totals || totals;
                         wasteData = data.waste;
+                        idealTargetsData = data.idealTargets;
                     }
                 } catch (err) {
                     console.warn("Backend production-report endpoint error:", err);
@@ -3761,6 +3853,8 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
                     const rawRows = await runSayanQuery(sql);
                     const itemsMap = new Map();
+                    const groupsMap = new Map();
+                    const timelineMap = new Map();
                     let q61 = 0, q67 = 0, q79 = 0, q73 = 0, qSchweiter = 0;
 
                     rawRows.forEach((r: any) => {
@@ -3776,11 +3870,24 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                             rawName = getKnownYarnNameByCode(itemCode, docType);
                         }
 
+                        const masterGrp = getSayanMasterGroupName({ itemCode, itemName: rawName, groupName: r.GroupName, qty_61: docType === '61' ? qty : 0, qty_67: docType === '67' ? qty : 0, qty_79: docType === '79' ? qty : 0, qty_73: docType === '73' ? qty : 0, qty_schweiter: docType === '70' ? qty : 0 });
+
+                        let shamsiDate = from;
+                        if (r.Date) {
+                            try {
+                                const d = new Date(r.Date);
+                                if (!isNaN(d.getTime())) {
+                                    const j = jalaali.toJalaali(d);
+                                    shamsiDate = `${j.jy}/${String(j.jm).padStart(2, '0')}/${String(j.jd).padStart(2, '0')}`;
+                                }
+                            } catch (e) {}
+                        }
+
                         if (!itemsMap.has(rawName)) {
                             itemsMap.set(rawName, {
                                 name: rawName,
                                 itemCode: itemCode,
-                                groupName: String(r.GroupName || '').trim(),
+                                groupName: masterGrp,
                                 unit: 'کیلوگرم',
                                 qty_61: 0,
                                 qty_67: 0,
@@ -3798,9 +3905,45 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                         else if (docType === '73') { item.qty_73 += qty; q73 += qty; }
                         else if (docType === '70') { item.qty_schweiter += qty; qSchweiter += qty; }
                         item.total += qty;
+
+                        // Groups aggregation
+                        if (!groupsMap.has(masterGrp)) {
+                            groupsMap.set(masterGrp, {
+                                name: masterGrp,
+                                groupName: masterGrp,
+                                unit: 'کیلوگرم',
+                                qty_61: 0,
+                                qty_67: 0,
+                                qty_79: 0,
+                                qty_73: 0,
+                                qty_schweiter: 0,
+                                total: 0
+                            });
+                        }
+                        const g = groupsMap.get(masterGrp);
+                        if (docType === '61') g.qty_61 += qty;
+                        else if (docType === '67') g.qty_67 += qty;
+                        else if (docType === '79') g.qty_79 += qty;
+                        else if (docType === '73') g.qty_73 += qty;
+                        else if (docType === '70') g.qty_schweiter += qty;
+                        g.total += qty;
+
+                        // Timeline aggregation
+                        if (!timelineMap.has(shamsiDate)) {
+                            timelineMap.set(shamsiDate, {
+                                date: shamsiDate,
+                                total: 0,
+                                groups: {}
+                            });
+                        }
+                        const t = timelineMap.get(shamsiDate);
+                        t.total += qty;
+                        t.groups[masterGrp] = (t.groups[masterGrp] || 0) + qty;
                     });
 
                     items = Array.from(itemsMap.values());
+                    groups = Array.from(groupsMap.values());
+                    dailyTimeline = Array.from(timelineMap.values()).sort((a, b) => a.date.localeCompare(b.date));
                     totals = {
                         qty_61: q61,
                         qty_67: q67,
@@ -3811,7 +3954,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                     };
                 }
 
-                return { items, totals, wasteData };
+                return { items, groups, dailyTimeline, totals, wasteData, idealTargetsData };
             };
 
             const cleanDateFromA = normalizeDate(dateFrom);
@@ -3822,6 +3965,9 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
             setProdLiveTotals(resA.totals);
             setProdCompareDataA(resA.items);
             setProdCompareTotalsA(resA.totals);
+            if (resA.groups && resA.groups.length > 0) setProdLiveGroups(resA.groups);
+            if (resA.dailyTimeline && resA.dailyTimeline.length > 0) setProdDailyTimeline(resA.dailyTimeline);
+            if (resA.idealTargetsData) setProdIdealTargets(resA.idealTargetsData);
 
             if (resA.wasteData) {
                 setProdWaste(resA.wasteData);
@@ -3841,6 +3987,216 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleIdealTargetChange = (nameOrKey: string, val: string, isGroup?: boolean) => {
+        const num = parseFloat(val) || 0;
+        setProdIdealTargets((prev: any) => {
+            const next = { ...(prev || {}) };
+            next[nameOrKey] = num;
+
+            const byGroup = { ...(next.byGroup || {}) };
+            const byItem = { ...(next.byItem || {}) };
+
+            if (isGroup === true || nameOrKey.startsWith('group_')) {
+                const groupName = nameOrKey.startsWith('group_') ? nameOrKey.replace(/^group_/, '') : nameOrKey;
+                byGroup[groupName] = num;
+                next[`group_${groupName}`] = num;
+            } else if (isGroup === false || nameOrKey.startsWith('item_')) {
+                const itemName = nameOrKey.startsWith('item_') ? nameOrKey.replace(/^item_/, '') : nameOrKey;
+                byItem[itemName] = num;
+                next[`item_${itemName}`] = num;
+            }
+
+            next.byGroup = byGroup;
+            next.byItem = byItem;
+            return next;
+        });
+    };
+
+    const handleSaveIdealTargets = async () => {
+        setIsSavingIdeal(true);
+        try {
+            const res = await fetch(getEffectiveApiUrl('/api/sayan/production-report/save-ideal'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    idealTargets: prodIdealTargets
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast.success('مقادیر تولید ایده‌آل با موفقیت در پایگاه داده ثبت شد.');
+            } else {
+                toast.error(data.error || 'خطا در ثبت مقادیر ایده‌آل');
+            }
+        } catch (e: any) {
+            toast.error('خطا در ارتباط با سرور: ' + e.message);
+        } finally {
+            setIsSavingIdeal(false);
+        }
+    };
+
+    const getGroupedProductionRows = () => {
+        const map = new Map<string, any>();
+        prodLiveItems.forEach(item => {
+            const grp = getSayanMasterGroupName(item);
+            if (!map.has(grp)) {
+                map.set(grp, {
+                    name: grp,
+                    groupName: grp,
+                    unit: 'کیلوگرم',
+                    qty_61: 0,
+                    qty_67: 0,
+                    qty_79: 0,
+                    qty_73: 0,
+                    qty_schweiter: 0,
+                    total: 0,
+                    itemCount: 0
+                });
+            }
+            const g = map.get(grp);
+            g.qty_61 += (item.qty_61 || 0);
+            g.qty_67 += (item.qty_67 || 0);
+            g.qty_79 += (item.qty_79 || 0);
+            g.qty_73 += (item.qty_73 || 0);
+            g.qty_schweiter += (item.qty_schweiter || 0);
+            g.total += (item.total || 0);
+            g.itemCount += 1;
+        });
+        return Array.from(map.values()).sort((a, b) => b.total - a.total);
+    };
+
+    const getProductionTimelineChartData = () => {
+        let timeline: any[] = [];
+        if (prodDailyTimeline && prodDailyTimeline.length > 0) {
+            timeline = [...prodDailyTimeline];
+        } else if (prodLiveItems && prodLiveItems.length > 0) {
+            const groupsBreakdown: Record<string, number> = {};
+            prodLiveItems.forEach(it => {
+                const grp = getSayanMasterGroupName(it);
+                groupsBreakdown[grp] = (groupsBreakdown[grp] || 0) + (it.total || 0);
+            });
+            timeline = [{
+                date: dateFrom || 'امروز',
+                total: prodLiveTotals.grandTotal || 0,
+                groups: groupsBreakdown
+            }];
+        }
+
+        if (timeline.length === 0) {
+            return {
+                chartPoints: [],
+                kpis: { totalActual: 0, totalIdeal: 0, achievementPct: 0, variance: 0, avgDaily: 0 }
+            };
+        }
+
+        let totalIdeal = 0;
+        if (prodChartGroupFilter === 'all') {
+            const groupSum = Object.values(prodIdealTargets.byGroup || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+            const itemSum = Object.values(prodIdealTargets.byItem || {}).reduce((s, v) => s + (Number(v) || 0), 0);
+            totalIdeal = groupSum > 0 ? groupSum : itemSum;
+        } else {
+            totalIdeal = Number(prodIdealTargets.byGroup?.[prodChartGroupFilter]) || 0;
+        }
+
+        const totalDays = Math.max(timeline.length, 1);
+        const dailyIdeal = totalIdeal > 0 ? totalIdeal / totalDays : 0;
+
+        let aggregatedPoints: { label: string; date: string; actual: number; ideal: number }[] = [];
+
+        if (prodChartPeriod === 'daily' || prodChartPeriod === 'custom') {
+            aggregatedPoints = timeline.map(t => {
+                const dayActual = prodChartGroupFilter === 'all'
+                    ? (t.total || 0)
+                    : (t.groups?.[prodChartGroupFilter] || 0);
+                return {
+                    label: t.date ? t.date.slice(5) : t.date,
+                    date: t.date,
+                    actual: dayActual,
+                    ideal: dailyIdeal
+                };
+            });
+        } else if (prodChartPeriod === 'weekly') {
+            const chunkSize = 7;
+            for (let i = 0; i < timeline.length; i += chunkSize) {
+                const chunk = timeline.slice(i, i + chunkSize);
+                const chunkActual = chunk.reduce((sum, t) => {
+                    const val = prodChartGroupFilter === 'all' ? (t.total || 0) : (t.groups?.[prodChartGroupFilter] || 0);
+                    return sum + val;
+                }, 0);
+                const chunkIdeal = dailyIdeal * chunk.length;
+                const weekNum = Math.floor(i / chunkSize) + 1;
+                const firstDate = chunk[0].date;
+                const lastDate = chunk[chunk.length - 1].date;
+                aggregatedPoints.push({
+                    label: `هفته ${weekNum}`,
+                    date: `${firstDate} - ${lastDate}`,
+                    actual: chunkActual,
+                    ideal: chunkIdeal
+                });
+            }
+        } else if (prodChartPeriod === 'monthly') {
+            const monthMap = new Map<string, { label: string; date: string; actual: number; daysCount: number }>();
+            const monthNames = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+            timeline.forEach(t => {
+                const parts = String(t.date || '').split('/');
+                const mKey = parts.length >= 2 ? `${parts[0]}/${parts[1]}` : 'ماه';
+                const mNum = parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+                const mName = monthNames[mNum] || mKey;
+                if (!monthMap.has(mKey)) {
+                    monthMap.set(mKey, { label: mName, date: mKey, actual: 0, daysCount: 0 });
+                }
+                const mObj = monthMap.get(mKey)!;
+                const val = prodChartGroupFilter === 'all' ? (t.total || 0) : (t.groups?.[prodChartGroupFilter] || 0);
+                mObj.actual += val;
+                mObj.daysCount += 1;
+            });
+            aggregatedPoints = Array.from(monthMap.values()).map(m => ({
+                label: m.label,
+                date: m.date,
+                actual: m.actual,
+                ideal: dailyIdeal * m.daysCount
+            }));
+        }
+
+        let cumActual = 0;
+        let cumIdeal = 0;
+        const chartPoints = aggregatedPoints.map(p => {
+            cumActual += p.actual;
+            cumIdeal += p.ideal;
+            const variancePeriod = p.actual - p.ideal;
+            const varianceCum = cumActual - cumIdeal;
+            const ratioCum = cumIdeal > 0 ? (cumActual / cumIdeal) * 100 : 0;
+            return {
+                label: p.label,
+                date: p.date,
+                actual: Math.round(p.actual * 10) / 10,
+                ideal: Math.round(p.ideal * 10) / 10,
+                variancePeriod: Math.round(variancePeriod * 10) / 10,
+                actualCum: Math.round(cumActual * 10) / 10,
+                idealCum: Math.round(cumIdeal * 10) / 10,
+                varianceCum: Math.round(varianceCum * 10) / 10,
+                ratioCum: Math.round(ratioCum * 10) / 10
+            };
+        });
+
+        const totalActualVal = cumActual;
+        const totalIdealVal = cumIdeal > 0 ? cumIdeal : totalIdeal;
+        const achievementPct = totalIdealVal > 0 ? (totalActualVal / totalIdealVal) * 100 : 0;
+        const varianceVal = totalActualVal - totalIdealVal;
+        const avgDailyVal = totalDays > 0 ? totalActualVal / totalDays : 0;
+
+        return {
+            chartPoints,
+            kpis: {
+                totalActual: totalActualVal,
+                totalIdeal: totalIdealVal,
+                achievementPct,
+                variance: varianceVal,
+                avgDaily: avgDailyVal
+            }
+        };
     };
 
     const handleWasteChange = (field: string, val: string) => {
@@ -3921,12 +4277,13 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                     waste_schweiter: prodWaste.waste_schweiter,
                     details: prodWaste.details,
                     totals: prodLiveTotals,
-                    items: prodLiveItems
+                    items: prodLiveItems,
+                    idealTargets: prodIdealTargets
                 })
             });
             const data = await res.json();
             if (data.success) {
-                toast.success(data.message || 'اطلاعات ضایعات و آمار کل تولید با موفقیت در بایگانی ثبت شد.');
+                toast.success(data.message || 'اطلاعات ضایعات، آمار تولید و اهداف ایده‌آل در بایگانی ثبت شد.');
                 fetchProdArchive();
             } else {
                 toast.error(data.error || 'خطا در ثبت ضایعات.');
@@ -4948,19 +5305,172 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
     };
 
     const handlePrintLiveProduction = (returnHtml: boolean = false) => {
-        const title = `گزارش آمار تولید و ضایعات کارخانه سایان ERP (${dateFrom} تا ${dateTo})`;
+        const isCharts = activeProdSubTab === 'charts';
+        const isGroup = prodViewMode === 'group';
+        const title = isCharts
+            ? `گزارش تحلیلی و مقایسه تولید با هدف ایده‌آل (S-Curve) - (${dateFrom} تا ${dateTo})`
+            : `گزارش آمار کل تولید و ضایعات (${isGroup ? 'تفکیک ۱۵ گروه اصلی' : 'تفکیک کالا'}) - (${dateFrom} تا ${dateTo})`;
+        
         const totalProd = prodLiveTotals?.grandTotal || 0;
         const totalWaste = (prodWaste?.waste_61 || 0) + (prodWaste?.waste_67 || 0) + (prodWaste?.waste_79 || 0) + (prodWaste?.waste_73 || 0) + (prodWaste?.waste_schweiter || 0);
         const wastePct = totalProd > 0 ? ((totalWaste / totalProd) * 100).toFixed(2) : '0';
 
-        const rowsHtml = prodLiveItems.map((item, idx) => `
-            <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; font-size: 9.5pt;">
-                <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: center;">${idx + 1}</td>
-                <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold;">${item.name || item.itemName || '-'}</td>
-                <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: center;">${item.groupName || item.group || '-'}</td>
-                <td style="padding: 8px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #1e3a8a;">${(item.total || item.totalWeight || 0).toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-            </tr>
-        `).join('');
+        let bodyContent = '';
+
+        if (isCharts) {
+            const { chartPoints, kpis } = getProductionTimelineChartData();
+            const groupFilterName = prodChartGroupFilter === 'all' ? 'همه گروه‌ها (کل کارخانه)' : prodChartGroupFilter;
+            const periodLabel = prodChartPeriod === 'daily' ? 'روزانه' : (prodChartPeriod === 'weekly' ? 'هفتگی' : (prodChartPeriod === 'monthly' ? 'ماهانه' : 'بازه زمانی انتخابی'));
+
+            const timelineRows = chartPoints.map((p, idx) => `
+                <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; font-size: 9pt;">
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${idx + 1}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold;">${p.label}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace;">${p.date}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #1e3a8a;">${p.actual.toLocaleString('fa-IR')}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; color: #047857; font-weight: bold;">${p.ideal.toLocaleString('fa-IR')}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${p.variancePeriod >= 0 ? '#15803d' : '#b91c1c'};">${p.variancePeriod >= 0 ? '+' : ''}${p.variancePeriod.toLocaleString('fa-IR')}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: 800; color: #1e40af; background-color: #eff6ff;">${p.actualCum.toLocaleString('fa-IR')}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: 800; color: #065f46; background-color: #ecfdf5;">${p.idealCum.toLocaleString('fa-IR')}</td>
+                    <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${p.ratioCum >= 100 ? '#15803d' : (p.ratioCum >= 80 ? '#b45309' : '#b91c1c')};">${p.ratioCum.toFixed(1)}%</td>
+                </tr>
+            `).join('');
+
+            bodyContent = `
+                <div class="stat-cards">
+                    <div class="card">
+                        <div class="card-label">فیلتر گروه کالایی</div>
+                        <div class="card-val" style="font-size: 11pt; color: #3730a3;">${groupFilterName}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">بازه و تفکیک زمانی</div>
+                        <div class="card-val" style="font-size: 11pt;">${periodLabel} (${dateFrom} تا ${dateTo})</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">کل تولید واقعی (kg)</div>
+                        <div class="card-val" style="color: #2563eb;">${kpis.totalActual.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">هدف کل ایده‌آل (kg)</div>
+                        <div class="card-val" style="color: #059669;">${kpis.totalIdeal.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">درصد تحقق هدف</div>
+                        <div class="card-val" style="color: ${kpis.achievementPct >= 100 ? '#16a34a' : (kpis.achievementPct >= 80 ? '#d97706' : '#dc2626')};">${kpis.achievementPct.toFixed(1)}%</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">انحراف از هدف (kg)</div>
+                        <div class="card-val" style="color: ${kpis.variance >= 0 ? '#16a34a' : '#dc2626'};">${kpis.variance >= 0 ? '+' : ''}${kpis.variance.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</div>
+                    </div>
+                </div>
+
+                <h3 style="margin-top: 25px; margin-bottom: 8px; font-size: 11pt; color: #1e293b;">جدول روندی تفکیک مقاطع زمانی و مقایسه تجمیعی (S-Curve Data):</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">ردیف</th>
+                            <th>مقطع زمانی</th>
+                            <th>بازه تاریخ</th>
+                            <th>تولید مقطع (kg)</th>
+                            <th>سهمیه ایده‌آل مقطع (kg)</th>
+                            <th>انحراف مقطع (kg)</th>
+                            <th style="background-color: #1e3a8a;">تولید تجمیعی واقعی (kg)</th>
+                            <th style="background-color: #065f46;">هدف تجمیعی ایده‌آل (kg)</th>
+                            <th>درصد تحقق (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${timelineRows || '<tr><td colspan="9" style="text-align:center; padding: 20px;">هیچ رکوردی برای نمایش وجود ندارد.</td></tr>'}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            const rowsToRender = isGroup ? getGroupedProductionRows() : prodLiveItems;
+            let totalIdealSum = 0;
+
+            const rowsHtml = rowsToRender.map((row, idx) => {
+                const ideal = isGroup ? (prodIdealTargets.byGroup?.[row.name] || 0) : (prodIdealTargets.byItem?.[row.name] || 0);
+                totalIdealSum += Number(ideal) || 0;
+                const actual = row.total || 0;
+                const achPct = ideal > 0 ? (actual / ideal) * 100 : 0;
+                const diff = actual - ideal;
+
+                return `
+                    <tr style="background-color: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; font-size: 9pt;">
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${idx + 1}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold;">${row.name}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${row.qty_61 > 0 ? row.qty_61.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${row.qty_67 > 0 ? row.qty_67.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${row.qty_79 > 0 ? row.qty_79.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${row.qty_73 > 0 ? row.qty_73.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center;">${row.qty_schweiter > 0 ? row.qty_schweiter.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: 800; color: #1e3a8a; background-color: #f1f5f9;">${actual.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #059669;">${ideal > 0 ? ideal.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${achPct >= 100 ? '#16a34a' : (achPct >= 80 ? '#d97706' : '#dc2626')};">${ideal > 0 ? `${achPct.toFixed(1)}%` : '-'}</td>
+                        <td style="padding: 7px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: ${diff >= 0 ? '#16a34a' : '#dc2626'};">${ideal > 0 ? `${diff >= 0 ? '+' : ''}${diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}` : '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const grandAchPct = totalIdealSum > 0 ? (totalProd / totalIdealSum) * 100 : 0;
+            const grandDiff = totalProd - totalIdealSum;
+
+            bodyContent = `
+                <div class="stat-cards">
+                    <div class="card">
+                        <div class="card-label">کل تولید خالص (کیلوگرم)</div>
+                        <div class="card-val" style="color: #2563eb;">${totalProd.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">کل هدف ایده‌آل (کیلوگرم)</div>
+                        <div class="card-val" style="color: #059669;">${totalIdealSum > 0 ? totalIdealSum.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : 'تعیین نشده'}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">درصد تحقق هدف</div>
+                        <div class="card-val" style="color: ${grandAchPct >= 100 ? '#16a34a' : (grandAchPct >= 80 ? '#d97706' : '#dc2626')};">${totalIdealSum > 0 ? `${grandAchPct.toFixed(1)}%` : '-'}</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-label">کل ضایعات کارخانه</div>
+                        <div class="card-val" style="color: #dc2626;">${totalWaste.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} kg (${wastePct}%)</div>
+                    </div>
+                </div>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">ردیف</th>
+                            <th>${isGroup ? 'نام گروه اصلی کالا (سایان)' : 'نام دقیق کالا'}</th>
+                            <th>POY (۶۱)</th>
+                            <th>DTY (۶۷)</th>
+                            <th>کش (۷۹)</th>
+                            <th>اسپاندکس (۷۳)</th>
+                            <th>شوایتر (۷۰)</th>
+                            <th style="background-color: #1e3a8a;">جمع کل تولید (kg)</th>
+                            <th style="background-color: #065f46;">تولید ایده‌آل (kg)</th>
+                            <th>درصد تحقق</th>
+                            <th>انحراف</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml || '<tr><td colspan="11" style="text-align:center; padding: 20px;">هیچ رکوردی برای نمایش وجود ندارد.</td></tr>'}
+                    </tbody>
+                    <tfoot>
+                        <tr style="background-color: #e2e8f0; font-weight: bold; border-top: 2px solid #64748b;">
+                            <td colspan="2" style="padding: 10px; text-align: right;">جمع کل تولید و اهداف:</td>
+                            <td style="padding: 8px; text-align: center;">${(prodLiveTotals.qty_61 || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center;">${(prodLiveTotals.qty_67 || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center;">${(prodLiveTotals.qty_79 || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center;">${(prodLiveTotals.qty_73 || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center;">${(prodLiveTotals.qty_schweiter || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center; color: #1e3a8a; font-size: 11pt;">${totalProd.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center; color: #059669; font-size: 11pt;">${totalIdealSum.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                            <td style="padding: 8px; text-align: center; color: ${grandAchPct >= 100 ? '#16a34a' : '#d97706'}; font-size: 10pt;">${totalIdealSum > 0 ? `${grandAchPct.toFixed(1)}%` : '-'}</td>
+                            <td style="padding: 8px; text-align: center; color: ${grandDiff >= 0 ? '#16a34a' : '#dc2626'}; font-size: 10pt;">${totalIdealSum > 0 ? `${grandDiff >= 0 ? '+' : ''}${grandDiff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}` : '-'}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            `;
+        }
 
         const docHtml = `
             <html dir="rtl" lang="fa">
@@ -4970,51 +5480,29 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                 <style>
                     body { font-family: 'Tahoma', sans-serif; margin: 20px; color: #0f172a; direction: rtl; }
                     .header-box { border: 1px solid #cbd5e1; padding: 14px; border-radius: 8px; background-color: #f8fafc; margin-bottom: 20px; text-align: center; }
-                    .title { font-size: 14pt; font-weight: bold; color: #1e3a8a; margin-bottom: 6px; }
-                    .subtitle { font-size: 10pt; color: #475569; }
-                    .stat-cards { display: flex; justify-content: space-around; margin: 15px 0; gap: 10px; }
-                    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 15px; background: white; text-align: center; flex: 1; }
-                    .card-label { font-size: 9pt; color: #64748b; margin-bottom: 4px; }
-                    .card-val { font-size: 12pt; font-weight: bold; color: #0f172a; }
-                    .table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-                    .table th { background-color: #1e293b; color: white; padding: 10px; border: 1px solid #334155; font-size: 10pt; }
-                    .table td { border: 1px solid #cbd5e1; padding: 8px; }
-                    .footer { text-align: center; font-size: 9pt; color: #94a3b8; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+                    .title { font-size: 13pt; font-weight: bold; color: #1e3a8a; margin-bottom: 6px; }
+                    .subtitle { font-size: 9.5pt; color: #475569; }
+                    .stat-cards { display: flex; justify-content: space-around; margin: 15px 0; gap: 8px; flex-wrap: wrap; }
+                    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; background: white; text-align: center; flex: 1; min-width: 120px; }
+                    .card-label { font-size: 8.5pt; color: #64748b; margin-bottom: 4px; }
+                    .card-val { font-size: 11pt; font-weight: bold; color: #0f172a; }
+                    .table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 9pt; }
+                    .table th { background-color: #1e293b; color: white; padding: 8px 6px; border: 1px solid #334155; font-size: 9pt; }
+                    .table td { border: 1px solid #cbd5e1; padding: 6px; }
+                    .footer { text-align: center; font-size: 8.5pt; color: #94a3b8; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+                    @media print {
+                        body { margin: 10mm; }
+                        button { display: none !important; }
+                    }
                 </style>
             </head>
             <body>
                 <div class="header-box">
                     <div class="title">${title}</div>
                     <div class="subtitle">سیستم جامع پایش خطوط تولید کارخانه نساجی سایان ERP</div>
-                    <div class="stat-cards">
-                        <div class="card">
-                            <div class="card-label">کل تولید خالص (کیلوگرم)</div>
-                            <div class="card-val" style="color: #2563eb;">${totalProd.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</div>
-                        </div>
-                        <div class="card">
-                            <div class="card-label">کل ضایعات کارخانه (کیلوگرم)</div>
-                            <div class="card-val" style="color: #dc2626;">${totalWaste.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</div>
-                        </div>
-                        <div class="card">
-                            <div class="card-label">درصد ضایعات به کل تولید</div>
-                            <div class="card-val" style="color: #d97706;">${wastePct}%</div>
-                        </div>
-                    </div>
                 </div>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th style="width: 50px;">ردیف</th>
-                            <th>نام کالا / محصول تولیدی</th>
-                            <th>دسته‌بندی</th>
-                            <th>وزن کل تولید (kg)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml || '<tr><td colspan="4" style="text-align:center; padding: 20px;">هیچ رکوردی برای این بازه زمانی یافت نشد.</td></tr>'}
-                    </tbody>
-                </table>
-                <div class="footer">گزارش رسمی سامانه هوشمند سایان ERP - زمان صدور: ${new Date().toLocaleTimeString('fa-IR')}</div>
+                ${bodyContent}
+                <div class="footer">گزارش رسمی سامانه هوشمند مدیریت سایان ERP - زمان صدور: ${new Date().toLocaleTimeString('fa-IR')} - تاریخ: ${dateFrom} تا ${dateTo}</div>
             </body>
             </html>
         `;
@@ -5037,7 +5525,7 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
     const handleShareProductionToChat = async () => {
         setIsLoading(true);
-        const loadingToast = toast.loading('در حال آماده‌سازی و ساخت فایل PDF تولید و ضایعات...');
+        const loadingToast = toast.loading('در حال ساخت فایل PDF گزارش تولید...');
         try {
             const dateFromStr = dateFrom || 'ابتدا';
             const dateToStr = dateTo || 'امروز';
@@ -5058,7 +5546,22 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
 
             const totalProd = prodLiveTotals?.grandTotal || 0;
             const totalWaste = (prodWaste?.waste_61 || 0) + (prodWaste?.waste_67 || 0) + (prodWaste?.waste_79 || 0) + (prodWaste?.waste_73 || 0) + (prodWaste?.waste_schweiter || 0);
-            const text = `📊 گزارش تولید و ضایعات کارخانه سایان ERP (${dateFromStr} تا ${dateToStr})\n• کل تولید خالص: ${totalProd.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوگرم\n• کل ضایعات ثبت‌شده: ${totalWaste.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوگرم\n📄 فایل PDF کامل پیوست گردید.`;
+            
+            let totalIdeal = 0;
+            if (prodViewMode === 'group') {
+                totalIdeal = getGroupedProductionRows().reduce((s, g) => s + (Number(prodIdealTargets.byGroup?.[g.name]) || 0), 0);
+            } else {
+                totalIdeal = prodLiveItems.reduce((s, it) => s + (Number(prodIdealTargets.byItem?.[it.name]) || 0), 0);
+            }
+            const achPct = totalIdeal > 0 ? (totalProd / totalIdeal) * 100 : 0;
+            const diff = totalProd - totalIdeal;
+
+            const text = `📊 گزارش تولید و ضایعات کارخانه سایان ERP (${dateFromStr} تا ${dateToStr})\n` +
+                         `• نوع نمایش: ${activeProdSubTab === 'charts' ? 'نمودارهای تحلیلی سینوسی S-Curve' : (prodViewMode === 'group' ? 'تفکیک ۱۵ گروه اصلی سایان' : 'تفکیک هر کالا')}\n` +
+                         `• کل تولید خالص: ${totalProd.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوگرم\n` +
+                         (totalIdeal > 0 ? `• کل هدف ایده‌آل: ${totalIdeal.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوگرم\n• درصد تحقق هدف: ${achPct.toFixed(1)}%\n• انحراف از هدف: ${diff >= 0 ? '+' : ''}${diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوگرم\n` : '') +
+                         `• کل ضایعات ثبت‌شده: ${totalWaste.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلوگرم (${prodWaste.totalPct ? prodWaste.totalPct.toFixed(2) : '0'}%)\n` +
+                         `📄 فایل PDF کامل گزارش پیوست گردید.`;
 
             setSendToChatAttachment({ fileName: result.fileName, url: result.url });
             setSendToChatDefaultMsg(text);
@@ -7629,18 +8132,31 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                 </button>
 
                                 {!prodCompareMode && (
-                                    <button
-                                        onClick={handleSaveWaste}
-                                        disabled={isSavingWaste}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
-                                    >
-                                        <Save className="h-4 w-4" />
-                                        ذخیره مقادیر ضایعات
-                                    </button>
+                                    <>
+                                        <button
+                                            onClick={handleSaveIdealTargets}
+                                            disabled={isSavingIdeal || isSavingWaste}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                                            title="ذخیره میزان تولید ایده‌آل و مقادیر ضایعات در دیتابیس"
+                                        >
+                                            <Save className="h-4 w-4" />
+                                            {isSavingIdeal ? 'در حال ذخیره...' : 'ذخیره اهداف و ضایعات'}
+                                        </button>
+
+                                        <button
+                                            onClick={handleShareProductionToChat}
+                                            disabled={isLoading}
+                                            className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                                            title="ارسال فایل PDF گزارش تولید و نمودارها به پیام‌رسان داخلی گفتگو"
+                                        >
+                                            <MessageSquare className="h-4 w-4" />
+                                            ارسال به گفتگو (PDF)
+                                        </button>
+                                    </>
                                 )}
 
                                 <button
-                                    onClick={prodCompareMode ? () => handlePrintComparativeProduction() : () => window.print()}
+                                    onClick={prodCompareMode ? () => handlePrintComparativeProduction() : () => handlePrintLiveProduction()}
                                     className="bg-slate-700 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm transition-all"
                                 >
                                     <Printer className="h-4 w-4" />
@@ -7893,296 +8409,956 @@ export default function AccountingReports({ currentUser, settings, onNavigateToC
                                 </div>
                             </div>
                         ) : (
-                            <div className="border border-slate-300 rounded-xl overflow-hidden shadow-sm bg-white">
-                            {/* Desktop View */}
-                            <div className="overflow-x-auto hidden md:block">
-                                <table className="w-full text-center text-xs sm:text-sm border-collapse">
-                                    <thead>
-                                        {/* Row 1: Header Categories */}
-                                        <tr className="bg-slate-200 text-slate-900 font-extrabold border-b border-slate-300">
-                                            <th colSpan={2} className="p-2.5 border-r border-slate-300 bg-slate-300">کالاها</th>
-                                            <th colSpan={6} className="p-2.5 bg-blue-100 text-blue-950">عملیات (اسناد تولید زنده سایان)</th>
-                                        </tr>
-                                        {/* Row 2: Sub Columns */}
-                                        <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300 text-xs">
-                                            <th className="p-2.5 border-r border-slate-300 w-20">واحد</th>
-                                            <th className="p-2.5 border-r border-slate-300 text-right min-w-[200px]">کالا</th>
-                                            <th className="p-2.5 border-r border-slate-300 w-32">61 کارت POY</th>
-                                            <th className="p-2.5 border-r border-slate-300 w-32">67 کارت DTY</th>
-                                            <th className="p-2.5 border-r border-slate-300 w-32">79 کارت کش</th>
-                                            <th className="p-2.5 border-r border-slate-300 w-32">73 کارت اسپاندکس</th>
-                                            <th className="p-2.5 border-r border-slate-300 w-32 bg-amber-50 text-amber-900">70 کارت شوایتر</th>
-                                            <th className="p-2.5 bg-slate-200 font-black w-32">جمع</th>
-                                        </tr>
-                                    </thead>
-
-                                    <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
-                                        {isLoading ? (
-                                            <tr>
-                                                <td colSpan={8} className="py-12 text-center text-slate-500">
-                                                    <div className="flex flex-col items-center justify-center gap-2">
-                                                         <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
-                                                         <span>در حال دریافت اطلاعات زنده از دیتابیس سایان...</span>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ) : prodLiveItems.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={8} className="py-12 text-center text-slate-400 font-medium">
-                                                    هیچ سند تولیدی در تاریخ {dateFrom} یافت نشد. جهت استعلام دکمه دریافت زنده از سایان را بفشارید.
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            prodLiveItems.map((item: any, idx: number) => (
-                                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
-                                                    <td className="p-2.5 border-r border-slate-200 text-slate-500 font-sans">{item.unit || 'کیلوگرم'}</td>
-                                                    <td className="p-2.5 border-r border-slate-200 text-right font-bold text-slate-900">{item.name}</td>
-                                                    <td className="p-2.5 border-r border-slate-200 font-mono">{item.qty_61 > 0 ? item.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                                    <td className="p-2.5 border-r border-slate-200 font-mono">{item.qty_67 > 0 ? item.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                                    <td className="p-2.5 border-r border-slate-200 font-mono">{item.qty_79 > 0 ? item.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                                    <td className="p-2.5 border-r border-slate-200 font-mono">{item.qty_73 > 0 ? item.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                                    <td className="p-2.5 border-r border-slate-200 font-mono bg-amber-50/40 font-bold text-amber-950">{item.qty_schweiter > 0 ? item.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                                    <td className="p-2.5 font-mono font-bold bg-slate-100 text-slate-900">{item.total > 0 ? item.total.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-
-                                    <tfoot>
-                                        {/* Summary Row */}
-                                        <tr className="bg-slate-200 text-slate-900 font-black border-t-2 border-slate-400">
-                                            <td colSpan={2} className="p-3 text-right pr-4 text-sm bg-slate-300">جمع تولید</td>
-                                            <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_61 ? prodLiveTotals.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                            <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_67 ? prodLiveTotals.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                            <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_79 ? prodLiveTotals.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                            <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_73 ? prodLiveTotals.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                            <td className="p-3 font-mono border-r border-slate-300 bg-amber-200/60 font-bold text-amber-950">{prodLiveTotals.qty_schweiter ? prodLiveTotals.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                            <td className="p-3 font-mono text-base bg-slate-300 text-blue-950">{prodLiveTotals.grandTotal ? prodLiveTotals.grandTotal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
-                                        </tr>
-
-                                        {/* Waste Manual Input Row */}
-                                        <tr className="bg-rose-50 text-rose-900 font-bold border-t border-rose-200">
-                                            <td colSpan={2} className="p-3 text-right pr-4 text-xs font-black text-rose-800 bg-rose-100">
-                                                ضایعات (کیلوگرم) - ورود دستی:
-                                            </td>
-                                            <td className="p-2 border-r border-rose-200">
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                                                    value={prodWaste.waste_61 || ''}
-                                                    onChange={(e) => handleWasteChange('waste_61', e.target.value)}
-                                                    placeholder="0"
-                                                />
-                                            </td>
-                                            <td className="p-2 border-r border-rose-200">
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                                                    value={prodWaste.waste_67 || ''}
-                                                    onChange={(e) => handleWasteChange('waste_67', e.target.value)}
-                                                    placeholder="0"
-                                                />
-                                            </td>
-                                            <td className="p-2 border-r border-rose-200">
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                                                    value={prodWaste.waste_79 || ''}
-                                                    onChange={(e) => handleWasteChange('waste_79', e.target.value)}
-                                                    placeholder="0"
-                                                />
-                                            </td>
-                                            <td className="p-2 border-r border-rose-200">
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                                                    value={prodWaste.waste_73 || ''}
-                                                    onChange={(e) => handleWasteChange('waste_73', e.target.value)}
-                                                    placeholder="0"
-                                                />
-                                            </td>
-                                            <td className="p-2 border-r border-rose-200">
-                                                <input
-                                                    type="number"
-                                                    step="0.1"
-                                                    className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                                                    value={prodWaste.waste_schweiter || ''}
-                                                    onChange={(e) => handleWasteChange('waste_schweiter', e.target.value)}
-                                                    placeholder="0"
-                                                />
-                                            </td>
-                                            <td className="p-3 font-mono font-black text-sm bg-rose-200 text-rose-950">
-                                                {prodWaste.totalWaste ? prodWaste.totalWaste.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '0'}
-                                            </td>
-                                        </tr>
-
-                                        {/* Waste Percentage Row */}
-                                        <tr className="bg-amber-50 text-amber-900 font-bold border-t border-amber-200">
-                                            <td colSpan={2} className="p-3 text-right pr-4 text-xs font-black text-amber-800 bg-amber-100">
-                                                درصد ضایعات:
-                                            </td>
-                                            <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_61 ? prodWaste.pct_61.toFixed(2) : '0.00'}%</td>
-                                            <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_67 ? prodWaste.pct_67.toFixed(2) : '0.00'}%</td>
-                                            <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_79 ? prodWaste.pct_79.toFixed(2) : '0.00'}%</td>
-                                            <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_73 ? prodWaste.pct_73.toFixed(2) : '0.00'}%</td>
-                                            <td className="p-2.5 font-mono border-r border-amber-200 bg-amber-100">{prodWaste.pct_schweiter ? prodWaste.pct_schweiter.toFixed(2) : '0.00'}%</td>
-                                            <td className="p-2.5 font-mono font-black bg-amber-200 text-amber-950">{prodWaste.totalPct ? prodWaste.totalPct.toFixed(2) : '0.00'}%</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-
-                            {/* Mobile View */}
-                            <div className="block md:hidden divide-y divide-slate-100 bg-white">
-                                {isLoading ? (
-                                    <div className="py-12 text-center text-slate-500">
-                                        <div className="flex flex-col items-center justify-center gap-2">
-                                            <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
-                                            <span>در حال دریافت اطلاعات زنده از دیتابیس سایان...</span>
-                                        </div>
+                            <div className="space-y-4 mb-6">
+                                {/* Sub-Tab Navigation Bar */}
+                                <div className="flex flex-wrap items-center justify-between bg-slate-100 p-2 rounded-xl border border-slate-200 gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveProdSubTab('table')}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${activeProdSubTab === 'table' ? 'bg-white text-blue-900 shadow-sm border border-slate-200' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
+                                        >
+                                            <Layers className="w-4 h-4 text-blue-600" />
+                                            <span>صفحه اول: جدول و آمار تولید</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveProdSubTab('charts')}
+                                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black transition-all cursor-pointer ${activeProdSubTab === 'charts' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'}`}
+                                        >
+                                            <TrendingUp className={`w-4 h-4 ${activeProdSubTab === 'charts' ? 'text-amber-300' : 'text-indigo-600'}`} />
+                                            <span>صفحه دوم: نمودار تحلیلی مقایسه با ایده‌آل (سینوسی)</span>
+                                            <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.5 rounded-full font-black animate-pulse">جدید</span>
+                                        </button>
                                     </div>
-                                ) : prodLiveItems.length === 0 ? (
-                                    <div className="py-12 text-center text-slate-400 font-medium">
-                                        هیچ سند تولیدی در تاریخ {dateFrom} یافت نشد. جهت استعلام دکمه دریافت زنده از سایان را بفشارید.
+
+                                    {activeProdSubTab === 'table' && (
+                                        <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border border-slate-200 shadow-2xs">
+                                            <span className="text-[11px] font-bold text-slate-600">نحوه نمایش سطرهای جدول:</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setProdViewMode('item')}
+                                                className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${prodViewMode === 'item' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}
+                                            >
+                                                تفکیک هر کالا (پیش‌فرض)
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setProdViewMode('group')}
+                                                className={`px-3 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${prodViewMode === 'group' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'}`}
+                                            >
+                                                تفکیک گروه کالایی (۱۵ گروه اصلی سایان)
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {activeProdSubTab === 'table' ? (
+                                    /* ================= PAGE 1: PRODUCTION TABLE ================= */
+                                    <div className="border border-slate-300 rounded-xl overflow-hidden shadow-sm bg-white">
+                                        {/* Desktop View */}
+                                        <div className="overflow-x-auto hidden md:block">
+                                            <table className="w-full text-center text-xs sm:text-sm border-collapse">
+                                                <thead>
+                                                    {/* Row 1: Header Categories */}
+                                                    <tr className="bg-slate-200 text-slate-900 font-extrabold border-b border-slate-300">
+                                                        <th colSpan={2} className="p-2.5 border-r border-slate-300 bg-slate-300">
+                                                            {prodViewMode === 'group' ? 'دسته‌بندی و گروه‌های کالایی سایان' : 'کالاها و محصولات'}
+                                                        </th>
+                                                        <th colSpan={6} className="p-2.5 border-r border-slate-300 bg-blue-100 text-blue-950">
+                                                            عملیات تولید زنده (اسناد سایان ERP)
+                                                        </th>
+                                                        <th colSpan={3} className="p-2.5 bg-amber-100 text-amber-950">
+                                                            ارزیابی و مقایسه با تولید ایده‌آل
+                                                        </th>
+                                                    </tr>
+                                                    {/* Row 2: Sub Columns */}
+                                                    <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300 text-xs">
+                                                        <th className="p-2.5 border-r border-slate-300 w-16">واحد</th>
+                                                        <th className="p-2.5 border-r border-slate-300 text-right min-w-[200px]">
+                                                            {prodViewMode === 'group' ? 'نام گروه اصلی کالایی' : 'نام دقیق کالا'}
+                                                        </th>
+                                                        <th className="p-2.5 border-r border-slate-300 w-28">61 کارت POY</th>
+                                                        <th className="p-2.5 border-r border-slate-300 w-28">67 کارت DTY</th>
+                                                        <th className="p-2.5 border-r border-slate-300 w-28">79 کارت کش</th>
+                                                        <th className="p-2.5 border-r border-slate-300 w-28">73 کارت اسپاندکس</th>
+                                                        <th className="p-2.5 border-r border-slate-300 w-28 bg-amber-50 text-amber-900">70 کارت شوایتر</th>
+                                                        <th className="p-2.5 border-r border-slate-300 bg-slate-200 font-black w-32">جمع کل تولید (kg)</th>
+                                                        <th className="p-2.5 border-r border-slate-300 bg-amber-50 text-amber-950 font-black w-36">
+                                                            میزان تولید ایده‌آل (kg) 🎯
+                                                        </th>
+                                                        <th className="p-2.5 border-r border-slate-300 bg-emerald-50 text-emerald-950 font-black w-28">درصد تحقق (%)</th>
+                                                        <th className="p-2.5 bg-blue-50 text-blue-950 font-black w-32">انحراف از هدف (kg)</th>
+                                                    </tr>
+                                                </thead>
+
+                                                <tbody className="divide-y divide-slate-200 text-slate-800 font-medium">
+                                                    {isLoading ? (
+                                                        <tr>
+                                                            <td colSpan={11} className="py-12 text-center text-slate-500">
+                                                                <div className="flex flex-col items-center justify-center gap-2">
+                                                                    <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+                                                                    <span>در حال دریافت اطلاعات زنده از دیتابیس سایان...</span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    ) : (prodViewMode === 'item' ? prodLiveItems.length === 0 : getGroupedProductionRows().length === 0) ? (
+                                                        <tr>
+                                                            <td colSpan={11} className="py-12 text-center text-slate-400 font-medium">
+                                                                هیچ سند تولیدی در بازه زمانی {dateFrom} تا {dateTo} یافت نشد. جهت دریافت دکمه استعلام را بفشارید.
+                                                            </td>
+                                                        </tr>
+                                                    ) : prodViewMode === 'item' ? (
+                                                        /* ---- ITEM MODE ROWS ---- */
+                                                        prodLiveItems.map((item: any, idx: number) => {
+                                                            const idealKey = `item_${item.name}`;
+                                                            const idealVal = Number(prodIdealTargets[idealKey]) || 0;
+                                                            const totalVal = Number(item.total) || 0;
+                                                            const achPct = idealVal > 0 ? (totalVal / idealVal) * 100 : 0;
+                                                            const diff = totalVal - idealVal;
+
+                                                            return (
+                                                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                                                                    <td className="p-2.5 border-r border-slate-200 text-slate-500 font-sans text-xs">{item.unit || 'کیلوگرم'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 text-right font-bold text-slate-900 text-xs">{item.name}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{item.qty_61 > 0 ? item.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{item.qty_67 > 0 ? item.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{item.qty_79 > 0 ? item.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{item.qty_73 > 0 ? item.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono bg-amber-50/40 font-bold text-amber-950 text-xs">{item.qty_schweiter > 0 ? item.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono font-bold bg-slate-100 text-slate-900 text-xs">{totalVal > 0 ? totalVal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    
+                                                                    {/* Editable Ideal Production Target Input */}
+                                                                    <td className="p-1.5 border-r border-slate-200 bg-amber-50/50">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="1"
+                                                                            min="0"
+                                                                            className="w-full text-center bg-white border border-amber-300 rounded px-2 py-1 font-mono text-xs font-bold text-amber-950 focus:ring-2 focus:ring-amber-500 focus:outline-none shadow-2xs"
+                                                                            value={prodIdealTargets[idealKey] ?? ''}
+                                                                            onChange={(e) => handleIdealTargetChange(idealKey, e.target.value)}
+                                                                            placeholder="هدف..."
+                                                                            title="میزان تولید ایده‌آل این کالا را وارد کنید"
+                                                                        />
+                                                                    </td>
+                                                                    
+                                                                    {/* Achievement Percentage */}
+                                                                    <td className="p-2 border-r border-slate-200 font-mono font-bold text-xs">
+                                                                        {idealVal > 0 ? (
+                                                                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                                                                                achPct >= 100 
+                                                                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                                                                    : achPct >= 80 
+                                                                                        ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                                                                        : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                                                            }`}>
+                                                                                {achPct.toFixed(1)}%
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-400 text-[11px]">-</span>
+                                                                        )}
+                                                                    </td>
+
+                                                                    {/* Variance */}
+                                                                    <td className="p-2 font-mono font-bold text-xs">
+                                                                        {idealVal > 0 ? (
+                                                                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                                                                                diff >= 0 
+                                                                                    ? 'text-emerald-700 bg-emerald-50' 
+                                                                                    : 'text-rose-700 bg-rose-50'
+                                                                            }`}>
+                                                                                {diff >= 0 ? '+' : ''}{diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-400 text-[11px]">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        /* ---- GROUP MODE ROWS (15 Sayan Master Categories) ---- */
+                                                        getGroupedProductionRows().map((row: any, idx: number) => {
+                                                            const idealKey = `group_${row.groupName}`;
+                                                            const idealVal = Number(prodIdealTargets[idealKey]) || 0;
+                                                            const totalVal = Number(row.total) || 0;
+                                                            const achPct = idealVal > 0 ? (totalVal / idealVal) * 100 : 0;
+                                                            const diff = totalVal - idealVal;
+
+                                                            return (
+                                                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-indigo-50/20'}>
+                                                                    <td className="p-2.5 border-r border-slate-200 text-slate-500 font-sans text-xs">{row.unit}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 text-right font-black text-indigo-950 text-xs">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <span>{row.groupName}</span>
+                                                                            <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full">{row.itemCount} کالا</span>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{row.qty_61 > 0 ? row.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{row.qty_67 > 0 ? row.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{row.qty_79 > 0 ? row.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono text-xs">{row.qty_73 > 0 ? row.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono bg-amber-50/40 font-bold text-amber-950 text-xs">{row.qty_schweiter > 0 ? row.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    <td className="p-2.5 border-r border-slate-200 font-mono font-black bg-indigo-100/50 text-indigo-950 text-xs">{totalVal > 0 ? totalVal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                    
+                                                                    {/* Editable Ideal Production Target Input per Group */}
+                                                                    <td className="p-1.5 border-r border-slate-200 bg-amber-50/50">
+                                                                        <input
+                                                                            type="number"
+                                                                            step="1"
+                                                                            min="0"
+                                                                            className="w-full text-center bg-white border border-amber-300 rounded px-2 py-1 font-mono text-xs font-bold text-amber-950 focus:ring-2 focus:ring-amber-500 focus:outline-none shadow-2xs"
+                                                                            value={prodIdealTargets[idealKey] ?? ''}
+                                                                            onChange={(e) => handleIdealTargetChange(idealKey, e.target.value)}
+                                                                            placeholder="ایده‌آل گروه..."
+                                                                            title={`میزان تولید ایده‌آل برای گروه کالایی ${row.groupName}`}
+                                                                        />
+                                                                    </td>
+                                                                    
+                                                                    {/* Achievement Percentage */}
+                                                                    <td className="p-2 border-r border-slate-200 font-mono font-bold text-xs">
+                                                                        {idealVal > 0 ? (
+                                                                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                                                                                achPct >= 100 
+                                                                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                                                                    : achPct >= 80 
+                                                                                        ? 'bg-amber-100 text-amber-800 border border-amber-300' 
+                                                                                        : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                                                            }`}>
+                                                                                {achPct.toFixed(1)}%
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-400 text-[11px]">-</span>
+                                                                        )}
+                                                                    </td>
+
+                                                                    {/* Variance */}
+                                                                    <td className="p-2 font-mono font-bold text-xs">
+                                                                        {idealVal > 0 ? (
+                                                                            <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-black ${
+                                                                                diff >= 0 
+                                                                                    ? 'text-emerald-700 bg-emerald-50' 
+                                                                                    : 'text-rose-700 bg-rose-50'
+                                                                            }`}>
+                                                                                {diff >= 0 ? '+' : ''}{diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-400 text-[11px]">-</span>
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
+                                                    )}
+                                                </tbody>
+
+                                                <tfoot>
+                                                    {/* Summary Row */}
+                                                    {(() => {
+                                                        const totalIdeal = prodViewMode === 'item'
+                                                            ? prodLiveItems.reduce((s: number, r: any) => s + (Number(prodIdealTargets[`item_${r.name}`]) || 0), 0)
+                                                            : getGroupedProductionRows().reduce((s: number, r: any) => s + (Number(prodIdealTargets[`group_${r.groupName}`]) || 0), 0);
+                                                        const grandTotal = prodLiveTotals.grandTotal || 0;
+                                                        const totalAch = totalIdeal > 0 ? (grandTotal / totalIdeal) * 100 : 0;
+                                                        const totalDiff = grandTotal - totalIdeal;
+
+                                                        return (
+                                                            <tr className="bg-slate-200 text-slate-900 font-black border-t-2 border-slate-400">
+                                                                <td colSpan={2} className="p-3 text-right pr-4 text-sm bg-slate-300">جمع کل تولید کارخانه</td>
+                                                                <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_61 ? prodLiveTotals.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_67 ? prodLiveTotals.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_79 ? prodLiveTotals.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                <td className="p-3 font-mono border-r border-slate-300">{prodLiveTotals.qty_73 ? prodLiveTotals.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                <td className="p-3 font-mono border-r border-slate-300 bg-amber-200/60 font-bold text-amber-950">{prodLiveTotals.qty_schweiter ? prodLiveTotals.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                <td className="p-3 font-mono text-base border-r border-slate-300 bg-slate-300 text-blue-950">{grandTotal ? grandTotal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</td>
+                                                                <td className="p-3 font-mono text-sm border-r border-slate-300 bg-amber-100 text-amber-950">
+                                                                    {totalIdeal > 0 ? totalIdeal.toLocaleString('fa-IR', { maximumFractionDigits: 1 }) : '-'}
+                                                                </td>
+                                                                <td className="p-3 font-mono border-r border-slate-300 bg-emerald-100 text-emerald-950">
+                                                                    {totalIdeal > 0 ? `${totalAch.toFixed(1)}%` : '-'}
+                                                                </td>
+                                                                <td className={`p-3 font-mono font-black ${totalDiff >= 0 ? 'text-emerald-700 bg-emerald-100/60' : 'text-rose-700 bg-rose-100/60'}`}>
+                                                                    {totalIdeal > 0 ? `${totalDiff >= 0 ? '+' : ''}${totalDiff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}` : '-'}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })()}
+
+                                                    {/* Waste Manual Input Row */}
+                                                    <tr className="bg-rose-50 text-rose-900 font-bold border-t border-rose-200">
+                                                        <td colSpan={2} className="p-3 text-right pr-4 text-xs font-black text-rose-800 bg-rose-100">
+                                                            ضایعات (کیلوگرم) - ورود دستی:
+                                                        </td>
+                                                        <td className="p-2 border-r border-rose-200">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                                                                value={prodWaste.waste_61 || ''}
+                                                                onChange={(e) => handleWasteChange('waste_61', e.target.value)}
+                                                                placeholder="0"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 border-r border-rose-200">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                                                                value={prodWaste.waste_67 || ''}
+                                                                onChange={(e) => handleWasteChange('waste_67', e.target.value)}
+                                                                placeholder="0"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 border-r border-rose-200">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                                                                value={prodWaste.waste_79 || ''}
+                                                                onChange={(e) => handleWasteChange('waste_79', e.target.value)}
+                                                                placeholder="0"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 border-r border-rose-200">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                                                                value={prodWaste.waste_73 || ''}
+                                                                onChange={(e) => handleWasteChange('waste_73', e.target.value)}
+                                                                placeholder="0"
+                                                            />
+                                                        </td>
+                                                        <td className="p-2 border-r border-rose-200">
+                                                            <input
+                                                                type="number"
+                                                                step="0.1"
+                                                                className="w-full text-center bg-white border border-rose-300 rounded p-1 font-mono text-xs font-bold focus:ring-2 focus:ring-rose-500 focus:outline-none"
+                                                                value={prodWaste.waste_schweiter || ''}
+                                                                onChange={(e) => handleWasteChange('waste_schweiter', e.target.value)}
+                                                                placeholder="0"
+                                                            />
+                                                        </td>
+                                                        <td className="p-3 font-mono font-black text-sm border-r border-rose-200 bg-rose-200 text-rose-950">
+                                                            {prodWaste.totalWaste ? prodWaste.totalWaste.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '0'}
+                                                        </td>
+                                                        <td colSpan={3} className="bg-rose-100/60 text-rose-800 text-[11px] font-bold p-2 text-center">
+                                                            محاسبه ضایعات در کسر کل و گزارش هوشمند
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* Waste Percentage Row */}
+                                                    <tr className="bg-amber-50 text-amber-900 font-bold border-t border-amber-200">
+                                                        <td colSpan={2} className="p-3 text-right pr-4 text-xs font-black text-amber-800 bg-amber-100">
+                                                            درصد ضایعات:
+                                                        </td>
+                                                        <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_61 ? prodWaste.pct_61.toFixed(2) : '0.00'}%</td>
+                                                        <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_67 ? prodWaste.pct_67.toFixed(2) : '0.00'}%</td>
+                                                        <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_79 ? prodWaste.pct_79.toFixed(2) : '0.00'}%</td>
+                                                        <td className="p-2.5 font-mono border-r border-amber-200">{prodWaste.pct_73 ? prodWaste.pct_73.toFixed(2) : '0.00'}%</td>
+                                                        <td className="p-2.5 font-mono border-r border-amber-200 bg-amber-100">{prodWaste.pct_schweiter ? prodWaste.pct_schweiter.toFixed(2) : '0.00'}%</td>
+                                                        <td className="p-2.5 font-mono font-black border-r border-amber-200 bg-amber-200 text-amber-950">{prodWaste.totalPct ? prodWaste.totalPct.toFixed(2) : '0.00'}%</td>
+                                                        <td colSpan={3} className="bg-amber-100/40"></td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+
+                                        {/* Mobile View */}
+                                        <div className="block md:hidden divide-y divide-slate-100 bg-white">
+                                            {isLoading ? (
+                                                <div className="py-12 text-center text-slate-500">
+                                                    <div className="flex flex-col items-center justify-center gap-2">
+                                                        <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+                                                        <span>در حال دریافت اطلاعات زنده از دیتابیس سایان...</span>
+                                                    </div>
+                                                </div>
+                                            ) : (prodViewMode === 'item' ? prodLiveItems.length === 0 : getGroupedProductionRows().length === 0) ? (
+                                                <div className="py-12 text-center text-slate-400 font-medium">
+                                                    هیچ سند تولیدی در تاریخ {dateFrom} یافت نشد. جهت استعلام دکمه دریافت زنده از سایان را بفشارید.
+                                                </div>
+                                            ) : (
+                                                <div className="p-3.5 space-y-4">
+                                                    {(prodViewMode === 'item' ? prodLiveItems : getGroupedProductionRows()).map((row: any, idx: number) => {
+                                                        const isItem = prodViewMode === 'item';
+                                                        const title = isItem ? row.name : row.groupName;
+                                                        const idealKey = isItem ? `item_${row.name}` : `group_${row.groupName}`;
+                                                        const idealVal = Number(prodIdealTargets[idealKey]) || 0;
+                                                        const totalVal = Number(row.total) || 0;
+                                                        const achPct = idealVal > 0 ? (totalVal / idealVal) * 100 : 0;
+                                                        const diff = totalVal - idealVal;
+
+                                                        return (
+                                                            <div key={idx} className="bg-slate-50/70 rounded-xl border border-slate-200 p-3 space-y-2.5 shadow-2xs">
+                                                                <div className="flex justify-between items-center border-b border-slate-200/60 pb-1.5">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="font-extrabold text-slate-900 text-xs">{title}</span>
+                                                                        {!isItem && (
+                                                                            <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full">{row.itemCount} کالا</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">{row.unit || 'کیلوگرم'}</span>
+                                                                </div>
+
+                                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                                                        <span className="text-slate-400 block text-[9px]">کارت POY (61)</span>
+                                                                        <span className="font-mono font-bold text-slate-700">{row.qty_61 > 0 ? row.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                    </div>
+                                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                                                        <span className="text-slate-400 block text-[9px]">کارت DTY (67)</span>
+                                                                        <span className="font-mono font-bold text-slate-700">{row.qty_67 > 0 ? row.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                    </div>
+                                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                                                        <span className="text-slate-400 block text-[9px]">کارت کش (79)</span>
+                                                                        <span className="font-mono font-bold text-slate-700">{row.qty_79 > 0 ? row.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                    </div>
+                                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
+                                                                        <span className="text-slate-400 block text-[9px]">اسپاندکس (73)</span>
+                                                                        <span className="font-mono font-bold text-slate-700">{row.qty_73 > 0 ? row.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                    </div>
+                                                                    <div className="bg-amber-50/60 p-2 rounded-lg border border-amber-200 col-span-2">
+                                                                        <span className="text-amber-800 block text-[9px] font-bold">کارت شوایتر (70)</span>
+                                                                        <span className="font-mono font-bold text-amber-950">{row.qty_schweiter > 0 ? row.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Ideal target and actual summary */}
+                                                                <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-2.5 space-y-2">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <span className="text-[11px] font-bold text-amber-900">میزان ایده‌آل (kg):</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="1"
+                                                                            min="0"
+                                                                            className="w-32 text-center bg-white border border-amber-300 rounded px-2 py-1 font-mono text-xs font-bold text-amber-950 focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                                                                            value={prodIdealTargets[idealKey] ?? ''}
+                                                                            onChange={(e) => handleIdealTargetChange(idealKey, e.target.value)}
+                                                                            placeholder="هدف..."
+                                                                        />
+                                                                    </div>
+                                                                    {idealVal > 0 && (
+                                                                        <div className="flex justify-between items-center text-[10px] pt-1 border-t border-amber-200/60">
+                                                                            <span className="font-bold text-slate-700">تحقق هدف:</span>
+                                                                            <div className="flex items-center gap-2 font-mono font-black">
+                                                                                <span className={achPct >= 100 ? 'text-emerald-700' : (achPct >= 80 ? 'text-amber-700' : 'text-rose-700')}>
+                                                                                    {achPct.toFixed(1)}%
+                                                                                </span>
+                                                                                <span className="text-slate-400">|</span>
+                                                                                <span className={diff >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
+                                                                                    انحراف: {diff >= 0 ? '+' : ''}{diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })} kg
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 flex justify-between items-center text-[11px]">
+                                                                    <span className="font-bold text-blue-900">مجموع تولید واقعی</span>
+                                                                    <span className="font-mono font-black text-blue-700">{totalVal > 0 ? totalVal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    
+                                                    {/* Mobile Totals / Manual Inputs */}
+                                                    <div className="bg-blue-950 text-white rounded-xl p-4 space-y-3.5 shadow-md">
+                                                        <div className="text-xs font-extrabold border-b border-white/20 pb-2">خلاصه کل تولید و ضایعات روزانه</div>
+                                                        
+                                                        <div className="grid grid-cols-2 gap-2.5 text-[11px]">
+                                                            <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                                                                <span className="text-slate-300 block text-[9px]">جمع کارت POY (61)</span>
+                                                                <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_61 ? prodLiveTotals.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
+                                                                    value={prodWaste.waste_61 || ''}
+                                                                    onChange={(e) => handleWasteChange('waste_61', e.target.value)}
+                                                                    placeholder="0"
+                                                                />
+                                                                <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_61 ? prodWaste.pct_61.toFixed(2) : '0.00'}%</span>
+                                                            </div>
+                                                            <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                                                                <span className="text-slate-300 block text-[9px]">جمع کارت DTY (67)</span>
+                                                                <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_67 ? prodLiveTotals.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
+                                                                    value={prodWaste.waste_67 || ''}
+                                                                    onChange={(e) => handleWasteChange('waste_67', e.target.value)}
+                                                                    placeholder="0"
+                                                                />
+                                                                <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_67 ? prodWaste.pct_67.toFixed(2) : '0.00'}%</span>
+                                                            </div>
+                                                            <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                                                                <span className="text-slate-300 block text-[9px]">جمع کارت کش (79)</span>
+                                                                <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_79 ? prodLiveTotals.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
+                                                                    value={prodWaste.waste_79 || ''}
+                                                                    onChange={(e) => handleWasteChange('waste_79', e.target.value)}
+                                                                    placeholder="0"
+                                                                />
+                                                                <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_79 ? prodWaste.pct_79.toFixed(2) : '0.00'}%</span>
+                                                            </div>
+                                                            <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                                                                <span className="text-slate-300 block text-[9px]">جمع اسپاندکس (73)</span>
+                                                                <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_73 ? prodLiveTotals.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
+                                                                    value={prodWaste.waste_73 || ''}
+                                                                    onChange={(e) => handleWasteChange('waste_73', e.target.value)}
+                                                                    placeholder="0"
+                                                                />
+                                                                <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_73 ? prodWaste.pct_73.toFixed(2) : '0.00'}%</span>
+                                                            </div>
+                                                            <div className="bg-amber-950/40 p-2 rounded-lg border border-amber-500/30 col-span-2">
+                                                                <span className="text-amber-300 block text-[9px] font-bold">جمع کارت شوایتر (70)</span>
+                                                                <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_schweiter ? prodLiveTotals.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
+                                                                <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات شوایتر:</div>
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.1"
+                                                                    className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
+                                                                    value={prodWaste.waste_schweiter || ''}
+                                                                    onChange={(e) => handleWasteChange('waste_schweiter', e.target.value)}
+                                                                    placeholder="0"
+                                                                />
+                                                                <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_schweiter ? prodWaste.pct_schweiter.toFixed(2) : '0.00'}%</span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="bg-white/10 p-3 rounded-xl space-y-2 border border-white/10">
+                                                            <div className="flex justify-between items-center text-xs">
+                                                                <span className="text-slate-300">مجموع تولید زنده</span>
+                                                                <span className="font-mono font-black">{prodLiveTotals.grandTotal ? prodLiveTotals.grandTotal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '0'} kg</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center text-xs border-t border-white/10 pt-2 text-rose-300">
+                                                                <span>مجموع ضایعات روزانه</span>
+                                                                <span className="font-mono font-black">{prodWaste.totalWaste ? prodWaste.totalWaste.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '0'} kg</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center text-xs border-t border-white/10 pt-2 text-amber-300">
+                                                                <span>میانگین درصد خطا (ضایعات)</span>
+                                                                <span className="font-mono font-black">{prodWaste.totalPct ? prodWaste.totalPct.toFixed(2) : '0.00'}%</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 ) : (
-                                    <div className="p-3.5 space-y-4">
-                                        {prodLiveItems.map((item: any, idx: number) => (
-                                            <div key={idx} className="bg-slate-50/50 rounded-xl border border-slate-100 p-3 space-y-2.5">
-                                                <div className="flex justify-between items-center border-b border-slate-200/50 pb-1.5">
-                                                    <span className="font-extrabold text-slate-900 text-xs">{item.name}</span>
-                                                    <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">{item.unit || 'کیلوگرم'}</span>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
-                                                        <span className="text-slate-400 block text-[9px]">کارت POY (61)</span>
-                                                        <span className="font-mono font-bold text-slate-700">{item.qty_61 > 0 ? item.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    </div>
-                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
-                                                        <span className="text-slate-400 block text-[9px]">کارت DTY (67)</span>
-                                                        <span className="font-mono font-bold text-slate-700">{item.qty_67 > 0 ? item.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    </div>
-                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
-                                                        <span className="text-slate-400 block text-[9px]">کارت کش (79)</span>
-                                                        <span className="font-mono font-bold text-slate-700">{item.qty_79 > 0 ? item.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    </div>
-                                                    <div className="bg-white p-2 rounded-lg border border-slate-100">
-                                                        <span className="text-slate-400 block text-[9px]">اسپاندکس (73)</span>
-                                                        <span className="font-mono font-bold text-slate-700">{item.qty_73 > 0 ? item.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    </div>
-                                                    <div className="bg-amber-50/60 p-2 rounded-lg border border-amber-200 col-span-2">
-                                                        <span className="text-amber-800 block text-[9px] font-bold">کارت شوایتر (70)</span>
-                                                        <span className="font-mono font-bold text-amber-950">{item.qty_schweiter > 0 ? item.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    </div>
-                                                </div>
-                                                <div className="bg-blue-50 border border-blue-100 rounded-lg p-2 flex justify-between items-center text-[11px]">
-                                                    <span className="font-bold text-blue-900">مجموع تولید کالا</span>
-                                                    <span className="font-mono font-black text-blue-700">{item.total > 0 ? item.total.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        
-                                        {/* Mobile Totals / Manual Inputs */}
-                                        <div className="bg-blue-950 text-white rounded-xl p-4 space-y-3.5 shadow-md">
-                                            <div className="text-xs font-extrabold border-b border-white/20 pb-2">خلاصه کل تولید و ضایعات روزانه</div>
-                                            
-                                            <div className="grid grid-cols-2 gap-2.5 text-[11px]">
-                                                <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                                                    <span className="text-slate-300 block text-[9px]">جمع کارت POY (61)</span>
-                                                    <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_61 ? prodLiveTotals.qty_61.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
-                                                        value={prodWaste.waste_61 || ''}
-                                                        onChange={(e) => handleWasteChange('waste_61', e.target.value)}
-                                                        placeholder="0"
-                                                    />
-                                                    <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_61 ? prodWaste.pct_61.toFixed(2) : '0.00'}%</span>
-                                                </div>
-                                                <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                                                    <span className="text-slate-300 block text-[9px]">جمع کارت DTY (67)</span>
-                                                    <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_67 ? prodLiveTotals.qty_67.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
-                                                        value={prodWaste.waste_67 || ''}
-                                                        onChange={(e) => handleWasteChange('waste_67', e.target.value)}
-                                                        placeholder="0"
-                                                    />
-                                                    <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_67 ? prodWaste.pct_67.toFixed(2) : '0.00'}%</span>
-                                                </div>
-                                                <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                                                    <span className="text-slate-300 block text-[9px]">جمع کارت کش (79)</span>
-                                                    <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_79 ? prodLiveTotals.qty_79.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
-                                                        value={prodWaste.waste_79 || ''}
-                                                        onChange={(e) => handleWasteChange('waste_79', e.target.value)}
-                                                        placeholder="0"
-                                                    />
-                                                    <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_79 ? prodWaste.pct_79.toFixed(2) : '0.00'}%</span>
-                                                </div>
-                                                <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                                                    <span className="text-slate-300 block text-[9px]">جمع اسپاندکس (73)</span>
-                                                    <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_73 ? prodLiveTotals.qty_73.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات:</div>
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
-                                                        value={prodWaste.waste_73 || ''}
-                                                        onChange={(e) => handleWasteChange('waste_73', e.target.value)}
-                                                        placeholder="0"
-                                                    />
-                                                    <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_73 ? prodWaste.pct_73.toFixed(2) : '0.00'}%</span>
-                                                </div>
-                                                <div className="bg-amber-950/40 p-2 rounded-lg border border-amber-500/30 col-span-2">
-                                                    <span className="text-amber-300 block text-[9px] font-bold">جمع کارت شوایتر (70)</span>
-                                                    <span className="font-mono font-bold text-white block mt-0.5">{prodLiveTotals.qty_schweiter ? prodLiveTotals.qty_schweiter.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '-'}</span>
-                                                    <div className="mt-2 text-[9px] text-rose-300 font-bold">ضایعات شوایتر:</div>
-                                                    <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        className="w-full text-center bg-white text-slate-900 rounded p-1 font-mono text-[10px] font-bold mt-1"
-                                                        value={prodWaste.waste_schweiter || ''}
-                                                        onChange={(e) => handleWasteChange('waste_schweiter', e.target.value)}
-                                                        placeholder="0"
-                                                    />
-                                                    <span className="text-[9px] text-amber-300 block mt-1">خطا: {prodWaste.pct_schweiter ? prodWaste.pct_schweiter.toFixed(2) : '0.00'}%</span>
+                                    /* ================= PAGE 2: ANALYTICAL SINUOUS CHARTS ================= */
+                                    <div className="space-y-6">
+                                        {/* Chart Controls & Filters Bar */}
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <span className="text-xs font-bold text-slate-700">بازه زمانی گام‌ها:</span>
+                                                <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProdChartPeriod('daily')}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-md transition-all cursor-pointer ${prodChartPeriod === 'daily' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                    >
+                                                        روزانه (Daily)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProdChartPeriod('weekly')}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-md transition-all cursor-pointer ${prodChartPeriod === 'weekly' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                    >
+                                                        هفتگی (Weekly)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProdChartPeriod('monthly')}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-md transition-all cursor-pointer ${prodChartPeriod === 'monthly' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                    >
+                                                        یک‌ماهه (Monthly)
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setProdChartPeriod('custom')}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-md transition-all cursor-pointer ${prodChartPeriod === 'custom' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                                                    >
+                                                        کل بازه انتخابی
+                                                    </button>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="bg-white/10 p-3 rounded-xl space-y-2 border border-white/10">
-                                                <div className="flex justify-between items-center text-xs">
-                                                    <span className="text-slate-300">مجموع تولید زنده</span>
-                                                    <span className="font-mono font-black">{prodLiveTotals.grandTotal ? prodLiveTotals.grandTotal.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '0'} kg</span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-xs border-t border-white/10 pt-2 text-rose-300">
-                                                    <span>مجموع ضایعات روزانه</span>
-                                                    <span className="font-mono font-black">{prodWaste.totalWaste ? prodWaste.totalWaste.toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) : '0'} kg</span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-xs border-t border-white/10 pt-2 text-amber-300">
-                                                    <span>میانگین درصد خطا (ضایعات)</span>
-                                                    <span className="font-mono font-black">{prodWaste.totalPct ? prodWaste.totalPct.toFixed(2) : '0.00'}%</span>
-                                                </div>
+
+                                            {/* Master Group Filter */}
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-xs font-bold text-slate-700">فیلتر گروه کالایی:</span>
+                                                <select
+                                                    value={prodChartGroupFilter}
+                                                    onChange={(e) => setProdChartGroupFilter(e.target.value)}
+                                                    className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                                >
+                                                    <option value="all">همه گروه‌های کالایی (کل تولید کارخانه)</option>
+                                                    <option value="اسپاندکس (کاور)">اسپاندکس (کاور)</option>
+                                                    <option value="کش">کش</option>
+                                                    <option value="اسپاندکس جوشی ( ساپورت )">اسپاندکس جوشی ( ساپورت )</option>
+                                                    <option value="پلی استر شوایتر">پلی استر شوایتر</option>
+                                                    <option value="FDY">FDY</option>
+                                                    <option value="چیپس">چیپس</option>
+                                                    <option value="POY">POY</option>
+                                                    <option value="dty یا پلی استر">dty یا پلی استر</option>
+                                                    <option value="لاستیک">لاستیک</option>
+                                                    <option value="لاکرا">لاکرا</option>
+                                                    <option value="پلی استر اسپان">پلی استر اسپان</option>
+                                                    <option value="نایلون">نایلون</option>
+                                                    <option value="نخ ملت">نخ ملت</option>
+                                                    <option value="الیاف">الیاف</option>
+                                                    <option value="مستر بچ">مستر بچ</option>
+                                                    <option value="سایر محصولات">سایر محصولات</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Quick Actions in Charts page */}
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handlePrintLiveProduction()}
+                                                    className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-xs cursor-pointer"
+                                                    title="چاپ نمودارها و گزارش تحلیلی در قالب PDF"
+                                                >
+                                                    <Printer className="w-3.5 h-3.5" />
+                                                    <span>چاپ / PDF</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleShareProductionToChat}
+                                                    className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-xs cursor-pointer"
+                                                    title="ارسال PDF گزارش تحلیلی به چت داخلی"
+                                                >
+                                                    <MessageSquare className="w-3.5 h-3.5" />
+                                                    <span>ارسال به گفتگو</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleSendBotReport}
+                                                    disabled={isSendingBot}
+                                                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
+                                                    title="ارسال گزارش به بات‌های تلگرام و بله"
+                                                >
+                                                    <Send className="w-3.5 h-3.5" />
+                                                    <span>ارسال به بات</span>
+                                                </button>
                                             </div>
                                         </div>
+
+                                        {/* Chart Data Calculation & 5 KPI Summary Cards */}
+                                        {(() => {
+                                            const { chartPoints, kpis } = getProductionTimelineChartData();
+                                            const totalActual = kpis.totalActual;
+                                            const totalIdeal = kpis.totalIdeal;
+                                            const diff = kpis.variance;
+                                            const achPct = kpis.achievementPct;
+                                            const avgPerPeriod = kpis.avgDaily;
+
+                                            return (
+                                                <>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                                                        {/* KPI 1 */}
+                                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                            <div className="flex items-center justify-between text-slate-500 mb-1">
+                                                                <span className="text-[11px] font-bold">کل تولید واقعی دوره</span>
+                                                                <Layers className="w-4 h-4 text-blue-600" />
+                                                            </div>
+                                                            <div className="text-lg font-black text-blue-900 font-mono">
+                                                                {totalActual.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                <span className="text-[10px] text-slate-400 font-sans mr-1">kg</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 mt-1">تولید اسناد ثبت‌شده سایان</div>
+                                                        </div>
+
+                                                        {/* KPI 2 */}
+                                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                            <div className="flex items-center justify-between text-slate-500 mb-1">
+                                                                <span className="text-[11px] font-bold">هدف کل ایده‌آل</span>
+                                                                <Target className="w-4 h-4 text-purple-600" />
+                                                            </div>
+                                                            <div className="text-lg font-black text-purple-900 font-mono">
+                                                                {totalIdeal.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                <span className="text-[10px] text-slate-400 font-sans mr-1">kg</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 mt-1">سهمیه استاندارد تعریف‌شده</div>
+                                                        </div>
+
+                                                        {/* KPI 3 */}
+                                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                            <div className="flex items-center justify-between text-slate-500 mb-1">
+                                                                <span className="text-[11px] font-bold">درصد تحقق هدف کل</span>
+                                                                <TrendingUp className="w-4 h-4 text-emerald-600" />
+                                                            </div>
+                                                            <div className={`text-lg font-black font-mono ${achPct >= 100 ? 'text-emerald-700' : (achPct >= 80 ? 'text-amber-700' : 'text-rose-700')}`}>
+                                                                {totalIdeal > 0 ? `${achPct.toFixed(1)}%` : 'بدون هدف'}
+                                                            </div>
+                                                            <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
+                                                                <div 
+                                                                    className={`h-full rounded-full ${achPct >= 100 ? 'bg-emerald-500' : (achPct >= 80 ? 'bg-amber-500' : 'bg-rose-500')}`}
+                                                                    style={{ width: `${Math.min(achPct, 100)}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* KPI 4 */}
+                                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                            <div className="flex items-center justify-between text-slate-500 mb-1">
+                                                                <span className="text-[11px] font-bold">انحراف از هدف ایده‌آل</span>
+                                                                {diff >= 0 ? <TrendingUp className="w-4 h-4 text-emerald-600" /> : <TrendingDown className="w-4 h-4 text-rose-600" />}
+                                                            </div>
+                                                            <div className={`text-lg font-black font-mono ${diff >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                                {diff >= 0 ? '+' : ''}{diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                <span className="text-[10px] text-slate-400 font-sans mr-1">kg</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 mt-1">
+                                                                {diff >= 0 ? 'مازاد بر برنامه استاندارد' : 'کسری نسبت به سهمیه'}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* KPI 5 */}
+                                                        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                                                            <div className="flex items-center justify-between text-slate-500 mb-1">
+                                                                <span className="text-[11px] font-bold">میانگین تولید در گام</span>
+                                                                <Activity className="w-4 h-4 text-indigo-600" />
+                                                            </div>
+                                                            <div className="text-lg font-black text-slate-800 font-mono">
+                                                                {avgPerPeriod.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                <span className="text-[10px] text-slate-400 font-sans mr-1">kg/گام</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 mt-1">{chartPoints.length} گام زمانی در تحلیل</div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Chart 1: Sinuous S-Curve Cumulative Chart */}
+                                                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                                                            <div>
+                                                                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                                                                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                                                                    <span>نمودار خطی سینوسی تجمیعی S-Curve (تولید واقعی در برابر ایده‌آل تجمیعی)</span>
+                                                                </h3>
+                                                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                                                    مقایسه پیوسته پیشرفت خطوط تولید نسبت به شیب سهمیه ایده‌آل با منحنی هموار و سینوسی
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-3 text-xs font-bold">
+                                                                <span className="inline-flex items-center gap-1.5 text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                                                                    <span className="w-2.5 h-2.5 bg-blue-600 rounded-full inline-block"></span>
+                                                                    تولید تجمعی واقعی
+                                                                </span>
+                                                                <span className="inline-flex items-center gap-1.5 text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                                                    <span className="w-2.5 h-2.5 bg-purple-600 rounded-full inline-block"></span>
+                                                                    تولید تجمعی ایده‌آل
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {chartPoints.length === 0 ? (
+                                                            <div className="h-64 flex items-center justify-center text-slate-400 text-xs">
+                                                                داده‌ای برای ترسیم نمودار در این بازه موجود نیست.
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-full h-80 pt-2" dir="ltr">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <AreaChart data={chartPoints} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+                                                                        <defs>
+                                                                            <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
+                                                                                <stop offset="5%" stopColor="#2563eb" stopOpacity={0.35}/>
+                                                                                <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0}/>
+                                                                            </linearGradient>
+                                                                            <linearGradient id="colorIdeal" x1="0" y1="0" x2="0" y2="1">
+                                                                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.25}/>
+                                                                                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.0}/>
+                                                                            </linearGradient>
+                                                                        </defs>
+                                                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                                                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#475569' }} />
+                                                                        <YAxis tick={{ fontSize: 11, fill: '#475569' }} tickFormatter={(val) => Number(val).toLocaleString()} />
+                                                                        <Tooltip
+                                                                            formatter={(value: any, name: any) => [
+                                                                                `${Number(value).toLocaleString()} kg`,
+                                                                                name === 'actualCum' ? 'تولید تجمعی واقعی' : 'تولید تجمعی ایده‌آل'
+                                                                            ]}
+                                                                            labelFormatter={(label) => `بازه زمانی: ${label}`}
+                                                                            contentStyle={{ direction: 'rtl', borderRadius: '12px', borderColor: '#cbd5e1' }}
+                                                                        />
+                                                                        <Area
+                                                                            type="monotone"
+                                                                            dataKey="actualCum"
+                                                                            name="actualCum"
+                                                                            stroke="#2563eb"
+                                                                            strokeWidth={3}
+                                                                            fillOpacity={1}
+                                                                            fill="url(#colorActual)"
+                                                                        />
+                                                                        <Area
+                                                                            type="monotone"
+                                                                            dataKey="idealCum"
+                                                                            name="idealCum"
+                                                                            stroke="#8b5cf6"
+                                                                            strokeWidth={2.5}
+                                                                            strokeDasharray="4 4"
+                                                                            fillOpacity={1}
+                                                                            fill="url(#colorIdeal)"
+                                                                        />
+                                                                    </AreaChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Chart 2: Sinuous Periodic Waves Line Chart */}
+                                                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                                                            <div>
+                                                                <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                                                                    <Activity className="w-4 h-4 text-emerald-600" />
+                                                                    <span>روند مقایسه‌ای دوره‌ای / روزانه (تولید هر گام در برابر سهمیه ایده‌آل)</span>
+                                                                </h3>
+                                                                <p className="text-[11px] text-slate-500 mt-0.5">
+                                                                    شناسایی نوسانات روزانه و هفتگی، کشف افت راندمان یا جهش‌های غیرمنتظره تولید
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex items-center gap-3 text-xs font-bold">
+                                                                <span className="inline-flex items-center gap-1.5 text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                                                                    <span className="w-2.5 h-2.5 bg-sky-600 rounded-full inline-block"></span>
+                                                                    تولید در این دوره
+                                                                </span>
+                                                                <span className="inline-flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                                                    <span className="w-2.5 h-2.5 bg-amber-600 rounded-full inline-block"></span>
+                                                                    سهمیه ایده‌آل دوره
+                                                                </span>
+                                                            </div>
+                                                        </div>
+
+                                                        {chartPoints.length === 0 ? (
+                                                            <div className="h-64 flex items-center justify-center text-slate-400 text-xs">
+                                                                داده‌ای برای ترسیم نمودار در این بازه موجود نیست.
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-full h-72 pt-2" dir="ltr">
+                                                                <ResponsiveContainer width="100%" height="100%">
+                                                                    <LineChart data={chartPoints} margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+                                                                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                                                                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#475569' }} />
+                                                                        <YAxis tick={{ fontSize: 11, fill: '#475569' }} tickFormatter={(val) => Number(val).toLocaleString()} />
+                                                                        <Tooltip
+                                                                            formatter={(value: any, name: any) => [
+                                                                                `${Number(value).toLocaleString()} kg`,
+                                                                                name === 'actual' ? 'تولید واقعی این گام' : 'سهمیه ایده‌آل گام'
+                                                                            ]}
+                                                                            labelFormatter={(label) => `بازه: ${label}`}
+                                                                            contentStyle={{ direction: 'rtl', borderRadius: '12px', borderColor: '#cbd5e1' }}
+                                                                        />
+                                                                        <Line
+                                                                            type="monotone"
+                                                                            dataKey="actual"
+                                                                            name="actual"
+                                                                            stroke="#0284c7"
+                                                                            strokeWidth={3}
+                                                                            dot={{ r: 4, fill: '#0284c7' }}
+                                                                            activeDot={{ r: 7 }}
+                                                                        />
+                                                                        <Line
+                                                                            type="monotone"
+                                                                            dataKey="ideal"
+                                                                            name="ideal"
+                                                                            stroke="#d97706"
+                                                                            strokeWidth={2.5}
+                                                                            strokeDasharray="5 5"
+                                                                            dot={{ r: 4, fill: '#d97706' }}
+                                                                        />
+                                                                    </LineChart>
+                                                                </ResponsiveContainer>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Periodic Data Breakdown Table */}
+                                                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm space-y-0">
+                                                        <div className="p-4 bg-slate-50 border-b border-slate-200">
+                                                            <h4 className="text-xs font-black text-slate-900 flex items-center gap-2">
+                                                                <FileText className="w-4 h-4 text-blue-600" />
+                                                                <span>ریز آمار عددی گام‌های زمانی و مقایسه تحقق ایده‌آل</span>
+                                                            </h4>
+                                                        </div>
+
+                                                        <div className="overflow-x-auto">
+                                                            <table className="w-full text-center text-xs border-collapse">
+                                                                <thead>
+                                                                    <tr className="bg-slate-100 text-slate-800 font-black border-b border-slate-200">
+                                                                        <th className="p-2.5 border-r border-slate-200 w-12">#</th>
+                                                                        <th className="p-2.5 border-r border-slate-200 text-right min-w-[130px]">بازه زمانی / تاریخ</th>
+                                                                        <th className="p-2.5 border-r border-slate-200 text-blue-900">تولید واقعی (kg)</th>
+                                                                        <th className="p-2.5 border-r border-slate-200 text-amber-900">سهمیه ایده‌آل (kg)</th>
+                                                                        <th className="p-2.5 border-r border-slate-200 text-emerald-900">درصد تحقق (%)</th>
+                                                                        <th className="p-2.5 border-r border-slate-200">انحراف (kg)</th>
+                                                                        <th className="p-2.5 border-r border-slate-200 bg-blue-50/50">تجمعی واقعی (kg)</th>
+                                                                        <th className="p-2.5 bg-purple-50/50">تجمعی ایده‌آل (kg)</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-slate-100 font-medium">
+                                                                    {chartPoints.map((row, idx) => {
+                                                                        const stepDiff = (row.actual || 0) - (row.ideal || 0);
+                                                                        const stepAch = row.ideal > 0 ? ((row.actual || 0) / row.ideal) * 100 : 0;
+
+                                                                        return (
+                                                                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
+                                                                                <td className="p-2.5 border-r border-slate-200 text-slate-400 font-mono">{idx + 1}</td>
+                                                                                <td className="p-2.5 border-r border-slate-200 text-right font-bold text-slate-900">{row.label || row.date}</td>
+                                                                                <td className="p-2.5 border-r border-slate-200 font-mono font-bold text-blue-950">{(row.actual || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                                <td className="p-2.5 border-r border-slate-200 font-mono font-bold text-amber-950">{(row.ideal || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                                <td className="p-2.5 border-r border-slate-200 font-mono font-black">
+                                                                                    {row.ideal > 0 ? (
+                                                                                        <span className={`inline-block px-2 py-0.5 rounded text-[11px] ${stepAch >= 100 ? 'bg-emerald-100 text-emerald-800' : (stepAch >= 80 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800')}`}>
+                                                                                            {stepAch.toFixed(1)}%
+                                                                                        </span>
+                                                                                    ) : '-'}
+                                                                                </td>
+                                                                                <td className={`p-2.5 border-r border-slate-200 font-mono font-black ${stepDiff >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                                                    {row.ideal > 0 ? `${stepDiff >= 0 ? '+' : ''}${stepDiff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}` : '-'}
+                                                                                </td>
+                                                                                <td className="p-2.5 border-r border-slate-200 font-mono font-bold bg-blue-50/30 text-blue-900">{(row.actualCum || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                                <td className="p-2.5 font-mono font-bold bg-purple-50/30 text-purple-900">{(row.idealCum || 0).toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                                <tfoot>
+                                                                    <tr className="bg-slate-200 text-slate-900 font-black border-t-2 border-slate-400">
+                                                                        <td colSpan={2} className="p-3 text-right pr-4 text-xs font-black">جمع کل دوره تحلیل</td>
+                                                                        <td className="p-3 font-mono">{totalActual.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                        <td className="p-3 font-mono">{totalIdeal.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                        <td className="p-3 font-mono">{totalIdeal > 0 ? `${achPct.toFixed(1)}%` : '-'}</td>
+                                                                        <td className={`p-3 font-mono font-black ${diff >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                                            {diff >= 0 ? '+' : ''}{diff.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}
+                                                                        </td>
+                                                                        <td className="p-3 font-mono text-blue-900">{totalActual.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                        <td className="p-3 font-mono text-purple-900">{totalIdeal.toLocaleString('fa-IR', { maximumFractionDigits: 1 })}</td>
+                                                                    </tr>
+                                                                </tfoot>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                             </div>
-                        </div>
-                    )}
+                        )}
 
                         {!prodCompareMode && (
                             <>
