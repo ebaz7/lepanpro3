@@ -280,48 +280,61 @@ app.get('/manifest.json', (req, res) => {
 });
 
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' })); // Cache uploads for speed
-app.use('/downloads', express.static(PUBLIC_DOWNLOADS_DIR, { maxAge: '1h' }));
-app.use('/downloads', express.static(DOWNLOADS_DIR, { maxAge: '1h' }));
 
-// --- DYNAMIC ANDROID APK DOWNLOAD PROVIDER ---
-app.get(['/downloads/dlkam-android-latest.apk', '/downloads/delkam-android-latest.apk', '/downloads/sayan-android-latest.apk', '/downloads/sayan-app.apk', '/downloads/app-release.apk'], (req, res) => {
+// --- DYNAMIC ANDROID APK DOWNLOAD PROVIDER (Always picks newest APK & prevents stale caching) ---
+app.get(['/downloads/dlkam-android-latest.apk', '/downloads/delkam-android-latest.apk', '/downloads/sayan-android-latest.apk', '/downloads/sayan-app.apk', '/downloads/app-release.apk', '/api/downloads/dlkam-android-latest.apk'], (req, res) => {
     const candidatePaths = [
         path.join(PUBLIC_DOWNLOADS_DIR, 'dlkam-android-latest.apk'),
         path.join(DOWNLOADS_DIR, 'dlkam-android-latest.apk'),
+        path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
+        path.join(ROOT_DIR, 'payment-system-release.apk'),
+        path.join(ROOT_DIR, 'payment-system-latest.apk'),
+        path.join(ROOT_DIR, 'dlkam-android-latest.apk'),
         path.join(PUBLIC_DOWNLOADS_DIR, 'delkam-android-latest.apk'),
         path.join(DOWNLOADS_DIR, 'delkam-android-latest.apk'),
         path.join(PUBLIC_DOWNLOADS_DIR, 'sayan-android-latest.apk'),
         path.join(DOWNLOADS_DIR, 'sayan-android-latest.apk'),
-        path.join(ROOT_DIR, 'dlkam-android-latest.apk'),
-        path.join(ROOT_DIR, 'payment-system-release.apk'),
-        path.join(ROOT_DIR, 'payment-system-latest.apk'),
-        path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk'),
-        path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk'),
         path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk')
     ];
 
+    const existingApks = [];
     for (const apkPath of candidatePaths) {
-        if (fs.existsSync(apkPath)) {
-            res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-            res.setHeader('Content-Disposition', 'attachment; filename="dlkam-android-latest.apk"');
-            return res.sendFile(apkPath);
-        }
+        try {
+            if (fs.existsSync(apkPath)) {
+                const stat = fs.statSync(apkPath);
+                if (stat.isFile() && stat.size > 50000) {
+                    existingApks.push({ apkPath, mtimeMs: stat.mtimeMs });
+                }
+            }
+        } catch (_) {}
+    }
+
+    if (existingApks.length > 0) {
+        existingApks.sort((a, b) => b.mtimeMs - a.mtimeMs);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', 'attachment; filename="dlkam-android-latest.apk"');
+        return res.sendFile(existingApks[0].apkPath);
     }
 
     res.status(404).json({
         success: false,
-        error: 'فایل APK اندروید یافت نشد. جهت ساخت فایل APK دستور npm run build:apk را در سرور یا رایانه اجرا نمایید.'
+        error: 'فایل APK اندروید یافت نشد. جهت ساخت فایل APK دستور npm run build:apk را در سرور اجرا نمایید.'
     });
 });
 
-// --- DYNAMIC DESKTOP INSTALLER (.msi / .exe) DOWNLOAD PROVIDER ---
+// --- DYNAMIC DESKTOP INSTALLER (.msi / .exe) DOWNLOAD PROVIDER (Always picks newest build) ---
 const desktopDownloadRoutes = [
     '/downloads/dlkam-desktop-setup.msi',
+    '/downloads/dlkam-desktop-setup.exe',
     '/downloads/delkam-desktop-setup.msi',
     '/downloads/sayan-desktop-setup.msi',
     '/downloads/desktop-setup.msi',
     '/downloads/setup.msi',
     '/api/downloads/dlkam-desktop-setup.msi',
+    '/api/downloads/dlkam-desktop-setup.exe',
     '/api/downloads/delkam-desktop-setup.msi',
     '/api/downloads/sayan-desktop-setup.msi',
     '/api/downloads/desktop-setup.msi',
@@ -329,57 +342,68 @@ const desktopDownloadRoutes = [
 ];
 
 app.get(desktopDownloadRoutes, (req, res) => {
-    // 1. Direct search paths
-    const directPaths = [
-        path.join(PUBLIC_DOWNLOADS_DIR, 'dlkam-desktop-setup.msi'),
-        path.join(DOWNLOADS_DIR, 'dlkam-desktop-setup.msi'),
-        path.join(PUBLIC_DOWNLOADS_DIR, 'sayan-desktop-setup.msi'),
-        path.join(DOWNLOADS_DIR, 'sayan-desktop-setup.msi'),
-        path.join(ROOT_DIR, 'dlkam-desktop-setup.msi'),
-        path.join(ROOT_DIR, 'sayan-desktop-setup.msi')
-    ];
-
-    for (const fileP of directPaths) {
-        if (fs.existsSync(fileP)) {
-            res.setHeader('Content-Type', 'application/x-msi');
-            res.setHeader('Content-Disposition', 'attachment; filename="dlkam-desktop-setup.msi"');
-            return res.sendFile(fileP);
-        }
-    }
-
-    // 2. Scan downloads directories for any .msi or .exe file
     const searchDirs = [
+        path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
+        path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
+        path.join(ROOT_DIR, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'bundle', 'msi'),
+        path.join(ROOT_DIR, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'bundle', 'nsis'),
         PUBLIC_DOWNLOADS_DIR,
         DOWNLOADS_DIR,
-        ROOT_DIR,
-        path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
-        path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis')
+        ROOT_DIR
     ];
+
+    const preferExe = req.path.toLowerCase().endsWith('.exe');
+    const candidates = [];
 
     for (const dir of searchDirs) {
         if (!fs.existsSync(dir)) continue;
         try {
             const files = fs.readdirSync(dir);
-            const msiFile = files.find(f => f.toLowerCase().endsWith('.msi') || f.toLowerCase().endsWith('.exe'));
-            if (msiFile) {
-                const fullP = path.join(dir, msiFile);
-                if (fs.statSync(fullP).isFile()) {
-                    const contentType = msiFile.toLowerCase().endsWith('.exe') ? 'application/x-msdownload' : 'application/x-msi';
-                    res.setHeader('Content-Type', contentType);
-                    res.setHeader('Content-Disposition', `attachment; filename="${msiFile}"`);
-                    return res.sendFile(fullP);
+            for (const f of files) {
+                const lower = f.toLowerCase();
+                if (lower.endsWith('.msi') || lower.endsWith('.exe')) {
+                    const fullP = path.join(dir, f);
+                    try {
+                        const stat = fs.statSync(fullP);
+                        if (stat.isFile() && stat.size > 100000) {
+                            candidates.push({
+                                fullP,
+                                fileName: f,
+                                isExe: lower.endsWith('.exe'),
+                                mtimeMs: stat.mtimeMs
+                            });
+                        }
+                    } catch (_) {}
                 }
             }
-        } catch (e) {
-            // Ignore dir read errors
-        }
+        } catch (_) {}
+    }
+
+    if (candidates.length > 0) {
+        candidates.sort((a, b) => {
+            if (preferExe && a.isExe !== b.isExe) return a.isExe ? -1 : 1;
+            if (!preferExe && a.isExe !== b.isExe) return !a.isExe ? -1 : 1;
+            return b.mtimeMs - a.mtimeMs;
+        });
+        const chosen = candidates[0];
+        const contentType = chosen.isExe ? 'application/x-msdownload' : 'application/x-msi';
+        const downloadName = chosen.isExe ? 'dlkam-desktop-setup.exe' : 'dlkam-desktop-setup.msi';
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${downloadName}"`);
+        return res.sendFile(chosen.fullP);
     }
 
     res.status(404).json({
         success: false,
-        error: 'فایل نصبی دسکتاپ (.msi / .exe) در پوشه downloads یافت نشد. فایل نصبی خروجی tauri build را در پوشه downloads سرور قرار دهید.'
+        error: 'فایل نصبی دسکتاپ (.msi / .exe) یافت نشد. دستور npm run desktop:build را روی سرور اجرا نمایید.'
     });
 });
+
+app.use('/downloads', express.static(PUBLIC_DOWNLOADS_DIR, { maxAge: 0 }));
+app.use('/downloads', express.static(DOWNLOADS_DIR, { maxAge: 0 }));
 
 // --- SAFE FILE SANITIZATION HELPER ---
 const FORBIDDEN_EXTENSIONS = new Set([
@@ -8071,22 +8095,106 @@ app.post('/api/settings', async (req, res) => {
     res.json(db.settings);
 });
 
+// --- LIVE DISK + DB VERSION RESOLVER ---
+function compareSemVerStrings(v1, v2) {
+    const p1 = String(v1 || '0.0.0').replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
+    const p2 = String(v2 || '0.0.0').replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
+    for (let i = 0; i < 3; i++) {
+        const a = p1[i] || 0;
+        const b = p2[i] || 0;
+        if (a > b) return 1;
+        if (a < b) return -1;
+    }
+    return 0;
+}
+
+function resolveLiveAppVersion() {
+    const db = typeof getDb === 'function' ? getDb() : {};
+    const settings = (db && db.settings) || {};
+
+    let version = settings.systemVersion || settings.desktopLatestVersion || '1.0.6';
+    let buildNumber = settings.systemBuildNumber || '106';
+    let title = settings.releaseTitle || `نسخه جدید v${version}`;
+    let releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
+    let timestamp = Number(settings.systemUpdatePublishedAt) || 0;
+
+    // Check version.json on disk (updated immediately by build-android / build-desktop / setup-build-version)
+    const versionJsonFile = path.join(ROOT_DIR, 'version.json');
+    if (fs.existsSync(versionJsonFile)) {
+        try {
+            const diskManifest = JSON.parse(fs.readFileSync(versionJsonFile, 'utf8'));
+            if (diskManifest && diskManifest.version) {
+                if (compareSemVerStrings(diskManifest.version, version) >= 0) {
+                    version = diskManifest.version;
+                    if (diskManifest.buildNumber) buildNumber = String(diskManifest.buildNumber);
+                    if (diskManifest.title) title = diskManifest.title;
+                    if (diskManifest.releaseNotes) releaseNotes = diskManifest.releaseNotes;
+                    if (Number(diskManifest.timestamp) > timestamp) {
+                        timestamp = Number(diskManifest.timestamp);
+                    }
+                    // Keep in-memory db.settings synced with disk build
+                    if (db && db.settings && db.settings.systemVersion !== version) {
+                        db.settings.systemVersion = version;
+                        db.settings.desktopLatestVersion = version;
+                        db.settings.systemBuildNumber = buildNumber;
+                        db.settings.systemUpdatePublishedAt = timestamp;
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+
+    // Also check package.json version on disk
+    const pkgFile = path.join(ROOT_DIR, 'package.json');
+    if (fs.existsSync(pkgFile)) {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+            if (pkg && pkg.version && compareSemVerStrings(pkg.version, version) > 0) {
+                version = pkg.version;
+            }
+        } catch (_) {}
+    }
+
+    // Check actual binary modification times in downloads/ so rebuilding even the same version triggers update timestamp
+    const apkFile = path.join(DOWNLOADS_DIR, 'dlkam-android-latest.apk');
+    const msiFile = path.join(DOWNLOADS_DIR, 'dlkam-desktop-setup.msi');
+    let apkMtime = 0;
+    let msiMtime = 0;
+    try {
+        if (fs.existsSync(apkFile)) apkMtime = Math.floor(fs.statSync(apkFile).mtimeMs);
+    } catch (_) {}
+    try {
+        if (fs.existsSync(msiFile)) msiMtime = Math.floor(fs.statSync(msiFile).mtimeMs);
+    } catch (_) {}
+
+    const latestFileMtime = Math.max(apkMtime, msiMtime);
+    if (latestFileMtime > timestamp) {
+        timestamp = latestFileMtime;
+    }
+
+    return {
+        version,
+        buildNumber,
+        title,
+        releaseNotes,
+        timestamp,
+        androidDownloadUrl: settings.androidDownloadUrl || '/downloads/dlkam-android-latest.apk',
+        desktopDownloadUrl: settings.desktopDirectDownloadUrl || '/downloads/dlkam-desktop-setup.msi',
+        apkUpdatedAt: apkMtime,
+        desktopUpdatedAt: msiMtime
+    };
+}
+
 // --- DESKTOP CLIENT (TAURI) AUTO-UPDATER & CONFIG ENDPOINTS ---
 app.get('/api/desktop/updater.json', (req, res) => {
-    const db = getDb();
-    const settings = db.settings || {};
-    const version = settings.desktopLatestVersion || settings.systemVersion || '1.0.0';
-    const notes = settings.desktopReleaseNotes || settings.releaseNotes || 'نسخه جدید سیستم مدیریت انبار و حسابداری سایان با قابلیت‌های بهبود یافته.';
-    const pubDate = new Date().toISOString();
-    let downloadUrl = settings.desktopDirectDownloadUrl || '';
-    if (!downloadUrl || downloadUrl.includes('/updater.json')) {
-        downloadUrl = `${req.protocol}://${req.get('host')}/downloads/dlkam-desktop-setup.msi`;
-    }
+    const liveInfo = resolveLiveAppVersion();
+    const pubDate = liveInfo.timestamp ? new Date(liveInfo.timestamp).toISOString() : new Date().toISOString();
+    const downloadUrl = `${req.protocol}://${req.get('host')}${liveInfo.desktopDownloadUrl}`;
 
     // Standard Tauri v1 Auto-Updater JSON schema
     const updaterManifest = {
-        version: version,
-        notes: notes,
+        version: liveInfo.version,
+        notes: liveInfo.releaseNotes,
         pub_date: pubDate,
         platforms: {
             "windows-x86_64": {
@@ -8109,13 +8217,16 @@ app.get('/api/desktop/updater.json', (req, res) => {
 app.get('/api/desktop/check-update', (req, res) => {
     const db = getDb();
     const settings = db.settings || {};
+    const liveInfo = resolveLiveAppVersion();
     res.json({
-        latestVersion: settings.desktopLatestVersion || '1.0.0',
-        releaseNotes: settings.desktopReleaseNotes || 'پایدار و به‌روز',
-        updateUrl: settings.desktopUpdateUrl || '',
-        directDownloadUrl: settings.desktopDirectDownloadUrl || '',
+        latestVersion: liveInfo.version,
+        buildNumber: liveInfo.buildNumber,
+        timestamp: liveInfo.timestamp,
+        releaseNotes: liveInfo.releaseNotes,
+        updateUrl: settings.desktopUpdateUrl || liveInfo.desktopDownloadUrl,
+        directDownloadUrl: liveInfo.desktopDownloadUrl,
         autoCheck: settings.desktopAutoCheckUpdates !== false,
-        updateIntervalMinutes: settings.desktopUpdateIntervalMinutes || 60,
+        updateIntervalMinutes: settings.desktopUpdateIntervalMinutes || 5,
         lastCheckTime: settings.desktopLastCheckTime || null,
         updateChannel: settings.desktopUpdateChannel || 'stable',
         localServerUrl: settings.desktopLocalServerUrl || 'http://localhost:3000',
@@ -11766,32 +11877,27 @@ app.post('/api/emergency-restore', (req, res) => {
 
 app.get('/api/version', (req, res) => {
     try {
-        const db = typeof getDb === 'function' ? getDb() : {};
-        const settings = (db && db.settings) || {};
-        const version = settings.systemVersion || settings.desktopLatestVersion || '1.0.0';
-        const buildNumber = settings.systemBuildNumber || (settings.systemUpdatePublishedAt ? `b_${settings.systemUpdatePublishedAt}` : '100');
-        const title = settings.releaseTitle || 'نسخۀ جدید';
-        const releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
-        const publishedAt = settings.systemUpdatePublishedAt || 0;
-        const androidDownloadUrl = settings.androidDownloadUrl || '/downloads/dlkam-android-latest.apk';
-        
-        res.json({ 
-            version, 
-            buildNumber, 
-            title, 
-            releaseNotes,
-            timestamp: publishedAt || 0,
-            androidDownloadUrl
+        const liveInfo = resolveLiveAppVersion();
+        res.json({
+            version: liveInfo.version,
+            buildNumber: liveInfo.buildNumber,
+            title: liveInfo.title,
+            releaseNotes: liveInfo.releaseNotes,
+            timestamp: liveInfo.timestamp,
+            androidDownloadUrl: liveInfo.androidDownloadUrl,
+            desktopDownloadUrl: liveInfo.desktopDownloadUrl,
+            apkUpdatedAt: liveInfo.apkUpdatedAt,
+            desktopUpdatedAt: liveInfo.desktopUpdatedAt
         });
     } catch (e) {
-        res.json({ version: '1.0.0', buildNumber: '100', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk' });
+        res.json({ version: '1.0.6', buildNumber: '106', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk', desktopDownloadUrl: '/downloads/dlkam-desktop-setup.msi' });
     }
 });
 
-// PUBLISH NEW UPDATE ACROSS THE SYSTEM (Web, PWA, Desktop)
+// PUBLISH NEW UPDATE ACROSS THE SYSTEM (Web, PWA, Desktop, Android)
 app.post('/api/version/publish', async (req, res) => {
     try {
-        const { version, title, releaseNotes, sendToBots = true } = req.body || {};
+        const { version, buildNumber: reqBuildNumber, title, releaseNotes, sendToBots = true } = req.body || {};
         if (!version) {
             return res.status(400).json({ success: false, error: 'شماره نسخه الزامی است' });
         }
@@ -11800,9 +11906,11 @@ app.post('/api/version/publish', async (req, res) => {
         if (!db.settings) db.settings = {};
 
         const now = Date.now();
-        const buildNumber = `b_${now.toString(36).toUpperCase()}`;
         const newVersion = version.trim();
-        const newTitle = title?.trim() || `نسخه جدید ${newVersion}`;
+        const versionParts = newVersion.replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
+        const defaultBuildNum = String((versionParts[0] || 1) * 10000 + (versionParts[1] || 0) * 100 + (versionParts[2] || 0));
+        const buildNumber = reqBuildNumber ? String(reqBuildNumber) : defaultBuildNum;
+        const newTitle = title?.trim() || `نسخه جدید v${newVersion}`;
         const newNotes = releaseNotes?.trim() || 'به‌روزرسانی، ارتقای عملکرد و بهینه‌سازی کلی سیستم.';
 
         db.settings.systemVersion = newVersion;
@@ -11816,6 +11924,26 @@ app.post('/api/version/publish', async (req, res) => {
         if (dbManager && typeof dbManager.saveDbImmediate === 'function') {
             dbManager.saveDbImmediate(db);
         }
+
+        // Also persist to version.json on disk so disk and memory are 100% synced
+        try {
+            const versionJsonFile = path.join(ROOT_DIR, 'version.json');
+            let existing = {};
+            if (fs.existsSync(versionJsonFile)) {
+                try { existing = JSON.parse(fs.readFileSync(versionJsonFile, 'utf8')); } catch (_) {}
+            }
+            fs.writeFileSync(versionJsonFile, JSON.stringify({
+                ...existing,
+                version: newVersion,
+                buildNumber,
+                title: newTitle,
+                releaseNotes: newNotes,
+                timestamp: now,
+                updatedAtIso: new Date(now).toISOString(),
+                androidDownloadUrl: '/downloads/dlkam-android-latest.apk',
+                desktopDownloadUrl: '/downloads/dlkam-desktop-setup.msi'
+            }, null, 2), 'utf8');
+        } catch (_) {}
 
         let botDispatch = null;
         if (sendToBots) {

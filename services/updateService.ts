@@ -14,7 +14,7 @@ export interface AppVersionInfo {
 // Current client build embedded in the bundle
 export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
   version: '1.0.6',
-  buildNumber: '100',
+  buildNumber: '10006',
   title: 'نسخه جاری',
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'
 };
@@ -44,7 +44,7 @@ export function isCapacitorAndroid(): boolean {
   );
 }
 
-// Dismiss an update so it does not keep showing up in current session
+// Dismiss an update so it does not keep showing up in current session only
 export function dismissUpdate(serverInfo?: AppVersionInfo | null): void {
   if (typeof window === 'undefined') return;
   const serverVer = serverInfo?.version || '';
@@ -53,7 +53,6 @@ export function dismissUpdate(serverInfo?: AppVersionInfo | null): void {
   const sig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
   try {
     sessionStorage.setItem('dismissed_update_sig', sig);
-    localStorage.setItem('dismissed_update_sig', sig);
   } catch (_) {}
 }
 
@@ -69,7 +68,10 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
   try {
     if (win.__TAURI__?.app?.getVersion) {
       const ver = await win.__TAURI__.app.getVersion();
-      if (ver) return { version: ver, buildNumber: ver };
+      if (ver) {
+        const bestVer = compareSemVer(CURRENT_CLIENT_BUILD.version, ver) > 0 ? CURRENT_CLIENT_BUILD.version : ver;
+        return { version: bestVer, buildNumber: CURRENT_CLIENT_BUILD.buildNumber || bestVer };
+      }
     }
   } catch (_) {}
 
@@ -77,15 +79,12 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
   try {
     if (win.Capacitor?.Plugins?.App?.getInfo) {
       const info = await win.Capacitor.Plugins.App.getInfo();
-      if (info?.version) return { version: info.version, buildNumber: info.build || info.version };
+      if (info?.version) {
+        const bestVer = compareSemVer(CURRENT_CLIENT_BUILD.version, info.version) > 0 ? CURRENT_CLIENT_BUILD.version : info.version;
+        return { version: bestVer, buildNumber: String(info.build || CURRENT_CLIENT_BUILD.buildNumber || bestVer) };
+      }
     }
   } catch (_) {}
-
-  // 3. Check stored client version
-  const storedVer = localStorage.getItem('app_native_client_version') || localStorage.getItem('installed_client_version');
-  if (storedVer) {
-    return { version: storedVer, buildNumber: localStorage.getItem('installed_client_build') || storedVer };
-  }
 
   return { version: CURRENT_CLIENT_BUILD.version, buildNumber: CURRENT_CLIENT_BUILD.buildNumber };
 }
@@ -171,27 +170,35 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
     const clientVer = nativeClient.version;
     const currentServerSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
 
+    const isAndroid = isCapacitorAndroid();
+
     // 1. Check if user dismissed this exact update in current session
-    const dismissedSig = sessionStorage.getItem('dismissed_update_sig') || localStorage.getItem('dismissed_update_sig');
+    const dismissedSig = sessionStorage.getItem('dismissed_update_sig');
     if (dismissedSig && dismissedSig === currentServerSig) {
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // 2. Check if user already applied this exact server release signature
+    // 2. Compare version semantically against actual installed/bundled version
+    const semVerComp = compareSemVer(serverVer, clientVer);
+
+    // On Native Android or Tauri Desktop, if server version is strictly higher than installed app version,
+    // ALWAYS notify the user (until they actually install the new APK/MSI which updates clientVer)
+    if ((isAndroid || isDesktop) && semVerComp > 0) {
+      return { hasUpdate: true, serverInfo: data };
+    }
+
+    // 3. For Web (or same-version rebuilds), check if user already applied this exact server release signature
     const lastAppliedSig = localStorage.getItem('last_applied_release_sig');
     if (lastAppliedSig && lastAppliedSig === currentServerSig) {
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // 3. Check if this exact server version and build were already applied
     const appliedVer = localStorage.getItem('applied_server_version');
     const appliedBuild = localStorage.getItem('applied_server_build');
-    if (appliedVer === serverVer && appliedBuild === serverBuild) {
+    if (!isAndroid && !isDesktop && appliedVer === serverVer && appliedBuild === serverBuild) {
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // 4. Compare version semantically
-    const semVerComp = compareSemVer(serverVer, clientVer);
     const baselineBuild = localStorage.getItem('baseline_server_build');
     const baselineTimestamp = Number(localStorage.getItem('baseline_server_timestamp')) || 0;
 
@@ -287,17 +294,19 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
       }).catch(() => {}).finally(() => clearTimeout(timeoutId));
     } catch (_) {}
 
-    // 2. Mark update signature immediately in localStorage
+    // 2. Mark update signature in localStorage (for Web reload; on Android/Desktop, session dismissal only until actual installer is run)
     if (serverInfo) {
       const serverBuild = serverInfo.buildNumber || serverInfo.version;
       const serverVer = serverInfo.version || serverBuild;
       const serverTimestamp = Number(serverInfo.timestamp) || 0;
       const serverSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
-      localStorage.setItem('last_applied_release_sig', serverSig);
-      localStorage.setItem('applied_server_version', serverVer);
-      localStorage.setItem('applied_server_build', serverBuild);
-      localStorage.setItem('baseline_server_build', serverBuild);
-      localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
+      if (isWeb) {
+        localStorage.setItem('last_applied_release_sig', serverSig);
+        localStorage.setItem('applied_server_version', serverVer);
+        localStorage.setItem('applied_server_build', serverBuild);
+        localStorage.setItem('baseline_server_build', serverBuild);
+        localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
+      }
       sessionStorage.removeItem('dismissed_update_sig');
       localStorage.removeItem('dismissed_update_sig');
     }

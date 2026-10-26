@@ -1,0 +1,13 @@
+{
+  "version": "1.0.6",
+  "buildNumber": "10006",
+  "versionCode": 10006,
+  "title": "نسخه جدید v1.0.6",
+  "releaseNotes": "بیلد خودکار (۱۴۰۵/۸/۴, ۱۲:۲۱:۰۱) - آماده دریافت و بروزرسانی",
+  "timestamp": 1793017261753,
+  "updatedAtIso": "2026-10-26T12:21:01.753Z",
+  "updatedAtShamsi": "۱۴۰۵/۸/۴, ۱۲:۲۱:۰۱",
+  "lastBuildPlatform": "all",
+  "androidDownloadUrl": "/downloads/dlkam-android-latest.apk",
+  "desktopDownloadUrl": "/downloads/dlkam-desktop-setup.msi"
+}

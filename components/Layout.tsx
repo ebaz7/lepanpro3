@@ -563,8 +563,16 @@ const Layout: React.FC<LayoutProps> = ({
 
   useEffect(() => {
     checkVersion();
-    // Check for updates in background once every 1 hour (3,600,000 ms) to avoid server load & lag
-    const interval = setInterval(checkVersion, 60 * 60 * 1000);
+    // Automatically check for new Android / Tauri / Web builds every 45 seconds
+    const interval = setInterval(checkVersion, 45 * 1000);
+
+    const handleFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        checkVersion();
+      }
+    };
+    window.addEventListener('focus', checkVersion);
+    document.addEventListener('visibilitychange', handleFocusOrVisible);
 
     const handleUpdatePublished = (e: any) => {
       if (e?.detail) {
@@ -585,6 +593,8 @@ const Layout: React.FC<LayoutProps> = ({
 
     return () => {
       clearInterval(interval);
+      window.removeEventListener('focus', checkVersion);
+      document.removeEventListener('visibilitychange', handleFocusOrVisible);
       window.removeEventListener('app:update-published', handleUpdatePublished);
     };
   }, []);
