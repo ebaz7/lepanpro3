@@ -1,153 +1,174 @@
+/**
+ * Synchronizes or bumps the application version across:
+ *   - package.json
+ *   - src-tauri/tauri.conf.json
+ *   - src-tauri/Cargo.toml
+ *   - android/app/build.gradle (versionName & versionCode)
+ *   - services/updateService.ts (CURRENT_CLIENT_BUILD.version)
+ *   - release-version.json (read dynamically by running server.js)
+ *   - database.json & db.json (systemVersion, desktopLatestVersion, androidLatestVersion)
+ */
+
 const fs = require('fs');
 const path = require('path');
-const readline = require('readline');
 
-const rootDir = __dirname;
-const tauriConfPath = path.join(rootDir, 'src-tauri', 'tauri.conf.json');
-const packageJsonPath = path.join(rootDir, 'package.json');
-const buildGradlePath = path.join(rootDir, 'android', 'app', 'build.gradle');
-const dbJsonPath = path.join(rootDir, 'db.json');
-const updateServicePath = path.join(rootDir, 'services', 'updateService.ts');
+const ROOT_DIR = __dirname;
+const pkgPath = path.join(ROOT_DIR, 'package.json');
+const tauriConfPath = path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json');
+const cargoTomlPath = path.join(ROOT_DIR, 'src-tauri', 'Cargo.toml');
+const gradlePath = path.join(ROOT_DIR, 'android', 'app', 'build.gradle');
+const updateServicePath = path.join(ROOT_DIR, 'services', 'updateService.ts');
+const releaseJsonPath = path.join(ROOT_DIR, 'release-version.json');
+const dbPaths = [path.join(ROOT_DIR, 'database.json'), path.join(ROOT_DIR, 'db.json')];
 
-function getArgVersion() {
-  const args = process.argv.slice(2);
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--ver' || args[i] === '-v' || args[i] === '--version') {
-      if (args[i + 1] && !args[i + 1].startsWith('-')) {
-        return args[i + 1].trim();
+function bumpPatchVersion(ver) {
+  const clean = String(ver || '1.0.0').trim().replace(/^v/i, '');
+  const parts = clean.split('.').map(n => parseInt(n, 10) || 0);
+  while (parts.length < 3) parts.push(0);
+  parts[2] += 1;
+  return `${parts[0]}.${parts[1]}.${parts[2]}`;
+}
+
+function versionToCode(ver) {
+  const clean = String(ver || '1.0.0').trim().replace(/^v/i, '');
+  const parts = clean.split('.').map(n => parseInt(n, 10) || 0);
+  const major = parts[0] || 1;
+  const minor = parts[1] || 0;
+  const patch = parts[2] || 0;
+  return major * 10000 + minor * 100 + patch;
+}
+
+function syncBuildVersion(options = {}) {
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  let currentVersion = (pkg.version || '1.0.0').trim();
+
+  if (fs.existsSync(releaseJsonPath)) {
+    try {
+      const rel = JSON.parse(fs.readFileSync(releaseJsonPath, 'utf8'));
+      if (rel.version && rel.version.localeCompare(currentVersion, undefined, { numeric: true }) > 0) {
+        currentVersion = rel.version;
       }
-    } else if (args[i].startsWith('--ver=')) {
-      return args[i].split('=')[1].trim();
-    } else if (args[i].startsWith('--version=')) {
-      return args[i].split('=')[1].trim();
-    } else if (/^\d+\.\d+\.\d+$/.test(args[i])) {
-      return args[i].trim();
-    }
+    } catch (_) {}
   }
-  return null;
-}
 
-function getStoredServerVersion() {
-  try {
-    if (fs.existsSync(dbJsonPath)) {
-      const db = JSON.parse(fs.readFileSync(dbJsonPath, 'utf8'));
-      if (db.settings?.systemVersion) return db.settings.systemVersion.trim();
-      if (db.settings?.desktopLatestVersion) return db.settings.desktopLatestVersion.trim();
-    }
-  } catch (_) {}
+  let targetVersion = currentVersion;
+  if (options.explicitVersion) {
+    targetVersion = String(options.explicitVersion).trim().replace(/^v/i, '');
+  } else if (options.bump) {
+    targetVersion = bumpPatchVersion(currentVersion);
+  }
 
-  try {
-    if (fs.existsSync(packageJsonPath)) {
-      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      if (pkg.version) return pkg.version.trim();
-    }
-  } catch (_) {}
+  const buildNumber = `b_${Date.now()}`;
+  const timestamp = Date.now();
+  const versionCode = versionToCode(targetVersion);
 
-  return '1.0.0';
-}
+  console.log(`\n==============================================================`);
+  console.log(`📌 تنظیم نسخه یکپارچه سیستم روی: v${targetVersion} (کد بیلد اندروید: ${versionCode})`);
+  console.log(`==============================================================`);
 
-function syncVersionFiles(versionStr) {
-  const cleanVer = versionStr.replace(/[^0-9.]/g, '') || '1.0.0';
-  console.log(`\n====================================================`);
-  console.log(`🚀 [Build Version Synchronizer] Setting version: v${cleanVer}`);
-  console.log(`====================================================\n`);
+  // 1. Update package.json
+  pkg.version = targetVersion;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+  console.log(`   ✅ package.json -> v${targetVersion}`);
 
-  // 1. Update src-tauri/tauri.conf.json
+  // 2. Update src-tauri/tauri.conf.json
   if (fs.existsSync(tauriConfPath)) {
-    try {
-      const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
-      if (!tauriConf.package) tauriConf.package = {};
-      tauriConf.package.version = cleanVer;
-      fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2), 'utf8');
-      console.log(`✅ Updated src-tauri/tauri.conf.json -> package.version = "${cleanVer}"`);
-    } catch (e) {
-      console.warn('⚠️ Could not update tauri.conf.json:', e.message);
-    }
+    const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
+    if (!tauriConf.package) tauriConf.package = {};
+    tauriConf.package.version = targetVersion;
+    fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n', 'utf8');
+    console.log(`   ✅ src-tauri/tauri.conf.json -> v${targetVersion}`);
   }
 
-  // 2. Update package.json
-  if (fs.existsSync(packageJsonPath)) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      pkg.version = cleanVer;
-      fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2), 'utf8');
-      console.log(`✅ Updated package.json -> version = "${cleanVer}"`);
-    } catch (e) {
-      console.warn('⚠️ Could not update package.json:', e.message);
-    }
+  // 3. Update src-tauri/Cargo.toml
+  if (fs.existsSync(cargoTomlPath)) {
+    let cargoContent = fs.readFileSync(cargoTomlPath, 'utf8');
+    cargoContent = cargoContent.replace(
+      /^version\s*=\s*"[^"]*"/m,
+      `version = "${targetVersion}"`
+    );
+    fs.writeFileSync(cargoTomlPath, cargoContent, 'utf8');
+    console.log(`   ✅ src-tauri/Cargo.toml -> v${targetVersion}`);
   }
 
-  // 3. Update android/app/build.gradle
-  if (fs.existsSync(buildGradlePath)) {
-    try {
-      let gradleContent = fs.readFileSync(buildGradlePath, 'utf8');
-      const versionParts = cleanVer.split('.').map(n => parseInt(n, 10) || 0);
-      const versionCode = (versionParts[0] || 1) * 10000 + (versionParts[1] || 0) * 100 + (versionParts[2] || 0);
-
-      gradleContent = gradleContent.replace(/versionCode\s+\d+/, `versionCode ${versionCode}`);
-      gradleContent = gradleContent.replace(/versionName\s+"[^"]+"/, `versionName "${cleanVer}"`);
-      fs.writeFileSync(buildGradlePath, gradleContent, 'utf8');
-      console.log(`✅ Updated android/app/build.gradle -> versionName = "${cleanVer}", versionCode = ${versionCode}`);
-    } catch (e) {
-      console.warn('⚠️ Could not update android/app/build.gradle:', e.message);
-    }
+  // 4. Update android/app/build.gradle
+  if (fs.existsSync(gradlePath)) {
+    let gradleContent = fs.readFileSync(gradlePath, 'utf8');
+    gradleContent = gradleContent.replace(
+      /versionCode\s+\d+/,
+      `versionCode ${versionCode}`
+    );
+    gradleContent = gradleContent.replace(
+      /versionName\s+"[^"]*"/,
+      `versionName "${targetVersion}"`
+    );
+    fs.writeFileSync(gradlePath, gradleContent, 'utf8');
+    console.log(`   ✅ android/app/build.gradle -> versionName "${targetVersion}", versionCode ${versionCode}`);
   }
 
-  // 4. Update services/updateService.ts
+  // 5. Update services/updateService.ts
   if (fs.existsSync(updateServicePath)) {
     try {
       let serviceContent = fs.readFileSync(updateServicePath, 'utf8');
-      serviceContent = serviceContent.replace(/version:\s*['"][^'"]+['"]/, `version: '${cleanVer}'`);
+      serviceContent = serviceContent.replace(/version:\s*['"][^'"]+['"]/, `version: '${targetVersion}'`);
       fs.writeFileSync(updateServicePath, serviceContent, 'utf8');
-      console.log(`✅ Updated services/updateService.ts -> CURRENT_CLIENT_BUILD.version = '${cleanVer}'`);
-    } catch (e) {
-      console.warn('⚠️ Could not update updateService.ts:', e.message);
-    }
+    } catch (_) {}
   }
 
-  // 5. Update db.json settings
-  if (fs.existsSync(dbJsonPath)) {
+  // 6. Write release-version.json
+  let existingRelease = {};
+  if (fs.existsSync(releaseJsonPath)) {
     try {
-      const db = JSON.parse(fs.readFileSync(dbJsonPath, 'utf8'));
-      if (!db.settings) db.settings = {};
-      db.settings.systemVersion = cleanVer;
-      db.settings.desktopLatestVersion = cleanVer;
-      fs.writeFileSync(dbJsonPath, JSON.stringify(db, null, 2), 'utf8');
-      console.log(`✅ Saved version v${cleanVer} to db.json settings.`);
-    } catch (e) {
-      console.warn('⚠️ Could not update db.json:', e.message);
+      existingRelease = JSON.parse(fs.readFileSync(releaseJsonPath, 'utf8'));
+    } catch (_) {}
+  }
+
+  const releasePayload = {
+    ...existingRelease,
+    version: targetVersion,
+    desktopLatestVersion: options.platform === 'android' ? (existingRelease.desktopLatestVersion || targetVersion) : targetVersion,
+    androidLatestVersion: options.platform === 'tauri' ? (existingRelease.androidLatestVersion || targetVersion) : targetVersion,
+    buildNumber,
+    versionCode,
+    timestamp,
+    publishedAt: new Date(timestamp).toISOString()
+  };
+  fs.writeFileSync(releaseJsonPath, JSON.stringify(releasePayload, null, 2) + '\n', 'utf8');
+
+  // 7. Update database.json / db.json
+  for (const dbPath of dbPaths) {
+    if (fs.existsSync(dbPath)) {
+      try {
+        const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+        if (db && typeof db === 'object') {
+          if (!db.settings) db.settings = {};
+          db.settings.systemVersion = targetVersion;
+          if (options.platform !== 'android') {
+            db.settings.desktopLatestVersion = targetVersion;
+          } else if (!db.settings.desktopLatestVersion) {
+            db.settings.desktopLatestVersion = targetVersion;
+          }
+          if (options.platform !== 'tauri') {
+            db.settings.androidLatestVersion = targetVersion;
+          } else if (!db.settings.androidLatestVersion) {
+            db.settings.androidLatestVersion = targetVersion;
+          }
+          db.settings.systemBuildNumber = buildNumber;
+          db.settings.systemUpdatePublishedAt = timestamp;
+          fs.writeFileSync(dbPath, JSON.stringify(db, null, 2), 'utf8');
+        }
+      } catch (_) {}
     }
   }
 
-  console.log(`\n🎉 All build configurations synchronized to v${cleanVer}!\n`);
+  return { version: targetVersion, versionCode, buildNumber, timestamp };
 }
 
-async function run() {
-  let ver = getArgVersion();
-
-  if (!ver && process.stdout.isTTY) {
-    const defaultVer = getStoredServerVersion();
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    ver = await new Promise(resolve => {
-      rl.question(`\n📌 لطفاً شماره نسخه بیلد جدید را وارد کنید (پیش‌فرض: ${defaultVer}): `, answer => {
-        rl.close();
-        resolve(answer.trim() || defaultVer);
-      });
-    });
-  }
-
-  if (!ver) {
-    ver = getStoredServerVersion();
-  }
-
-  syncVersionFiles(ver);
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  const bump = args.includes('--bump') || args.includes('-b');
+  const explicitArg = args.find(a => !a.startsWith('-'));
+  syncBuildVersion({ bump, explicitVersion: explicitArg });
 }
 
-run().catch(err => {
-  console.error('Fatal error setting build version:', err);
-  process.exit(1);
-});
+module.exports = { syncBuildVersion };

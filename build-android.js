@@ -16,16 +16,16 @@ const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const { generateAllIcons } = require('./setup-icons.cjs');
+const { generateAllIcons } = require('./setup-assets.cjs');
 const { syncBuildVersion } = require('./setup-build-version.cjs');
 
-function runCommand(command, cwd = process.cwd()) {
+function runCommand(command, cwd = process.cwd(), extraEnv = {}) {
   console.log(`\n⏳ Running: ${command}`);
   try {
     execSync(command, {
       stdio: 'inherit',
       cwd,
-      env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096' }
+      env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=4096', ...extraEnv }
     });
   } catch (error) {
     console.error(`\n❌ Error executing command: ${command}`);
@@ -38,7 +38,7 @@ async function buildAndroid() {
   console.log('🚀 شروع فرآیند خودکار ساخت و انتشار نسخه اندروید (APK)');
   console.log('====================================================================');
 
-  const args = process.argv.slice(2);
+  const args = process.argv.slice(2).filter(a => a !== '--release' && a !== '--debug');
   const noBump = args.includes('--no-bump') || args.includes('--same-version');
   const explicitVersion = args.find(a => !a.startsWith('-'));
 
@@ -66,12 +66,48 @@ async function buildAndroid() {
   } else {
     console.log('\n🔄 مرحله ۲: همگام‌سازی فایل‌ها با پلتفرم اندروید (Capacitor Sync)...');
     runCommand('npx cap sync android');
-    // Re-apply icons after cap sync to ensure mipmap resources stay untouched
     await generateAllIcons();
   }
 
-  // 5. Ensure Cleartext (HTTP) traffic is enabled for local enterprise servers
-  console.log('\n🔓 مرحله ۳: بررسی تنظیمات شبکه در AndroidManifest.xml...');
+  // 5. Auto-detect Android SDK and configure local.properties if needed
+  const isWindows = process.platform === 'win32';
+  const localPropertiesPath = path.join(androidDir, 'local.properties');
+  let sdkPath = '';
+  if (isWindows) {
+    const candidates = [
+      'C:\\Users\\Factorythird\\AppData\\Local\\Android\\Sdk',
+      path.join(process.env.USERPROFILE || 'C:\\', 'AppData', 'Local', 'Android', 'Sdk'),
+      'C:\\Android\\Sdk',
+      process.env.ANDROID_HOME,
+      process.env.ANDROID_SDK_ROOT
+    ];
+    for (const c of candidates) {
+      if (c && fs.existsSync(c)) {
+        sdkPath = c;
+        break;
+      }
+    }
+  } else {
+    const candidates = [
+      path.join(process.env.HOME || '/', 'Android', 'Sdk'),
+      path.join(process.env.HOME || '/', 'Library', 'Android', 'sdk'),
+      process.env.ANDROID_HOME,
+      process.env.ANDROID_SDK_ROOT
+    ];
+    for (const c of candidates) {
+      if (c && fs.existsSync(c)) {
+        sdkPath = c;
+        break;
+      }
+    }
+  }
+
+  if (sdkPath && !fs.existsSync(localPropertiesPath)) {
+    const formattedPath = sdkPath.replace(/\\/g, '/');
+    fs.writeFileSync(localPropertiesPath, `sdk.dir=${formattedPath}\n`, 'utf8');
+  }
+
+  // 6. Ensure Cleartext (HTTP) traffic is enabled for local enterprise servers
   const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
   if (fs.existsSync(manifestPath)) {
     let manifestContent = fs.readFileSync(manifestPath, 'utf8');
@@ -95,23 +131,54 @@ async function buildAndroid() {
 
     if (modified) {
       fs.writeFileSync(manifestPath, manifestContent, 'utf8');
-      console.log('✅ تنظیمات AndroidManifest.xml بروزرسانی شد.');
     }
   }
 
-  // 6. Compile signed APK using Gradle
-  console.log('\n🔨 مرحله ۴: کامپایل فایل نصبی APK با Gradle...');
-  const isWindows = process.platform === 'win32';
-  const gradlew = isWindows ? 'gradlew.bat' : './gradlew';
+  // 7. Compile Signed APK using Gradle
+  const isRelease = !process.argv.includes('--debug');
+  const keystorePath = path.join(androidDir, 'app', 'release-key.keystore');
+  if (isRelease && !fs.existsSync(keystorePath)) {
+    try {
+      let keytoolCmd = 'keytool';
+      const keytoolCandidates = [
+        process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', isWindows ? 'keytool.exe' : 'keytool') : '',
+        'C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool.exe',
+        'C:\\Program Files\\Android\\Android Studio\\jre\\bin\\keytool.exe'
+      ].filter(Boolean);
+      for (const cand of keytoolCandidates) {
+        if (fs.existsSync(cand)) {
+          keytoolCmd = `"${cand}"`;
+          break;
+        }
+      }
+      execSync(`${keytoolCmd} -genkeypair -v -keystore "${keystorePath}" -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Dlkam, OU=IT, O=Dlkam, L=Tehran, S=Tehran, C=IR"`, { stdio: 'inherit' });
+    } catch (_) {}
+  }
 
+  const gradlew = isWindows ? 'gradlew.bat' : './gradlew';
   if (!isWindows) {
     runCommand('chmod +x gradlew', androidDir);
   }
 
-  runCommand(`${gradlew} assembleDebug`, androidDir);
+  const buildType = isRelease ? 'Release' : 'Debug';
+  console.log(`\n🔨 مرحله ۴: کامپایل فایل نصبی APK (${buildType}) با Gradle...`);
+  const extraEnv = sdkPath ? { ANDROID_HOME: sdkPath, ANDROID_SDK_ROOT: sdkPath } : {};
+  runCommand(`${gradlew} assemble${buildType}`, androidDir, extraEnv);
 
-  const apkSourcePath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
-  if (fs.existsSync(apkSourcePath)) {
+  const releaseSignedPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
+  const releaseUnsignedPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk');
+  const debugApkPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+
+  let apkSourcePath = null;
+  if (isRelease && fs.existsSync(releaseSignedPath)) {
+    apkSourcePath = releaseSignedPath;
+  } else if (isRelease && fs.existsSync(releaseUnsignedPath)) {
+    apkSourcePath = releaseUnsignedPath;
+  } else if (fs.existsSync(debugApkPath)) {
+    apkSourcePath = debugApkPath;
+  }
+
+  if (apkSourcePath && fs.existsSync(apkSourcePath)) {
     const downloadsDir = path.join(__dirname, 'downloads');
     const publicDownloadsDir = path.join(__dirname, 'public', 'downloads');
 
@@ -125,7 +192,8 @@ async function buildAndroid() {
       path.join(downloadsDir, `dlkam-android-v${verInfo.version}.apk`),
       path.join(publicDownloadsDir, 'dlkam-android-latest.apk'),
       path.join(publicDownloadsDir, 'sayan-android-latest.apk'),
-      path.join(__dirname, 'dlkam-app.apk')
+      path.join(__dirname, 'payment-system-release.apk'),
+      path.join(__dirname, 'dlkam-android-latest.apk')
     ];
 
     for (const target of targets) {
