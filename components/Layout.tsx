@@ -562,9 +562,16 @@ const Layout: React.FC<LayoutProps> = ({
   };
 
   useEffect(() => {
-    checkVersion();
-    // Check for updates in background once every 1 hour (3,600,000 ms) to avoid server load & lag
-    const interval = setInterval(checkVersion, 60 * 60 * 1000);
+    const autoCheckEnabled = settings?.desktopAutoCheckUpdates !== false;
+    const configuredMinutes = Math.max(1, Number(settings?.desktopUpdateIntervalMinutes) || 60);
+    const intervalMs = configuredMinutes * 60 * 1000;
+
+    if (autoCheckEnabled) {
+      checkVersion();
+    }
+
+    // Check for updates in background based on configurable interval in settings (in minutes)
+    const interval = setInterval(checkVersion, intervalMs);
 
     const handleUpdatePublished = (e: any) => {
       if (e?.detail) {
@@ -575,7 +582,11 @@ const Layout: React.FC<LayoutProps> = ({
         checkVersion();
       }
     };
+    const handleSettingsChanged = () => {
+      checkVersion();
+    };
     window.addEventListener('app:update-published', handleUpdatePublished);
+    window.addEventListener('app:update-settings-changed', handleSettingsChanged);
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -586,8 +597,9 @@ const Layout: React.FC<LayoutProps> = ({
     return () => {
       clearInterval(interval);
       window.removeEventListener('app:update-published', handleUpdatePublished);
+      window.removeEventListener('app:update-settings-changed', handleSettingsChanged);
     };
-  }, []);
+  }, [settings?.desktopUpdateIntervalMinutes, settings?.desktopAutoCheckUpdates]);
 
   // Global robust mouse wheel scrolling anywhere on screen
   useEffect(() => {

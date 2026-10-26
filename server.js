@@ -8071,23 +8071,52 @@ app.post('/api/settings', async (req, res) => {
     res.json(db.settings);
 });
 
+// Helper to dynamically sync release-version.json (written by CLI build scripts) with in-memory db.settings
+const getSyncedVersionSettings = (db) => {
+    if (!db.settings) db.settings = {};
+    try {
+        const relPath = path.join(__dirname, 'release-version.json');
+        if (fs.existsSync(relPath)) {
+            const relData = JSON.parse(fs.readFileSync(relPath, 'utf8'));
+            const relTimestamp = Number(relData.timestamp) || 0;
+            const dbTimestamp = Number(db.settings.systemUpdatePublishedAt) || 0;
+            if (relData.version && relTimestamp > dbTimestamp) {
+                db.settings.systemVersion = relData.version;
+                db.settings.desktopLatestVersion = relData.desktopLatestVersion || relData.version;
+                db.settings.androidLatestVersion = relData.androidLatestVersion || relData.version;
+                db.settings.systemBuildNumber = relData.buildNumber || `b_${relTimestamp}`;
+                db.settings.systemUpdatePublishedAt = relTimestamp;
+            }
+        }
+    } catch (_) {}
+    return db.settings;
+};
+
 // --- DESKTOP CLIENT (TAURI) AUTO-UPDATER & CONFIG ENDPOINTS ---
 app.get('/api/desktop/updater.json', (req, res) => {
     const db = getDb();
-    const settings = db.settings || {};
+    const settings = getSyncedVersionSettings(db);
     const version = settings.desktopLatestVersion || settings.systemVersion || '1.0.0';
+    const androidVersion = settings.androidLatestVersion || settings.systemVersion || version;
     const notes = settings.desktopReleaseNotes || settings.releaseNotes || 'نسخه جدید سیستم مدیریت انبار و حسابداری سایان با قابلیت‌های بهبود یافته.';
-    const pubDate = new Date().toISOString();
+    const pubDate = settings.systemUpdatePublishedAt ? new Date(Number(settings.systemUpdatePublishedAt)).toISOString() : new Date().toISOString();
     let downloadUrl = settings.desktopDirectDownloadUrl || '';
     if (!downloadUrl || downloadUrl.includes('/updater.json')) {
         downloadUrl = `${req.protocol}://${req.get('host')}/downloads/dlkam-desktop-setup.msi`;
     }
+    const androidDownloadUrl = `${req.protocol}://${req.get('host')}/downloads/dlkam-android-latest.apk`;
 
     // Standard Tauri v1 Auto-Updater JSON schema
     const updaterManifest = {
         version: version,
+        desktopLatestVersion: version,
+        androidLatestVersion: androidVersion,
         notes: notes,
         pub_date: pubDate,
+        url: downloadUrl,
+        androidUrl: androidDownloadUrl,
+        autoCheck: settings.desktopAutoCheckUpdates !== false,
+        intervalMinutes: Number(settings.desktopUpdateIntervalMinutes) || 60,
         platforms: {
             "windows-x86_64": {
                 signature: "",
@@ -8108,14 +8137,15 @@ app.get('/api/desktop/updater.json', (req, res) => {
 
 app.get('/api/desktop/check-update', (req, res) => {
     const db = getDb();
-    const settings = db.settings || {};
+    const settings = getSyncedVersionSettings(db);
     res.json({
-        latestVersion: settings.desktopLatestVersion || '1.0.0',
+        latestVersion: settings.desktopLatestVersion || settings.systemVersion || '1.0.0',
+        androidLatestVersion: settings.androidLatestVersion || settings.systemVersion || '1.0.0',
         releaseNotes: settings.desktopReleaseNotes || 'پایدار و به‌روز',
         updateUrl: settings.desktopUpdateUrl || '',
         directDownloadUrl: settings.desktopDirectDownloadUrl || '',
         autoCheck: settings.desktopAutoCheckUpdates !== false,
-        updateIntervalMinutes: settings.desktopUpdateIntervalMinutes || 60,
+        updateIntervalMinutes: Number(settings.desktopUpdateIntervalMinutes) || 60,
         lastCheckTime: settings.desktopLastCheckTime || null,
         updateChannel: settings.desktopUpdateChannel || 'stable',
         localServerUrl: settings.desktopLocalServerUrl || 'http://localhost:3000',
@@ -11767,31 +11797,39 @@ app.post('/api/emergency-restore', (req, res) => {
 app.get('/api/version', (req, res) => {
     try {
         const db = typeof getDb === 'function' ? getDb() : {};
-        const settings = (db && db.settings) || {};
+        const settings = getSyncedVersionSettings(db);
         const version = settings.systemVersion || settings.desktopLatestVersion || '1.0.0';
+        const desktopLatestVersion = settings.desktopLatestVersion || version;
+        const androidLatestVersion = settings.androidLatestVersion || version;
         const buildNumber = settings.systemBuildNumber || (settings.systemUpdatePublishedAt ? `b_${settings.systemUpdatePublishedAt}` : '100');
         const title = settings.releaseTitle || 'نسخۀ جدید';
         const releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
         const publishedAt = settings.systemUpdatePublishedAt || 0;
         const androidDownloadUrl = settings.androidDownloadUrl || '/downloads/dlkam-android-latest.apk';
+        const downloadUrl = settings.desktopDirectDownloadUrl || '/downloads/dlkam-desktop-setup.msi';
         
         res.json({ 
-            version, 
+            version,
+            desktopLatestVersion,
+            androidLatestVersion,
             buildNumber, 
             title, 
             releaseNotes,
             timestamp: publishedAt || 0,
-            androidDownloadUrl
+            downloadUrl,
+            androidDownloadUrl,
+            updateIntervalMinutes: Number(settings.desktopUpdateIntervalMinutes) || 60,
+            autoCheck: settings.desktopAutoCheckUpdates !== false
         });
     } catch (e) {
         res.json({ version: '1.0.0', buildNumber: '100', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk' });
     }
 });
 
-// PUBLISH NEW UPDATE ACROSS THE SYSTEM (Web, PWA, Desktop)
+// PUBLISH NEW UPDATE ACROSS THE SYSTEM (Web, PWA, Desktop, Android)
 app.post('/api/version/publish', async (req, res) => {
     try {
-        const { version, title, releaseNotes, sendToBots = true } = req.body || {};
+        const { version, desktopLatestVersion, androidLatestVersion, title, releaseNotes, sendToBots = true } = req.body || {};
         if (!version) {
             return res.status(400).json({ success: false, error: 'شماره نسخه الزامی است' });
         }
@@ -11802,16 +11840,31 @@ app.post('/api/version/publish', async (req, res) => {
         const now = Date.now();
         const buildNumber = `b_${now.toString(36).toUpperCase()}`;
         const newVersion = version.trim();
+        const newDesktopVer = (desktopLatestVersion || newVersion).trim();
+        const newAndroidVer = (androidLatestVersion || newVersion).trim();
         const newTitle = title?.trim() || `نسخه جدید ${newVersion}`;
         const newNotes = releaseNotes?.trim() || 'به‌روزرسانی، ارتقای عملکرد و بهینه‌سازی کلی سیستم.';
 
         db.settings.systemVersion = newVersion;
-        db.settings.desktopLatestVersion = newVersion;
+        db.settings.desktopLatestVersion = newDesktopVer;
+        db.settings.androidLatestVersion = newAndroidVer;
         db.settings.systemBuildNumber = buildNumber;
         db.settings.releaseTitle = newTitle;
         db.settings.releaseNotes = newNotes;
         db.settings.desktopReleaseNotes = newNotes;
         db.settings.systemUpdatePublishedAt = now;
+
+        try {
+            const relPath = path.join(__dirname, 'release-version.json');
+            fs.writeFileSync(relPath, JSON.stringify({
+                version: newVersion,
+                desktopLatestVersion: newDesktopVer,
+                androidLatestVersion: newAndroidVer,
+                buildNumber,
+                timestamp: now,
+                publishedAt: new Date(now).toISOString()
+            }, null, 2) + '\n', 'utf8');
+        } catch (_) {}
 
         if (dbManager && typeof dbManager.saveDbImmediate === 'function') {
             dbManager.saveDbImmediate(db);

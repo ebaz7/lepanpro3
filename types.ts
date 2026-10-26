@@ -553,6 +553,7 @@ export interface SystemSettings {
   desktopDirectDownloadUrl?: string;
   androidDirectDownloadUrl?: string;
   desktopLatestVersion?: string;
+  androidLatestVersion?: string;
   desktopReleaseNotes?: string;
   desktopLocalServerUrl?: string;
   desktopCloudServerUrl?: string;

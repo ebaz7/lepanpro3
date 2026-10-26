@@ -3,12 +3,17 @@ import { isTauriDesktop, isMobileApp, isWebApp } from '../utils/platformDetectio
 
 export interface AppVersionInfo {
   version: string;
+  desktopLatestVersion?: string;
+  androidLatestVersion?: string;
   buildNumber: string;
   title?: string;
   releaseNotes?: string;
   timestamp?: number;
   downloadUrl?: string;
   androidDownloadUrl?: string;
+  forceUpdate?: boolean;
+  updateIntervalMinutes?: number;
+  autoCheck?: boolean;
 }
 
 // Current client build embedded in the bundle
@@ -64,30 +69,54 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
   }
 
   const win = window as any;
+  let detectedVersion = CURRENT_CLIENT_BUILD.version;
+  let detectedBuild = CURRENT_CLIENT_BUILD.buildNumber;
 
-  // 1. Check Tauri app.getVersion()
+  // 1. Check Tauri app.getVersion() + applied_desktop_version
   try {
-    if (win.__TAURI__?.app?.getVersion) {
-      const ver = await win.__TAURI__.app.getVersion();
-      if (ver) return { version: ver, buildNumber: ver };
+    if (isTauriDesktop()) {
+      if (win.__TAURI__?.app?.getVersion) {
+        const ver = await win.__TAURI__.app.getVersion();
+        if (ver && compareSemVer(ver, detectedVersion) > 0) {
+          detectedVersion = ver;
+          detectedBuild = ver;
+        }
+      }
+      const appliedDesktop = localStorage.getItem('applied_desktop_version');
+      if (appliedDesktop && compareSemVer(appliedDesktop, detectedVersion) > 0) {
+        detectedVersion = appliedDesktop;
+        detectedBuild = appliedDesktop;
+      }
+      return { version: detectedVersion, buildNumber: detectedBuild };
     }
   } catch (_) {}
 
-  // 2. Check Capacitor App.getInfo()
+  // 2. Check Capacitor App.getInfo() + applied_android_version
   try {
-    if (win.Capacitor?.Plugins?.App?.getInfo) {
-      const info = await win.Capacitor.Plugins.App.getInfo();
-      if (info?.version) return { version: info.version, buildNumber: info.build || info.version };
+    if (isCapacitorAndroid()) {
+      if (win.Capacitor?.Plugins?.App?.getInfo) {
+        const info = await win.Capacitor.Plugins.App.getInfo();
+        if (info?.version && compareSemVer(info.version, detectedVersion) > 0) {
+          detectedVersion = info.version;
+          detectedBuild = info.build || info.version;
+        }
+      }
+      const appliedAndroid = localStorage.getItem('applied_android_version');
+      if (appliedAndroid && compareSemVer(appliedAndroid, detectedVersion) > 0) {
+        detectedVersion = appliedAndroid;
+        detectedBuild = appliedAndroid;
+      }
+      return { version: detectedVersion, buildNumber: detectedBuild };
     }
   } catch (_) {}
 
   // 3. Check stored client version
   const storedVer = localStorage.getItem('app_native_client_version') || localStorage.getItem('installed_client_version');
-  if (storedVer) {
+  if (storedVer && compareSemVer(storedVer, detectedVersion) > 0) {
     return { version: storedVer, buildNumber: localStorage.getItem('installed_client_build') || storedVer };
   }
 
-  return { version: CURRENT_CLIENT_BUILD.version, buildNumber: CURRENT_CLIENT_BUILD.buildNumber };
+  return { version: detectedVersion, buildNumber: detectedBuild };
 }
 
 // Check for updates by querying /api/version and /api/desktop/check-update
@@ -157,8 +186,17 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       data.downloadUrl = '';
     }
 
-    const serverBuild = data.buildNumber || data.version;
-    const serverVer = data.version || data.buildNumber;
+    const isAndroid = isCapacitorAndroid();
+    const isNative = isDesktop || isAndroid;
+    const targetServerVer = isAndroid
+      ? (data.androidLatestVersion || data.version || data.buildNumber)
+      : isDesktop
+        ? (data.desktopLatestVersion || data.version || data.buildNumber)
+        : (data.version || data.buildNumber);
+
+    data.version = targetServerVer;
+    const serverBuild = data.buildNumber || targetServerVer;
+    const serverVer = targetServerVer;
     const serverTimestamp = Number(data.timestamp) || 0;
 
     if (typeof window === 'undefined') {
@@ -192,6 +230,23 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
 
     // 4. Compare version semantically
     const semVerComp = compareSemVer(serverVer, clientVer);
+
+    // For Native Android & Tauri Desktop:
+    // Strictly compare semantic version! Once installed/applied (semVerComp <= 0), NEVER prompt again
+    // until a strictly higher version (semVerComp > 0) is published on the server.
+    if (isNative) {
+      if (semVerComp <= 0) {
+        return { hasUpdate: false, serverInfo: data };
+      }
+      const appliedNativeVer = isAndroid
+        ? localStorage.getItem('applied_android_version')
+        : localStorage.getItem('applied_desktop_version');
+      if (appliedNativeVer && compareSemVer(serverVer, appliedNativeVer) <= 0) {
+        return { hasUpdate: false, serverInfo: data };
+      }
+      return { hasUpdate: true, serverInfo: data };
+    }
+
     const baselineBuild = localStorage.getItem('baseline_server_build');
     const baselineTimestamp = Number(localStorage.getItem('baseline_server_timestamp')) || 0;
 
@@ -205,13 +260,9 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       return { hasUpdate: true, serverInfo: data };
     }
 
-    // When semVer is equal (e.g. 1.0.0 == 1.0.0), check build number or timestamp if server was updated
-    if (serverBuild !== clientBuild && baselineBuild !== serverBuild) {
-      if (serverTimestamp > 0 && baselineTimestamp > 0) {
-        if (serverTimestamp > baselineTimestamp) {
-          return { hasUpdate: true, serverInfo: data };
-        }
-      } else if (serverBuild > clientBuild) {
+    // When semVer is equal (e.g. 1.0.0 == 1.0.0) on Web, check timestamp if server was updated after baseline
+    if (serverBuild !== clientBuild && baselineBuild && baselineBuild !== serverBuild) {
+      if (serverTimestamp > 0 && baselineTimestamp > 0 && serverTimestamp > baselineTimestamp) {
         return { hasUpdate: true, serverInfo: data };
       }
     }
@@ -298,6 +349,13 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
       localStorage.setItem('applied_server_build', serverBuild);
       localStorage.setItem('baseline_server_build', serverBuild);
       localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
+      if (isAndroid) {
+        localStorage.setItem('applied_android_version', serverVer);
+      }
+      if (isDesktop) {
+        localStorage.setItem('applied_desktop_version', serverVer);
+      }
+      localStorage.setItem('app_native_client_version', serverVer);
       sessionStorage.removeItem('dismissed_update_sig');
       localStorage.removeItem('dismissed_update_sig');
     }
