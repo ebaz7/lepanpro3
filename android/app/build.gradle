@@ -12,7 +12,8 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Strings should not be compressed
-             ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:g*.tbi:f*.tbi"
+             ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:g*.tbi:f*.tbi:!downloads:!*.apk:!*.exe:!*.msi"
+             noCompress "wasm", "gz", "traineddata", "apk", "exe", "msi", "zip", "mp4", "mp3"
         }
     }
     signingConfigs {

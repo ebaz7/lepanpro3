@@ -1,6 +1,7 @@
-
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import fs from 'fs'
+import path from 'path'
 
 // Check if we are building for Android / Capacitor dynamically
 const isAndroid = 
@@ -11,7 +12,24 @@ const isAndroid =
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    {
+      name: 'exclude-heavy-public-downloads-from-dist',
+      closeBundle() {
+        try {
+          const distDownloads = path.resolve('dist', 'downloads');
+          if (fs.existsSync(distDownloads)) {
+            fs.rmSync(distDownloads, { recursive: true, force: true });
+          }
+          const distAiStudio = path.resolve('dist', 'assets', 'aistudio');
+          if (fs.existsSync(distAiStudio)) {
+            fs.rmSync(distAiStudio, { recursive: true, force: true });
+          }
+        } catch (_) {}
+      }
+    }
+  ],
   base: './', // Relative path for universal support across Web, CDN, Android, and Desktop (Tauri)
   optimizeDeps: {
     entries: ['index.html'],

@@ -57,6 +57,17 @@ async function buildAndroid() {
   console.log('\n📦 مرحله ۱: ساخت فایل‌های وب (Vite Build)...');
   runCommand('npm run build');
 
+  // 3.5. Remove heavy installer files (dist/downloads, dist/assets/aistudio) from dist before copying to Android APK assets
+  const distDownloadsDir = path.join(__dirname, 'dist', 'downloads');
+  if (fs.existsSync(distDownloadsDir)) {
+    fs.rmSync(distDownloadsDir, { recursive: true, force: true });
+    console.log('   🧹 پوشه dist/downloads از باندل اندروید حذف شد تا حجم APK و مصرف رم Gradle بهینه شود.');
+  }
+  const distAiStudioAssetsDir = path.join(__dirname, 'dist', 'assets', 'aistudio');
+  if (fs.existsSync(distAiStudioAssetsDir)) {
+    fs.rmSync(distAiStudioAssetsDir, { recursive: true, force: true });
+  }
+
   // 4. Add or sync android platform
   const androidDir = path.join(__dirname, 'android');
   if (!fs.existsSync(androidDir)) {
@@ -67,6 +78,16 @@ async function buildAndroid() {
     console.log('\n🔄 مرحله ۲: همگام‌سازی فایل‌ها با پلتفرم اندروید (Capacitor Sync)...');
     runCommand('npx cap sync android');
     await generateAllIcons();
+  }
+
+  // Clean any leftover downloads or large installer files inside android/app/src/main/assets/public
+  const androidAssetsDownloadsDir = path.join(androidDir, 'app', 'src', 'main', 'assets', 'public', 'downloads');
+  if (fs.existsSync(androidAssetsDownloadsDir)) {
+    fs.rmSync(androidAssetsDownloadsDir, { recursive: true, force: true });
+  }
+  const androidAssetsAiStudioDir = path.join(androidDir, 'app', 'src', 'main', 'assets', 'public', 'assets', 'aistudio');
+  if (fs.existsSync(androidAssetsAiStudioDir)) {
+    fs.rmSync(androidAssetsAiStudioDir, { recursive: true, force: true });
   }
 
   // 5. Auto-detect Android SDK and configure local.properties if needed
@@ -159,10 +180,21 @@ async function buildAndroid() {
   let appPackageName = 'com.dikam.paymentorder';
   if (fs.existsSync(appBuildGradlePath)) {
     let gradleText = fs.readFileSync(appBuildGradlePath, 'utf8');
+    let gradleModified = false;
     const appIdMatch = gradleText.match(/applicationId\s+["']([^"']+)["']/);
     if (appIdMatch && appIdMatch[1]) {
       appPackageName = appIdMatch[1].trim();
     }
+
+    // Ensure aaptOptions skips re-compressing heavy binary/wasm/archive extensions to prevent CompressAssetsWorkAction OOM
+    if (!gradleText.includes('noCompress')) {
+      gradleText = gradleText.replace(
+        /ignoreAssetsPattern\s+["'][^"']+["']/,
+        `ignoreAssetsPattern "!.svn:!.git:!.ds_store:!*.scc:.*:g*.tbi:f*.tbi:!downloads:!*.apk:!*.exe:!*.msi"\n             noCompress "wasm", "gz", "traineddata", "apk", "exe", "msi", "zip", "mp4", "mp3"`
+      );
+      gradleModified = true;
+    }
+
     // Ensure google-services plugin is only applied if google-services.json matches appPackageName
     const unsafeGoogleServicesRegex = /if\s*\(\s*servicesJSON\.text\s*\)\s*\{\s*apply\s+plugin:\s*['"]com\.google\.gms\.google-services['"]\s*\}/;
     if (unsafeGoogleServicesRegex.test(gradleText)) {
@@ -170,6 +202,10 @@ async function buildAndroid() {
         unsafeGoogleServicesRegex,
         `if (servicesJSON.exists() && servicesJSON.text && servicesJSON.text.contains('"${appPackageName}"')) {\n        apply plugin: 'com.google.gms.google-services'\n    }`
       );
+      gradleModified = true;
+    }
+
+    if (gradleModified) {
       fs.writeFileSync(appBuildGradlePath, gradleText, 'utf8');
     }
   }
@@ -197,6 +233,54 @@ async function buildAndroid() {
       console.warn('⚠️ فایل google-services.json نامعتبر بود؛ نادیده گرفته شد.');
     }
   }
+
+  // 6.8. Ensure gradle.properties has sufficient heap memory (4GB) and capped workers to prevent OOM in compressReleaseAssets
+  const gradlePropsPath = path.join(androidDir, 'gradle.properties');
+  if (fs.existsSync(gradlePropsPath)) {
+    let gradleProps = fs.readFileSync(gradlePropsPath, 'utf8');
+    let propsModified = false;
+    if (/org\.gradle\.jvmargs\s*=/.test(gradleProps)) {
+      if (!gradleProps.includes('-Xmx4096m')) {
+        gradleProps = gradleProps.replace(
+          /org\.gradle\.jvmargs\s*=.*/,
+          'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8'
+        );
+        propsModified = true;
+      }
+    } else {
+      gradleProps += '\norg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8\n';
+      propsModified = true;
+    }
+    if (!gradleProps.includes('org.gradle.workers.max')) {
+      gradleProps += '\norg.gradle.workers.max=2\n';
+      propsModified = true;
+    }
+    if (propsModified) {
+      fs.writeFileSync(gradlePropsPath, gradleProps, 'utf8');
+    }
+  }
+
+  // Remove any accidental .apk, .exe, .msi, or unused tesseract wasm.js duplicates inside android/app/src/main/assets/public
+  const assetsPublicDir = path.join(androidDir, 'app', 'src', 'main', 'assets', 'public');
+  function purgeHeavyBinariesFromAssets(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'downloads' || entry.name === 'backups' || entry.name === 'uploads' || entry.name === 'chat_uploads') {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        } else {
+          purgeHeavyBinariesFromAssets(fullPath);
+        }
+      } else if (/\.(apk|exe|msi|zip|rar|7z|bak)$/i.test(entry.name)) {
+        fs.rmSync(fullPath, { force: true });
+      } else if (/^tesseract-core.*\.wasm\.js$/i.test(entry.name)) {
+        // Modern Android WebView supports WebAssembly (.wasm) natively; the huge base64 .wasm.js fallback files (~60MB total) are unnecessary and cause Gradle CompressAssets OOM
+        fs.rmSync(fullPath, { force: true });
+      }
+    }
+  }
+  purgeHeavyBinariesFromAssets(assetsPublicDir);
 
   // 7. Compile Signed APK using Gradle
   const isRelease = !process.argv.includes('--debug');
@@ -226,8 +310,14 @@ async function buildAndroid() {
 
   const buildType = isRelease ? 'Release' : 'Debug';
   console.log(`\n🔨 مرحله ۴: کامپایل فایل نصبی APK (${buildType}) با Gradle...`);
-  const extraEnv = sdkPath ? { ANDROID_HOME: sdkPath, ANDROID_SDK_ROOT: sdkPath } : {};
-  runCommand(`${gradlew} assemble${buildType}`, androidDir, extraEnv);
+  const extraEnv = {
+    ...(sdkPath ? { ANDROID_HOME: sdkPath, ANDROID_SDK_ROOT: sdkPath } : {}),
+    GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" -Dorg.gradle.workers.max=2'
+  };
+  try {
+    execSync(`${gradlew} --stop`, { cwd: androidDir, stdio: 'ignore', env: { ...process.env, ...extraEnv } });
+  } catch (_) {}
+  runCommand(`${gradlew} assemble${buildType} --max-workers=2`, androidDir, extraEnv);
 
   const releaseSignedPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
   const releaseUnsignedPath = path.join(androidDir, 'app', 'build', 'outputs', 'apk', 'release', 'app-release-unsigned.apk');
