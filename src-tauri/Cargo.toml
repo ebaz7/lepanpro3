@@ -29,8 +29,13 @@ tower-http = { version = "0.4", default-features = false, features = ["cors", "f
 
 [profile.release]
 panic = "abort"
-opt-level = 1
-codegen-units = 1
+opt-level = 0
+codegen-units = 16
 lto = false
 incremental = false
+debug = false
 strip = true
+
+[profile.release.package.sayan-warehouse]
+opt-level = 0
+codegen-units = 16

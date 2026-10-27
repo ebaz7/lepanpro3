@@ -26,6 +26,18 @@ export default defineConfig({
           if (fs.existsSync(distAiStudio)) {
             fs.rmSync(distAiStudio, { recursive: true, force: true });
           }
+          // Remove unused raw .wasm files and non-LSTM files from dist/tesseract (worker.min.js only loads *-lstm.wasm.js)
+          const distTesseract = path.resolve('dist', 'tesseract');
+          if (fs.existsSync(distTesseract)) {
+            for (const f of fs.readdirSync(distTesseract)) {
+              if (
+                f.endsWith('.wasm') ||
+                (f.startsWith('tesseract-core') && !f.includes('-lstm.wasm.js'))
+              ) {
+                fs.rmSync(path.join(distTesseract, f), { force: true });
+              }
+            }
+          }
         } catch (_) {}
       }
     }

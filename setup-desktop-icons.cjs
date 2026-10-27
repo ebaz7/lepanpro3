@@ -52,16 +52,46 @@ async function buildAndPublishTauri() {
   await generateAllIcons();
   purgeTauriIconBuildCache();
 
-  // 3. Ensure memory-safe Cargo config on Windows so linking never runs out of stack/memory
+  // 3. Prepare local temp directory on project drive (e.g. D:\PaymentSystem\.temp) & clean old C:\ Temp build artifacts
+  const localTempDir = path.join(ROOT_DIR, '.temp');
+  if (!fs.existsSync(localTempDir)) {
+    fs.mkdirSync(localTempDir, { recursive: true });
+  }
+
+  // Safely clean stale compiler temp directories in system TEMP (e.g. C:\Users\...\AppData\Local\Temp) to free C: drive space for pagefile
+  const sysTemp = process.env.TEMP || process.env.TMP;
+  if (sysTemp && fs.existsSync(sysTemp) && sysTemp !== localTempDir) {
+    try {
+      for (const entry of fs.readdirSync(sysTemp)) {
+        if (/^(rustc|cargo|tauri|wix|nsis|vite|npm-|v8-compile-cache)/i.test(entry)) {
+          try {
+            fs.rmSync(path.join(sysTemp, entry), { recursive: true, force: true });
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Ensure memory-safe Cargo config on Windows so linking & LLVM never run out of stack/memory
   const cargoConfigDir = path.join(ROOT_DIR, 'src-tauri', '.cargo');
   if (!fs.existsSync(cargoConfigDir)) fs.mkdirSync(cargoConfigDir, { recursive: true });
   const cargoConfigPath = path.join(cargoConfigDir, 'config.toml');
-  if (!fs.existsSync(cargoConfigPath)) {
-    fs.writeFileSync(
-      cargoConfigPath,
-      `[build]\njobs = 1\n\n[env]\nCARGO_BUILD_JOBS = "1"\n\n[target.x86_64-pc-windows-msvc]\nrustflags = ["-C", "link-args=/STACK:16777216"]\n`,
-      'utf8'
-    );
+  fs.writeFileSync(
+    cargoConfigPath,
+    `[build]\njobs = 1\n\n[env]\nCARGO_BUILD_JOBS = "1"\n\n[target.x86_64-pc-windows-msvc]\nrustflags = ["-C", "link-args=/STACK:16777216"]\n`,
+    'utf8'
+  );
+
+  // Clean old embedded asset codegen in target/release/build/sayan-warehouse* so Tauri rebuilds cleanly with slimmed dist/
+  const releaseBuildDir = path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'build');
+  if (fs.existsSync(releaseBuildDir)) {
+    try {
+      for (const entry of fs.readdirSync(releaseBuildDir)) {
+        if (entry.startsWith('sayan-warehouse-')) {
+          fs.rmSync(path.join(releaseBuildDir, entry), { recursive: true, force: true });
+        }
+      }
+    } catch (_) {}
   }
 
   // 4. Build Tauri Desktop Bundle
@@ -72,11 +102,16 @@ async function buildAndPublishTauri() {
       stdio: 'inherit',
       env: {
         ...process.env,
+        TEMP: localTempDir,
+        TMP: localTempDir,
+        TMPDIR: localTempDir,
         NODE_OPTIONS: '--max-old-space-size=4096',
         CARGO_BUILD_JOBS: '1',
-        CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '1',
-        CARGO_PROFILE_RELEASE_OPT_LEVEL: '1',
-        CARGO_PROFILE_RELEASE_LTO: 'false'
+        CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16',
+        CARGO_PROFILE_RELEASE_OPT_LEVEL: '0',
+        CARGO_PROFILE_RELEASE_LTO: 'false',
+        CARGO_PROFILE_RELEASE_DEBUG: 'false',
+        CARGO_PROFILE_RELEASE_INCREMENTAL: 'false'
       }
     });
   } catch (err) {

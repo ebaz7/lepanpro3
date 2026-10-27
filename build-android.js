@@ -310,9 +310,16 @@ async function buildAndroid() {
 
   const buildType = isRelease ? 'Release' : 'Debug';
   console.log(`\n🔨 مرحله ۴: کامپایل فایل نصبی APK (${buildType}) با Gradle...`);
+  const localTempDir = path.join(__dirname, '.temp');
+  if (!fs.existsSync(localTempDir)) {
+    fs.mkdirSync(localTempDir, { recursive: true });
+  }
   const extraEnv = {
     ...(sdkPath ? { ANDROID_HOME: sdkPath, ANDROID_SDK_ROOT: sdkPath } : {}),
-    GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" -Dorg.gradle.workers.max=2'
+    TEMP: localTempDir,
+    TMP: localTempDir,
+    TMPDIR: localTempDir,
+    GRADLE_OPTS: `-Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8 -Djava.io.tmpdir=${localTempDir.replace(/\\/g, '/')}" -Dorg.gradle.workers.max=2`
   };
   try {
     execSync(`${gradlew} --stop`, { cwd: androidDir, stdio: 'ignore', env: { ...process.env, ...extraEnv } });
