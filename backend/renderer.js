@@ -1250,6 +1250,7 @@ export const generateReportPDF = async (
   columns,
   rows,
   landscape = false,
+  customDateLabel = null,
 ) => {
   try {
     const browser = await getBrowser();
@@ -1258,6 +1259,15 @@ export const generateReportPDF = async (
     const isDebtor = title.includes("بدهکار");
     const isSales = title.includes("فروش") || title.includes("سایان") || title.includes("تحلیلی") || title.includes("مقایسه‌ای") || title.includes("مدیریتی") || title.includes("Executive") || title.includes("Compare") || title.includes("Daily_Sales");
     const isCompare = title.includes("مقایسه") || title.includes("Compare");
+    let resolvedDateBadge = customDateLabel;
+    if (!resolvedDateBadge) {
+      const parenMatch = String(title || "").match(/\(([^)]*\d{4}[/.-]\d{1,2}[/.-]\d{1,2}[^)]*)\)/);
+      const rangeMatch = String(title || "").match(/(از\s*(?:تاریخ\s*)?\d{4}[/.-]\d{1,2}[/.-]\d{1,2}\s*تا\s*(?:تاریخ\s*)?\d{4}[/.-]\d{1,2}[/.-]\d{1,2})/);
+      const singleMatch = String(title || "").match(/(\d{4}[/.-]\d{1,2}[/.-]\d{1,2}\s*تا\s*\d{4}[/.-]\d{1,2}[/.-]\d{1,2})/);
+      if (parenMatch) resolvedDateBadge = parenMatch[1].trim();
+      else if (rangeMatch) resolvedDateBadge = rangeMatch[1].trim();
+      else if (singleMatch) resolvedDateBadge = `از ${singleMatch[1].trim()}`;
+    }
     const isPendingDocs = title.includes("اسناد") || title.includes("چک‌ها");
     const isDispatch = title.includes("خروج") || title.includes("بیجک");
 
@@ -1558,9 +1568,9 @@ export const generateReportPDF = async (
                 </div>
                 <p class="text-[10px] text-slate-500 font-bold pr-4">${subtitleText}</p>
             </div>
-            <div class="text-left space-y-0.5">
-                <div class="inline-block bg-slate-900 text-white px-2.5 py-1 rounded text-[10px] font-black">${new Date().toLocaleDateString("fa-IR")}</div>
-                <div class="text-[9px] text-slate-400 font-bold">گزارش مدیریتی A4 | سایان ERP</div>
+            <div class="text-left space-y-0.5 shrink-0">
+                <div class="inline-block bg-slate-900 text-white px-2.5 py-1 rounded text-[10px] font-black">${resolvedDateBadge ? `بازه گزارش: ${resolvedDateBadge}` : `تاریخ گزارش: ${new Date().toLocaleDateString("fa-IR")}`}</div>
+                <div class="text-[9px] text-slate-400 font-bold">${resolvedDateBadge ? `تاریخ چاپ: ${new Date().toLocaleDateString("fa-IR")} | سایان ERP` : 'گزارش مدیریتی A4 | سایان ERP'}</div>
             </div>
         </div>
 

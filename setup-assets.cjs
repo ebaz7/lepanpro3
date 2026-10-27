@@ -5,20 +5,11 @@
  *   node setup-assets.cjs
  *   node setup-icons.cjs
  *   build-icons.bat
- *
- * Reads `app-icon.png` (or .webp / .jpg / .svg) from the root directory.
- * CRITICAL RULE:
- *   - Automatically detects if the source `app-icon` has a transparent background
- *     or a solid/colored background by sampling corner and edge pixels.
- *   - If `app-icon` has a transparent background: generates all Android, Tauri,
- *     and Web icons WITH a transparent background (no artificial fill).
- *   - If `app-icon` has a colored background: preserves that exact background color
- *     across all Android (legacy, round, adaptive background layer, splash),
- *     Tauri (32x32, 128x128, 256x256, icon.png, icon.ico, icon.icns), and Web icons.
  */
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const sharp = require('sharp');
 
@@ -28,20 +19,42 @@ const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const TAURI_ICONS_DIR = path.join(ROOT_DIR, 'src-tauri', 'icons');
 const ANDROID_RES_DIR = path.join(ROOT_DIR, 'android', 'app', 'src', 'main', 'res');
 
+/**
+ * Finds the user's app-icon in the project root directory.
+ * Handles cases where Windows Explorer hides file extensions (e.g. `app-icon.png.png`)
+ * or when multiple `app-icon*` files exist by picking the most recently modified file in root.
+ */
 function findSourceIcon() {
-  const candidates = [
-    path.join(ROOT_DIR, 'app-icon.png'),
-    path.join(ROOT_DIR, 'app-icon.webp'),
-    path.join(ROOT_DIR, 'app-icon.jpg'),
-    path.join(ROOT_DIR, 'app-icon.jpeg'),
-    path.join(ROOT_DIR, 'app-icon.svg'),
+  try {
+    const rootEntries = fs.readdirSync(ROOT_DIR, { withFileTypes: true });
+    const rootMatches = [];
+
+    for (const entry of rootEntries) {
+      if (!entry.isFile()) continue;
+      if (entry.name.endsWith('.tmp')) continue;
+      if (/^app-icon/i.test(entry.name) && /\.(png|webp|jpg|jpeg|svg)$/i.test(entry.name)) {
+        const fullPath = path.join(ROOT_DIR, entry.name);
+        const stat = fs.statSync(fullPath);
+        if (stat.size > 100) {
+          rootMatches.push({ path: fullPath, name: entry.name, mtimeMs: stat.mtimeMs, size: stat.size });
+        }
+      }
+    }
+
+    if (rootMatches.length > 0) {
+      // Sort by newest modification time first
+      rootMatches.sort((a, b) => b.mtimeMs - a.mtimeMs);
+      return rootMatches[0].path;
+    }
+  } catch (_) {}
+
+  const fallbackCandidates = [
     path.join(ROOT_DIR, 'icon.png'),
     path.join(PUBLIC_DIR, 'app-icon.png'),
-    path.join(PUBLIC_DIR, 'icon.png'),
-    path.join(PUBLIC_DIR, 'pwa-512x512.png')
+    path.join(PUBLIC_DIR, 'icon.png')
   ];
 
-  for (const candidate of candidates) {
+  for (const candidate of fallbackCandidates) {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile() && fs.statSync(candidate).size > 100) {
       return candidate;
     }
@@ -72,7 +85,6 @@ async function detectIconBackground(imagePath) {
     };
   };
 
-  // Sample 12 border & corner points
   const sampleCoords = [
     [0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1],
     [1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2],
@@ -83,7 +95,6 @@ async function detectIconBackground(imagePath) {
   const samples = sampleCoords.map(([x, y]) => getPixel(x, y));
   const transparentCount = samples.filter(p => p.a < 40).length;
 
-  // If corners/edges are predominantly transparent -> No background (transparent mode)
   if (transparentCount >= 4) {
     return {
       hasBackground: false,
@@ -92,7 +103,6 @@ async function detectIconBackground(imagePath) {
     };
   }
 
-  // Otherwise compute average RGB of opaque border pixels
   const opaqueSamples = samples.filter(p => p.a >= 40);
   const avg = opaqueSamples.reduce(
     (acc, p) => ({ r: acc.r + p.r, g: acc.g + p.g, b: acc.b + p.b }),
@@ -112,47 +122,171 @@ async function detectIconBackground(imagePath) {
 }
 
 /**
- * Builds a valid Windows .ico container embedding PNG images (256x256, 48x48, 32x32, 16x16)
- * so Tauri / Windows builds always have a crisp multi-resolution icon.ico with exact transparency/background.
+ * Builds a true Win32-compliant .ico file:
+ * - Sizes 16, 24, 32, 48, 64 are stored as 32-bit BGRA BITMAPINFOHEADER (DIB) frames
+ *   with bottom-up scanlines and a valid 1-bit AND mask (required by Windows Explorer shortcuts & rc.exe).
+ * - Size 256 is stored as a compressed RGBA PNG frame (Windows Vista+ high-DPI standard).
  */
-async function createIcoFromPngBuffer(masterPngBuffer, bgRgba) {
-  const sizes = [256, 48, 32, 16];
-  const pngBuffers = [];
+async function createTrueWin32Ico(masterPngBuffer, bgRgba) {
+  const dibSizes = [16, 24, 32, 48, 64];
+  const frames = [];
 
-  for (const sz of sizes) {
-    const buf = await sharp(masterPngBuffer)
+  for (const sz of dibSizes) {
+    const { data } = await sharp(masterPngBuffer)
       .resize(sz, sz, { fit: 'contain', background: bgRgba })
-      .png()
-      .toBuffer();
-    pngBuffers.push({ size: sz, buffer: buf });
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // BITMAPINFOHEADER (40 bytes)
+    const header = Buffer.alloc(40);
+    header.writeUInt32LE(40, 0);          // biSize
+    header.writeInt32LE(sz, 4);           // biWidth
+    header.writeInt32LE(sz * 2, 8);       // biHeight (doubled for XOR + AND mask)
+    header.writeUInt16LE(1, 12);          // biPlanes
+    header.writeUInt16LE(32, 14);         // biBitCount (32-bit BGRA)
+    header.writeUInt32LE(0, 16);          // biCompression (BI_RGB)
+
+    const xorSize = sz * sz * 4;
+    const andRowBytes = Math.ceil(sz / 32) * 4;
+    const andSize = andRowBytes * sz;
+    header.writeUInt32LE(xorSize + andSize, 20); // biSizeImage
+
+    const xorMask = Buffer.alloc(xorSize);
+    const andMask = Buffer.alloc(andSize, 0);
+
+    // Bottom-up rows for DIB
+    for (let y = 0; y < sz; y++) {
+      const srcRow = sz - 1 - y;
+      for (let x = 0; x < sz; x++) {
+        const srcIdx = (srcRow * sz + x) * 4;
+        const dstIdx = (y * sz + x) * 4;
+        const r = data[srcIdx];
+        const g = data[srcIdx + 1];
+        const b = data[srcIdx + 2];
+        const a = data[srcIdx + 3];
+
+        xorMask[dstIdx] = b;
+        xorMask[dstIdx + 1] = g;
+        xorMask[dstIdx + 2] = r;
+        xorMask[dstIdx + 3] = a;
+
+        // If pixel is transparent (alpha < 128), set bit in AND mask
+        if (a < 32) {
+          const byteIndex = y * andRowBytes + (x >> 3);
+          const bitMask = 0x80 >> (x & 7);
+          andMask[byteIndex] |= bitMask;
+        }
+      }
+    }
+
+    frames.push({
+      size: sz,
+      buffer: Buffer.concat([header, xorMask, andMask])
+    });
   }
 
-  const numImages = pngBuffers.length;
-  const headerSize = 6;
-  const dirEntrySize = 16;
-  let offset = headerSize + numImages * dirEntrySize;
+  // Add 256x256 PNG frame
+  const png256 = await sharp(masterPngBuffer)
+    .resize(256, 256, { fit: 'contain', background: bgRgba })
+    .png()
+    .toBuffer();
+  frames.push({ size: 256, buffer: png256 });
 
-  const header = Buffer.alloc(headerSize);
-  header.writeUInt16LE(0, 0); // Reserved
-  header.writeUInt16LE(1, 2); // Type 1 = ICO
-  header.writeUInt16LE(numImages, 4);
+  const numImages = frames.length;
+  const icoHeader = Buffer.alloc(6);
+  icoHeader.writeUInt16LE(0, 0);
+  icoHeader.writeUInt16LE(1, 2); // Type 1 = ICO
+  icoHeader.writeUInt16LE(numImages, 4);
 
+  let offset = 6 + numImages * 16;
   const dirEntries = [];
-  for (const item of pngBuffers) {
-    const entry = Buffer.alloc(dirEntrySize);
-    entry.writeUInt8(item.size === 256 ? 0 : item.size, 0);
-    entry.writeUInt8(item.size === 256 ? 0 : item.size, 1);
-    entry.writeUInt8(0, 2); // Palette
-    entry.writeUInt8(0, 3); // Reserved
-    entry.writeUInt16LE(1, 4); // Color planes
-    entry.writeUInt16LE(32, 6); // Bits per pixel
-    entry.writeUInt32LE(item.buffer.length, 8);
+
+  for (const frame of frames) {
+    const entry = Buffer.alloc(16);
+    entry.writeUInt8(frame.size === 256 ? 0 : frame.size, 0);
+    entry.writeUInt8(frame.size === 256 ? 0 : frame.size, 1);
+    entry.writeUInt8(0, 2);
+    entry.writeUInt8(0, 3);
+    entry.writeUInt16LE(1, 4);
+    entry.writeUInt16LE(32, 6);
+    entry.writeUInt32LE(frame.buffer.length, 8);
     entry.writeUInt32LE(offset, 12);
     dirEntries.push(entry);
-    offset += item.buffer.length;
+    offset += frame.buffer.length;
   }
 
-  return Buffer.concat([header, ...dirEntries, ...pngBuffers.map(p => p.buffer)]);
+  return Buffer.concat([icoHeader, ...dirEntries, ...frames.map(f => f.buffer)]);
+}
+
+/**
+ * Purges cached Tauri / Cargo Windows resource & executable files in `src-tauri/target/release`
+ * so `npx tauri build` NEVER reuses an old `.exe` or `.res` with the previous icon!
+ */
+function purgeTauriIconBuildCache() {
+  const releaseDir = path.join(ROOT_DIR, 'src-tauri', 'target', 'release');
+  const debugDir = path.join(ROOT_DIR, 'src-tauri', 'target', 'debug');
+
+  for (const targetSubDir of [releaseDir, debugDir]) {
+    if (!fs.existsSync(targetSubDir)) continue;
+
+    // 1. Remove cached .exe binaries and WiX/NSIS intermediate folders
+    const toRemove = [
+      'sayan-warehouse.exe',
+      'dlkam.exe',
+      'Dlkam.exe',
+      'wix',
+      'nsis',
+      'resources'
+    ];
+    for (const item of toRemove) {
+      const full = path.join(targetSubDir, item);
+      if (fs.existsSync(full)) {
+        try {
+          fs.rmSync(full, { recursive: true, force: true });
+        } catch (_) {}
+      }
+    }
+
+    // 2. Remove cached build-script outputs (resource.rc / resource.lib) and fingerprints for sayan-warehouse
+    for (const cacheFolder of ['build', '.fingerprint', 'deps']) {
+      const folderPath = path.join(targetSubDir, cacheFolder);
+      if (!fs.existsSync(folderPath)) continue;
+      try {
+        const entries = fs.readdirSync(folderPath);
+        for (const name of entries) {
+          if (name.startsWith('sayan-warehouse') || name.startsWith('dlkam')) {
+            const p = path.join(folderPath, name);
+            try {
+              fs.rmSync(p, { recursive: true, force: true });
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 3. Touch src-tauri/build.rs and src-tauri/src/main.rs so Cargo is forced to recompile resources
+  const now = new Date();
+  for (const relFile of ['src-tauri/build.rs', 'src-tauri/src/main.rs', 'src-tauri/tauri.conf.json']) {
+    const full = path.join(ROOT_DIR, relFile);
+    if (fs.existsSync(full)) {
+      try {
+        fs.utimesSync(full, now, now);
+      } catch (_) {}
+    }
+  }
+}
+
+/**
+ * Flushes the Windows Explorer icon cache so Desktop shortcuts immediately display the new icon.
+ */
+function refreshWindowsIconCache() {
+  if (process.platform !== 'win32') return;
+  try {
+    execSync('ie4uinit.exe -show', { stdio: 'ignore' });
+    execSync('ie4uinit.exe -ClearIconCache', { stdio: 'ignore' });
+  } catch (_) {}
 }
 
 async function generateAllIcons() {
@@ -167,7 +301,10 @@ async function generateAllIcons() {
     process.exit(1);
   }
 
-  console.log(`📌 فایل مبدا شناسایی شد: ${path.basename(sourceIcon)} (${sourceIcon})`);
+  const rawSourceBuffer = fs.readFileSync(sourceIcon);
+  const sourceHash = crypto.createHash('sha256').update(rawSourceBuffer).digest('hex').slice(0, 12);
+  const sourceMeta = await sharp(rawSourceBuffer).metadata();
+  console.log(`📌 فایل مبدا شناسایی شد: ${path.basename(sourceIcon)} (${sourceMeta.width}x${sourceMeta.height}, Hash: ${sourceHash})`);
 
   const bgInfo = await detectIconBackground(sourceIcon);
   if (bgInfo.hasBackground) {
@@ -182,7 +319,7 @@ async function generateAllIcons() {
   });
 
   // Prepare 1024x1024 master buffer preserving exact background state
-  const master1024Buffer = await sharp(sourceIcon)
+  const master1024Buffer = await sharp(rawSourceBuffer)
     .ensureAlpha()
     .resize(1024, 1024, {
       fit: 'contain',
@@ -196,6 +333,9 @@ async function generateAllIcons() {
   const tmpRootIcon = rootAppIconPng + '.tmp';
   fs.writeFileSync(tmpRootIcon, master1024Buffer);
   fs.renameSync(tmpRootIcon, rootAppIconPng);
+
+  // Build true Win32 multi-resolution .ico (DIB + PNG)
+  const win32IcoBuffer = await createTrueWin32Ico(master1024Buffer, bgInfo.rgba);
 
   // ------------------------------------------------------------------------
   // 1. WEB & PWA ICONS (public/)
@@ -226,20 +366,15 @@ async function generateAllIcons() {
     .png()
     .toFile(path.join(PUBLIC_DIR, 'apple-touch-icon.png'));
 
-  const faviconIco = await createIcoFromPngBuffer(master1024Buffer, bgInfo.rgba);
-  fs.writeFileSync(path.join(PUBLIC_DIR, 'favicon.ico'), faviconIco);
+  fs.writeFileSync(path.join(PUBLIC_DIR, 'favicon.ico'), win32IcoBuffer);
   console.log('   ✅ آیکون‌های وب و PWA در مسیر public/ ساخته شدند.');
 
   // ------------------------------------------------------------------------
-  // 2. TAURI DESKTOP ICONS (src-tauri/icons/)
+  // 2. TAURI DESKTOP ICONS (src-tauri/icons/) + CACHE PURGE
   // ------------------------------------------------------------------------
   console.log('\n🖥️ [2/3] در حال ساخت آیکون‌های دسکتاپ تائوری در src-tauri/icons...');
-  let tauriCliSucceeded = false;
-  try {
-    execSync(`npx tauri icon "${rootAppIconPng}" -o src-tauri/icons`, { stdio: 'ignore', cwd: ROOT_DIR });
-    tauriCliSucceeded = true;
-  } catch (_) {}
 
+  // Write True Win32 .ico and all PNG sizes first
   const tauriPngSizes = [
     { name: '32x32.png', size: 32 },
     { name: '128x128.png', size: 128 },
@@ -264,15 +399,27 @@ async function generateAllIcons() {
       .toFile(path.join(TAURI_ICONS_DIR, item.name));
   }
 
-  const tauriIcoBuffer = await createIcoFromPngBuffer(master1024Buffer, bgInfo.rgba);
-  fs.writeFileSync(path.join(TAURI_ICONS_DIR, 'icon.ico'), tauriIcoBuffer);
-  if (!fs.existsSync(path.join(TAURI_ICONS_DIR, 'icon.icns'))) {
-    await sharp(master1024Buffer)
-      .resize(512, 512, { fit: 'contain', background: bgInfo.rgba })
-      .png()
-      .toFile(path.join(TAURI_ICONS_DIR, 'icon.icns'));
+  fs.writeFileSync(path.join(TAURI_ICONS_DIR, 'icon.ico'), win32IcoBuffer);
+
+  // Also run official `npx tauri icon` so Tauri's native ICNS/ICO generator runs on the 1024x1024 master
+  let tauriCliSucceeded = false;
+  try {
+    execSync(`npx tauri icon "${rootAppIconPng}" -o src-tauri/icons`, { stdio: 'inherit', cwd: ROOT_DIR });
+    tauriCliSucceeded = true;
+  } catch (_) {}
+
+  // Ensure our true Win32 .ico (with 16, 24, 32, 48, 64 DIB + 256 PNG) is in place if Tauri CLI didn't create it
+  if (!fs.existsSync(path.join(TAURI_ICONS_DIR, 'icon.ico')) || fs.statSync(path.join(TAURI_ICONS_DIR, 'icon.ico')).size < 1000) {
+    fs.writeFileSync(path.join(TAURI_ICONS_DIR, 'icon.ico'), win32IcoBuffer);
   }
-  console.log(`   ✅ تمام آیکون‌های تائوری (${tauriCliSucceeded ? 'Tauri CLI + Sharp' : 'Sharp Direct'}) در مسیر src-tauri/icons/ ساخته شدند.`);
+
+  // CRITICAL: Purge cached Cargo/Tauri .exe and Windows resource build files so the next Tauri build is 100% forced to embed the new icon!
+  purgeTauriIconBuildCache();
+  refreshWindowsIconCache();
+
+  const finalIcoHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(TAURI_ICONS_DIR, 'icon.ico'))).digest('hex').slice(0, 12);
+  console.log(`   ✅ تمام آیکون‌های تائوری (${tauriCliSucceeded ? 'Tauri CLI + Win32 ICO' : 'Win32 DIB ICO'}) در مسیر src-tauri/icons/ ساخته شدند (ICO Hash: ${finalIcoHash}).`);
+  console.log('   🧹 کش قبلی کامپایلر تائوری (target/release/build & .exe) پاک‌سازی شد تا آیکون جدید ۱۰۰٪ در فایل نصبی کامپایل شود.');
 
   // ------------------------------------------------------------------------
   // 3. ANDROID CAPACITOR ICONS & SPLASH (assets/ + android/app/src/main/res/)
@@ -350,13 +497,11 @@ async function generateAllIcons() {
       const targetDir = path.join(ANDROID_RES_DIR, spec.folder);
       if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
-      // 1) ic_launcher.png (preserves exact background or transparency)
       await sharp(master1024Buffer)
         .resize(spec.legacySize, spec.legacySize, { fit: 'contain', background: bgInfo.rgba })
         .png()
         .toFile(path.join(targetDir, 'ic_launcher.png'));
 
-      // 2) ic_launcher_round.png
       if (bgInfo.hasBackground) {
         const circleSvg = Buffer.from(
           `<svg width="${spec.legacySize}" height="${spec.legacySize}"><circle cx="${spec.legacySize / 2}" cy="${spec.legacySize / 2}" r="${spec.legacySize / 2}" fill="white"/></svg>`
@@ -377,13 +522,11 @@ async function generateAllIcons() {
           .toFile(path.join(targetDir, 'ic_launcher_round.png'));
       }
 
-      // 3) ic_launcher_foreground.png
       await sharp(adaptiveForeground1024)
         .resize(spec.fgSize, spec.fgSize, { fit: 'contain', background: bgInfo.rgba })
         .png()
         .toFile(path.join(targetDir, 'ic_launcher_foreground.png'));
 
-      // 4) ic_launcher_background.png
       await sharp(adaptiveBackground1024)
         .resize(spec.fgSize, spec.fgSize, { fit: 'contain', background: bgInfo.rgba })
         .png()
@@ -401,7 +544,6 @@ async function generateAllIcons() {
 `;
     fs.writeFileSync(bgXmlPath, bgXmlContent, 'utf8');
 
-    // If transparent background, remove mipmap-anydpi-v26 XML wrappers so Android launchers never force a white circle plate behind the transparent PNG
     const anyDpiDir = path.join(ANDROID_RES_DIR, 'mipmap-anydpi-v26');
     if (!bgInfo.hasBackground) {
       if (fs.existsSync(anyDpiDir)) {
@@ -424,7 +566,6 @@ async function generateAllIcons() {
       fs.writeFileSync(path.join(anyDpiDir, 'ic_launcher_round.xml'), adaptiveXml, 'utf8');
     }
 
-    // Update Android splash drawables
     const drawableDirs = [
       { folder: 'drawable', w: 480, h: 800 },
       { folder: 'drawable-night', w: 480, h: 800 },
@@ -482,4 +623,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { generateAllIcons, detectIconBackground };
+module.exports = { generateAllIcons, detectIconBackground, purgeTauriIconBuildCache, refreshWindowsIconCache };

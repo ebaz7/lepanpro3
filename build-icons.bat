@@ -10,6 +10,8 @@ if %ERRORLEVEL% NEQ 0 (
     pause
     exit /b %ERRORLEVEL%
 )
+ie4uinit.exe -show >nul 2>&1
+ie4uinit.exe -ClearIconCache >nul 2>&1
 echo.
-echo ✅ تمام آیکون‌ها با حفظ دقیق وضعیت پس‌زمینه (رنگی یا شفاف) ساخته و در جای اصلی قرار گرفتند.
+echo ✅ تمام آیکون‌ها با حفظ دقیق وضعیت پس‌زمینه (رنگی یا شفاف) ساخته و کش قبلی تائوری و ویندوز پاک شد.
 pause

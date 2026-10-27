@@ -134,6 +134,50 @@ async function buildAndroid() {
     }
   }
 
+  // 6.5. Fix google-services.json package_name mismatch & guard build.gradle
+  const appBuildGradlePath = path.join(androidDir, 'app', 'build.gradle');
+  let appPackageName = 'com.dikam.paymentorder';
+  if (fs.existsSync(appBuildGradlePath)) {
+    let gradleText = fs.readFileSync(appBuildGradlePath, 'utf8');
+    const appIdMatch = gradleText.match(/applicationId\s+["']([^"']+)["']/);
+    if (appIdMatch && appIdMatch[1]) {
+      appPackageName = appIdMatch[1].trim();
+    }
+    // Ensure google-services plugin is only applied if google-services.json matches appPackageName
+    const unsafeGoogleServicesRegex = /if\s*\(\s*servicesJSON\.text\s*\)\s*\{\s*apply\s+plugin:\s*['"]com\.google\.gms\.google-services['"]\s*\}/;
+    if (unsafeGoogleServicesRegex.test(gradleText)) {
+      gradleText = gradleText.replace(
+        unsafeGoogleServicesRegex,
+        `if (servicesJSON.exists() && servicesJSON.text && servicesJSON.text.contains('"${appPackageName}"')) {\n        apply plugin: 'com.google.gms.google-services'\n    }`
+      );
+      fs.writeFileSync(appBuildGradlePath, gradleText, 'utf8');
+    }
+  }
+
+  const googleServicesPath = path.join(androidDir, 'app', 'google-services.json');
+  if (fs.existsSync(googleServicesPath)) {
+    try {
+      const gsRaw = fs.readFileSync(googleServicesPath, 'utf8');
+      const gsJson = JSON.parse(gsRaw);
+      if (gsJson && Array.isArray(gsJson.client) && gsJson.client.length > 0) {
+        const hasMatchingClient = gsJson.client.some(
+          c => c?.client_info?.android_client_info?.package_name === appPackageName
+        );
+        if (!hasMatchingClient) {
+          const clonedClient = JSON.parse(JSON.stringify(gsJson.client[0]));
+          if (!clonedClient.client_info) clonedClient.client_info = {};
+          if (!clonedClient.client_info.android_client_info) clonedClient.client_info.android_client_info = {};
+          clonedClient.client_info.android_client_info.package_name = appPackageName;
+          gsJson.client.push(clonedClient);
+          fs.writeFileSync(googleServicesPath, JSON.stringify(gsJson, null, 2) + '\n', 'utf8');
+          console.log(`   ✅ فایل google-services.json به‌صورت خودکار با پکیج (${appPackageName}) همگام‌سازی شد.`);
+        }
+      }
+    } catch (gsErr) {
+      console.warn('⚠️ فایل google-services.json نامعتبر بود؛ نادیده گرفته شد.');
+    }
+  }
+
   // 7. Compile Signed APK using Gradle
   const isRelease = !process.argv.includes('--debug');
   const keystorePath = path.join(androidDir, 'app', 'release-key.keystore');

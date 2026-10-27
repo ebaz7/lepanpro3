@@ -91,7 +91,7 @@ function syncBuildVersion(options = {}) {
     console.log(`   ✅ src-tauri/Cargo.toml -> v${targetVersion}`);
   }
 
-  // 4. Update android/app/build.gradle
+  // 4. Update android/app/build.gradle & sync google-services.json
   if (fs.existsSync(gradlePath)) {
     let gradleContent = fs.readFileSync(gradlePath, 'utf8');
     gradleContent = gradleContent.replace(
@@ -102,8 +102,36 @@ function syncBuildVersion(options = {}) {
       /versionName\s+"[^"]*"/,
       `versionName "${targetVersion}"`
     );
+    const unsafeGsRegex = /if\s*\(\s*servicesJSON\.text\s*\)\s*\{\s*apply\s+plugin:\s*['"]com\.google\.gms\.google-services['"]\s*\}/;
+    if (unsafeGsRegex.test(gradleContent)) {
+      gradleContent = gradleContent.replace(
+        unsafeGsRegex,
+        `if (servicesJSON.exists() && servicesJSON.text && servicesJSON.text.contains('"com.dikam.paymentorder"')) {\n        apply plugin: 'com.google.gms.google-services'\n    }`
+      );
+    }
     fs.writeFileSync(gradlePath, gradleContent, 'utf8');
     console.log(`   ✅ android/app/build.gradle -> versionName "${targetVersion}", versionCode ${versionCode}`);
+  }
+
+  const googleServicesPath = path.join(ROOT_DIR, 'android', 'app', 'google-services.json');
+  if (fs.existsSync(googleServicesPath)) {
+    try {
+      const gsJson = JSON.parse(fs.readFileSync(googleServicesPath, 'utf8'));
+      if (gsJson && Array.isArray(gsJson.client) && gsJson.client.length > 0) {
+        const hasMatch = gsJson.client.some(
+          c => c && c.client_info && c.client_info.android_client_info && c.client_info.android_client_info.package_name === 'com.dikam.paymentorder'
+        );
+        if (!hasMatch) {
+          const cloned = JSON.parse(JSON.stringify(gsJson.client[0]));
+          if (!cloned.client_info) cloned.client_info = {};
+          if (!cloned.client_info.android_client_info) cloned.client_info.android_client_info = {};
+          cloned.client_info.android_client_info.package_name = 'com.dikam.paymentorder';
+          gsJson.client.push(cloned);
+          fs.writeFileSync(googleServicesPath, JSON.stringify(gsJson, null, 2) + '\n', 'utf8');
+          console.log(`   ✅ android/app/google-services.json -> package_name "com.dikam.paymentorder" added`);
+        }
+      }
+    } catch (_) {}
   }
 
   // 5. Update services/updateService.ts

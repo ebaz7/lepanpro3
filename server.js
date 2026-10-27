@@ -43,7 +43,7 @@ import archiver from 'archiver';
 import AdmZip from 'adm-zip';
 import webpush from 'web-push';
 import * as utils from './backend/utils.js';
-import { notifyExitPermitStep, notifyCustomerCargoExit, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport, notifyDriverPayment } from './backend/bot-core.js';
+import { notifyExitPermitStep, notifyCustomerCargoExit, notifyPaymentOrderStep, notifyWarehouseBijak, notifyMeetingAnnouncement, notifyMeetingMinutes, notifyPurchaseRequestStep, runDailyReport, generateAndSendComparisonPDF, notifySecretariatLetter, getCustomerBalancesData, fetchProcessedSayanSalesData, normalizeToYmdStrings, isActualProduct, classifyMajorCategory, sendTreasuryChequesReport, notifyDriverPayment } from './backend/bot-core.js';
 import * as telegram from './backend/telegram.js';
 import * as bale from './backend/bale.js';
 import * as Renderer from './backend/renderer.js';
@@ -1054,11 +1054,12 @@ const sendDailySalesReportForDate = async (db, dateObjOrRange, labelSuffix = '',
     const hasBaleToken = !!settings.baleBotToken;
     const tgTargets = uniqueSalesTargets.filter(t => t.platform === 'telegram');
     const baleTargets = uniqueSalesTargets.filter(t => t.platform === 'bale');
+    const waTargets = uniqueSalesTargets.filter(t => t.platform === 'whatsapp');
 
-    if (tgTargets.length > 0 && !hasTgToken && baleTargets.length === 0) {
+    if (tgTargets.length > 0 && !hasTgToken && baleTargets.length === 0 && waTargets.length === 0) {
         throw new Error('توکن ربات تلگرام در تنظیمات سیستم ثبت نشده است! لطفاً ابتدا توکن ربات تلگرام را در «تنظیمات سیستم -> تب ربات‌ها» وارد نمایید.');
     }
-    if (baleTargets.length > 0 && !hasBaleToken && tgTargets.length === 0) {
+    if (baleTargets.length > 0 && !hasBaleToken && tgTargets.length === 0 && waTargets.length === 0) {
         throw new Error('توکن ربات بله در تنظیمات سیستم ثبت نشده است! لطفاً ابتدا توکن ربات بله را در «تنظیمات سیستم -> تب ربات‌ها» وارد نمایید.');
     }
 
@@ -1116,7 +1117,8 @@ const sendDailySalesReportForDate = async (db, dateObjOrRange, labelSuffix = '',
     const { categoryList, summary } = salesData;
 
     if (categoryList.length > 0) {
-        const title = `گزارش رسمی فروش و مرجوعی سایان - مورخ ${dateLabel} (${labelSuffix})`;
+        const displaySuffix = labelSuffix && labelSuffix !== dateLabel ? ` (${labelSuffix})` : '';
+        const title = `گزارش رسمی فروش و مرجوعی سایان ERP - ${dateLabel}${displaySuffix}`;
         const columns = ['ردیف', 'سرفصل کالا', 'فروش (ک‌گ / ریال)', 'مرجوعی کد ۱۳ (ک‌گ / ریال)', 'خالص نهایی (ک‌گ / ریال)', 'فی متوسط (ریال)'];
         
         let idx = 1;
@@ -1138,7 +1140,7 @@ const sendDailySalesReportForDate = async (db, dateObjOrRange, labelSuffix = '',
             Math.round(summary.avgFee).toLocaleString('fa-IR')
         ]);
         
-        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true); // Landscape
+        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true, dateLabel); // Landscape
         
         if (!pdfBuffer) {
             throw new Error('خطا در تولید فایل PDF گزارش. لطفاً اطمینان حاصل کنید که مرورگر Chrome یا Edge روی سرور نصب شده باشد.');
@@ -1406,7 +1408,8 @@ app.post('/api/sayan/sales-report/send-compare', async (req, res) => {
             throw new Error('گروهی برای ارسال گزارش فروش (تلگرام یا بله) در تنظیمات سیستم ثبت نشده است. لطفاً در تنظیمات سیستم -> تب ربات‌ها آیدی گروه مقصد را وارد نمایید.');
         }
 
-        const title = `گزارش تحلیلی و مقایسه‌ای فروش (دوره A vs دوره B)`;
+        const compareDateBadge = `دوره A: از ${dateFromA || '---'} تا ${dateToA || '---'} | دوره B: از ${dateFromB || '---'} تا ${dateToB || '---'}`;
+        const title = `گزارش تحلیلی و مقایسه‌ای فروش (${compareDateBadge})`;
         const columns = ['ردیف', 'گروه اصلی کالا', 'وزن A (ک‌گ)', 'مبلغ A (ریال)', 'وزن B (ک‌گ)', 'مبلغ B (ریال)', 'تغییر وزن %', 'تغییر مبلغ %', 'تغییر فی %'];
         
         let totalNetWgtA = 0;
@@ -1480,7 +1483,7 @@ app.post('/api/sayan/sales-report/send-compare', async (req, res) => {
             totalFeePctStr
         ]);
 
-        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true);
+        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true, compareDateBadge);
         
         if (!pdfBuffer) {
             throw new Error('خطا در تولید فایل PDF گزارش. لطفاً اطمینان حاصل کنید که مرورگر Chrome یا Edge روی سرور نصب شده باشد.');
@@ -1673,7 +1676,8 @@ app.post('/api/sayan/sales-report/download-compare-pdf', async (req, res) => {
             ]);
         }
 
-        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true);
+        const compareDateBadge = `دوره A: از ${dateFromA || '---'} تا ${dateToA || '---'} | دوره B: از ${dateFromB || '---'} تا ${dateToB || '---'}`;
+        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true, compareDateBadge);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="Compare_Sales_Report_${Date.now()}.pdf"`);
         res.send(pdfBuffer);
@@ -1687,28 +1691,38 @@ app.post('/api/sayan/sales-report/send-executive', async (req, res) => {
     try {
         const db = getDb();
         const settings = db.settings || {};
-        const { dateFrom, dateTo, summary, groupData, customTargets, selectedPlatforms } = req.body;
+        const { dateFrom, dateTo, summary, groupData, customTargets, selectedPlatforms, customTitle, customColumns, customRows } = req.body;
 
-        const title = `داشبورد مدیریتی گزارش فروش سایان ERP (${dateFrom || 'امروز'} تا ${dateTo || 'امروز'})`;
+        const normDates = normalizeToYmdStrings(dateFrom, dateTo || dateFrom);
+        const displayFrom = normDates.shamsiFrom || dateFrom || 'امروز';
+        const displayTo = normDates.shamsiTo || dateTo || displayFrom;
+        const dateRangeLabel = displayFrom === displayTo ? `مورخ ${displayFrom}` : `از تاریخ ${displayFrom} تا ${displayTo}`;
+        const title = customTitle
+            ? (customTitle.includes(displayFrom) ? customTitle : `${customTitle} (${dateRangeLabel})`)
+            : `داشبورد مدیریتی گزارش فروش سایان ERP (${dateRangeLabel})`;
 
         const platforms = selectedPlatforms && selectedPlatforms.length > 0 ? selectedPlatforms : ['telegram', 'bale', 'whatsapp'];
         const uniqueTargets = collectBotTargets(db, { category: 'sales', platforms, customTargets });
 
         if (uniqueTargets.length === 0) {
-            throw new Error('هیچ شناسه گروه یا چت مقصد برای پیام‌رسان‌های انتخاب شده یافت نشد. لطفاً در بخش «تنظیمات سیستم ⚙️ -> تب ربات‌ها» شناسه چت یا گروه تلگرام/بله را وارد نمایید.');
+            throw new Error('هیچ شناسه گروه یا چت مقصد برای پیام‌رسان‌های انتخاب شده یافت نشد. لطفاً گیرندگان مورد نظر را در پنجره ارسال انتخاب کنید یا در بخش «تنظیمات سیستم ⚙️ -> تب ربات‌ها» شناسه گروه را وارد نمایید.');
         }
 
-        const columns = ['ردیف', 'گروه اصلی کالا', 'وزن خالص (ک‌گ)', 'فروش خالص (ریال)', 'فی نهایی (ریال/ک‌گ)', 'سهم %'];
-        const tableRows = (groupData || []).map((g, idx) => [
-            (idx + 1).toLocaleString('fa-IR'),
-            g.name || 'سایر',
-            (g.netWgt || 0).toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
-            Math.round(g.netAmt || 0).toLocaleString('fa-IR'),
-            Math.round(g.netFee || 0).toLocaleString('fa-IR'),
-            `${(g.sharePct || 0).toFixed(1)}%`
-        ]);
+        const columns = (Array.isArray(customColumns) && customColumns.length > 0)
+            ? customColumns
+            : ['ردیف', 'گروه اصلی کالا', 'وزن خالص (ک‌گ)', 'فروش خالص (ریال)', 'فی نهایی (ریال/ک‌گ)', 'سهم %'];
+        const tableRows = (Array.isArray(customRows) && customRows.length > 0)
+            ? customRows
+            : (groupData || []).map((g, idx) => [
+                (idx + 1).toLocaleString('fa-IR'),
+                g.name || 'سایر',
+                (g.netWgt || 0).toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+                Math.round(g.netAmt || 0).toLocaleString('fa-IR'),
+                Math.round(g.netFee || 0).toLocaleString('fa-IR'),
+                `${(g.sharePct || 0).toFixed(1)}%`
+            ]);
 
-        if (summary) {
+        if (!customRows && summary) {
             tableRows.push([
                 'جمع کل',
                 '-',
@@ -1719,16 +1733,16 @@ app.post('/api/sayan/sales-report/send-executive', async (req, res) => {
             ]);
         }
 
-        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true);
+        const pdfBuffer = await Renderer.generateReportPDF(title, columns, tableRows, true, dateRangeLabel);
         
         if (!pdfBuffer) {
             throw new Error('خطا در تولید فایل PDF گزارش. لطفاً اطمینان حاصل کنید که مرورگر Chrome یا Edge روی سرور نصب شده باشد.');
         }
 
-        const filename = `Executive_Sales_Report_${Date.now()}.pdf`;
+        const filename = `Executive_Sales_Report_${displayFrom.replace(/\//g, '-')}_to_${displayTo.replace(/\//g, '-')}.pdf`;
 
-        const caption = `📊 *گزارش مدیریتی فروش سایان ERP*
-📅 *بازه گزارش:* از ${dateFrom || '-'} تا ${dateTo || '-'}
+        const caption = `📊 *${title}*
+📅 *بازه گزارش:* ${dateRangeLabel}
 
 💰 *فروش خالص کل:* ${Math.round(summary?.netAmount || 0).toLocaleString('fa-IR')} ریال
 📦 *وزن خالص کل:* ${(summary?.netWeight || 0).toLocaleString('fa-IR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} کیلوگرم
@@ -1740,7 +1754,7 @@ app.post('/api/sayan/sales-report/send-executive', async (req, res) => {
 🏆 *پرفروش‌ترین کالا:* ${summary?.topProduct || 'نامشخص'}
 🔻 *میزان مرجوعی:* ${Math.round(summary?.returnAmount || 0).toLocaleString('fa-IR')} ریال (${(summary?.returnWeight || 0).toFixed(1)} ک‌گ)
 
-📎 فایل کامل PDF شامل جزئیات گروه‌های کالا پیوست گردید.`;
+📎 فایل کامل PDF شامل جزئیات گزارش پیوست گردید.`;
 
         let successfulSends = 0;
         const sendDetails = [];
@@ -1776,16 +1790,34 @@ app.post('/api/sayan/sales-report/send-executive', async (req, res) => {
             }
         }
 
-        if (successfulSends === 0) {
+        const whatsappFallbackLinks = [];
+        for (const d of sendDetails) {
+            if (d.platform === 'whatsapp' && d.status === 'failed') {
+                let cleanPhone = String(d.id || '').replace(/[^0-9]/g, '');
+                if (cleanPhone.startsWith('09')) cleanPhone = '98' + cleanPhone.slice(1);
+                else if (cleanPhone.startsWith('9') && cleanPhone.length === 10) cleanPhone = '98' + cleanPhone;
+                if (cleanPhone.length >= 10) {
+                    whatsappFallbackLinks.push({
+                        phone: d.id,
+                        url: `https://wa.me/${cleanPhone}?text=${encodeURIComponent(caption)}`
+                    });
+                }
+            }
+        }
+
+        if (successfulSends === 0 && whatsappFallbackLinks.length === 0) {
             throw new Error(`ارسال گزارش به پیام‌رسان‌ها ناموفق بود: ${lastErr || 'خطای شبکه'}`);
         }
 
         res.json({ 
             success: true, 
-            message: `گزارش مدیریتی با موفقیت به پیام‌رسان‌ها ارسال گردید.`,
+            message: successfulSends > 0
+                ? `گزارش مدیریتی با موفقیت به پیام‌رسان‌ها ارسال گردید.`
+                : `درگاه مستقیم واتساپ آماده ارسال به شماره انتخاب‌شده می‌باشد.`,
             sendDetails,
             successfulSends,
-            totalTargets: uniqueTargets.length
+            totalTargets: uniqueTargets.length,
+            whatsappFallbackLinks
         });
     } catch (e) {
         console.error("Executive Sales Report Error:", e);

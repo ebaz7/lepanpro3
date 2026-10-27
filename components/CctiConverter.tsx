@@ -164,6 +164,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
     const [newPersonAccount, setNewPersonAccount] = useState('');
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const accountsFileInputRef = useRef<HTMLInputElement>(null);
 
     // Helper for Persian months
     const PERSIAN_MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
@@ -180,7 +181,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
             setArchiveMonthName(`حقوق ماه جاری`);
         }
 
-        const data = localStorage.getItem('ccti_persons');
+        const data = localStorage.getItem('ccti_persons') || localStorage.getItem('ccti_persons_backup');
         if (data) {
             try {
                 setSavedPersons(JSON.parse(data));
@@ -197,7 +198,166 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
 
     const updateSavedPersons = (newData: Record<string, { account: string, name: string }>) => {
         setSavedPersons(newData);
-        localStorage.setItem('ccti_persons', JSON.stringify(newData));
+        try {
+            localStorage.setItem('ccti_persons', JSON.stringify(newData));
+            localStorage.setItem('ccti_persons_backup', JSON.stringify(newData));
+        } catch (e) {
+            console.error('Error saving CCTI persons:', e);
+        }
+    };
+
+    const handleImportAccountsExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const uploadedFile = e.target.files?.[0];
+        if (!uploadedFile) return;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            try {
+                const bstr = evt.target?.result;
+                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wsname = wb.SheetNames[0];
+                const ws = wb.Sheets[wsname];
+                const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+                if (!data || data.length === 0) {
+                    alert('فایل اکسل انتخاب‌شده خالی است.');
+                    return;
+                }
+
+                // Header detection
+                let headerIdx = 0;
+                for (let i = 0; i < Math.min(data.length, 20); i++) {
+                    const rowStr = (data[i] || []).join(' ');
+                    if (rowStr.includes('حساب') || rowStr.includes('شبا') || rowStr.includes('نام') || rowStr.includes('کد') || rowStr.includes('IBAN')) {
+                        headerIdx = i;
+                        break;
+                    }
+                }
+
+                const headers = (data[headerIdx] || []).map(h => String(h || '').trim());
+                
+                // Column matching
+                const accountColName = headers.find(h => h.includes('شبا') || h.includes('حساب') || h.includes('IBAN') || h.includes('کارت'));
+                
+                // Smart Name Detection (Separate First Name & Last Name OR Combined Name)
+                const firstNameColName = headers.find(h => h && (h.includes('نام کوچک') || (h.includes('نام') && !h.includes('خانوادگی') && !h.includes('پدر') && !h.includes('پرسنل')) || h.toLowerCase() === 'first name'));
+                const lastNameColName = headers.find(h => h && (h.includes('خانوادگی') || h.includes('فامیلی') || h.includes('شهرت') || h.toLowerCase().includes('last name') || h.toLowerCase().includes('family')));
+                const fullNameColName = headers.find(h => h && (h.includes('نام و نام خانوادگی') || h.includes('نام و فامیلی') || h.includes('نام پرسنل') || h.includes('مشخصات') || h.toLowerCase().includes('full name')));
+
+                const idColName = headers.find(h => h && (h.includes('کد') || h.includes('شناسه') || h.includes('ملی') || h.includes('پرونده') || h.includes('ID')));
+
+                const accountColIdx = accountColName ? headers.indexOf(accountColName) : headers.findIndex(h => h.includes('شبا') || h.includes('حساب'));
+                const firstNameIdx = firstNameColName ? headers.indexOf(firstNameColName) : -1;
+                const lastNameIdx = lastNameColName ? headers.indexOf(lastNameColName) : -1;
+                const fullNameIdx = fullNameColName ? headers.indexOf(fullNameColName) : headers.findIndex(h => h.includes('نام'));
+                const idColIdx = idColName ? headers.indexOf(idColName) : headers.findIndex(h => h.includes('کد') || h.includes('شناسه'));
+
+                const rows = data.slice(headerIdx + 1);
+                let importedCount = 0;
+                const newSaved = { ...savedPersons };
+
+                const normalizeDigits = (str: string) => {
+                    if (!str) return '';
+                    return String(str)
+                        .replace(/[۰-۹]/g, (d: any) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+                        .replace(/[٠-٩]/g, (d: any) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+                        .replace(/ي/g, 'ی')
+                        .replace(/ك/g, 'ک')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                };
+
+                rows.forEach((row, idx) => {
+                    if (!Array.isArray(row) || row.length === 0) return;
+
+                    let rawAccount = accountColIdx !== -1 ? String(row[accountColIdx] || '').trim() : '';
+                    let rawId = idColIdx !== -1 ? String(row[idColIdx] || '').trim() : '';
+                    let rawName = '';
+
+                    // Resolve Name from separate columns or full name column
+                    if (firstNameIdx !== -1 || lastNameIdx !== -1) {
+                        const fname = firstNameIdx !== -1 ? String(row[firstNameIdx] || '').trim() : '';
+                        const lname = lastNameIdx !== -1 ? String(row[lastNameIdx] || '').trim() : '';
+                        rawName = `${fname} ${lname}`.trim();
+                    }
+                    if (!rawName && fullNameIdx !== -1) {
+                        rawName = String(row[fullNameIdx] || '').trim();
+                    }
+
+                    if (!rawAccount) {
+                        for (const cell of row) {
+                            const cStr = String(cell || '').trim();
+                            if (cStr.toUpperCase().startsWith('IR') || (cStr.length >= 10 && /^\d+$/.test(cStr.replace(/\s/g, '')))) {
+                                rawAccount = cStr;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!rawAccount) return;
+
+                    const normAccount = normalizeDigits(rawAccount).replace(/[\s-]/g, '');
+                    const normName = normalizeDigits(rawName);
+                    const normId = normalizeDigits(rawId) || normName || `P_${idx + 1}`;
+
+                    if (normId) {
+                        newSaved[normId] = {
+                            account: normAccount,
+                            name: rawName || newSaved[normId]?.name || normId
+                        };
+                    }
+
+                    if (normName && normName !== normId) {
+                        newSaved[normName] = {
+                            account: normAccount,
+                            name: rawName
+                        };
+                    }
+
+                    importedCount++;
+                });
+
+                if (importedCount === 0) {
+                    alert('هیچ شماره حسابی در فایل اکسل شناسایی نشد. لطفاً مطمئن شوید فایل دارای ستون شماره حساب یا شبا است.');
+                    return;
+                }
+
+                updateSavedPersons(newSaved);
+                alert(`✅ با موفقیت ${importedCount} شماره حساب پرسنل در حافظه سیستم ذخیره و پشتیبان‌گیری شد.`);
+            } catch (err: any) {
+                alert('خطا در خواندن فایل اکسل شماره حساب‌ها: ' + (err.message || 'نامشخص'));
+            } finally {
+                if (e.target) e.target.value = '';
+            }
+        };
+        reader.readAsBinaryString(uploadedFile);
+    };
+
+    const handleExportAccountsExcel = () => {
+        const entries = Object.entries(savedPersons);
+        if (entries.length === 0) {
+            alert('حافظه پرسنل خالی است.');
+            return;
+        }
+
+        const exportData = entries.map(([id, data], idx) => ({
+            'ردیف': idx + 1,
+            'کد پرسنلی / شناسه': id,
+            'نام و نام خانوادگی': data.name || '-',
+            'شماره حساب / شبا': data.account || '-'
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "حافظه پرسنل");
+        XLSX.writeFile(wb, `ccti_personnel_accounts_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    };
+
+    const handleClearSavedPersons = () => {
+        if (window.confirm('آیا از پاکسازی کامل حافظه شماره حساب‌های پرسنل مطمئن هستید؟')) {
+            updateSavedPersons({});
+            alert('حافظه پرسنل پاکسازی شد.');
+        }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -233,15 +393,32 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                     return col ? String(col).trim() : `ستون_${idx + 1}`;
                 });
 
-                setColumns(headers);
-                
                 const rowData = data.slice(headerRowIndex + 1).filter((r: unknown) => Array.isArray(r) && r.length > 0);
                 
+                // Smart First Name + Last Name Column Auto-Combination
+                const firstNameCol = headers.find(h => h && (h.includes('نام کوچک') || (h.includes('نام') && !h.includes('خانوادگی') && !h.includes('پدر') && !h.includes('پرسنل')) || h.toLowerCase() === 'first name'));
+                const lastNameCol = headers.find(h => h && (h.includes('خانوادگی') || h.includes('فامیلی') || h.includes('شهرت') || h.toLowerCase().includes('last name') || h.toLowerCase().includes('family')));
+
+                let combinedColName = '';
+                if (firstNameCol && lastNameCol && firstNameCol !== lastNameCol) {
+                    combinedColName = 'نام و نام خانوادگی (ترکیبی)';
+                    if (!headers.includes(combinedColName)) {
+                        headers.push(combinedColName);
+                    }
+                }
+
+                setColumns(headers);
+
                 const formattedData = rowData.map((row: any) => {
                     const obj: any = {};
                     headers.forEach((header, index) => {
                         obj[header] = row[index];
                     });
+                    if (combinedColName && firstNameCol && lastNameCol) {
+                        const fn = String(obj[firstNameCol] || '').trim();
+                        const ln = String(obj[lastNameCol] || '').trim();
+                        obj[combinedColName] = `${fn} ${ln}`.trim();
+                    }
                     return obj;
                 });
                 
@@ -249,7 +426,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                 
                 const accountMatch = headers.find(h => h && (h.includes('حساب') || h.includes('شبا')));
                 const amountMatch = headers.find(h => h && (h.includes('مبلغ') || h.includes('پرداخت') || h.includes('خالص')));
-                const nameMatch = headers.find(h => h && (h.includes('نام')));
+                const nameMatch = combinedColName || headers.find(h => h && (h.includes('نام و نام خانوادگی') || h.includes('نام و فامیلی') || h.includes('نام')));
                 const codeMatch = headers.find(h => h && (h.includes('پرسنل') || h.includes('کد')));
                 
                 if (accountMatch) setAccountCol(accountMatch);

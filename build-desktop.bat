@@ -10,5 +10,7 @@ if %ERRORLEVEL% NEQ 0 (
     pause
     exit /b %ERRORLEVEL%
 )
+ie4uinit.exe -show >nul 2>&1
+ie4uinit.exe -ClearIconCache >nul 2>&1
 echo.
 pause

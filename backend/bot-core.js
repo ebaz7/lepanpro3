@@ -491,6 +491,11 @@ export const normalizeToYmdStrings = (dateFromInput, dateToInput) => {
     gregTo = resTo.greg || gregFrom;
     shamsiTo = resTo.shamsi || shamsiFrom;
 
+    if (gregFrom && gregTo && gregFrom > gregTo) {
+        const tmpG = gregFrom; gregFrom = gregTo; gregTo = tmpG;
+        const tmpS = shamsiFrom; shamsiFrom = shamsiTo; shamsiTo = tmpS;
+    }
+
     return { gregFrom, gregTo, shamsiFrom, shamsiTo };
 };
 

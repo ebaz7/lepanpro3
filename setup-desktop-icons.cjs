@@ -47,8 +47,10 @@ async function buildAndPublishTauri() {
   });
   console.log(`✅ نسخه جدید دسکتاپ ثبت شد: v${verInfo.version}`);
 
-  // 2. Generate Icons from app-icon preserving background / transparency
+  // 2. Generate Icons from app-icon preserving background / transparency & purge cached Tauri .exe/.rc
+  const { purgeTauriIconBuildCache, refreshWindowsIconCache } = require('./setup-assets.cjs');
   await generateAllIcons();
+  purgeTauriIconBuildCache();
 
   // 3. Ensure memory-safe Cargo config on Windows so linking never runs out of stack/memory
   const cargoConfigDir = path.join(ROOT_DIR, 'src-tauri', '.cargo');
@@ -81,6 +83,8 @@ async function buildAndPublishTauri() {
     console.error('❌ خطا در زمان اجرای npx tauri build:', err.message);
     process.exit(1);
   }
+
+  refreshWindowsIconCache();
 
   // 5. Copy final .msi and .exe installers to downloads/ and public/downloads/
   [DOWNLOADS_DIR, PUBLIC_DOWNLOADS_DIR].forEach(d => {
