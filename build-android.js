@@ -107,11 +107,31 @@ async function buildAndroid() {
     fs.writeFileSync(localPropertiesPath, `sdk.dir=${formattedPath}\n`, 'utf8');
   }
 
-  // 6. Ensure Cleartext (HTTP) traffic is enabled for local enterprise servers
+  // 6. Ensure AndroidManifest.xml is AGP 8+ compliant (no package="..." attribute) and Cleartext (HTTP) traffic is enabled
   const manifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
   if (fs.existsSync(manifestPath)) {
     let manifestContent = fs.readFileSync(manifestPath, 'utf8');
     let modified = false;
+
+    // Remove deprecated package="..." attribute from <manifest> tag (forbidden in AGP 8+)
+    if (/<manifest[^>]*\s+package\s*=\s*["'][^"']*["']/.test(manifestContent)) {
+      manifestContent = manifestContent.replace(
+        /(<manifest[^>]*?)\s+package\s*=\s*["'][^"']*["']([^>]*>)/,
+        '$1$2'
+      );
+      modified = true;
+      console.log('   ✅ ویژگی قدیمی package از AndroidManifest.xml برای سازگاری با Gradle جدید حذف شد.');
+    }
+
+    // Ensure MainActivity points to the actual Java source package if com/payment/system/MainActivity.java exists
+    const legacyMainActivityJava = path.join(androidDir, 'app', 'src', 'main', 'java', 'com', 'payment', 'system', 'MainActivity.java');
+    if (fs.existsSync(legacyMainActivityJava) && manifestContent.includes('android:name=".MainActivity"')) {
+      manifestContent = manifestContent.replace(
+        'android:name=".MainActivity"',
+        'android:name="com.payment.system.MainActivity"'
+      );
+      modified = true;
+    }
 
     if (!manifestContent.includes('android:usesCleartextTraffic="true"')) {
       manifestContent = manifestContent.replace(

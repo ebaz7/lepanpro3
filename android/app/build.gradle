@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "com.dikam.paymentorder"
+    namespace "com.payment.system"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
         applicationId "com.dikam.paymentorder"

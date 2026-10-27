@@ -166,37 +166,97 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
     const fileInputRef = useRef<HTMLInputElement>(null);
     const accountsFileInputRef = useRef<HTMLInputElement>(null);
 
-    // Helper for Persian months
+    // Helper for Persian months and their days
     const PERSIAN_MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"];
+    const getPersianMonthDays = (monthIndex1Based: number, yearNum: number = 1404) => {
+        if (monthIndex1Based >= 1 && monthIndex1Based <= 6) return 31;
+        if (monthIndex1Based >= 7 && monthIndex1Based <= 11) return 30;
+        const isLeap = ((yearNum + 38) * 31) % 128 < 31;
+        return isLeap ? 30 : 29;
+    };
 
     useEffect(() => {
-        // Safe get of Shamsi date since we can't easily import conditionally without modifying more files
         try {
             const options: Intl.DateTimeFormatOptions = { calendar: 'persian', year: 'numeric', month: 'numeric' };
             const parts = new Intl.DateTimeFormat('en-US-u-ca-persian', options).formatToParts(new Date());
             const m = parseInt(parts.find(p => p.type === 'month')?.value || '1');
-            const y = parseInt(parts.find(p => p.type === 'year')?.value || '1403');
-            setArchiveMonthName(`حقوق ماه ${m} سال ${financialYear || y}`);
+            const y = parseInt(parts.find(p => p.type === 'year')?.value || '1404');
+            const mName = PERSIAN_MONTHS[m - 1] || `ماه ${m}`;
+            const days = getPersianMonthDays(m, Number(financialYear || y));
+            setArchiveMonthName(`حقوق ${mName} ${financialYear || y} (${days} روزه)`);
         } catch(e) {
             setArchiveMonthName(`حقوق ماه جاری`);
         }
 
+        let localPersons: Record<string, { account: string, name: string }> = {};
         const data = localStorage.getItem('ccti_persons') || localStorage.getItem('ccti_persons_backup');
         if (data) {
             try {
-                setSavedPersons(JSON.parse(data));
+                localPersons = JSON.parse(data) || {};
+                setSavedPersons(localPersons);
             } catch (e) {}
         }
         
+        let localArchives: CctiArchive[] = [];
         const archiveData = localStorage.getItem('ccti_archives');
-        if(archiveData) {
+        if (archiveData) {
             try {
-                setArchives(JSON.parse(archiveData));
+                localArchives = JSON.parse(archiveData) || [];
+                setArchives(localArchives);
             } catch(e){}
         }
+
+        // Sync with permanent server storage (database.json) so accounts never disappear
+        fetch('/api/ccti/data')
+            .then(r => r.ok ? r.json() : null)
+            .then(serverData => {
+                if (!serverData) return;
+                const serverPersons = serverData.persons || {};
+                const mergedPersons: Record<string, { account: string, name: string }> = { ...serverPersons, ...localPersons };
+
+                // Also auto-recover any valid IBANs from archives if not in memory
+                const allArchives: CctiArchive[] = (Array.isArray(serverData.archives) && serverData.archives.length > localArchives.length)
+                    ? serverData.archives
+                    : localArchives;
+                allArchives.forEach(arch => {
+                    (arch.details || []).forEach(det => {
+                        if (det.account && det.account !== 'EMPTY' && det.id) {
+                            if (!mergedPersons[det.id]) {
+                                mergedPersons[det.id] = { account: det.account, name: det.name || det.id };
+                            }
+                        }
+                    });
+                });
+
+                setSavedPersons(mergedPersons);
+                try {
+                    localStorage.setItem('ccti_persons', JSON.stringify(mergedPersons));
+                    localStorage.setItem('ccti_persons_backup', JSON.stringify(mergedPersons));
+                } catch (e) {}
+
+                if (Object.keys(mergedPersons).length > Object.keys(serverPersons).length) {
+                    fetch('/api/ccti/persons', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ persons: mergedPersons, merge: true })
+                    }).catch(() => {});
+                }
+
+                if (allArchives.length > 0) {
+                    setArchives(allArchives);
+                    try {
+                        localStorage.setItem('ccti_archives', JSON.stringify(allArchives));
+                    } catch (e) {}
+                }
+                if (serverData.sourceIban && !localStorage.getItem('ccti_source_iban')) {
+                    setSourceIban(serverData.sourceIban);
+                    localStorage.setItem('ccti_source_iban', serverData.sourceIban);
+                }
+            })
+            .catch(() => {});
     }, []);
 
-    const updateSavedPersons = (newData: Record<string, { account: string, name: string }>) => {
+    const updateSavedPersons = (newData: Record<string, { account: string, name: string }>, mergeOnServer = true) => {
         setSavedPersons(newData);
         try {
             localStorage.setItem('ccti_persons', JSON.stringify(newData));
@@ -204,6 +264,11 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
         } catch (e) {
             console.error('Error saving CCTI persons:', e);
         }
+        fetch('/api/ccti/persons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ persons: newData, merge: mergeOnServer, sourceIban })
+        }).catch(() => {});
     };
 
     const handleImportAccountsExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,9 +291,9 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
 
                 // Header detection
                 let headerIdx = 0;
-                for (let i = 0; i < Math.min(data.length, 20); i++) {
+                for (let i = 0; i < Math.min(data.length, 25); i++) {
                     const rowStr = (data[i] || []).join(' ');
-                    if (rowStr.includes('حساب') || rowStr.includes('شبا') || rowStr.includes('نام') || rowStr.includes('کد') || rowStr.includes('IBAN')) {
+                    if (rowStr.includes('حساب') || rowStr.includes('شبا') || rowStr.includes('نام') || rowStr.includes('فامیل') || rowStr.includes('کد') || rowStr.includes('IBAN')) {
                         headerIdx = i;
                         break;
                     }
@@ -237,20 +302,14 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                 const headers = (data[headerIdx] || []).map(h => String(h || '').trim());
                 
                 // Column matching
-                const accountColName = headers.find(h => h.includes('شبا') || h.includes('حساب') || h.includes('IBAN') || h.includes('کارت'));
+                const accountColIdx = headers.findIndex(h => h.includes('شبا') || h.includes('حساب') || h.toUpperCase().includes('IBAN') || h.includes('کارت'));
                 
                 // Smart Name Detection (Separate First Name & Last Name OR Combined Name)
-                const firstNameColName = headers.find(h => h && (h.includes('نام کوچک') || (h.includes('نام') && !h.includes('خانوادگی') && !h.includes('پدر') && !h.includes('پرسنل')) || h.toLowerCase() === 'first name'));
-                const lastNameColName = headers.find(h => h && (h.includes('خانوادگی') || h.includes('فامیلی') || h.includes('شهرت') || h.toLowerCase().includes('last name') || h.toLowerCase().includes('family')));
-                const fullNameColName = headers.find(h => h && (h.includes('نام و نام خانوادگی') || h.includes('نام و فامیلی') || h.includes('نام پرسنل') || h.includes('مشخصات') || h.toLowerCase().includes('full name')));
+                const firstNameIdx = headers.findIndex(h => h && (h === 'نام' || h.includes('نام کوچک') || (h.includes('نام') && !h.includes('خانوادگی') && !h.includes('فامیل') && !h.includes('پدر') && !h.includes('پرسنل') && !h.includes('شعبه') && !h.includes('بانک')) || h.toLowerCase() === 'first name' || h.toLowerCase() === 'firstname'));
+                const lastNameIdx = headers.findIndex(h => h && (h.includes('خانوادگی') || h.includes('فامیل') || h.includes('شهرت') || h.toLowerCase().includes('last name') || h.toLowerCase().includes('lastname') || h.toLowerCase().includes('family')));
+                const fullNameIdx = headers.findIndex(h => h && (h.includes('نام و نام خانوادگی') || h.includes('نام و فامیل') || h.includes('نام پرسنل') || h.includes('نام کامل') || h.includes('مشخصات') || h.toLowerCase().includes('full name') || (h.includes('نام') && lastNameIdx === -1)));
 
-                const idColName = headers.find(h => h && (h.includes('کد') || h.includes('شناسه') || h.includes('ملی') || h.includes('پرونده') || h.includes('ID')));
-
-                const accountColIdx = accountColName ? headers.indexOf(accountColName) : headers.findIndex(h => h.includes('شبا') || h.includes('حساب'));
-                const firstNameIdx = firstNameColName ? headers.indexOf(firstNameColName) : -1;
-                const lastNameIdx = lastNameColName ? headers.indexOf(lastNameColName) : -1;
-                const fullNameIdx = fullNameColName ? headers.indexOf(fullNameColName) : headers.findIndex(h => h.includes('نام'));
-                const idColIdx = idColName ? headers.indexOf(idColName) : headers.findIndex(h => h.includes('کد') || h.includes('شناسه'));
+                const idColIdx = headers.findIndex(h => h && (h.includes('کد پرسنلی') || h.includes('شناسه') || h.includes('کد ملی') || h.includes('شماره پرسنلی') || h.includes('پرونده') || (h.includes('کد') && !h.includes('شعبه') && !h.includes('بانک')) || h.toUpperCase() === 'ID'));
 
                 const rows = data.slice(headerIdx + 1);
                 let importedCount = 0;
@@ -274,45 +333,64 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                     let rawId = idColIdx !== -1 ? String(row[idColIdx] || '').trim() : '';
                     let rawName = '';
 
-                    // Resolve Name from separate columns or full name column
-                    if (firstNameIdx !== -1 || lastNameIdx !== -1) {
+                    // Combine separate First Name + Last Name columns if present
+                    if (firstNameIdx !== -1 && lastNameIdx !== -1 && firstNameIdx !== lastNameIdx) {
+                        const fname = String(row[firstNameIdx] || '').trim();
+                        const lname = String(row[lastNameIdx] || '').trim();
+                        rawName = `${fname} ${lname}`.replace(/\s+/g, ' ').trim();
+                    } else if (fullNameIdx !== -1) {
+                        rawName = String(row[fullNameIdx] || '').trim();
+                    } else if (firstNameIdx !== -1 || lastNameIdx !== -1) {
                         const fname = firstNameIdx !== -1 ? String(row[firstNameIdx] || '').trim() : '';
                         const lname = lastNameIdx !== -1 ? String(row[lastNameIdx] || '').trim() : '';
-                        rawName = `${fname} ${lname}`.trim();
-                    }
-                    if (!rawName && fullNameIdx !== -1) {
-                        rawName = String(row[fullNameIdx] || '').trim();
+                        rawName = `${fname} ${lname}`.replace(/\s+/g, ' ').trim();
                     }
 
+                    // Fallback account detection if header wasn't standard
                     if (!rawAccount) {
                         for (const cell of row) {
-                            const cStr = String(cell || '').trim();
-                            if (cStr.toUpperCase().startsWith('IR') || (cStr.length >= 10 && /^\d+$/.test(cStr.replace(/\s/g, '')))) {
+                            const cStr = normalizeDigits(String(cell || '')).replace(/[\s-]/g, '');
+                            if (cStr.toUpperCase().startsWith('IR') || (cStr.length >= 12 && /^\d+$/.test(cStr))) {
                                 rawAccount = cStr;
                                 break;
                             }
                         }
                     }
 
+                    // Fallback name detection if name wasn't found by header
+                    if (!rawName) {
+                        const textCells = row
+                            .map((c, cIdx) => ({ val: String(c || '').trim(), cIdx }))
+                            .filter(item => item.cIdx !== accountColIdx && item.cIdx !== idColIdx && item.val.length >= 2 && /[\u0600-\u06FF]/.test(item.val) && !item.val.includes('جمع'));
+                        if (textCells.length >= 2) {
+                            rawName = `${textCells[0].val} ${textCells[1].val}`.trim();
+                        } else if (textCells.length === 1) {
+                            rawName = textCells[0].val;
+                        }
+                    }
+
                     if (!rawAccount) return;
+                    if (rawName.includes('جمع کل') || rawName === 'جمع' || rawName === 'مجموع') return;
 
-                    const normAccount = normalizeDigits(rawAccount).replace(/[\s-]/g, '');
+                    const normAccount = normalizeDigits(rawAccount).replace(/[\s-]/g, '').toUpperCase();
+                    if (normAccount.length < 5) return;
+
                     const normName = normalizeDigits(rawName);
-                    const normId = normalizeDigits(rawId) || normName || `P_${idx + 1}`;
+                    const normId = normalizeDigits(rawId);
 
-                    if (normId) {
-                        newSaved[normId] = {
-                            account: normAccount,
-                            name: rawName || newSaved[normId]?.name || normId
-                        };
+                    // Find if this person already exists by ID or Name so we update in-place without duplicating
+                    let targetKey = normId || normName || `P_${idx + 1}`;
+                    for (const [existingKey, existingVal] of Object.entries(newSaved)) {
+                        if ((normId && normalizeDigits(existingKey) === normId) || (normName && normalizeDigits(existingVal.name) === normName) || (normName && normalizeDigits(existingKey) === normName)) {
+                            targetKey = existingKey;
+                            break;
+                        }
                     }
 
-                    if (normName && normName !== normId) {
-                        newSaved[normName] = {
-                            account: normAccount,
-                            name: rawName
-                        };
-                    }
+                    newSaved[targetKey] = {
+                        account: normAccount,
+                        name: normName || newSaved[targetKey]?.name || targetKey
+                    };
 
                     importedCount++;
                 });
@@ -322,8 +400,9 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                     return;
                 }
 
-                updateSavedPersons(newSaved);
-                alert(`✅ با موفقیت ${importedCount} شماره حساب پرسنل در حافظه سیستم ذخیره و پشتیبان‌گیری شد.`);
+                updateSavedPersons(newSaved, true);
+                setActiveTab('manage');
+                alert(`✅ با موفقیت ${importedCount} شماره حساب پرسنل (با تشخیص خودکار نام و نام خانوادگی) در حافظه دائمی سرور و سیستم ذخیره شد.`);
             } catch (err: any) {
                 alert('خطا در خواندن فایل اکسل شماره حساب‌ها: ' + (err.message || 'نامشخص'));
             } finally {
@@ -355,7 +434,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
 
     const handleClearSavedPersons = () => {
         if (window.confirm('آیا از پاکسازی کامل حافظه شماره حساب‌های پرسنل مطمئن هستید؟')) {
-            updateSavedPersons({});
+            updateSavedPersons({}, false);
             alert('حافظه پرسنل پاکسازی شد.');
         }
     };
@@ -393,11 +472,30 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                     return col ? String(col).trim() : `ستون_${idx + 1}`;
                 });
 
-                const rowData = data.slice(headerRowIndex + 1).filter((r: unknown) => Array.isArray(r) && r.length > 0);
+                // Auto-detect Persian month from file name, sheet name, or top header rows
+                const topText = `${uploadedFile.name} ${wsname} ${data.slice(0, Math.max(headerRowIndex, 5)).map((r: any) => (r || []).join(' ')).join(' ')}`;
+                const detectedMonthIdx = PERSIAN_MONTHS.findIndex(pm => topText.includes(pm));
+                if (detectedMonthIdx !== -1) {
+                    const mName = PERSIAN_MONTHS[detectedMonthIdx];
+                    const yMatch = topText.replace(/[۰-۹]/g, (d: any) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString()).match(/14\d{2}/);
+                    const yVal = yMatch ? Number(yMatch[0]) : Number(financialYear || 1404);
+                    const days = getPersianMonthDays(detectedMonthIdx + 1, yVal);
+                    setArchiveMonthName(`حقوق ${mName} ${yVal} (${days} روزه)`);
+                }
+
+                // Filter out empty rows and summary/total rows ("جمع کل", "مجموع") so employee count is exact
+                const rawRowData = data.slice(headerRowIndex + 1).filter((r: unknown) => {
+                    if (!Array.isArray(r) || r.length === 0) return false;
+                    const nonEmptyCells = r.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+                    if (nonEmptyCells.length === 0) return false;
+                    const joined = nonEmptyCells.map(c => String(c).trim()).join(' ');
+                    if (joined.includes('جمع کل') || joined.includes('مجموع کل') || /^جمع(\s|$)/.test(joined)) return false;
+                    return true;
+                });
                 
                 // Smart First Name + Last Name Column Auto-Combination
-                const firstNameCol = headers.find(h => h && (h.includes('نام کوچک') || (h.includes('نام') && !h.includes('خانوادگی') && !h.includes('پدر') && !h.includes('پرسنل')) || h.toLowerCase() === 'first name'));
-                const lastNameCol = headers.find(h => h && (h.includes('خانوادگی') || h.includes('فامیلی') || h.includes('شهرت') || h.toLowerCase().includes('last name') || h.toLowerCase().includes('family')));
+                const firstNameCol = headers.find(h => h && (h === 'نام' || h.includes('نام کوچک') || (h.includes('نام') && !h.includes('خانوادگی') && !h.includes('فامیل') && !h.includes('پدر') && !h.includes('پرسنل') && !h.includes('بانک')) || h.toLowerCase() === 'first name'));
+                const lastNameCol = headers.find(h => h && (h.includes('خانوادگی') || h.includes('فامیل') || h.includes('شهرت') || h.toLowerCase().includes('last name') || h.toLowerCase().includes('family')));
 
                 let combinedColName = '';
                 if (firstNameCol && lastNameCol && firstNameCol !== lastNameCol) {
@@ -409,7 +507,7 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
 
                 setColumns(headers);
 
-                const formattedData = rowData.map((row: any) => {
+                const formattedData = rawRowData.map((row: any) => {
                     const obj: any = {};
                     headers.forEach((header, index) => {
                         obj[header] = row[index];
@@ -417,17 +515,20 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
                     if (combinedColName && firstNameCol && lastNameCol) {
                         const fn = String(obj[firstNameCol] || '').trim();
                         const ln = String(obj[lastNameCol] || '').trim();
-                        obj[combinedColName] = `${fn} ${ln}`.trim();
+                        obj[combinedColName] = `${fn} ${ln}`.replace(/\s+/g, ' ').trim();
                     }
                     return obj;
+                }).filter((obj: any) => {
+                    if (combinedColName && !obj[combinedColName]) return false;
+                    return true;
                 });
                 
                 setExcelData(formattedData);
                 
-                const accountMatch = headers.find(h => h && (h.includes('حساب') || h.includes('شبا')));
-                const amountMatch = headers.find(h => h && (h.includes('مبلغ') || h.includes('پرداخت') || h.includes('خالص')));
-                const nameMatch = combinedColName || headers.find(h => h && (h.includes('نام و نام خانوادگی') || h.includes('نام و فامیلی') || h.includes('نام')));
-                const codeMatch = headers.find(h => h && (h.includes('پرسنل') || h.includes('کد')));
+                const accountMatch = headers.find(h => h && (h.includes('حساب') || h.includes('شبا') || h.toUpperCase().includes('IBAN')));
+                const amountMatch = headers.find(h => h && (h.includes('خالص پرداختی') || h.includes('مبلغ پرداختی') || h.includes('خالص') || h.includes('مبلغ') || h.includes('پرداخت')));
+                const nameMatch = combinedColName || headers.find(h => h && (h.includes('نام و نام خانوادگی') || h.includes('نام و فامیل') || h.includes('نام')));
+                const codeMatch = headers.find(h => h && (h.includes('کد پرسنلی') || h.includes('شماره پرسنلی') || h.includes('شناسه') || (h.includes('کد') && !h.includes('ردیف') && !h.includes('شعبه'))));
                 
                 if (accountMatch) setAccountCol(accountMatch);
                 if (amountMatch) setAmountCol(amountMatch);
@@ -485,26 +586,31 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
         };
 
         const processRow = (id: string, amount: string, accountOrig: string, nameOrig: string) => {
-            if (!id) return;
-            let account = accountOrig;
-            let name = nameOrig;
-
+            if (!id && !nameOrig) return;
             const normId = normalizeStr(id);
-            const normName = normalizeStr(name);
+            const normName = normalizeStr(nameOrig);
+            if (normId.includes('جمع') || normName.includes('جمع') || normId === 'مجموع' || normName === 'مجموع') return;
+
+            const nAmount = Math.round(Number(amount)) || 0;
+            if (nAmount <= 0) return;
+
+            let account = normalizeStr(accountOrig).replace(/[\s-]/g, '');
+            let name = nameOrig || id;
 
             if (account) {
-                newSaved[id] = { account, name: name || newSaved[id]?.name || id };
+                const saveKey = normId || normName;
+                if (saveKey) {
+                    newSaved[saveKey] = { account, name: name || newSaved[saveKey]?.name || saveKey };
+                }
             } else {
-                let foundPerson = newSaved[id] || newSaved[normId];
+                let foundPerson = newSaved[id] || newSaved[normId] || (normName ? newSaved[normName] : undefined);
                 
                 if (!foundPerson) {
                     const allSaved = Object.entries(newSaved);
                     for (const [savedId, savedData] of allSaved) {
-                        if (normalizeStr(savedId) === normId) {
-                            foundPerson = savedData;
-                            break;
-                        }
-                        if (normName && normalizeStr(savedData.name) === normName) {
+                        const normSavedId = normalizeStr(savedId);
+                        const normSavedName = normalizeStr(savedData.name);
+                        if ((normId && (normSavedId === normId || normSavedName === normId)) || (normName && (normSavedName === normName || normSavedId === normName))) {
                             foundPerson = savedData;
                             break;
                         }
@@ -513,16 +619,9 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
 
                 if (foundPerson) {
                     account = foundPerson.account || '';
-                    name = name || foundPerson.name || id;
-                    
-                    if (name && !foundPerson.name) {
-                        const keyToUpdate = Object.keys(newSaved).find(k => newSaved[k] === foundPerson);
-                        if (keyToUpdate) {
-                            newSaved[keyToUpdate] = { ...foundPerson, name };
-                        }
-                    }
+                    name = nameOrig || foundPerson.name || id;
                 } else {
-                    name = name || id;
+                    name = nameOrig || id;
                 }
             }
 
@@ -537,9 +636,8 @@ const CctiConverter: React.FC<Props> = ({ financialYear, currentUser, canManageA
             }
 
             generatedCount++;
-            const nAmount = Math.round(Number(amount)) || 0;
             totalAmount += nAmount;
-            detailsArchive.push({ id, name, account, amount: nAmount });
+            detailsArchive.push({ id: id || name, name, account, amount: nAmount });
 
             xmlTxLines.push(`      <CdtTrfTxInf>
         <PmtId>
@@ -669,6 +767,11 @@ ${xmlTxLines.join('\\n')}
         const newArchivesList = [newArchive, ...archives];
         setArchives(newArchivesList);
         localStorage.setItem('ccti_archives', JSON.stringify(newArchivesList));
+        fetch('/api/ccti/archives', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archives: newArchivesList, sourceIban })
+        }).catch(() => {});
         setArchiveMonthName('');
 
         const blob = new Blob([xmlContent], { type: 'text/plain;charset=utf-8;' });
@@ -686,7 +789,7 @@ ${xmlTxLines.join('\\n')}
         if(window.confirm('آیا از حذف این شخص مطمئن هستید؟')) {
             const newData = {...savedPersons};
             delete newData[id];
-            updateSavedPersons(newData);
+            updateSavedPersons(newData, false);
         }
     };
     
@@ -700,7 +803,7 @@ ${xmlTxLines.join('\\n')}
         if (editingId) {
             const newData = {...savedPersons};
             newData[editingId] = { account: editAccount, name: editName };
-            updateSavedPersons(newData);
+            updateSavedPersons(newData, true);
             setEditingId(null);
         }
     }
@@ -709,7 +812,7 @@ ${xmlTxLines.join('\\n')}
         if (!newPersonId || !newPersonAccount) return alert('شناسه و شماره حساب الزامی است');
         const newData = {...savedPersons};
         newData[newPersonId] = { account: newPersonAccount, name: newPersonName };
-        updateSavedPersons(newData);
+        updateSavedPersons(newData, true);
         setNewPersonId(''); setNewPersonName(''); setNewPersonAccount('');
     }
 
@@ -717,6 +820,13 @@ ${xmlTxLines.join('\\n')}
 
     return (
         <div className="p-3 sm:p-5 md:p-6 max-w-6xl mx-auto w-full space-y-5 pt-20 md:pt-6 animate-fade-in pb-32 h-full flex flex-col">
+            <input 
+                type="file" 
+                ref={accountsFileInputRef} 
+                className="hidden" 
+                accept=".xlsx, .xls, .csv" 
+                onChange={handleImportAccountsExcel} 
+            />
             {/* Unified Executive Hero Header */}
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-5 sm:p-6 shadow-xl border border-white/10 shrink-0">
                 <div className="absolute -top-24 -left-24 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -745,8 +855,17 @@ ${xmlTxLines.join('\\n')}
                         </div>
                     </div>
 
-                    {/* Sub-Tabs Switcher */}
-                    <div className="flex flex-wrap gap-1.5 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 w-full lg:w-auto">
+                    {/* Sub-Tabs Switcher + Always-Visible Excel Accounts Import Button */}
+                    <div className="flex flex-wrap items-center gap-1.5 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 w-full lg:w-auto">
+                        <button
+                            type="button"
+                            onClick={() => accountsFileInputRef.current?.click()}
+                            className="flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/30"
+                            title="آپلود فایل اکسل حاوی نام و شماره حساب/شبا پرسنل"
+                        >
+                            <Upload size={15} />
+                            <span>📥 ورود اکسل شماره حساب‌ها</span>
+                        </button>
                         <button 
                             onClick={() => setActiveTab('pdf-merge')}
                             className={`flex-1 lg:flex-none px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${activeTab === 'pdf-merge' ? 'bg-white text-slate-900 shadow-lg' : 'text-slate-200 hover:bg-white/10 hover:text-white'}`}
@@ -1050,6 +1169,39 @@ ${xmlTxLines.join('\\n')}
 
                 {activeTab === 'convert' && (
                     <div className="space-y-8 animate-fade-in">
+                        {/* Quick Accounts Excel Import Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-blue-500/10 border border-emerald-500/30 rounded-2xl">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold shrink-0">
+                                    <Users size={20} />
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-sm text-gray-800 dark:text-gray-100">حافظه دائمی شماره حساب‌های پرسنل ({savedPersonsCount} نفر ثبت شده)</h4>
+                                    <p className="text-xs text-gray-600 dark:text-gray-400">با یک‌بار آپلود اکسل شماره حساب‌ها (حتی با دو ستون مجزای نام و نام خانوادگی)، اطلاعات روی سرور ذخیره شده و هرگز نمی‌پرد.</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => accountsFileInputRef.current?.click()}
+                                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                                >
+                                    <Upload size={16} />
+                                    <span>📥 آپلود اکسل شماره حساب‌ها</span>
+                                </button>
+                                {savedPersonsCount > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleExportAccountsExcel}
+                                        className="px-3 py-2.5 rounded-xl bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                                    >
+                                        <Download size={15} />
+                                        <span>خروجی اکسل</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
                         {/* Step 1: Upload */}
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 mb-4">
@@ -1255,21 +1407,76 @@ ${xmlTxLines.join('\\n')}
 
                 {activeTab === 'manage' && (
                     <div className="space-y-4 animate-fade-in h-full flex flex-col">
-                        <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-4 flex gap-3 text-sm text-blue-800 dark:text-blue-300 font-bold mb-4">
-                            سیستم به طور خودکار شماره شبای هر فرد را هنگام آپلود فایل های حاوی شماره حساب، در اینجا ذخیره می‌کند تا در ماه‌های آینده نیازی به وارد کردن مجدد آنها نباشد.
+                        {/* High-Visibility Excel Import & Backup Header Card */}
+                        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 text-white shadow-lg border border-white/20">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/20 shadow-inner">
+                                        <Upload size={24} className="text-white animate-bounce" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                                            ورود و آپلود سریع شماره حساب‌ها از اکسل
+                                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-400/30 border border-emerald-300/40 text-emerald-100 text-[10px] font-extrabold">
+                                                {savedPersonsCount} نفر ذخیره در حافظه
+                                            </span>
+                                        </h3>
+                                        <p className="text-xs text-white/90 mt-1 leading-relaxed">
+                                            فایل اکسل خود (شامل نام، فامیلی و شماره حساب/شبا) را آپلود کنید تا بلافاصله در حافظه سیستم ثبت گردد و هرگز نپرد.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => accountsFileInputRef.current?.click()}
+                                        className="px-5 py-3 rounded-2xl bg-white text-emerald-900 font-black text-xs hover:bg-emerald-50 active:scale-95 shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <Upload size={18} className="text-emerald-600" />
+                                        <span>آپلود اکسل شماره حساب‌ها</span>
+                                    </button>
+
+                                    {savedPersonsCount > 0 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={handleExportAccountsExcel}
+                                                className="px-4 py-3 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs backdrop-blur-md border border-white/20 shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                                            >
+                                                <Download size={16} />
+                                                <span>دانلود اکسل پشتیبان</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleClearSavedPersons}
+                                                className="px-3 py-3 rounded-2xl bg-rose-500/30 hover:bg-rose-500/50 text-rose-100 font-bold text-xs backdrop-blur-md border border-rose-300/30 transition-all flex items-center gap-1.5 cursor-pointer"
+                                                title="پاکسازی حافظه"
+                                            >
+                                                <Trash2 size={16} />
+                                                <span>پاکسازی</span>
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
+                        {/* Manual Entry Fallback Box */}
                         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 shadow-sm">
-                            <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-3 text-sm">ثبت دستی پرسنل در حافظه</h4>
+                            <h4 className="font-bold text-gray-800 dark:text-gray-200 mb-3 text-sm flex items-center gap-2">
+                                <Plus size={16} className="text-blue-600" />
+                                ثبت دستی تکی پرسنل در حافظه (اختیاری)
+                            </h4>
                             <div className="flex flex-col md:flex-row gap-2">
                                 <input placeholder="کد پرسنلی / شناسه" className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-sm" value={newPersonId} onChange={e => setNewPersonId(e.target.value)} />
                                 <input placeholder="نام و نام خانوادگی" className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-sm" value={newPersonName} onChange={e => setNewPersonName(e.target.value)} />
                                 <input placeholder="شماره حساب / شبا" className="flex-1 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-sm" value={newPersonAccount} onChange={e => setNewPersonAccount(e.target.value)} />
-                                <button onClick={handleAddPerson} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm shrink-0">ثبت در حافظه</button>
+                                <button onClick={handleAddPerson} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-2.5 font-bold text-sm shrink-0 flex items-center justify-center gap-1">ثبت در حافظه</button>
                             </div>
                         </div>
                         
-                        <div className="relative mb-2 mt-4">
+                        <div className="relative mb-2 mt-2">
                             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
                                 type="text"
@@ -1282,9 +1489,24 @@ ${xmlTxLines.join('\\n')}
 
                         <div className="flex-1 overflow-y-auto space-y-2 min-h-[300px] border border-gray-100 dark:border-gray-800 rounded-2xl p-2 bg-gray-50/50 dark:bg-black/20 custom-scrollbar">
                             {Object.keys(savedPersons).length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-gray-400 font-bold py-12">
-                                    <Users size={48} className="mb-4 opacity-50" />
-                                    هنوز اطلاعاتی ذخیره نشده است
+                                <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-gradient-to-b from-emerald-50/40 to-teal-50/20 dark:from-emerald-950/10 dark:to-transparent rounded-2xl border-2 border-dashed border-emerald-300 dark:border-emerald-800 my-2">
+                                    <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 shadow-inner">
+                                        <Upload size={32} />
+                                    </div>
+                                    <h4 className="font-black text-base text-gray-800 dark:text-gray-200 mb-1">
+                                        هنوز هیچ شماره حسابی در حافظه ثبت نشده است
+                                    </h4>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 max-w-md leading-relaxed mb-4">
+                                        برای ذخیره‌سازی سریع شماره حساب تمام پرسنل کافیست فایل اکسل حاوی نام و شماره حساب را انتخاب و آپلود فرمایید.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => accountsFileInputRef.current?.click()}
+                                        className="px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all cursor-pointer"
+                                    >
+                                        <Upload size={18} />
+                                        <span>📥 آپلود اکسل شماره حساب‌ها</span>
+                                    </button>
                                 </div>
                             ) : (
                                 Object.entries(savedPersons)

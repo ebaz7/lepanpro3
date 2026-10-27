@@ -101,7 +101,29 @@ const BACKUPS_DIR = path.join(ROOT_DIR, 'backups');
 const DOWNLOADS_DIR = path.join(ROOT_DIR, 'downloads');
 const PUBLIC_DOWNLOADS_DIR = path.join(ROOT_DIR, 'public', 'downloads');
 const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const isExplicitDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev' || process.argv.includes('--dev') || !process.env.NODE_ENV || !fs.existsSync(path.join(DIST_DIR, 'index.html'));
+const checkIsDistOutdated = () => {
+    try {
+        const distIndex = path.join(DIST_DIR, 'index.html');
+        if (!fs.existsSync(distIndex)) return true;
+        const distMtime = fs.statSync(distIndex).mtimeMs;
+        const rootFiles = ['App.tsx', 'index.tsx'];
+        for (const rf of rootFiles) {
+            const p = path.join(ROOT_DIR, rf);
+            if (fs.existsSync(p) && fs.statSync(p).mtimeMs > distMtime) return true;
+        }
+        const compDir = path.join(ROOT_DIR, 'components');
+        if (fs.existsSync(compDir)) {
+            for (const f of fs.readdirSync(compDir)) {
+                const p = path.join(compDir, f);
+                if (fs.statSync(p).mtimeMs > distMtime) return true;
+            }
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+};
+const isExplicitDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev' || process.argv.includes('--dev') || !process.env.NODE_ENV || checkIsDistOutdated();
 
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -14567,6 +14589,58 @@ app.get('/api/customer-feedbacks', (req, res) => {
         res.json(db.customerFeedbacks || []);
     } catch (err) {
         res.status(500).json({ error: 'خطا در دریافت نظرسنجی‌ها' });
+    }
+});
+
+// --- CCTI PERSONNEL ACCOUNTS & ARCHIVES PERMANENT SERVER STORAGE ---
+app.get('/api/ccti/data', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    try {
+        const db = getDb();
+        res.json({
+            persons: db.cctiPersons || {},
+            archives: db.cctiArchives || [],
+            sourceIban: db.cctiSourceIban || ''
+        });
+    } catch (err) {
+        res.status(500).json({ error: 'خطا در خواندن حافظه پرسنل CCTI' });
+    }
+});
+
+app.post('/api/ccti/persons', (req, res) => {
+    try {
+        const { persons, merge = true, sourceIban } = req.body || {};
+        const db = getDb();
+        if (!db.cctiPersons || !merge) {
+            db.cctiPersons = {};
+        }
+        if (persons && typeof persons === 'object') {
+            db.cctiPersons = merge ? { ...db.cctiPersons, ...persons } : persons;
+        }
+        if (typeof sourceIban === 'string' && sourceIban.trim()) {
+            db.cctiSourceIban = sourceIban.trim();
+        }
+        saveDb(db);
+        res.json({ success: true, persons: db.cctiPersons, count: Object.keys(db.cctiPersons).length });
+    } catch (err) {
+        res.status(500).json({ error: 'خطا در ذخیره حافظه پرسنل CCTI' });
+    }
+});
+
+app.post('/api/ccti/archives', (req, res) => {
+    try {
+        const { archives, sourceIban } = req.body || {};
+        const db = getDb();
+        if (Array.isArray(archives)) {
+            db.cctiArchives = archives;
+        }
+        if (typeof sourceIban === 'string' && sourceIban.trim()) {
+            db.cctiSourceIban = sourceIban.trim();
+        }
+        saveDb(db);
+        res.json({ success: true, archives: db.cctiArchives || [] });
+    } catch (err) {
+        res.status(500).json({ error: 'خطا در ذخیره بایگانی CCTI' });
     }
 });
 
