@@ -74,24 +74,21 @@ class HybridGraphicsEngineClient {
       /* Ultra-Smooth Passive Momentum Touch Scroll */
       .smooth-scroll,
       .custom-scrollbar,
+      .overflow-y-auto,
       #main-scroll-container {
-        -webkit-overflow-scrolling: touch;
+        -webkit-overflow-scrolling: touch !important;
         overscroll-behavior-y: contain;
+        touch-action: pan-y !important;
       }
 
-      /* Turbo Optimization for High-Density Views */
-      .gpu-fast-layer {
-        contain: layout style;
-      }
-
-      /* Input responsiveness - 0ms touch delay */
+      /* Input responsiveness - 0ms touch delay while preserving vertical pan-y scroll */
       button, 
       a, 
       input, 
       select, 
       textarea, 
       [role="button"] {
-        touch-action: manipulation;
+        touch-action: pan-y manipulation;
       }
 
       /* Performance Turbo Mode for Tauri WebView2 & Android WebView */

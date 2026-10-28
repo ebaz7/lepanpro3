@@ -1820,7 +1820,9 @@ export interface PurchaseRequest {
     dimensions?: string;
     specifications?: string;
     image?: string;
+    images?: string[];
     pdfAttachment?: string;
+    pdfAttachments?: string[];
     quantity: number;
     unit: string;
     items?: PurchaseRequestItem[]; // Multiple items in single request
@@ -1920,7 +1922,9 @@ export interface PartMasterData {
     machineName?: string; // e.g. 'دستگاه استرچ'
     unit: string;
     image?: string;
+    images?: string[];
     pdfAttachment?: string; // NEW
+    pdfAttachments?: string[];
     minStock?: number;
     currentStock: number;
 }

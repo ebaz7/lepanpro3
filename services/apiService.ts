@@ -180,12 +180,12 @@ export const resolveImageUrl = (url: string | null | undefined): string => {
     const cleanUrl = url.startsWith('/') ? url : `/${url}`;
     
     // On web, if no host is configured, we use relative paths to current origin.
-    // On native, getServerHost() will return either stored host or DEFAULT_SERVER_URL.
-    if (!host && !Capacitor.isNativePlatform()) {
+    // On native or Tauri desktop, getServerHost() will return either stored host or DEFAULT_SERVER_URL.
+    if (!host && !Capacitor.isNativePlatform() && !isTauriDesktop()) {
         return cleanUrl;
     }
     
-    // Fallback for native or if host is set
+    // Fallback for native, Tauri desktop, or if host is set
     const effectiveHost = host || DEFAULT_SERVER_URL;
     return `${effectiveHost}${cleanUrl}`;
 };

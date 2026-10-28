@@ -1,9 +1,27 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { PartMasterData } from '../types';
-import { formatDate } from '../constants';
+import { resolveImageUrl } from '../services/apiService';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 
-const PrintPartDataSheet: React.FC<{ part: PartMasterData }> = ({ part }) => {
+const PrintPartDataSheet: React.FC<{ part: PartMasterData; activeImageIndex?: number; onSelectImageIndex?: (idx: number) => void }> = ({ part, activeImageIndex, onSelectImageIndex }) => {
+    const allImages = React.useMemo(() => {
+        const list = Array.isArray(part.images) && part.images.length > 0
+            ? part.images.filter(Boolean)
+            : (part.image ? [part.image] : []);
+        return Array.from(new Set(list));
+    }, [part.images, part.image]);
+
+    const [internalIdx, setInternalIdx] = useState(0);
+    const currentIdx = activeImageIndex !== undefined ? activeImageIndex : internalIdx;
+    const setIdx = (next: number) => {
+        if (onSelectImageIndex) onSelectImageIndex(next);
+        else setInternalIdx(next);
+    };
+
+    const safeIdx = allImages.length > 0 ? Math.min(currentIdx, allImages.length - 1) : 0;
+    const currentImageUrl = allImages.length > 0 ? resolveImageUrl(allImages[safeIdx]) : '';
+
     return (
         <div className="p-8 bg-white text-black font-sans dir-rtl text-right print-p-0">
             {/* Header */}
@@ -27,11 +45,16 @@ const PrintPartDataSheet: React.FC<{ part: PartMasterData }> = ({ part }) => {
                     </div>
                     <span className="text-[8px] font-mono tracking-wider font-bold mt-1 text-black uppercase">{part.id.slice(0, 16).toUpperCase()}</span>
                 </div>
-                <div className="w-24 h-24 border-2 border-black flex items-center justify-center bg-white p-1">
-                    {part.image ? (
-                        <img src={part.image} className="max-w-full max-h-full object-contain" alt="part" referrerPolicy="no-referrer" />
+                <div className="w-24 h-24 border-2 border-black flex items-center justify-center bg-white p-1 relative">
+                    {currentImageUrl ? (
+                        <img src={currentImageUrl} className="max-w-full max-h-full object-contain" alt={part.name || 'part'} referrerPolicy="no-referrer" />
                     ) : (
                         <span className="text-[10px] font-bold text-gray-300">NO IMAGE</span>
+                    )}
+                    {allImages.length > 1 && (
+                        <span className="absolute bottom-0.5 left-0.5 bg-black/80 text-white text-[8px] font-black px-1 rounded print:hidden">
+                            {safeIdx + 1}/{allImages.length}
+                        </span>
                     )}
                 </div>
             </div>
@@ -61,15 +84,64 @@ const PrintPartDataSheet: React.FC<{ part: PartMasterData }> = ({ part }) => {
             </div>
 
             {/* Visuals & QR Section */}
-            <div className="mt-6 flex gap-6 h-64">
-                <div className="flex-1 border-2 border-black p-2 flex items-center justify-center bg-gray-50 relative overflow-hidden">
-                     {part.image ? (
-                        <img src={part.image} className="max-w-full max-h-full object-contain" alt="part" referrerPolicy="no-referrer" />
-                    ) : (
-                        <div className="text-gray-300 text-sm font-bold italic">تصویر فنی بارگذاری نشده است</div>
-                    )}
-                    <div className="absolute top-0 right-0 p-2 bg-black text-white text-[10px] font-black uppercase">Product Visual</div>
+            <div className="mt-6 flex flex-col gap-3">
+                <div className="flex gap-6 h-64">
+                    <div className="flex-1 border-2 border-black p-2 flex items-center justify-center bg-gray-50 relative overflow-hidden group">
+                        {currentImageUrl ? (
+                            <img src={currentImageUrl} className="max-w-full max-h-full object-contain transition-all duration-200" alt={part.name || 'part'} referrerPolicy="no-referrer" />
+                        ) : (
+                            <div className="text-gray-300 text-sm font-bold italic">تصویر فنی بارگذاری نشده است</div>
+                        )}
+                        <div className="absolute top-0 right-0 p-2 bg-black text-white text-[10px] font-black uppercase">
+                            Product Visual {allImages.length > 1 ? `(${safeIdx + 1}/${allImages.length})` : ''}
+                        </div>
+
+                        {allImages.length > 1 && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIdx((safeIdx - 1 + allImages.length) % allImages.length);
+                                    }}
+                                    className="print:hidden absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center shadow-md cursor-pointer transition-all"
+                                    title="تصویر قبلی"
+                                >
+                                    <ChevronRight size={18} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIdx((safeIdx + 1) % allImages.length);
+                                    }}
+                                    className="print:hidden absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center shadow-md cursor-pointer transition-all"
+                                    title="تصویر بعدی"
+                                >
+                                    <ChevronLeft size={18} />
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
+
+                {/* Thumbnail Strip when multiple images exist */}
+                {allImages.length > 1 && (
+                    <div className="print:hidden flex items-center justify-center gap-2 py-1 overflow-x-auto">
+                        {allImages.map((imgUrl, i) => (
+                            <button
+                                key={i}
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setIdx(i); }}
+                                className={`w-12 h-12 rounded-lg border-2 overflow-hidden shrink-0 transition-all cursor-pointer ${
+                                    i === safeIdx ? 'border-indigo-600 ring-2 ring-indigo-300 scale-105' : 'border-gray-300 opacity-70 hover:opacity-100'
+                                }`}
+                            >
+                                <img src={resolveImageUrl(imgUrl)} className="w-full h-full object-cover" alt={`thumb-${i + 1}`} referrerPolicy="no-referrer" />
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Footer / QC Area */}

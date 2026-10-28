@@ -614,6 +614,21 @@ function App() {
                 return null;
             };
 
+            const dispatchPurchaseDeepLink = (urlStr: string) => {
+                try {
+                    if (!urlStr || !urlStr.includes('?')) return;
+                    const searchStr = urlStr.substring(urlStr.indexOf('?'));
+                    const params = new URLSearchParams(searchStr);
+                    const requestId = params.get('requestId');
+                    const subTab = params.get('subTab');
+                    if (requestId) {
+                        const payload = { requestId, subTab: subTab || 'comments' };
+                        sessionStorage.setItem('pending_purchase_deep_link', JSON.stringify(payload));
+                        window.dispatchEvent(new CustomEvent('OPEN_PURCHASE_REQUEST_DETAILS', { detail: payload }));
+                    }
+                } catch {}
+            };
+
             PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
                 const data = notification.notification.data;
                 console.log("Push Action Data:", data);
@@ -627,6 +642,7 @@ function App() {
                     if (data.url.includes('?')) {
                         const searchStr = data.url.substring(data.url.indexOf('?'));
                         if (searchStr.length > 1) window.history.pushState({}, '', window.location.pathname + searchStr);
+                        dispatchPurchaseDeepLink(data.url);
                     }
                 }
             });
@@ -644,6 +660,7 @@ function App() {
                     if (data.url.includes('?')) {
                         const searchStr = data.url.substring(data.url.indexOf('?'));
                         if (searchStr.length > 1) window.history.pushState({}, '', window.location.pathname + searchStr);
+                        dispatchPurchaseDeepLink(data.url);
                     }
                 }
             });
@@ -2032,11 +2049,21 @@ function App() {
                             const filterStatus = params.get('filterStatus');
                             const filter = params.get('filter');
                             const taskId = params.get('task');
+                            const requestId = params.get('requestId');
+                            const subTab = params.get('subTab');
                             if (exitStatus === 'pending') setExitPermitStatusFilter('pending');
                             if (filterStatus) setDashboardStatusFilter(filterStatus);
                             if (filter && targetTab === 'warehouse') setWarehouseInitialTab('approvals');
                             if (taskId) {
                                 window.dispatchEvent(new CustomEvent('OPEN_TASK_DETAILS', { detail: { taskId } }));
+                            }
+                            if (requestId && targetTab === 'purchase') {
+                                setPurchaseInitialTab('REQUESTS');
+                                const payload = { requestId, subTab: subTab || 'comments' };
+                                sessionStorage.setItem('pending_purchase_deep_link', JSON.stringify(payload));
+                                setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent('OPEN_PURCHASE_REQUEST_DETAILS', { detail: payload }));
+                                }, 50);
                             }
                         } catch (e) {
                             console.error('Error parsing notification params:', e);
@@ -2080,7 +2107,7 @@ function App() {
                 </div>
             )}
 
-            <div className="flex-1 relative flex flex-col min-h-0 h-full">
+            <div className={`flex-1 relative flex flex-col min-h-0 ${activeTab === 'chat' ? 'h-full' : ''}`}>
                 {loading && (
                     <div className="fixed top-20 right-4 z-[999] bg-white/80 dark:bg-gray-800/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-blue-200 dark:border-blue-800 shadow-lg flex items-center gap-2 animate-fade-in">
                         <Loader2 size={16} className="animate-spin text-blue-600" />

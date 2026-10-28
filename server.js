@@ -7225,15 +7225,21 @@ app.get('/api/notifications', (req, res) => {
             if (n.excludeUsernames && Array.isArray(n.excludeUsernames) && n.excludeUsernames.includes(username)) {
                 return false;
             }
-            let matchRole = true;
-            if (n.targetRoles && Array.isArray(n.targetRoles) && n.targetRoles.length > 0) {
-                matchRole = role ? n.targetRoles.some(r => String(r).toLowerCase() === String(role).toLowerCase()) : true;
+            const hasRoleTargets = Boolean(n.targetRoles && Array.isArray(n.targetRoles) && n.targetRoles.length > 0);
+            const hasUserTargets = Boolean(n.targetUsernames && Array.isArray(n.targetUsernames) && n.targetUsernames.length > 0);
+
+            if (!hasRoleTargets && !hasUserTargets) {
+                return true;
             }
-            let matchUser = true;
-            if (n.targetUsernames && Array.isArray(n.targetUsernames) && n.targetUsernames.length > 0) {
-                matchUser = username ? n.targetUsernames.some(u => String(u).toLowerCase() === String(username).toLowerCase()) : false;
-            }
-            return matchRole && matchUser;
+
+            const matchRole = hasRoleTargets && role
+                ? n.targetRoles.some(r => String(r).toLowerCase() === String(role).toLowerCase())
+                : false;
+            const matchUser = hasUserTargets && username
+                ? n.targetUsernames.some(u => String(u).toLowerCase() === String(username).toLowerCase())
+                : false;
+
+            return matchRole || matchUser;
         });
 
         const result = filtered.slice(-100).map(n => ({
@@ -9786,6 +9792,10 @@ app.put('/api/purchase-requests/:id', async (req, res) => {
         const isEdit = req.body.isEdit || false;
         let updatedItem;
 
+        const prevComments = idx > -1 && Array.isArray(db.purchaseRequests[idx].comments)
+            ? [...db.purchaseRequests[idx].comments]
+            : [];
+
         const bodyData = { ...req.body };
         // Automatically match requested items with Sayan factory parts & attach real-time warehouse stock
         try {
@@ -9804,10 +9814,54 @@ app.put('/api/purchase-requests/:id', async (req, res) => {
         saveDb(db);
         res.json(db.purchaseRequests);
 
+        const nextComments = Array.isArray(updatedItem.comments) ? updatedItem.comments : [];
+        const hasNewComment = nextComments.length > prevComments.length;
+        const latestComment = hasNewComment ? nextComments[nextComments.length - 1] : null;
+
         setImmediate(async () => {
             try {
                 const freshDb = getDb();
                 const reqItem = (freshDb.purchaseRequests || []).find(x => x.id === req.params.id) || updatedItem;
+
+                const allInvolvedUsers = Array.from(new Set([
+                    reqItem.requester,
+                    reqItem.username,
+                    reqItem.createdBy,
+                    reqItem.shiftLeader,
+                    reqItem.approverRepair,
+                    reqItem.approverWarehouseCheck,
+                    reqItem.approverTechnical,
+                    reqItem.approverFactory,
+                    reqItem.approverCommercial,
+                    reqItem.approverCeoInitial,
+                    reqItem.approverCeoSelection,
+                    reqItem.approverFactorySelection,
+                    reqItem.approverBuyer,
+                    reqItem.approverQc,
+                    reqItem.approverFactoryFinal,
+                    reqItem.approverWarehouseReceipt,
+                    reqItem.approverFactoryArchive,
+                    ...(nextComments.map(c => c.userName)),
+                    ...(nextComments.map(c => c.userId))
+                ].filter(Boolean)));
+
+                if (hasNewComment && latestComment) {
+                    const authorExcludes = [latestComment.userName, latestComment.userId].filter(Boolean);
+                    const commentSnippet = String(latestComment.text || '').length > 90
+                        ? String(latestComment.text).slice(0, 90) + '...'
+                        : String(latestComment.text || '');
+
+                    await broadcastNotification(
+                        `💬 نظر جدید در درخواست خرید #${reqItem.requestNumber || reqItem.id} (${reqItem.itemName || 'کالا'})`,
+                        `${latestComment.userName || 'کاربر'}: "${commentSnippet}"`,
+                        `/purchase?requestId=${reqItem.id}&subTab=comments`,
+                        ['admin', 'ceo', 'manager', 'factory_manager', 'commercial', 'warehouse_keeper', 'warehouse', 'purchasing', 'technical', 'qc', 'financial'],
+                        allInvolvedUsers.length > 0 ? allInvolvedUsers : null,
+                        authorExcludes
+                    );
+                    return;
+                }
+
                 const eventType = isEdit ? 'EDIT' : 'STEP';
                 const stepName = isEdit ? 'ویرایش درخواست خرید' : (reqItem.status || 'بروزرسانی وضعیت');
 
@@ -9817,7 +9871,7 @@ app.put('/api/purchase-requests/:id', async (req, res) => {
                 await broadcastNotification(
                     `🔄 بروزرسانی درخواست خرید #${reqItem.requestNumber || reqItem.id}`,
                     `وضعیت/مرحله: ${stepName} | کالا: ${reqItem.itemName || '-'}${reqItem.sayanStockSummary ? ` | ${reqItem.sayanStockSummary}` : ''}`,
-                    '/purchase',
+                    `/purchase?requestId=${reqItem.id}`,
                     ['admin', 'ceo', 'manager', 'commercial', 'financial'],
                     targets.length > 0 ? targets : null
                 );

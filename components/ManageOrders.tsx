@@ -758,27 +758,25 @@ const ManageOrders: React.FC<ManageOrdersProps> = ({ orders, refreshData, curren
       </div>
       
       {viewOrder && (
-          <div className={isMobile ? "fixed inset-0 z-[100] glass-panel overflow-y-auto" : ""}>
-              <PrintVoucher 
-                order={viewOrder} 
-                onClose={() => setViewOrder(null)} 
-                settings={settings}
-                currentUser={currentUser}
-                onOrderUpdated={(updated) => {
-                    setViewOrder(updated);
-                    refreshData();
-                }}
-                onApprove={canApprove(viewOrder) ? () => handleApprove(viewOrder.id, viewOrder.status) : undefined}
-                onReject={canApprove(viewOrder) ? () => handleReject(viewOrder.id, viewOrder.status) : undefined}
-                onEdit={canEdit(viewOrder) ? () => handleEdit(viewOrder) : undefined}
-                onRevoke={
-                    (!isRevocationStatus(viewOrder.status) && viewOrder.status !== OrderStatus.REVOKED && 
-                    (currentUser.role === UserRole.ADMIN || viewOrder.requester === currentUser.fullName)) 
-                    ? () => handleRevoke(viewOrder.id) 
-                     : undefined
-                }
-              />
-          </div>
+          <PrintVoucher 
+            order={viewOrder} 
+            onClose={() => setViewOrder(null)} 
+            settings={settings}
+            currentUser={currentUser}
+            onOrderUpdated={(updated) => {
+                setViewOrder(updated);
+                refreshData();
+            }}
+            onApprove={canApprove(viewOrder) ? () => handleApprove(viewOrder.id, viewOrder.status) : undefined}
+            onReject={canApprove(viewOrder) ? () => handleReject(viewOrder.id, viewOrder.status) : undefined}
+            onEdit={canEdit(viewOrder) ? () => handleEdit(viewOrder) : undefined}
+            onRevoke={
+                (!isRevocationStatus(viewOrder.status) && viewOrder.status !== OrderStatus.REVOKED && 
+                (currentUser.role === UserRole.ADMIN || viewOrder.requester === currentUser.fullName)) 
+                ? () => handleRevoke(viewOrder.id) 
+                 : undefined
+            }
+          />
       )}
       
       {editingOrder && <EditOrderModal order={editingOrder} onClose={() => setEditingOrder(null)} onSave={refreshData} />}

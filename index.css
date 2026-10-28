@@ -1355,51 +1355,74 @@ tfoot th {
     white-space: pre-wrap;
     max-width: 100%;
 }
-.custom-scrollbar::-webkit-scrollbar {
-    width: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-    background-clip: padding-box;
+@media (min-width: 769px) and (pointer: fine) {
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+        height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+        background-clip: padding-box;
+    }
+
+    ::-webkit-scrollbar {
+        width: 8px !important;
+        height: 6px !important;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.02) !important;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.15) !important;
+        border-radius: 10px !important;
+        border: 2px solid transparent !important;
+        background-clip: content-box !important;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 0, 0, 0.25) !important;
+        background-clip: content-box !important;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .dark ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+    }
 }
 
-/* Global Thicker Scrollbars */
-::-webkit-scrollbar {
-    width: 14px !important;
-    height: 14px !important;
-}
-
-::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.02) !important;
-}
-
-::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.15) !important;
-    border-radius: 10px !important;
-    border: 3px solid transparent !important;
-    background-clip: content-box !important;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.25) !important;
-    background-clip: content-box !important;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1) !important;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2) !important;
+/* On Mobile & Touch Devices: Hide chunky desktop scrollbars & horizontal bars completely */
+@media (max-width: 768px), (pointer: coarse) {
+    ::-webkit-scrollbar,
+    *::-webkit-scrollbar,
+    .custom-scrollbar::-webkit-scrollbar,
+    .overflow-y-auto::-webkit-scrollbar,
+    .overflow-x-auto::-webkit-scrollbar {
+        width: 0px !important;
+        height: 0px !important;
+        display: none !important;
+        background: transparent !important;
+    }
+    *,
+    .custom-scrollbar,
+    .overflow-y-auto,
+    .overflow-x-auto {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+    }
 }
 
 /* --- GLASS/AURORA THEME SIDEBAR & MENU COHESION --- */
@@ -2513,17 +2536,29 @@ html[data-gpu-active="true"] * {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Momentum scrolling optimization - ensure mouse wheel and touch scroll freely */
+/* Momentum scrolling optimization - ensure mouse wheel and touch scroll freely anywhere in middle of screen */
 .overflow-y-auto,
-.overflow-x-auto,
 .custom-scrollbar {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: auto;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-x: auto;
+  touch-action: pan-x pan-y !important;
+  pointer-events: auto !important;
 }
 
 #main-scroll-container {
   overflow-y: auto !important;
-  overscroll-behavior-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior-y: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
 }
 
 /* Ensure root and app container allow scroll propagation */
@@ -2544,21 +2579,7 @@ html, body, #root {
   overscroll-behavior-y: auto !important;
 }
 
-/* Global robust mouse wheel and touch scrolling */
-#main-scroll-container {
-  overflow-y: auto !important;
-  overscroll-behavior-y: auto !important;
-  pointer-events: auto !important;
-}
-
-.overflow-y-auto,
-.overflow-x-auto,
-.custom-scrollbar {
-  -webkit-overflow-scrolling: touch;
-  pointer-events: auto !important;
-}
-
-/* Ensure mouse wheel events propagate to main scroll container when hovering over middle of screen or cards */
+/* Ensure mouse wheel and touch pan events propagate to scroll containers when swiping over middle of screen, cards, or buttons */
 body * {
   pointer-events: auto;
 }

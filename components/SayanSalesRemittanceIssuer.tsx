@@ -965,76 +965,141 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
   }, [archiveList, archiveSearch]);
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 select-text" dir="rtl">
-      {/* Top Banner Navigation */}
-      <div className="flex-none p-4 sm:p-5 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Barcode size={24} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white">
-                سامانه صدور حواله فروش و خروج انبار (لایو سایان ERP)
-              </h2>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[11px] font-bold border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                <span>اتصال زنده</span>
-              </span>
+    <div className="flex flex-col min-h-full bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 select-text" dir="rtl">
+      {/* Top Banner Navigation: Compact on mobile, rich on desktop */}
+      <div className="flex-none p-2.5 sm:p-4 border-b border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs">
+        {/* Desktop View */}
+        <div className="hidden sm:flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+              <Barcode size={22} />
             </div>
-            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-              صدور فوق‌سریع حواله فروش با بارکدخوان فیزیکی و ثبت اتوماتیک در دیتابیس سایان بدون فریز یا کندی
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm md:text-base font-black tracking-tight text-slate-900 dark:text-white">
+                  سامانه صدور حواله فروش و خروج انبار (لایو سایان ERP)
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-bold border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span>اتصال زنده</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                صدور فوق‌سریع حواله فروش با بارکدخوان فیزیکی و ثبت اتوماتیک در دیتابیس سایان بدون فریز یا کندی
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="p-1 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center gap-1">
+              <button
+                onClick={() => setActiveSubTab('issuer')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeSubTab === 'issuer' 
+                    ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs' 
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
+                }`}
+              >
+                <Package size={14} />
+                <span>صدور حواله با بارکدخوان</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab('archive')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeSubTab === 'archive' 
+                    ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs' 
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
+                }`}
+              >
+                <History size={14} />
+                <span>بایگانی حواله‌ها ({archiveList.length})</span>
+              </button>
+              <button
+                onClick={() => setActiveSubTab('warehouses')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeSubTab === 'warehouses' 
+                    ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs' 
+                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
+                }`}
+              >
+                <Building2 size={14} />
+                <span>انبارها و آمار زنده سایان</span>
+              </button>
+            </div>
+
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+                title="بستن"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Tab Controls */}
-        <div className="flex items-center gap-2">
-          <div className="p-1 rounded-xl bg-slate-100 dark:bg-zinc-800 flex items-center gap-1">
+        {/* Mobile View: Sleek, compact and native feeling */}
+        <div className="sm:hidden space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs">
+                <Barcode size={15} />
+              </div>
+              <span className="text-xs font-black text-slate-900 dark:text-white">
+                حواله سایان ERP
+              </span>
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[9px] font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>زنده</span>
+              </span>
+            </div>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          {/* Segmented 3-part tab strip on mobile */}
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 dark:bg-zinc-800">
             <button
               onClick={() => setActiveSubTab('issuer')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                activeSubTab === 'issuer' 
-                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs' 
-                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
+              className={`py-1.5 px-1 rounded-lg text-[11px] font-black flex items-center justify-center gap-1 transition-all ${
+                activeSubTab === 'issuer'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-600 dark:text-zinc-400'
               }`}
             >
-              <Package size={15} />
-              <span>صدور حواله با بارکدخوان</span>
+              <Package size={13} />
+              <span>صدور حواله</span>
             </button>
             <button
               onClick={() => setActiveSubTab('archive')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                activeSubTab === 'archive' 
-                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs' 
-                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
+              className={`py-1.5 px-1 rounded-lg text-[11px] font-black flex items-center justify-center gap-1 transition-all ${
+                activeSubTab === 'archive'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-600 dark:text-zinc-400'
               }`}
             >
-              <History size={15} />
-              <span>بایگانی حواله‌ها ({archiveList.length})</span>
+              <History size={13} />
+              <span>بایگانی ({archiveList.length})</span>
             </button>
             <button
               onClick={() => setActiveSubTab('warehouses')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all ${
-                activeSubTab === 'warehouses' 
-                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs' 
-                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900'
+              className={`py-1.5 px-1 rounded-lg text-[11px] font-black flex items-center justify-center gap-1 transition-all ${
+                activeSubTab === 'warehouses'
+                  ? 'bg-white dark:bg-zinc-900 text-blue-600 dark:text-blue-400 shadow-xs'
+                  : 'text-slate-600 dark:text-zinc-400'
               }`}
             >
-              <Building2 size={15} />
-              <span>انبارها و آمار زنده سایان</span>
+              <Building2 size={13} />
+              <span>انبارها</span>
             </button>
           </div>
-
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 rounded-xl hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
-              title="بستن"
-            >
-              <X size={20} />
-            </button>
-          )}
         </div>
       </div>
 
@@ -1666,38 +1731,39 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
         </div>
       ) : (
         /* Live Sayan Warehouses & Stock Metrics SubTab */
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+        <div className="flex-1 md:overflow-y-auto p-2.5 sm:p-5 space-y-3 sm:space-y-4">
           {/* Top Bar: Title, Fiscal Year Selector, Live Refresh */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold">
-                <Building2 size={22} />
+          <div className="p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs flex flex-wrap items-center justify-between gap-2.5 sm:gap-4">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold shrink-0">
+                <Building2 size={18} className="sm:hidden" />
+                <Building2 size={22} className="hidden sm:block" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    وضعیت و آمار زنده تمامی انبارهای سایان ERP
+                <div className="flex items-center gap-1.5">
+                  <h3 className="text-xs sm:text-base font-black text-slate-900 dark:text-white">
+                    وضعیت و آمار زنده انبارهای سایان ERP
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[10px] font-mono font-bold">
+                  <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-[9px] sm:text-[10px] font-mono font-bold">
                     STR_TBL_001
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-zinc-400">
+                <p className="hidden sm:block text-xs text-slate-500 dark:text-zinc-400">
                   اتصال مستقیم به ۸ انبار فعال کارخانه و دفاتر با تفکیک سال مالی
                 </p>
               </div>
             </div>
 
             {/* Fiscal Year & Refresh Action */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-600 dark:text-zinc-300">
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+              <div className="flex items-center gap-1.5">
+                <label className="text-[11px] sm:text-xs font-bold text-slate-600 dark:text-zinc-300">
                   سال مالی سایان:
                 </label>
                 <select
                   value={selectedFiscalYear}
                   onChange={(e) => setSelectedFiscalYear(e.target.value)}
-                  className="h-9 px-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="h-8 sm:h-9 px-2 sm:px-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg sm:rounded-xl text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {fiscalYears.map(fy => (
                     <option key={fy.code} value={fy.code}>{fy.title}</option>
@@ -1712,46 +1778,46 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
                   if (selectedStatWarehouse) loadWarehouseDocuments(selectedStatWarehouse, selectedFiscalYear);
                 }}
                 disabled={isLoadingStats}
-                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg sm:rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
               >
-                <RefreshCw size={14} className={isLoadingStats ? 'animate-spin' : ''} />
-                <span>{isLoadingStats ? 'در حال دریافت...' : 'به‌روزرسانی داده‌ها'}</span>
+                <RefreshCw size={13} className={isLoadingStats ? 'animate-spin' : ''} />
+                <span>{isLoadingStats ? 'دریافت...' : 'به‌روزرسانی'}</span>
               </button>
             </div>
           </div>
 
           {/* Top KPI Metrics Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100/40 dark:from-blue-950/40 dark:to-blue-900/20 border border-blue-200/80 dark:border-blue-800/60 shadow-xs">
-              <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 block">تعداد کل انبارها</span>
-              <span className="text-xl sm:text-2xl font-black font-mono text-blue-950 dark:text-blue-100 mt-1 block">
-                {warehouseStats.length || 8} انبار فعال
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+            <div className="p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100/40 dark:from-blue-950/40 dark:to-blue-900/20 border border-blue-200/80 dark:border-blue-800/60 shadow-xs">
+              <span className="text-[10px] sm:text-[11px] font-bold text-blue-700 dark:text-blue-300 block">تعداد کل انبارها</span>
+              <span className="text-base sm:text-2xl font-black font-mono text-blue-950 dark:text-blue-100 mt-0.5 block">
+                {warehouseStats.length || 8} انبار
               </span>
-              <span className="text-[10px] text-blue-600/80 dark:text-blue-400 mt-0.5 block">پایگاه داده سایان (LepanBaft)</span>
+              <span className="text-[9px] sm:text-[10px] text-blue-600/80 dark:text-blue-400 mt-0.5 block">پایگاه داده سایان</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/40 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-200/80 dark:border-emerald-800/60 shadow-xs">
-              <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 block">کل وزن گردش سال مالی</span>
-              <span className="text-xl sm:text-2xl font-black font-mono text-emerald-950 dark:text-emerald-100 mt-1 block">
-                {Math.round(warehouseStats.reduce((s, w) => s + (w.totalQty || 0), 0)).toLocaleString('fa-IR')} <span className="text-xs font-normal">ک‌گ</span>
+            <div className="p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100/40 dark:from-emerald-950/40 dark:to-emerald-900/20 border border-emerald-200/80 dark:border-emerald-800/60 shadow-xs">
+              <span className="text-[10px] sm:text-[11px] font-bold text-emerald-700 dark:text-emerald-300 block">کل وزن گردش سال مالی</span>
+              <span className="text-base sm:text-2xl font-black font-mono text-emerald-950 dark:text-emerald-100 mt-0.5 block">
+                {Math.round(warehouseStats.reduce((s, w) => s + (w.totalQty || 0), 0)).toLocaleString('fa-IR')} <span className="text-[10px] sm:text-xs font-normal">ک‌گ</span>
               </span>
-              <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400 mt-0.5 block">مجموع تراکنش‌های انبار</span>
+              <span className="text-[9px] sm:text-[10px] text-emerald-600/80 dark:text-emerald-400 mt-0.5 block">تراکنش‌های انبار</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100/40 dark:from-purple-950/40 dark:to-purple-900/20 border border-purple-200/80 dark:border-purple-800/60 shadow-xs">
-              <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300 block">کل اسناد انبار</span>
-              <span className="text-xl sm:text-2xl font-black font-mono text-purple-950 dark:text-purple-100 mt-1 block">
-                {warehouseStats.reduce((s, w) => s + (w.docsCount || 0), 0).toLocaleString('fa-IR')} <span className="text-xs font-normal">سند</span>
+            <div className="p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100/40 dark:from-purple-950/40 dark:to-purple-900/20 border border-purple-200/80 dark:border-purple-800/60 shadow-xs">
+              <span className="text-[10px] sm:text-[11px] font-bold text-purple-700 dark:text-purple-300 block">کل اسناد انبار</span>
+              <span className="text-base sm:text-2xl font-black font-mono text-purple-950 dark:text-purple-100 mt-0.5 block">
+                {warehouseStats.reduce((s, w) => s + (w.docsCount || 0), 0).toLocaleString('fa-IR')} <span className="text-[10px] sm:text-xs font-normal">سند</span>
               </span>
-              <span className="text-[10px] text-purple-600/80 dark:text-purple-400 mt-0.5 block">STR_TBL_010 در سال {selectedFiscalYear}</span>
+              <span className="text-[9px] sm:text-[10px] text-purple-600/80 dark:text-purple-400 mt-0.5 block">STR_TBL_010</span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100/40 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-200/80 dark:border-amber-800/60 shadow-xs">
-              <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 block">حواله‌های فروش صادرشده</span>
-              <span className="text-xl sm:text-2xl font-black font-mono text-amber-950 dark:text-amber-100 mt-1 block">
-                {warehouseStats.reduce((s, w) => s + (w.salesRemittancesCount || 0), 0).toLocaleString('fa-IR')} <span className="text-xs font-normal">حواله</span>
+            <div className="p-2.5 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100/40 dark:from-amber-950/40 dark:to-amber-900/20 border border-amber-200/80 dark:border-amber-800/60 shadow-xs">
+              <span className="text-[10px] sm:text-[11px] font-bold text-amber-700 dark:text-amber-300 block">حواله‌های فروش</span>
+              <span className="text-base sm:text-2xl font-black font-mono text-amber-950 dark:text-amber-100 mt-0.5 block">
+                {warehouseStats.reduce((s, w) => s + (w.salesRemittancesCount || 0), 0).toLocaleString('fa-IR')} <span className="text-[10px] sm:text-xs font-normal">حواله</span>
               </span>
-              <span className="text-[10px] text-amber-600/80 dark:text-amber-400 mt-0.5 block">عملیات فروش (OpCode 23)</span>
+              <span className="text-[9px] sm:text-[10px] text-amber-600/80 dark:text-amber-400 mt-0.5 block">عملیات فروش (۲۳)</span>
             </div>
           </div>
 
@@ -1840,31 +1906,31 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
           </div>
 
           {/* Selected Warehouse Detailed Recent Documents */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
-                  <Clock size={16} />
+          <div className="p-3 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xs space-y-3 sm:space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-bold shrink-0">
+                  <Clock size={15} />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                    آخرین اسناد و حواله‌های ثبت‌شده در {warehouseStats.find(w => w.code === selectedStatWarehouse)?.name || `انبار ${selectedStatWarehouse}`}
+                  <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    آخرین اسناد در {warehouseStats.find(w => w.code === selectedStatWarehouse)?.name || `انبار ${selectedStatWarehouse}`}
                   </h4>
-                  <p className="text-[11px] text-slate-400">
-                    نمایش زنده ۲۰ سند اخیر ثبت‌شده در جدول STR_TBL_010 دیتابیس سایان
+                  <p className="hidden sm:block text-[11px] text-slate-400">
+                    نمایش ۲۰ سند اخیر ثبت‌شده در جدول STR_TBL_010 سایان
                   </p>
                 </div>
               </div>
 
               {/* Filters */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative w-48">
+              <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-44">
                   <input
                     type="text"
                     value={docsSearchQuery}
                     onChange={(e) => setDocsSearchQuery(e.target.value)}
-                    placeholder="جستجو در شماره یا طرف‌حساب..."
-                    className="w-full h-8 px-2.5 pr-7 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs text-slate-900 dark:text-white outline-none"
+                    placeholder="جستجو در اسناد..."
+                    className="w-full h-8 px-2 pr-7 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 text-xs text-slate-900 dark:text-white outline-none"
                   />
                   <Search size={12} className="text-slate-400 absolute right-2 top-2" />
                 </div>
@@ -1872,14 +1938,14 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
                 <select
                   value={docsOpFilter}
                   onChange={(e) => setDocsOpFilter(e.target.value)}
-                  className="h-8 px-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none"
+                  className="h-8 px-2 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-[11px] sm:text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none"
                 >
                   <option value="all">همه عملیات‌ها</option>
-                  <option value="23">فقط حواله فروش (۲۳)</option>
+                  <option value="23">حواله فروش (۲۳)</option>
                   <option value="12">حواله خروج (۱۲)</option>
-                  <option value="65">رسید انبار / تولید (۶۵)</option>
-                  <option value="67">انتقال بین انبار (۶۷)</option>
-                  <option value="13">برگشت از فروش (۱۳)</option>
+                  <option value="65">رسید انبار (۶۵)</option>
+                  <option value="67">انتقال (۶۷)</option>
+                  <option value="13">برگشت (۱۳)</option>
                 </select>
 
                 <button
@@ -1894,7 +1960,7 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
               </div>
             </div>
 
-            {/* Documents Table */}
+            {/* Documents Table / Cards */}
             {isLoadingRecentDocs ? (
               <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
                 <Loader2 size={24} className="animate-spin text-blue-600" />
@@ -1905,80 +1971,144 @@ export const SayanSalesRemittanceIssuer: React.FC<SayanSalesRemittanceIssuerProp
                 هیچ سندی برای این انبار در سال مالی جاری یافت نشد.
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-800/40 text-slate-500 font-bold">
-                      <th className="py-2.5 px-3">شماره سند</th>
-                      <th className="py-2.5 px-3">شماره فرعی</th>
-                      <th className="py-2.5 px-3">نوع عملیات انبار</th>
-                      <th className="py-2.5 px-3">تاریخ ثبت</th>
-                      <th className="py-2.5 px-3">طرف‌حساب / مشتری</th>
-                      <th className="py-2.5 px-3">شرح سند</th>
-                      <th className="py-2.5 px-3 text-center">اقدام</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
-                    {recentDocs
-                      .filter(d => {
-                        if (docsOpFilter !== 'all' && d.opCode !== docsOpFilter) return false;
-                        if (!docsSearchQuery.trim()) return true;
-                        const q = docsSearchQuery.trim().toLowerCase();
-                        return (
-                          d.docNo.includes(q) ||
-                          (d.customerName && d.customerName.toLowerCase().includes(q)) ||
-                          (d.customerCode && d.customerCode.includes(q)) ||
-                          (d.description && d.description.toLowerCase().includes(q))
-                        );
-                      })
-                      .map(doc => (
-                        <tr key={doc.docId} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/50 transition-colors">
-                          <td className="py-2.5 px-3 font-mono font-black text-blue-600 dark:text-blue-400">
-                            #{doc.docNo}
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-zinc-400">
-                            {doc.subNo || '-'}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              <>
+                {/* Mobile View: High density, clean cards */}
+                <div className="sm:hidden space-y-2">
+                  {recentDocs
+                    .filter(d => {
+                      if (docsOpFilter !== 'all' && d.opCode !== docsOpFilter) return false;
+                      if (!docsSearchQuery.trim()) return true;
+                      const q = docsSearchQuery.trim().toLowerCase();
+                      return (
+                        d.docNo.includes(q) ||
+                        (d.customerName && d.customerName.toLowerCase().includes(q)) ||
+                        (d.customerCode && d.customerCode.includes(q)) ||
+                        (d.description && d.description.toLowerCase().includes(q))
+                      );
+                    })
+                    .map(doc => (
+                      <div key={doc.docId} className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-zinc-800/50 border border-slate-200/80 dark:border-zinc-750 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-black text-blue-600 dark:text-blue-400 text-xs">
+                              #{doc.docNo}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold ${
                               doc.opCode === '23'
                                 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                 : doc.opCode === '12'
                                 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                : 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300'
+                                : 'bg-slate-200 text-slate-700 dark:bg-zinc-700 dark:text-zinc-300'
                             }`}>
                               {doc.opName}
                             </span>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-zinc-300 text-[11px]">
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-400">
                             {doc.docDate ? new Date(doc.docDate).toLocaleDateString('fa-IR') : '-'}
-                          </td>
-                          <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
-                            {doc.customerName || doc.customerCode || '-'}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={doc.description}>
-                            {doc.description || '-'}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedWarehouse(doc.warehouseCode || selectedStatWarehouse);
-                                setActiveSubTab('issuer');
-                                setTimeout(() => barcodeInputRef.current?.focus(), 150);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-[11px] font-bold inline-flex items-center gap-1"
-                              title="صدور حواله فروش جدید"
-                            >
-                              <Plus size={12} />
-                              <span>صدور حواله</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-xs text-slate-900 dark:text-white truncate">
+                            {doc.customerName || doc.customerCode || 'نامشخص'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedWarehouse(doc.warehouseCode || selectedStatWarehouse);
+                              setActiveSubTab('issuer');
+                              setTimeout(() => barcodeInputRef.current?.focus(), 150);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold inline-flex items-center gap-1 shrink-0 active:scale-95"
+                          >
+                            <Plus size={11} />
+                            <span>صدور حواله</span>
+                          </button>
+                        </div>
+                        {doc.description && (
+                          <p className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
+                            {doc.description}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                </div>
+
+                {/* Desktop View: Full Table */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-right text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-800/40 text-slate-500 font-bold">
+                        <th className="py-2.5 px-3">شماره سند</th>
+                        <th className="py-2.5 px-3">شماره فرعی</th>
+                        <th className="py-2.5 px-3">نوع عملیات انبار</th>
+                        <th className="py-2.5 px-3">تاریخ ثبت</th>
+                        <th className="py-2.5 px-3">طرف‌حساب / مشتری</th>
+                        <th className="py-2.5 px-3">شرح سند</th>
+                        <th className="py-2.5 px-3 text-center">اقدام</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
+                      {recentDocs
+                        .filter(d => {
+                          if (docsOpFilter !== 'all' && d.opCode !== docsOpFilter) return false;
+                          if (!docsSearchQuery.trim()) return true;
+                          const q = docsSearchQuery.trim().toLowerCase();
+                          return (
+                            d.docNo.includes(q) ||
+                            (d.customerName && d.customerName.toLowerCase().includes(q)) ||
+                            (d.customerCode && d.customerCode.includes(q)) ||
+                            (d.description && d.description.toLowerCase().includes(q))
+                          );
+                        })
+                        .map(doc => (
+                          <tr key={doc.docId} className="hover:bg-slate-50/50 dark:hover:bg-zinc-800/50 transition-colors">
+                            <td className="py-2.5 px-3 font-mono font-black text-blue-600 dark:text-blue-400">
+                              #{doc.docNo}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-zinc-400">
+                              {doc.subNo || '-'}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                doc.opCode === '23'
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : doc.opCode === '12'
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                  : 'bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300'
+                              }`}>
+                                {doc.opName}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-slate-600 dark:text-zinc-300 text-[11px]">
+                              {doc.docDate ? new Date(doc.docDate).toLocaleDateString('fa-IR') : '-'}
+                            </td>
+                            <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white">
+                              {doc.customerName || doc.customerCode || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate" title={doc.description}>
+                              {doc.description || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedWarehouse(doc.warehouseCode || selectedStatWarehouse);
+                                  setActiveSubTab('issuer');
+                                  setTimeout(() => barcodeInputRef.current?.focus(), 150);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 text-[11px] font-bold inline-flex items-center gap-1"
+                                title="صدور حواله فروش جدید"
+                              >
+                                <Plus size={12} />
+                                <span>صدور حواله</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>

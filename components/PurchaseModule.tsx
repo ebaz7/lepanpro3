@@ -21,7 +21,8 @@ import {
     Ruler, Layers, Tag, Upload, Info, FileUp, UploadCloud, Settings, Printer, FileDown, AlertCircle, X,
     GitFork, Clock, CornerUpLeft, UserCheck, FileCode, AlertTriangle, Check, ExternalLink, Paperclip, Wrench,
     FileSpreadsheet, Container, ArrowDownCircle, ArrowUpCircle, MessageSquare, Sparkles, Bot, ChevronUp, ChevronDown,
-    Crown, Briefcase, ShoppingBag, Lock, ShieldAlert, RotateCcw, RefreshCw, Users, CheckSquare, Sliders
+    Crown, Briefcase, ShoppingBag, Lock, ShieldAlert, RotateCcw, RefreshCw, Users, CheckSquare, Sliders,
+    ChevronRight, ChevronLeft, Download
 } from 'lucide-react';
 import { shareElementToChat, openSendToChat } from '../services/chatShareService';
 import { formatDate, formatCurrency, generateUUID, getCurrentShamsiDate } from '../constants';
@@ -37,7 +38,8 @@ import { generatePdf } from '../utils/pdfGenerator';
 import { getRolePermissions } from '../services/authService';
 import { AiPurchaseAdvisorModal } from './AiPurchaseAdvisorModal';
 import { FileViewerModal } from './FileViewerModal';
-import { LS_KEYS, getLocalData } from '../services/apiService';
+import { LS_KEYS, getLocalData, resolveImageUrl } from '../services/apiService';
+import { downloadAndOpenFile, saveImageToGallery } from '../services/fileService';
 import { useCachedAsset } from '../hooks/useCachedAsset';
 
 export function fixMojibake(str: string): string {
@@ -492,6 +494,8 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [requestSearch, setRequestSearch] = useState('');
     const [viewRequest, setViewRequest] = useState<PurchaseRequest | null>(null);
+    const [initialModalTab, setInitialModalTab] = useState<'DETAILS' | 'COMMENTS'>('DETAILS');
+    const [pendingDeepLink, setPendingDeepLink] = useState<{ requestId: string; subTab?: 'DETAILS' | 'COMMENTS' } | null>(null);
 
     // Parts State - Initialize from cache for instant 0ms rendering
     const [parts, setParts] = useState<PartMasterData[]>(() => {
@@ -514,6 +518,69 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
         loadRequests();
         loadParts();
     }, []);
+
+    // Listen for notification deep-links to open a specific PurchaseRequest and its COMMENTS tab
+    useEffect(() => {
+        const checkPendingDeepLink = () => {
+            try {
+                const raw = sessionStorage.getItem('pending_purchase_deep_link');
+                if (raw) {
+                    sessionStorage.removeItem('pending_purchase_deep_link');
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.requestId) {
+                        setPendingDeepLink({
+                            requestId: String(parsed.requestId),
+                            subTab: parsed.subTab === 'comments' || parsed.subTab === 'COMMENTS' ? 'COMMENTS' : 'DETAILS'
+                        });
+                    }
+                }
+            } catch {}
+
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const reqId = params.get('requestId');
+                const subTab = params.get('subTab');
+                if (reqId) {
+                    setPendingDeepLink({
+                        requestId: reqId,
+                        subTab: subTab?.toLowerCase() === 'comments' ? 'COMMENTS' : 'DETAILS'
+                    });
+                }
+            } catch {}
+        };
+
+        checkPendingDeepLink();
+
+        const handleOpenPurchaseDetails = (e: any) => {
+            const detail = e?.detail;
+            if (detail && detail.requestId) {
+                setPendingDeepLink({
+                    requestId: String(detail.requestId),
+                    subTab: detail.subTab === 'comments' || detail.subTab === 'COMMENTS' ? 'COMMENTS' : 'DETAILS'
+                });
+            }
+        };
+
+        window.addEventListener('OPEN_PURCHASE_REQUEST_DETAILS', handleOpenPurchaseDetails);
+        return () => window.removeEventListener('OPEN_PURCHASE_REQUEST_DETAILS', handleOpenPurchaseDetails);
+    }, []);
+
+    useEffect(() => {
+        if (!pendingDeepLink || requests.length === 0) return;
+        const found = requests.find(
+            r => String(r.id) === String(pendingDeepLink.requestId) || String(r.requestNumber) === String(pendingDeepLink.requestId)
+        );
+        if (found) {
+            if (found.status === PurchaseRequestStatus.COMPLETED || found.status === PurchaseRequestStatus.REJECTED) {
+                setActiveTab('ARCHIVE');
+            } else {
+                setActiveTab('REQUESTS');
+            }
+            setInitialModalTab(pendingDeepLink.subTab || 'COMMENTS');
+            setViewRequest(found);
+            setPendingDeepLink(null);
+        }
+    }, [pendingDeepLink, requests]);
 
     useEffect(() => {
         if (viewRequest || editingPart || selectedPartKardex || showCreateModal || showPartModal) {
@@ -592,55 +659,55 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
 
     // Components for each tab will go here
     return (
-        <div className="space-y-6 pb-20 animate-fade-in h-full flex flex-col">
-            <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap justify-between items-center glass-panel p-4 rounded-2xl shadow-sm border border-gray-200 gap-3">
-                    <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
-                        <ShoppingCart className="text-indigo-600"/> مدیریت خرید و کالا
+        <div className="space-y-3 sm:space-y-6 pb-20 animate-fade-in">
+            <div className="flex flex-col gap-2.5 sm:gap-4">
+                <div className="flex flex-wrap justify-between items-center glass-panel px-3.5 py-2.5 sm:p-4 rounded-xl sm:rounded-2xl shadow-sm border border-gray-200 gap-2">
+                    <h1 className="text-base sm:text-xl font-black text-gray-800 flex items-center gap-2">
+                        <ShoppingCart size={20} className="text-indigo-600 shrink-0"/> مدیریت خرید و کالا
                     </h1>
                 </div>
                 
-                <div className="flex flex-wrap md:flex-nowrap p-1 bg-gray-200 rounded-xl gap-1 md:gap-0">
+                <div className="grid grid-cols-3 md:flex p-1 bg-gray-200/90 dark:bg-gray-800 rounded-xl gap-1">
                     <button 
                         onClick={() => setActiveTab('DASHBOARD')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'DASHBOARD' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                        className={`md:flex-1 py-2 sm:py-2.5 px-2 sm:px-4 rounded-lg text-[11px] sm:text-sm font-bold transition-all whitespace-nowrap text-center ${activeTab === 'DASHBOARD' ? 'glass-panel bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm font-black' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         داشبورد کارتابل
                     </button>
                     <button 
                         onClick={() => setActiveTab('REQUESTS')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'REQUESTS' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                        className={`md:flex-1 py-2 sm:py-2.5 px-2 sm:px-4 rounded-lg text-[11px] sm:text-sm font-bold transition-all whitespace-nowrap text-center ${activeTab === 'REQUESTS' ? 'glass-panel bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm font-black' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         درخواست‌های فعال
                     </button>
                     <button 
                         onClick={() => setActiveTab('RECEIPTS')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'RECEIPTS' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                        className={`md:flex-1 py-2 sm:py-2.5 px-2 sm:px-4 rounded-lg text-[11px] sm:text-sm font-bold transition-all whitespace-nowrap text-center ${activeTab === 'RECEIPTS' ? 'glass-panel bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm font-black' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         رسیدهای انبار
                     </button>
                     <button 
                         onClick={() => setActiveTab('PARTS')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'PARTS' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                        className={`md:flex-1 py-2 sm:py-2.5 px-2 sm:px-4 rounded-lg text-[11px] sm:text-sm font-bold transition-all whitespace-nowrap text-center ${activeTab === 'PARTS' ? 'glass-panel bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm font-black' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         کدینگ کالا
                     </button>
                     <button 
                         onClick={() => setActiveTab('KARDEX')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'KARDEX' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                        className={`md:flex-1 py-2 sm:py-2.5 px-2 sm:px-4 rounded-lg text-[11px] sm:text-sm font-bold transition-all whitespace-nowrap text-center ${activeTab === 'KARDEX' ? 'glass-panel bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm font-black' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         کاردکس موجودی
                     </button>
                     <button 
                         onClick={() => setActiveTab('ARCHIVE')} 
-                        className={`flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'ARCHIVE' ? 'glass-panel text-indigo-700 shadow-md' : 'text-gray-500'}`}
+                        className={`md:flex-1 py-2 sm:py-2.5 px-2 sm:px-4 rounded-lg text-[11px] sm:text-sm font-bold transition-all whitespace-nowrap text-center ${activeTab === 'ARCHIVE' ? 'glass-panel bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm font-black' : 'text-gray-600 dark:text-gray-400'}`}
                     >
                         بایگانی نهایی
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto no-scrollbar">
+            <div className="w-full">
                 {activeTab === 'DASHBOARD' && (
                     <PurchaseDashboard 
                         requests={requests} 
@@ -703,6 +770,22 @@ const PurchaseModule: React.FC<{ currentUser: User, settings?: SystemSettings, i
                     data-subtab-back="true" 
                     onClick={() => setActiveTab('DASHBOARD')} 
                     className="hidden"
+                />
+            )}
+
+            {/* Deep-linked Purchase Request Modal (e.g. from Comment Notification) */}
+            {viewRequest && (
+                <ViewRequestModal
+                    request={requests.find(r => r.id === viewRequest.id) || viewRequest}
+                    onClose={() => {
+                        setViewRequest(null);
+                        setInitialModalTab('DETAILS');
+                    }}
+                    currentUser={currentUser}
+                    onSuccess={loadRequests}
+                    settings={settings}
+                    parts={parts}
+                    initialTab={initialModalTab}
                 />
             )}
         </div>
@@ -966,47 +1049,48 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
     };
 
     return (
-        <div className="space-y-8 animate-fade-in">
-            {/* High-visibility role-separated stats tiles */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="space-y-4 sm:space-y-6 animate-fade-in">
+            {/* High-visibility role-separated stats tiles - Compact 2-col on mobile */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
                 {stats.map((s, idx) => (
                     <div 
                         key={idx} 
                         onClick={() => setActiveTab(s.tab)} 
-                        className={`glass-panel p-5 rounded-[2rem] border-2 cursor-pointer hover:scale-105 transition-all text-center flex flex-col items-center justify-center gap-2 shadow-sm ${s.bg || 'border-indigo-100 bg-indigo-50/30'}`}
+                        className={`glass-panel p-3 sm:p-5 rounded-2xl sm:rounded-[2rem] border-2 cursor-pointer active:scale-95 sm:hover:scale-105 transition-all text-center flex flex-col items-center justify-center gap-1.5 sm:gap-2 shadow-sm ${idx === stats.length - 1 && stats.length % 2 === 1 ? 'col-span-2 sm:col-span-1' : ''} ${s.bg || 'border-indigo-100 bg-indigo-50/30'}`}
                     >
-                        <div className={`p-3 rounded-2xl ${s.highlightIcon || 'bg-indigo-100 text-indigo-600'} shadow-sm`}>
-                            <s.icon size={26} />
+                        <div className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl ${s.highlightIcon || 'bg-indigo-100 text-indigo-600'} shadow-sm`}>
+                            <s.icon size={20} className="sm:hidden" />
+                            <s.icon size={26} className="hidden sm:block" />
                         </div>
-                        <div className="text-2xl font-black text-gray-800">{s.count}</div>
-                        <div className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">{s.label}</div>
+                        <div className="text-lg sm:text-2xl font-black text-gray-800 leading-none">{s.count}</div>
+                        <div className="text-[10px] font-bold text-gray-600 leading-tight">{s.label}</div>
                     </div>
                 ))}
             </div>
 
-            <div className="glass-panel p-6 rounded-[2.5rem] border border-gray-100 bg-white shadow-sm mb-6">
-                <div className="flex justify-between items-center border-b pb-4 mb-4">
-                    <h3 className="font-black text-indigo-900 flex items-center gap-2">
-                        <ClipboardCheck /> 
+            <div className="glass-panel p-3.5 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border border-gray-100 bg-white shadow-sm mb-4 sm:mb-6">
+                <div className="flex justify-between items-center border-b pb-3 sm:pb-4 mb-3 sm:mb-4">
+                    <h3 className="text-sm sm:text-base font-black text-indigo-900 flex items-center gap-2">
+                        <ClipboardCheck size={18} /> 
                         <span>کارتابل وظایف من</span>
                     </h3>
-                    <span className="text-xs bg-indigo-50 text-indigo-700 font-black px-3 py-1 rounded-full border border-indigo-100">
+                    <span className="text-[11px] sm:text-xs bg-indigo-50 text-indigo-700 font-black px-2.5 py-1 rounded-full border border-indigo-100">
                         {myTasks.length} وظیفه اقدام‌نشده
                     </span>
                 </div>
 
                 {myTasks.length === 0 ? (
-                    <div className="py-8 text-center text-gray-300 italic">موردی جهت اقدام شما یافت نشد.</div>
+                    <div className="py-6 sm:py-8 text-center text-gray-300 italic text-xs">موردی جهت اقدام شما یافت نشد.</div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
                         {myTasks.slice(0, 9).map((req: any) => {
                             const roleInfo = getRoleBadgeForStatus(req.status);
                             const RoleIcon = roleInfo?.icon;
 
                             return (
-                                <div key={req.id} onClick={() => setActiveTab('REQUESTS')} className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/70 transition-all cursor-pointer group flex flex-col justify-between">
+                                <div key={req.id} onClick={() => setActiveTab('REQUESTS')} className="p-3 sm:p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/70 transition-all cursor-pointer group flex flex-col justify-between">
                                     <div>
-                                        <div className="flex justify-between items-start mb-2">
+                                        <div className="flex justify-between items-start mb-1.5 sm:mb-2">
                                             <span className="text-[9px] font-mono font-bold text-gray-400">#{req.requestNumber}</span>
                                             <div className="flex items-center gap-1.5">
                                                 {roleInfo && (
@@ -1018,9 +1102,9 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
                                                 <span className="text-[9px] font-bold text-gray-500 bg-white px-2 py-0.5 rounded-full shadow-sm">{formatDate(req.date)}</span>
                                             </div>
                                         </div>
-                                        <h4 className="font-black text-gray-800 text-sm group-hover:text-indigo-700 transition-colors uppercase tracking-tight line-clamp-1">{req.itemName}</h4>
+                                        <h4 className="font-black text-gray-800 text-xs sm:text-sm group-hover:text-indigo-700 transition-colors uppercase tracking-tight line-clamp-1">{req.itemName}</h4>
                                     </div>
-                                    <div className="mt-3 pt-2 border-t border-gray-200/60 flex items-center justify-between">
+                                    <div className="mt-2.5 pt-2 border-t border-gray-200/60 flex items-center justify-between">
                                         <span className="text-[10px] font-black text-indigo-600 truncate max-w-[200px]">{req.status}</span>
                                         <div className="w-6 h-6 rounded-lg bg-white flex items-center justify-center text-indigo-600 shadow-sm shrink-0"><ArrowRight size={14}/></div>
                                     </div>
@@ -1031,14 +1115,14 @@ const PurchaseDashboard = ({ requests, setActiveTab, currentUser, settings }: an
                 )}
             </div>
 
-            <div className="glass-panel p-6 rounded-[2.5rem] border border-gray-100 bg-gray-50 shadow-inner">
-                <h3 className="font-black text-gray-700 border-b pb-4 mb-4 flex items-center gap-2"><ShoppingCart className="text-gray-400" size={18}/> درخواست‌های اخیراً ثبت شده من</h3>
+            <div className="glass-panel p-3.5 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border border-gray-100 bg-gray-50 shadow-inner">
+                <h3 className="text-sm sm:text-base font-black text-gray-700 border-b pb-3 sm:pb-4 mb-3 sm:mb-4 flex items-center gap-2"><ShoppingCart className="text-gray-400" size={18}/> درخواست‌های اخیراً ثبت شده من</h3>
                 {requests.filter((r: any) => r.requester === currentUser.fullName).length === 0 ? (
-                    <div className="py-8 text-center text-gray-400 italic text-xs">شما هنوز درخواستی ثبت نکرده‌اید.</div>
+                    <div className="py-6 sm:py-8 text-center text-gray-400 italic text-xs">شما هنوز درخواستی ثبت نکرده‌اید.</div>
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
                         {requests.filter((r: any) => r.requester === currentUser.fullName).slice(0, 3).map((req: any) => (
-                            <div key={req.id} onClick={() => setActiveTab('REQUESTS')} className="p-4 bg-white rounded-2xl border border-gray-200 hover:shadow-md transition-all cursor-pointer">
+                            <div key={req.id} onClick={() => setActiveTab('REQUESTS')} className="p-3 sm:p-4 bg-white rounded-2xl border border-gray-200 hover:shadow-md transition-all cursor-pointer">
                                 <div className="flex justify-between items-center mb-1">
                                     <span className="text-[8px] font-mono text-gray-400">{req.requestNumber}</span>
                                     <span className={`text-[8px] font-bold px-2 py-0.5 rounded ${req.status === PurchaseRequestStatus.REJECTED ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-600'}`}>
@@ -1231,7 +1315,7 @@ const PurchaseRequestsTab = ({ requests, currentUser, onRequestUpdate, parts, is
             )}
 
             {showCreate && <CreateRequestModal onClose={() => setShowCreate(false)} currentUser={currentUser} onSuccess={onRequestUpdate} parts={parts} />}
-            {viewingRequest && <ViewRequestModal request={viewingRequest} onClose={() => setViewingRequest(null)} currentUser={currentUser} onSuccess={onRequestUpdate} settings={settings} parts={parts} />}
+            {viewingRequest && <ViewRequestModal request={requests.find((r: PurchaseRequest) => r.id === viewingRequest.id) || viewingRequest} onClose={() => setViewingRequest(null)} currentUser={currentUser} onSuccess={onRequestUpdate} settings={settings} parts={parts} />}
         </div>
     );
 };
@@ -1719,24 +1803,24 @@ const CreateRequestModal = ({ onClose, currentUser, onSuccess, parts }: any) => 
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000000] flex items-stretch sm:items-start justify-center p-0 sm:p-4 md:p-6 bg-black/80 backdrop-blur-xl animate-fade-in overflow-y-auto pt-0 sm:pt-10 md:pt-16 pb-0 sm:pb-10 dir-rtl">
-            <div className="bg-white dark:bg-gray-900 rounded-none sm:rounded-[2.5rem] w-full max-w-5xl min-h-screen sm:min-h-0 p-3.5 sm:p-6 md:p-8 animate-scale-in relative shadow-2xl border-0 sm:border-4 border-indigo-500/20 text-right flex flex-col justify-between">
-                <div>
-                    <div className="flex justify-between items-center mb-4 sm:mb-6 border-b border-gray-100 dark:border-gray-800 pb-3 sm:pb-4 sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md z-10 -mx-3.5 sm:mx-0 px-3.5 sm:px-0 pt-2 sm:pt-0">
-                        <div className="flex items-center gap-2.5 sm:gap-4">
-                            <div className="w-10 h-10 sm:w-12 sm:h-12 bg-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 dark:shadow-none shrink-0">
-                                <ShoppingCart size={22} className="sm:hidden" />
-                                <ShoppingCart size={28} className="hidden sm:block" />
-                            </div>
-                            <div>
-                                <h2 className="text-base sm:text-xl md:text-2xl font-black text-gray-800 dark:text-gray-100">ثبت فرم مهندسی درخواست خرید</h2>
-                                <p className="text-[10px] sm:text-xs text-gray-400 font-bold">ماژول خریدهای صنعتی، قطعات یدکی و ماشین‌آلات (تفکیک شعب بازرگانی تهران و کارخانه زنجان)</p>
-                            </div>
+        <div className="fixed inset-0 z-[100000000] flex items-stretch sm:items-center justify-center p-0 sm:p-4 md:p-6 bg-black/80 backdrop-blur-xl animate-fade-in overflow-hidden dir-rtl">
+            <div className="bg-white dark:bg-gray-900 rounded-none sm:rounded-[2.5rem] w-full max-w-5xl h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[92vh] animate-scale-in relative shadow-2xl border-0 sm:border-4 border-indigo-500/20 text-right flex flex-col overflow-hidden">
+                <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-800 px-3.5 py-2.5 sm:px-6 sm:py-4 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md z-10 shrink-0">
+                    <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+                        <div className="w-8 h-8 sm:w-12 sm:h-12 bg-indigo-600 rounded-xl sm:rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200 dark:shadow-none shrink-0">
+                            <ShoppingCart size={18} className="sm:hidden" />
+                            <ShoppingCart size={28} className="hidden sm:block" />
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-red-50 hover:text-red-500 rounded-xl sm:rounded-2xl transition-all bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300"><X size={20} className="sm:hidden"/><X size={24} className="hidden sm:block"/></button>
+                        <div className="min-w-0">
+                            <h2 className="text-sm sm:text-xl md:text-2xl font-black text-gray-800 dark:text-gray-100 truncate">ثبت فرم مهندسی درخواست خرید</h2>
+                            <p className="hidden sm:block text-xs text-gray-400 font-bold">ماژول خریدهای صنعتی، قطعات یدکی و ماشین‌آلات (تفکیک شعب بازرگانی تهران و کارخانه زنجان)</p>
+                        </div>
                     </div>
+                    <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-red-50 hover:text-red-500 rounded-xl sm:rounded-2xl transition-all bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-300 shrink-0"><X size={18} className="sm:hidden"/><X size={24} className="hidden sm:block"/></button>
+                </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3 sm:p-6 md:p-8">
+                    <form onSubmit={handleSubmit} className="space-y-3.5 sm:space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5 bg-indigo-50/60 dark:bg-indigo-950/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/50">
                             <div>
                                 <label className="text-xs font-black text-indigo-900 dark:text-indigo-200 block mb-1">ثبت‌کننده درخواست *</label>
@@ -2542,6 +2626,46 @@ const PurchasingAgentModal = ({ onClose, onConfirm }: { onClose: () => void, onC
 const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () => void }) => {
     const [isSharing, setIsSharing] = useState(false);
     const [previewFile, setPreviewFile] = useState<{ url: string; fileName: string } | null>(null);
+    const [activeImgIdx, setActiveImgIdx] = useState(0);
+    const [activePdfIdx, setActivePdfIdx] = useState(0);
+    const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
+
+    const allImages = React.useMemo(() => {
+        const list = Array.isArray(part.images) && part.images.length > 0
+            ? part.images.filter(Boolean)
+            : (part.image ? [part.image] : []);
+        return Array.from(new Set(list));
+    }, [part.images, part.image]);
+
+    const allPdfs = React.useMemo(() => {
+        const list = Array.isArray(part.pdfAttachments) && part.pdfAttachments.length > 0
+            ? part.pdfAttachments.filter(Boolean)
+            : (part.pdfAttachment ? [part.pdfAttachment] : []);
+        return Array.from(new Set(list));
+    }, [part.pdfAttachments, part.pdfAttachment]);
+
+    const safeImgIdx = allImages.length > 0 ? Math.min(activeImgIdx, allImages.length - 1) : 0;
+    const safePdfIdx = allPdfs.length > 0 ? Math.min(activePdfIdx, allPdfs.length - 1) : 0;
+
+    const currentImgUrl = allImages[safeImgIdx] || '';
+    const currentPdfUrl = allPdfs[safePdfIdx] || '';
+
+    const handleDownloadFile = async (url: string, fileName: string, isImg: boolean) => {
+        if (!url || downloadingFile) return;
+        setDownloadingFile(url);
+        try {
+            const resolved = resolveImageUrl(url);
+            if (isImg) {
+                await saveImageToGallery(resolved, fileName);
+            } else {
+                await downloadAndOpenFile(resolved, fileName);
+            }
+        } catch (err) {
+            console.error('Download error:', err);
+        } finally {
+            setDownloadingFile(null);
+        }
+    };
 
     const handleSendToChat = async () => {
         setIsSharing(true);
@@ -2565,47 +2689,118 @@ const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () =
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000008] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center p-4 bg-black/70 backdrop-blur-md">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl border border-white/20 animate-in fade-in zoom-in h-[90vh] flex flex-col">
-                <div className="p-6 border-b flex justify-between items-center bg-gray-900 text-white">
-                    <div className="flex items-center gap-3">
-                        <Info size={28} className="text-yellow-400" />
+        <div className="fixed inset-0 z-[100000008] flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-md overflow-hidden dir-rtl">
+            <div className="bg-white rounded-none sm:rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl border-0 sm:border border-white/20 animate-in fade-in zoom-in h-[100dvh] max-h-[100dvh] sm:h-[92vh] sm:max-h-[92vh] flex flex-col">
+                <div className="px-3.5 py-2.5 sm:p-5 border-b flex justify-between items-center bg-gray-900 text-white shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <Info size={20} className="text-yellow-400 shrink-0 sm:w-6 sm:h-6" />
                         <div>
-                            <h2 className="text-xl font-black">شناسنامه کالا (Data Sheet)</h2>
-                            <p className="text-[10px] opacity-80 font-mono tracking-widest">{part.id}</p>
+                            <h2 className="text-sm sm:text-xl font-black">شناسنامه کالا (Data Sheet)</h2>
+                            <p className="text-[9px] sm:text-[10px] opacity-80 font-mono tracking-widest">{part.id}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors"><XCircle size={24} /></button>
+                    <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-colors cursor-pointer"><XCircle size={22} /></button>
                 </div>
 
-                {/* Quick Attachments Bar */}
-                {(part.image || part.pdfAttachment) && (
-                    <div className="bg-indigo-50/90 px-6 py-2.5 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
-                            <Paperclip size={14} className="text-indigo-600" />
-                            فایل‌های پیوست فنی کالا:
-                        </span>
-                        <div className="flex items-center gap-2">
-                            {part.image && (
-                                <button
-                                    type="button"
-                                    onClick={() => setPreviewFile({ url: part.image!, fileName: `تصویر_${part.name}` })}
-                                    className="px-3 py-1 bg-white text-indigo-700 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                                >
-                                    <ImageIcon size={14} className="text-indigo-500" />
-                                    پیش‌نمایش تصویر کالا
-                                </button>
-                            )}
-                            {part.pdfAttachment && (
-                                <button
-                                    type="button"
-                                    onClick={() => setPreviewFile({ url: part.pdfAttachment!, fileName: `کاتالوگ_${part.name}.pdf` })}
-                                    className="px-3 py-1 bg-white text-red-700 hover:bg-red-50 border border-red-200 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                                >
-                                    <FileText size={14} className="text-red-500" />
-                                    پیش‌نمایش کاتالوگ / نقشه (PDF)
-                                </button>
-                            )}
+                {/* Multi-Image & Multi-PDF Attachments Bar with Flip/Carousel (ورق زدن), Open & Download */}
+                {(allImages.length > 0 || allPdfs.length > 0) && (
+                    <div className="bg-indigo-50/95 px-4 sm:px-6 py-3 border-b border-indigo-100 flex flex-col gap-2.5 shrink-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
+                                <Paperclip size={14} className="text-indigo-600" />
+                                فایل‌ها و مستندات فنی کالا (مشاهده، ورق زدن و دانلود):
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {/* Images Control Group */}
+                                {allImages.length > 0 && (
+                                    <div className="flex items-center gap-1 bg-white border border-indigo-200 rounded-xl p-1 shadow-2xs">
+                                        {allImages.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveImgIdx((safeImgIdx - 1 + allImages.length) % allImages.length)}
+                                                className="p-1 hover:bg-indigo-50 text-indigo-700 rounded-lg transition-colors cursor-pointer"
+                                                title="تصویر قبلی"
+                                            >
+                                                <ChevronRight size={15} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setPreviewFile({ url: resolveImageUrl(currentImgUrl), fileName: `تصویر_${safeImgIdx + 1}_${part.name}.jpg` })}
+                                            className="px-2.5 py-1 text-indigo-700 hover:bg-indigo-50 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
+                                            title="مشاهده بزرگنمایی تصویر"
+                                        >
+                                            <ImageIcon size={14} className="text-indigo-500" />
+                                            <span>مشاهده تصویر {allImages.length > 1 ? `(${safeImgIdx + 1} از ${allImages.length})` : 'کالا'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDownloadFile(currentImgUrl, `تصویر_${safeImgIdx + 1}_${part.name}.jpg`, true)}
+                                            disabled={downloadingFile === currentImgUrl}
+                                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                                            title="دانلود و ذخیره تصویر"
+                                        >
+                                            {downloadingFile === currentImgUrl ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                                            <span>دانلود</span>
+                                        </button>
+                                        {allImages.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveImgIdx((safeImgIdx + 1) % allImages.length)}
+                                                className="p-1 hover:bg-indigo-50 text-indigo-700 rounded-lg transition-colors cursor-pointer"
+                                                title="تصویر بعدی"
+                                            >
+                                                <ChevronLeft size={15} />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* PDFs Control Group */}
+                                {allPdfs.length > 0 && (
+                                    <div className="flex items-center gap-1 bg-white border border-red-200 rounded-xl p-1 shadow-2xs">
+                                        {allPdfs.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setActivePdfIdx((safePdfIdx - 1 + allPdfs.length) % allPdfs.length)}
+                                                className="p-1 hover:bg-red-50 text-red-700 rounded-lg transition-colors cursor-pointer"
+                                                title="فایل PDF قبلی"
+                                            >
+                                                <ChevronRight size={15} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setPreviewFile({ url: resolveImageUrl(currentPdfUrl), fileName: `کاتالوگ_${safePdfIdx + 1}_${part.name}.pdf` })}
+                                            className="px-2.5 py-1 text-red-700 hover:bg-red-50 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer"
+                                            title="مشاهده و ورق زدن PDF"
+                                        >
+                                            <FileText size={14} className="text-red-500" />
+                                            <span>مشاهده PDF {allPdfs.length > 1 ? `(${safePdfIdx + 1} از ${allPdfs.length})` : 'کاتالوگ'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDownloadFile(currentPdfUrl, `کاتالوگ_${safePdfIdx + 1}_${part.name}.pdf`, false)}
+                                            disabled={downloadingFile === currentPdfUrl}
+                                            className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-black flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                                            title="دانلود و ذخیره فایل PDF"
+                                        >
+                                            {downloadingFile === currentPdfUrl ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                                            <span>دانلود PDF</span>
+                                        </button>
+                                        {allPdfs.length > 1 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setActivePdfIdx((safePdfIdx + 1) % allPdfs.length)}
+                                                className="p-1 hover:bg-red-50 text-red-700 rounded-lg transition-colors cursor-pointer"
+                                                title="فایل PDF بعدی"
+                                            >
+                                                <ChevronLeft size={15} />
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -2613,24 +2808,28 @@ const DataSheetModal = ({ part, onClose }: { part: PartMasterData, onClose: () =
                 <div className="flex-1 overflow-y-auto bg-gray-50 p-2 sm:p-4 md:p-8">
                     <PinchZoomContainer contentWidth={760} autoFitMobile={true} showToolbar={true}>
                         <div id="datasheet-print-area" className="bg-white p-4 md:p-12 shadow-sm rounded-2xl mx-auto max-w-3xl border border-gray-200 printable-datasheet">
-                             <PrintPartDataSheet part={part} />
+                             <PrintPartDataSheet
+                                 part={part}
+                                 activeImageIndex={safeImgIdx}
+                                 onSelectImageIndex={setActiveImgIdx}
+                             />
                         </div>
                     </PinchZoomContainer>
                 </div>
 
-                <div className="p-6 border-t flex justify-end gap-3 bg-white">
-                    <button onClick={onClose} className="px-6 py-3 border-2 border-gray-200 rounded-2xl font-bold text-gray-500">بستن</button>
+                <div className="p-4 sm:p-6 border-t flex flex-wrap justify-end gap-2.5 sm:gap-3 bg-white shrink-0">
+                    <button onClick={onClose} className="px-5 py-2.5 sm:px-6 sm:py-3 border-2 border-gray-200 rounded-2xl font-bold text-gray-500 text-xs sm:text-sm cursor-pointer">بستن</button>
                     <button 
                         onClick={handleSendToChat} 
                         disabled={isSharing}
-                        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-emerald-100 transition-colors cursor-pointer"
+                        className="px-5 py-2.5 sm:px-6 sm:py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-emerald-100 transition-colors cursor-pointer text-xs sm:text-sm"
                         title="ارسال شناسنامه کالا به گفتگو"
                     >
-                        {isSharing ? <Loader2 size={20} className="animate-spin" /> : <MessageSquare size={20}/>}
+                        {isSharing ? <Loader2 size={18} className="animate-spin" /> : <MessageSquare size={18}/>}
                         ارسال به گفتگو
                     </button>
-                    <button onClick={() => window.print()} className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-indigo-100">
-                        <Printer size={20}/> چاپ شناسنامه
+                    <button onClick={() => window.print()} className="px-6 py-2.5 sm:px-8 sm:py-3 bg-indigo-600 text-white rounded-2xl font-black flex items-center gap-2 shadow-lg shadow-indigo-100 text-xs sm:text-sm cursor-pointer">
+                        <Printer size={18}/> چاپ شناسنامه
                     </button>
                 </div>
 
@@ -3044,8 +3243,11 @@ const PurchaseCommentsSection: React.FC<PurchaseCommentsSectionProps> = ({ reque
     );
 };
 
-const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, parts }: { request: PurchaseRequest, onClose: () => void, currentUser: User, onSuccess: () => void, settings?: SystemSettings, parts: PartMasterData[] }) => {
-    const [modalTab, setModalTab] = useState<'DETAILS' | 'COMMENTS'>('DETAILS');
+const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, parts, initialTab = 'DETAILS' }: { request: PurchaseRequest, onClose: () => void, currentUser: User, onSuccess: () => void, settings?: SystemSettings, parts: PartMasterData[], initialTab?: 'DETAILS' | 'COMMENTS' }) => {
+    const [modalTab, setModalTab] = useState<'DETAILS' | 'COMMENTS'>(initialTab);
+    useEffect(() => {
+        if (initialTab) setModalTab(initialTab);
+    }, [initialTab]);
     const [actionLoading, setActionLoading] = useState(false);
     const [pdfLoading, setPdfLoading] = useState(false);
     const [showProformaModal, setShowProformaModal] = useState(false);
@@ -3356,38 +3558,44 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000005] flex items-stretch sm:items-start justify-center p-0 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm overflow-y-auto pt-0 sm:pt-16 md:pt-20">
-            <div className="bg-white dark:bg-gray-900 rounded-none sm:rounded-[2.5rem] w-full max-w-full lg:max-w-6xl xl:max-w-7xl overflow-hidden shadow-2xl border-0 sm:border border-white/20 animate-in fade-in zoom-in h-auto min-h-screen sm:min-h-[60vh] sm:max-h-[94vh] flex flex-col relative mb-0 sm:mb-10">
-                <div className="p-4 md:p-6 border-b flex justify-between items-center bg-gradient-to-r from-indigo-700 via-indigo-800 to-purple-900 text-white shrink-0 z-20 shadow-lg">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 md:p-3 bg-white/10 rounded-2xl">
-                             <ShoppingCart size={window.innerWidth < 768 ? 22 : 28} />
+        <div className="fixed inset-0 z-[100000005] flex items-stretch sm:items-center justify-center p-0 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm overflow-hidden">
+            <div className="bg-white dark:bg-gray-900 rounded-none sm:rounded-[2rem] w-full max-w-full lg:max-w-6xl xl:max-w-7xl overflow-hidden shadow-2xl border-0 sm:border border-white/20 animate-in fade-in zoom-in h-[100dvh] max-h-[100dvh] sm:h-auto sm:min-h-[60vh] sm:max-h-[92vh] flex flex-col relative">
+                {/* Ultra-Compact Mobile Header */}
+                <div className="px-3 py-2 sm:p-4 md:p-5 border-b flex justify-between items-center bg-gradient-to-r from-indigo-700 via-indigo-800 to-purple-900 text-white shrink-0 z-20 shadow-md gap-2">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                        <div className="p-1.5 sm:p-2.5 bg-white/10 rounded-xl shrink-0">
+                             <ShoppingCart size={18} className="sm:hidden" />
+                             <ShoppingCart size={24} className="hidden sm:block" />
                         </div>
-                        <div>
-                            <h2 className="text-base md:text-xl font-black italic">گردش کار درخواست خرید</h2>
-                            <p className="text-[9px] md:text-[10px] opacity-80 uppercase tracking-widest font-mono">{request.requestNumber} | {request.status}</p>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-xs sm:text-base md:text-xl font-black truncate">گردش کار درخواست خرید</h2>
+                                <span className="text-[10px] bg-white/15 px-2 py-0.5 rounded-md font-mono font-bold shrink-0">{request.requestNumber}</span>
+                            </div>
+                            <p className="text-[10px] opacity-90 truncate font-bold mt-0.5">{request.status}</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                         {isAdmin && (
                             <button 
                                 onClick={() => setShowAdminEditModal(true)}
-                                className="p-2 md:p-2.5 bg-blue-500/20 hover:bg-blue-500/40 text-white rounded-xl transition-all flex items-center gap-2 text-[10px] md:text-xs font-bold ring-1 ring-white/20"
+                                className="p-1.5 sm:p-2 bg-blue-500/20 hover:bg-blue-500/40 text-white rounded-xl transition-all flex items-center gap-1.5 text-[10px] md:text-xs font-bold ring-1 ring-white/20"
+                                title="ویرایش مدیریت"
                             >
-                                <Edit size={window.innerWidth < 768 ? 16 : 18} />
+                                <Edit size={15} />
                                 <span className="hidden md:inline">ویرایش مدیریت</span>
                             </button>
                         )}
                         <button 
                             onClick={handleDelete} 
                             disabled={actionLoading}
-                            className="p-2 md:p-2.5 bg-red-500/20 hover:bg-red-500/40 text-white rounded-xl transition-all flex items-center gap-2 text-[10px] md:text-xs font-bold ring-1 ring-white/20"
+                            className="p-1.5 sm:p-2 bg-red-500/20 hover:bg-red-500/40 text-white rounded-xl transition-all flex items-center gap-1.5 text-[10px] md:text-xs font-bold ring-1 ring-white/20"
                             title="حذف درخواست"
                         >
-                            <Trash2 size={window.innerWidth < 768 ? 16 : 20} />
+                            <Trash2 size={15} />
                             <span className="hidden md:inline">حذف</span>
                         </button>
-                        <button onClick={onClose} className="p-1 md:p-2 bg-red-500/20 hover:bg-red-500 hover:rotate-90 rounded-xl transition-all text-white border border-white/20"><X size={window.innerWidth < 768 ? 24 : 28} strokeWidth={3} /></button>
+                        <button onClick={onClose} className="p-1.5 sm:p-2 bg-red-500/30 hover:bg-red-500 rounded-xl transition-all text-white border border-white/20"><X size={18} strokeWidth={2.5} /></button>
                     </div>
                 </div>
                 
@@ -3400,53 +3608,56 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     />
                 )}
 
-                {/* Sub-header Navigation Tabs */}
-                <div className="flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 md:px-6 gap-2 pt-2 shrink-0 z-20">
+                {/* Ultra-Compact Single-Line Sub-header Navigation Tabs */}
+                <div className="grid grid-cols-2 sm:flex border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-2 sm:px-6 gap-1 sm:gap-2 pt-1 sm:pt-2 shrink-0 z-20">
                     <button
                         type="button"
                         onClick={() => setModalTab('DETAILS')}
-                        className={`pb-3 px-4 text-xs md:text-sm font-black border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                        className={`py-2 px-2 sm:px-4 text-[11px] sm:text-xs md:text-sm font-black border-b-2 transition-all flex items-center justify-center sm:justify-start gap-1.5 cursor-pointer whitespace-nowrap ${
                             modalTab === 'DETAILS'
                                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                         }`}
                     >
-                        <Package size={16} />
-                        <span>مشخصات، اقلام و گردش کار</span>
+                        <Package size={14} className="shrink-0" />
+                        <span className="truncate">مشخصات، اقلام و گردش کار</span>
                     </button>
                     <button
                         type="button"
                         onClick={() => setModalTab('COMMENTS')}
-                        className={`pb-3 px-4 text-xs md:text-sm font-black border-b-2 transition-all flex items-center gap-2 cursor-pointer relative ${
+                        className={`py-2 px-2 sm:px-4 text-[11px] sm:text-xs md:text-sm font-black border-b-2 transition-all flex items-center justify-center sm:justify-start gap-1.5 cursor-pointer whitespace-nowrap relative ${
                             modalTab === 'COMMENTS'
                                 ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
                                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                         }`}
                     >
-                        <MessageSquare size={16} />
-                        <span>بخش نظرات و کامنت‌ها</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        <MessageSquare size={14} className="shrink-0" />
+                        <span className="truncate">نظرات و کامنت‌ها</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
                             (request.comments?.length || 0) > 0 
                                 ? 'bg-indigo-600 text-white shadow-xs' 
                                 : 'bg-gray-100 dark:bg-gray-800 text-gray-500'
                         }`}>
-                            {request.comments?.length || 0} نظر
+                            {request.comments?.length || 0}
                         </span>
                     </button>
                 </div>
 
                 {modalTab === 'COMMENTS' ? (
-                    <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50/50 dark:bg-gray-950/40 no-scrollbar space-y-4">
-                        <div className="max-w-4xl mx-auto space-y-4">
-                            <div className="bg-white dark:bg-gray-900 border border-indigo-100 dark:border-indigo-900/40 p-4 rounded-3xl flex flex-wrap justify-between items-center gap-3 shadow-xs">
+                    <div 
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 bg-gray-50/50 dark:bg-gray-950/40 custom-scrollbar overscroll-contain space-y-3 sm:space-y-4"
+                        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                    >
+                        <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
+                            <div className="bg-white dark:bg-gray-900 border border-indigo-100 dark:border-indigo-900/40 p-3 sm:p-4 rounded-2xl sm:rounded-3xl flex flex-wrap justify-between items-center gap-2 sm:gap-3 shadow-xs">
                                 <div>
                                     <div className="text-[10px] font-bold text-gray-400">درخواست خرید شماره:</div>
-                                    <div className="text-sm font-black text-indigo-600 dark:text-indigo-400">{request.requestNumber} - {request.itemName}</div>
+                                    <div className="text-xs sm:text-sm font-black text-indigo-600 dark:text-indigo-400">{request.requestNumber} - {request.itemName}</div>
                                 </div>
-                                <div className="text-xs text-gray-500 flex items-center gap-3">
+                                <div className="text-[11px] sm:text-xs text-gray-500 flex flex-wrap items-center gap-2 sm:gap-3">
                                     <span>متقاضی: <strong className="text-gray-800 dark:text-gray-200 font-black">{request.requester || '---'}</strong></span>
                                     <span>تاریخ: <strong className="font-bold">{formatDate(request.date)}</strong></span>
-                                    <span className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-xl text-xs font-bold border border-indigo-100 dark:border-indigo-900">
+                                    <span className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-lg text-[10px] font-bold border border-indigo-100 dark:border-indigo-900">
                                         {request.status}
                                     </span>
                                 </div>
@@ -3455,50 +3666,56 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                         </div>
                     </div>
                 ) : (
-                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-gray-50/50 dark:bg-gray-950/40 no-scrollbar">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 space-y-6">
+                <div 
+                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2.5 sm:p-4 md:p-6 space-y-3 sm:space-y-5 bg-gray-50/50 dark:bg-gray-950/40 custom-scrollbar overscroll-contain"
+                    style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+                >
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6">
+                        <div className="lg:col-span-2 space-y-3 sm:space-y-6">
                             {/* Core Info & Items List */}
-                            <div className="glass-panel p-4 md:p-6 rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-sm font-black text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                                        <Package className="text-indigo-500" size={18}/> 
-                                        <span>مشخصات و اقلام درخواستی</span>
-                                        {request.items && request.items.length > 0 && (
-                                            <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] px-2.5 py-0.5 rounded-full font-bold">
-                                                {request.items.length} قلم کالا
-                                            </span>
-                                        )}
-                                    </h3>
-                                    <div className="flex items-center gap-2">
+                            <div className="glass-panel p-3 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2.5 mb-3 sm:mb-4">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <h3 className="text-xs sm:text-sm font-black text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                                            <Package className="text-indigo-500 shrink-0" size={16}/> 
+                                            <span>مشخصات و اقلام درخواستی</span>
+                                            {request.items && request.items.length > 0 && (
+                                                <span className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                                                    {request.items.length} قلم کالا
+                                                </span>
+                                            )}
+                                        </h3>
+                                        <span className="sm:hidden text-[10px] font-mono bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full text-gray-500 font-bold">{request.requestNumber}</span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-1.5">
                                         <button 
                                             type="button"
                                             onClick={() => handleRefreshSayanStock(false)} 
                                             disabled={refreshingSayanStock}
-                                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-emerald-200 dark:border-emerald-800"
+                                            className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 rounded-xl transition-all flex items-center gap-1 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-emerald-200 dark:border-emerald-800 whitespace-nowrap"
                                             title="استعلام لحظه‌ای و مجدد موجودی قطعات این درخواست از انبار سایان"
                                         >
-                                            <RefreshCw size={13} className={`text-emerald-600 dark:text-emerald-400 ${refreshingSayanStock ? 'animate-spin' : ''}`} />
+                                            <RefreshCw size={12} className={`text-emerald-600 dark:text-emerald-400 shrink-0 ${refreshingSayanStock ? 'animate-spin' : ''}`} />
                                             <span>{refreshingSayanStock ? 'در حال استعلام...' : 'استعلام موجودی سایان'}</span>
                                         </button>
                                         <button 
                                             type="button"
                                             onClick={() => setModalTab('COMMENTS')} 
-                                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-xl transition-all flex items-center gap-1 text-[10px] font-bold shadow-2xs active:scale-95 cursor-pointer border border-indigo-200 dark:border-indigo-800 whitespace-nowrap"
                                             title="مشاهده بخش کامنت‌ها و نظرات این درخواست"
                                         >
-                                            <MessageSquare size={13} className="text-indigo-600 dark:text-indigo-400" />
+                                            <MessageSquare size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
                                             <span>نظرات ({request.comments?.length || 0})</span>
                                         </button>
                                         <button 
                                             onClick={() => setShowAiAdvisorModal(true)} 
-                                            className="px-3 py-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl transition-all flex items-center gap-1.5 text-[10px] font-bold shadow-sm active:scale-95 cursor-pointer"
+                                            className="px-2.5 py-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-xl transition-all flex items-center gap-1 text-[10px] font-bold shadow-sm active:scale-95 cursor-pointer whitespace-nowrap"
                                             title="استعلام هوشمند قیمت و تامین‌کنندگان با هوش مصنوعی"
                                         >
-                                            <Sparkles size={13} className="text-yellow-300 animate-pulse" />
-                                            <span>استعلام هوشمند (AI Sourcing)</span>
+                                            <Sparkles size={12} className="text-yellow-300 animate-pulse shrink-0" />
+                                            <span>استعلام هوشمند (AI)</span>
                                         </button>
-                                        <span className="text-[10px] font-mono bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full text-gray-500 font-bold uppercase">{request.requestNumber}</span>
+                                        <span className="hidden sm:inline-block text-[10px] font-mono bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full text-gray-500 font-bold uppercase">{request.requestNumber}</span>
                                     </div>
                                 </div>
 
@@ -3761,47 +3978,79 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     </div>
                                 )}
 
-                                {/* Request-Level Attachments Preview */}
+                                {/* Request-Level Attachments Preview & Download */}
                                 {((request.attachments && request.attachments.length > 0) || (request as any).attachment || request.pdfAttachment) && (
                                     <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800">
                                         <label className="text-[10px] font-black text-gray-400 block mb-2 flex items-center gap-1.5">
                                             <Paperclip size={12} className="text-indigo-500" />
-                                            <span>فایل‌ها و مدارک پیوست این درخواست:</span>
+                                            <span>فایل‌ها و مدارک پیوست این درخواست (مشاهده و دانلود):</span>
                                         </label>
                                         <div className="flex flex-wrap items-center gap-2">
-                                            {request.attachments?.map((att: any, attIdx: number) => (
-                                                <button
-                                                    key={att.id || attIdx}
-                                                    type="button"
-                                                    onClick={() => setPreviewFile({ url: att.url, fileName: att.name || `پیوست_درخواست_${request.requestNumber}` })}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                                                    title="مشاهده و پیش‌نمایش فایل پیوست در همین صفحه"
-                                                >
-                                                    <Eye size={13} />
-                                                    <span className="max-w-[180px] truncate">{att.name || `پیوست ${attIdx + 1}`}</span>
-                                                </button>
-                                            ))}
-                                            {(request as any).attachment && !request.attachments?.some((a: any) => a.url === (request as any).attachment) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPreviewFile({ url: (request as any).attachment!, fileName: `پیوست_${request.requestNumber}` })}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 rounded-xl text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                                                    title="مشاهده و پیش‌نمایش فایل پیوست اصلی"
-                                                >
-                                                    <Eye size={13} />
-                                                    <span>مشاهده فایل اصلی پیوست</span>
-                                                </button>
+                                            {request.attachments?.map((att: any, attIdx: number) => {
+                                                const attUrl = att.url || att.fileUrl || '';
+                                                const attName = att.name || att.fileName || `پیوست_${attIdx + 1}_${request.requestNumber}`;
+                                                return (
+                                                    <div key={att.id || attIdx} className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 rounded-xl p-1 shadow-2xs">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPreviewFile({ url: resolveImageUrl(attUrl), fileName: attName })}
+                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                                            title="مشاهده و پیش‌نمایش فایل پیوست"
+                                                        >
+                                                            <Eye size={13} />
+                                                            <span className="max-w-[160px] truncate">{attName}</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => downloadAndOpenFile(resolveImageUrl(attUrl), attName)}
+                                                            className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                                                            title="دانلود فایل پیوست"
+                                                        >
+                                                            <Download size={12} />
+                                                            <span>دانلود</span>
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                            {(request as any).attachment && !request.attachments?.some((a: any) => (a.url || a.fileUrl) === (request as any).attachment) && (
+                                                <div className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 rounded-xl p-1 shadow-2xs">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewFile({ url: resolveImageUrl((request as any).attachment!), fileName: `پیوست_${request.requestNumber}` })}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                                    >
+                                                        <Eye size={13} />
+                                                        <span>مشاهده فایل اصلی پیوست</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => downloadAndOpenFile(resolveImageUrl((request as any).attachment!), `پیوست_${request.requestNumber}`)}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                                                    >
+                                                        <Download size={12} />
+                                                        <span>دانلود</span>
+                                                    </button>
+                                                </div>
                                             )}
                                             {request.pdfAttachment && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPreviewFile({ url: request.pdfAttachment!, fileName: `کاتالوگ_${request.requestNumber}.pdf` })}
-                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 rounded-xl text-xs font-bold border border-red-200 dark:border-red-800 transition-all cursor-pointer shadow-2xs hover:scale-105 active:scale-95"
-                                                    title="مشاهده کاتالوگ / PDF پیوست"
-                                                >
-                                                    <FileText size={13} />
-                                                    <span>کاتالوگ فنی پیوست</span>
-                                                </button>
+                                                <div className="inline-flex items-center gap-1 bg-red-50 dark:bg-red-950/80 border border-red-200 dark:border-red-800 rounded-xl p-1 shadow-2xs">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewFile({ url: resolveImageUrl(request.pdfAttachment!), fileName: `کاتالوگ_${request.requestNumber}.pdf` })}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 hover:bg-red-100 text-red-700 dark:text-red-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                                    >
+                                                        <FileText size={13} />
+                                                        <span>مشاهده کاتالوگ فنی</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => downloadAndOpenFile(resolveImageUrl(request.pdfAttachment!), `کاتالوگ_${request.requestNumber}.pdf`)}
+                                                        className="inline-flex items-center gap-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                                                    >
+                                                        <Download size={12} />
+                                                        <span>دانلود PDF</span>
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -4061,213 +4310,213 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
                         <BpmnWorkflowDiagram currentStatus={request.status} location={request.location} request={request} />
                     </div>
+
+                    {/* Current Stage & Role Authority Notification Banner — Inside Scrollable Area so it never blocks the viewport */}
+                    {(() => {
+                        const getRoleInfo = (st: any) => {
+                            const normSt = normalizePurchaseStatus(st);
+                            switch (normSt) {
+                                case PurchaseRequestStatus.PENDING_SHIFT_LEADER:
+                                    return {
+                                        title: 'تایید سرپرست خط و ارجاع به واحد فنی نت',
+                                        roleName: 'سرپرست خط',
+                                        icon: CheckSquare,
+                                        badgeClass: 'bg-indigo-600 text-white',
+                                        borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_TECHNICAL:
+                                    return {
+                                        title: 'بررسی و تایید فنی واحد نت',
+                                        roleName: 'واحد فنی و نت',
+                                        icon: Sliders,
+                                        badgeClass: 'bg-indigo-700 text-white',
+                                        borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
+                                    return {
+                                        title: 'بررسی موجودی انبار کارخانه و امکان تحویل کالا',
+                                        roleName: 'انباردار قطعات / کارخانه',
+                                        icon: Package,
+                                        badgeClass: 'bg-emerald-600 text-white',
+                                        borderClass: 'border-emerald-300 bg-emerald-50/80 text-emerald-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_CEO_INITIAL:
+                                    return {
+                                        title: 'تایید اولیه و مجوز اخذ استعلام',
+                                        roleName: 'مدیرعامل',
+                                        icon: Crown,
+                                        badgeClass: 'bg-sky-500 text-white',
+                                        borderClass: 'border-sky-300 bg-sky-50/80 text-sky-950',
+                                        isCeoRole: true,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_CEO_SELECTION:
+                                    return {
+                                        title: 'تایید و انتخاب نهایی تامین‌کننده / پیش‌فاکتور',
+                                        roleName: 'مدیرعامل',
+                                        icon: Crown,
+                                        badgeClass: 'bg-sky-600 text-white',
+                                        borderClass: 'border-sky-300 bg-sky-50/80 text-sky-950',
+                                        isCeoRole: true,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
+                                    return {
+                                        title: 'بررسی و تایید پیش‌فاکتورها و پیشنهاد بازرگانی',
+                                        roleName: 'مدیر بازرگانی',
+                                        icon: Briefcase,
+                                        badgeClass: 'bg-purple-600 text-white',
+                                        borderClass: 'border-purple-300 bg-purple-50/80 text-purple-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: true
+                                    };
+                                case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
+                                    return {
+                                        title: 'تعیین مسیر خرید (تهران یا کارخانه زنجان)',
+                                        roleName: 'مدیر کارخانه',
+                                        icon: Warehouse,
+                                        badgeClass: 'bg-amber-600 text-white',
+                                        borderClass: 'border-amber-300 bg-amber-50/80 text-amber-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
+                                    return {
+                                        title: 'اخذ و ثبت پیش‌فاکتورها',
+                                        roleName: 'تدارکات بازرگانی تهران',
+                                        icon: ShoppingBag,
+                                        badgeClass: 'bg-indigo-600 text-white',
+                                        borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING:
+                                    return {
+                                        title: 'استعلام و پیشنهاد خرید محلی',
+                                        roleName: 'تدارکات کارخانه زنجان',
+                                        icon: ShoppingBag,
+                                        badgeClass: 'bg-teal-600 text-white',
+                                        borderClass: 'border-teal-300 bg-teal-50/80 text-teal-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
+                                case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
+                                case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
+                                case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
+                                    return {
+                                        title: 'دستور خرید و تاییدات نهایی کارخانه',
+                                        roleName: 'مدیر کارخانه',
+                                        icon: Warehouse,
+                                        badgeClass: 'bg-teal-700 text-white',
+                                        borderClass: 'border-teal-300 bg-teal-50/80 text-teal-950',
+                                        isCeoRole: false,
+                                        isCommercialRole: false
+                                    };
+                                default:
+                                    return null;
+                            }
+                        };
+
+                        const roleInfo = getRoleInfo(request.status);
+                        if (!roleInfo) return null;
+                        const RoleIcon = roleInfo.icon;
+
+                        return (
+                            <div className={`p-3 sm:p-4 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-2 sm:gap-3 ${roleInfo.borderClass} shadow-xs`}>
+                                <div className="flex items-center gap-2.5 sm:gap-3">
+                                    <div className={`p-2 rounded-xl ${roleInfo.badgeClass} shadow-sm shrink-0`}>
+                                        <RoleIcon size={16} />
+                                    </div>
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${roleInfo.badgeClass}`}>
+                                                جایگاه مجاز: {roleInfo.roleName}
+                                            </span>
+                                            {isAdmin && (
+                                                <span className="text-[9px] font-black bg-gray-900 text-amber-300 px-2 py-0.5 rounded-md">
+                                                    دسترسی مدیر ارشد (Admin)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] sm:text-xs font-black mt-1">
+                                            مرحله جاری: <span className="underline decoration-2">{roleInfo.title}</span>
+                                        </p>
+                                    </div>
+                                </div>
+                                {isAdmin && (
+                                    <div className="text-[10px] sm:text-[11px] font-bold text-gray-600 dark:text-gray-300 bg-white/70 dark:bg-gray-800/70 px-2.5 py-1 rounded-xl border border-gray-200">
+                                        💡 توجه مدیر محترم: این تاییدیه مختص جایگاه <strong className="text-gray-900 dark:text-white font-black">{roleInfo.roleName}</strong> می‌باشد.
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
                 )}
 
-                {/* Current Stage & Role Authority Notification Banner */}
-                {(() => {
-                    const getRoleInfo = (st: any) => {
-                        const normSt = normalizePurchaseStatus(st);
-                        switch (normSt) {
-                            case PurchaseRequestStatus.PENDING_SHIFT_LEADER:
-                                return {
-                                    title: 'تایید سرپرست خط و ارجاع به واحد فنی نت',
-                                    roleName: 'سرپرست خط',
-                                    icon: CheckSquare,
-                                    badgeClass: 'bg-indigo-600 text-white',
-                                    borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_TECHNICAL:
-                                return {
-                                    title: 'بررسی و تایید فنی واحد نت',
-                                    roleName: 'واحد فنی و نت',
-                                    icon: Sliders,
-                                    badgeClass: 'bg-indigo-700 text-white',
-                                    borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER:
-                                return {
-                                    title: 'بررسی موجودی انبار کارخانه و امکان تحویل کالا',
-                                    roleName: 'انباردار قطعات / کارخانه',
-                                    icon: Package,
-                                    badgeClass: 'bg-emerald-600 text-white',
-                                    borderClass: 'border-emerald-300 bg-emerald-50/80 text-emerald-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_CEO_INITIAL:
-                                return {
-                                    title: 'تایید اولیه و مجوز اخذ استعلام',
-                                    roleName: 'مدیرعامل',
-                                    icon: Crown,
-                                    badgeClass: 'bg-sky-500 text-white',
-                                    borderClass: 'border-sky-300 bg-sky-50/80 text-sky-950',
-                                    isCeoRole: true,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_CEO_SELECTION:
-                                return {
-                                    title: 'تایید و انتخاب نهایی تامین‌کننده / پیش‌فاکتور',
-                                    roleName: 'مدیرعامل',
-                                    icon: Crown,
-                                    badgeClass: 'bg-sky-600 text-white',
-                                    borderClass: 'border-sky-300 bg-sky-50/80 text-sky-950',
-                                    isCeoRole: true,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER:
-                                return {
-                                    title: 'بررسی و تایید پیش‌فاکتورها و پیشنهاد بازرگانی',
-                                    roleName: 'مدیر بازرگانی',
-                                    icon: Briefcase,
-                                    badgeClass: 'bg-purple-600 text-white',
-                                    borderClass: 'border-purple-300 bg-purple-50/80 text-purple-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: true
-                                };
-                            case PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION:
-                                return {
-                                    title: 'تعیین مسیر خرید (تهران یا کارخانه زنجان)',
-                                    roleName: 'مدیر کارخانه',
-                                    icon: Warehouse,
-                                    badgeClass: 'bg-amber-600 text-white',
-                                    borderClass: 'border-amber-300 bg-amber-50/80 text-amber-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA:
-                                return {
-                                    title: 'اخذ و ثبت پیش‌فاکتورها',
-                                    roleName: 'تدارکات بازرگانی تهران',
-                                    icon: ShoppingBag,
-                                    badgeClass: 'bg-indigo-600 text-white',
-                                    borderClass: 'border-indigo-300 bg-indigo-50/80 text-indigo-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_ZANJAN_PURCHASING:
-                                return {
-                                    title: 'استعلام و پیشنهاد خرید محلی',
-                                    roleName: 'تدارکات کارخانه زنجان',
-                                    icon: ShoppingBag,
-                                    badgeClass: 'bg-teal-600 text-white',
-                                    borderClass: 'border-teal-300 bg-teal-50/80 text-teal-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            case PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL:
-                            case PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL:
-                            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE:
-                            case PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN:
-                                return {
-                                    title: 'دستور خرید و تاییدات نهایی کارخانه',
-                                    roleName: 'مدیر کارخانه',
-                                    icon: Warehouse,
-                                    badgeClass: 'bg-teal-700 text-white',
-                                    borderClass: 'border-teal-300 bg-teal-50/80 text-teal-950',
-                                    isCeoRole: false,
-                                    isCommercialRole: false
-                                };
-                            default:
-                                return null;
-                        }
-                    };
-
-                    const roleInfo = getRoleInfo(request.status);
-                    if (!roleInfo) return null;
-                    const RoleIcon = roleInfo.icon;
-
-                    return (
-                        <div className={`mx-6 mt-4 p-4 rounded-2xl border-2 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${roleInfo.borderClass} shadow-xs`}>
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2.5 rounded-xl ${roleInfo.badgeClass} shadow-md`}>
-                                    <RoleIcon size={20} />
-                                </div>
-                                <div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${roleInfo.badgeClass}`}>
-                                            جایگاه مجاز: {roleInfo.roleName}
-                                        </span>
-                                        {isAdmin && (
-                                            <span className="text-[9px] font-black bg-gray-900 text-amber-300 px-2 py-0.5 rounded-md">
-                                                دسترسی مدیر ارشد سیستم (Admin)
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p className="text-xs font-black mt-1">
-                                        مرحله جاری: <span className="underline decoration-2">{roleInfo.title}</span>
-                                    </p>
-                                </div>
-                            </div>
-                            {isAdmin && (
-                                <div className="text-[11px] font-bold text-gray-600 dark:text-gray-300 bg-white/70 dark:bg-gray-800/70 px-3 py-1.5 rounded-xl border border-gray-200">
-                                    💡 توجه مدیر محترم: این تاییدیه مختص جایگاه <strong className="text-gray-900 dark:text-white font-black">{roleInfo.roleName}</strong> می‌باشد.
-                                </div>
-                            )}
-                        </div>
-                    );
-                })()}
-
-                {/* Actions Footer */}
-                <div className="p-6 border-t glass-panel flex flex-col md:flex-row justify-between items-center gap-4 bg-gray-50/80">
-                    <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+                {/* Ultra-Compact Mobile Actions Footer */}
+                <div className="px-2.5 py-2 sm:p-4 md:p-5 border-t glass-panel flex flex-col md:flex-row justify-between items-stretch md:items-center gap-2 bg-gray-50/95 dark:bg-gray-900/95 shrink-0 z-20">
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-center md:justify-start items-center">
                         {/* Universal Return & Reject Buttons (Only visible to authorized approvers/managers of the CURRENT step) */}
                         {request.status !== PurchaseRequestStatus.COMPLETED && request.status !== PurchaseRequestStatus.REJECTED && canUserApproveCurrentStep() && (
                             <>
-                                <button onClick={() => setShowReturnModal(true)} className="bg-amber-500/10 text-amber-700 border border-amber-300 hover:bg-amber-500 hover:text-white px-4 py-3 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer" disabled={actionLoading}>
-                                    <CornerUpLeft size={16}/> عودت جهت اصلاح
+                                <button onClick={() => setShowReturnModal(true)} className="bg-amber-500/10 text-amber-700 border border-amber-300 hover:bg-amber-500 hover:text-white px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs transition-all flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap" disabled={actionLoading}>
+                                    <CornerUpLeft size={14}/> عودت جهت اصلاح
                                 </button>
-                                <button onClick={() => setShowRejectModal(true)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-4 py-3 rounded-2xl font-black text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer" disabled={actionLoading}>
-                                    <XCircle size={16}/> رد / توقف فرآیند
+                                <button onClick={() => setShowRejectModal(true)} className="bg-red-50 text-red-600 border border-red-200 hover:bg-red-600 hover:text-white px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs transition-all flex items-center gap-1 shadow-2xs cursor-pointer whitespace-nowrap" disabled={actionLoading}>
+                                    <XCircle size={14}/> رد / توقف فرآیند
                                 </button>
                             </>
                         )}
 
                         {/* Step 1: Line Supervisor Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_SHIFT_LEADER) && (isAdmin || hasPurchasePerm('canApproveShiftLeader')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TECHNICAL, {}, 'تایید سرپرست خط و ارجاع به واحد فنی نت')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg transition-all hover:scale-105 text-xs cursor-pointer" disabled={actionLoading}>تایید سرپرست خط و ارسال به واحد فنی نت</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TECHNICAL, {}, 'تایید سرپرست خط و ارجاع به واحد فنی نت')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black shadow-md transition-all text-[11px] sm:text-xs cursor-pointer" disabled={actionLoading}>تایید سرپرست خط و ارسال به واحد فنی نت</button>
                         )}
 
                         {/* Step 2: NET / Maintenance Technical Unit Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_TECHNICAL) && (isAdmin || hasPurchasePerm('canApproveTechnical')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, {}, 'تایید فنی نت و ارجاع به انباردار کارخانه')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-indigo-100 transition-all hover:scale-105 text-xs cursor-pointer" disabled={actionLoading}>تایید فنی نت و ارسال به انباردار کارخانه (بررسی موجودی)</button>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER, {}, 'تایید فنی نت و ارجاع به انباردار کارخانه')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black shadow-md transition-all text-[11px] sm:text-xs cursor-pointer" disabled={actionLoading}>تایید فنی نت و ارسال به انباردار کارخانه</button>
                         )}
                         
                         {/* Step 3: Factory Warehouse Keeper Stock Check */}
                         {(isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY) || isCurrentStep(PurchaseRequestStatus.PENDING_WAREHOUSE_KEEPER)) && (isAdmin || hasPurchasePerm('canApproveWarehouseKeeper') || hasPurchasePerm('canManageParts')) && (
-                            <button onClick={() => setShowWarehouseCheckModal(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-2xl font-black transition-all hover:scale-105 text-xs shadow-lg shadow-emerald-100 cursor-pointer" disabled={actionLoading}>بررسی موجودی انبار (انباردار قطعات / کارخانه)</button>
+                            <button onClick={() => setShowWarehouseCheckModal(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black transition-all text-[11px] sm:text-xs shadow-md cursor-pointer" disabled={actionLoading}>بررسی موجودی انبار (انباردار کارخانه)</button>
                         )}
 
                         {/* Step 4: Factory Manager Purchase Route Decision */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_DECISION) && (isAdmin || hasPurchasePerm('canApproveFactoryDecision') || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => setShowFactoryBranchModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-amber-100 text-xs hover:scale-105 transition-all cursor-pointer" disabled={actionLoading}>تعیین و تایید مسیر تامین (مدیر کارخانه)</button>
+                            <button onClick={() => setShowFactoryBranchModal(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black shadow-md text-[11px] sm:text-xs transition-all cursor-pointer" disabled={actionLoading}>تعیین و تایید مسیر تامین (مدیر کارخانه)</button>
                         )}
 
                         {/* Tehran Branch: CEO Initial Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_CEO_INITIAL) && (isAdmin || hasPurchasePerm('canApproveCEO')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA, {}, 'تایید اولیه و مجوز اخذ استعلام')} className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-sky-500/30 ring-2 ring-sky-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" disabled={actionLoading}>
-                                <Crown size={18} className="text-amber-300 animate-bounce" />
-                                <span>👑 تایید اولیه و مجوز استعلام (نقش مدیرعامل)</span>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA, {}, 'تایید اولیه و مجوز اخذ استعلام')} className="bg-sky-600 hover:bg-sky-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md ring-1 ring-sky-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer" disabled={actionLoading}>
+                                <Crown size={15} className="text-amber-300 shrink-0" />
+                                <span>👑 تایید اولیه و مجوز استعلام (مدیرعامل)</span>
                             </button>
                         )}
 
                         {/* Tehran Branch: Proforma Entry */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_TEHRAN_PROFORMA) && request.proformas.length > 0 && (isAdmin || hasPurchasePerm('canManageProformas')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER, {}, 'ارسال پروفرماها به مدیر بازرگانی')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2 transition-all hover:scale-105" disabled={actionLoading}>
-                                <Briefcase size={16} className="text-indigo-200" />
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER, {}, 'ارسال پروفرماها به مدیر بازرگانی')} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md flex items-center gap-1.5 transition-all" disabled={actionLoading}>
+                                <Briefcase size={14} className="text-indigo-200 shrink-0" />
                                 <span>ارسال لیست پیش‌فاکتورها به مدیر بازرگانی</span>
                             </button>
                         )}
 
                         {/* Tehran Branch: Commercial Manager Selection */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_COMMERCIAL_MANAGER) && (isAdmin || hasPurchasePerm('canApproveCommercialManager') || hasPurchasePerm('canCommercialFinalize')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-purple-500/30 ring-2 ring-purple-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" disabled={actionLoading}>
-                                <Briefcase size={18} className="text-amber-300 animate-pulse" />
-                                <span>💼 تایید مدیر بازرگانی و ارجاع به مدیرعامل (تهران)</span>
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_CEO_SELECTION, {}, 'بررسی بازرگانی و ارسال به مدیرعامل')} className="bg-purple-600 hover:bg-purple-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md ring-1 ring-purple-300 flex items-center gap-1.5 transition-all cursor-pointer" disabled={actionLoading}>
+                                <Briefcase size={15} className="text-amber-300 shrink-0" />
+                                <span>💼 تایید مدیر بازرگانی و ارجاع به مدیرعامل</span>
                             </button>
                         )}
 
@@ -4289,11 +4538,11 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         `تایید و تصویب نهایی خرید توسط مدیرعامل${chosenProforma ? ` (${chosenProforma.vendorName})` : ''}`
                                     );
                                 }} 
-                                className="bg-sky-600 hover:bg-sky-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-sky-500/30 ring-2 ring-sky-300 flex items-center gap-2 transition-all hover:scale-105 cursor-pointer" 
+                                className="bg-sky-600 hover:bg-sky-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md ring-1 ring-sky-300 flex items-center gap-1.5 transition-all cursor-pointer" 
                                 disabled={actionLoading}
                             >
-                                <Crown size={18} className="text-amber-300 animate-bounce" />
-                                <span>👑 تایید و تصویب نهایی خرید (مدیرعامل / مدیران مجاز تهران)</span>
+                                <Crown size={15} className="text-amber-300 shrink-0" />
+                                <span>👑 تایید و تصویب نهایی خرید (مدیرعامل)</span>
                             </button>
                         )}
 
@@ -4306,10 +4555,10 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         : 'ارسال پیشنهاد خرید به مدیر کارخانه';
                                     handleAction(PurchaseRequestStatus.PENDING_FACTORY_MANAGER_APPROVAL, {}, actionText);
                                 }} 
-                                className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-teal-500/20 cursor-pointer transition-all hover:scale-105 flex items-center gap-2" 
+                                className="bg-teal-600 hover:bg-teal-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md cursor-pointer transition-all flex items-center gap-1.5" 
                                 disabled={actionLoading}
                             >
-                                <Warehouse size={16} className="text-teal-200" />
+                                <Warehouse size={15} className="text-teal-200 shrink-0" />
                                 <span>ارسال استعلام و پیش‌فاکتورها به مدیر کارخانه</span>
                             </button>
                         )}
@@ -4331,74 +4580,74 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                         `تایید پیش‌فاکتور و صدور دستور خرید محلی توسط مدیر کارخانه${chosenProforma ? ` (${chosenProforma.vendorName})` : ''}`
                                     );
                                 }} 
-                                className="bg-teal-700 hover:bg-teal-800 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg shadow-teal-700/30 ring-2 ring-teal-400 flex items-center gap-2 cursor-pointer transition-all hover:scale-105" 
+                                className="bg-teal-700 hover:bg-teal-800 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md ring-1 ring-teal-400 flex items-center gap-1.5 cursor-pointer transition-all" 
                                 disabled={actionLoading}
                             >
-                                <Warehouse size={18} className="text-amber-300" />
+                                <Warehouse size={15} className="text-amber-300 shrink-0" />
                                 <span>✅ تایید پیش‌فاکتور و صدور دستور خرید (مدیر کارخانه)</span>
                             </button>
                         )}
 
                         {/* Zanjan Branch: Purchasing Agent Execution */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_BUYER_EXECUTION) && (isAdmin || hasPurchasePerm('canExecuteBuyerZanjan') || hasPurchasePerm('canManageProformas')) && (
-                            <button onClick={() => setShowPurchasingAgentModal(true)} className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg hover:scale-105 transition-all cursor-pointer">ثبت خرید کارپرداز و صدور فاکتور</button>
+                            <button onClick={() => setShowPurchasingAgentModal(true)} className="bg-teal-600 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md transition-all cursor-pointer">ثبت خرید کارپرداز و صدور فاکتور</button>
                         )}
 
                         {/* Common: Technical Specs Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_TECHNICAL_APPROVAL) && (isAdmin || hasPurchasePerm('canApproveTechnical')) && (
-                            <button onClick={() => setShowTechnicalApprovalModal(true)} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg hover:scale-105 transition-all">تایید فنی و تطابق سفارش (QC/Net)</button>
+                            <button onClick={() => setShowTechnicalApprovalModal(true)} className="bg-indigo-600 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md transition-all">تایید فنی و تطابق سفارش (QC/Net)</button>
                         )}
 
                         {/* Common: Factory Manager Entry Approval */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_ENTRY_APPROVAL) && (isAdmin || hasPurchasePerm('canApproveFactory')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_SECURITY_ENTRY, {}, 'صدور مجوز ورود کالا به کارخانه')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg flex items-center gap-2" disabled={actionLoading}>
-                                <Warehouse size={16} className="text-emerald-200" />
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_SECURITY_ENTRY, {}, 'صدور مجوز ورود کالا به کارخانه')} className="bg-emerald-600 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs shadow-md flex items-center gap-1.5" disabled={actionLoading}>
+                                <Warehouse size={15} className="text-emerald-200 shrink-0" />
                                 <span>مجوز ورود کالا به کارخانه (مدیر کارخانه)</span>
                             </button>
                         )}
 
                         {/* Security Entry */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_SECURITY_ENTRY) && (isAdmin || hasPurchasePerm('canRegisterEntry')) && (
-                            <button onClick={() => setShowSecurityModal(true)} className="bg-orange-600 text-white px-8 py-3 rounded-2xl font-black transition-all hover:scale-105 shadow-xl text-xs shadow-orange-100">ثبت ورود کالا (انتظامات)</button>
+                            <button onClick={() => setShowSecurityModal(true)} className="bg-orange-600 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black transition-all shadow-md text-[11px] sm:text-xs">ثبت ورود کالا (انتظامات)</button>
                         )}
 
                         {/* Quality Control (QC) */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_QC) && (isAdmin || hasPurchasePerm('canCheckQC')) && (
-                            <button onClick={() => setShowQCModal(true)} className="bg-green-600 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-green-100 transition-all hover:scale-105 text-xs">بررسی و تایید کنترل کیفی (QC)</button>
+                            <button onClick={() => setShowQCModal(true)} className="bg-green-600 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black shadow-md transition-all text-[11px] sm:text-xs">بررسی و تایید کنترل کیفی (QC)</button>
                         )}
 
                         {/* Factory Manager Final Approve */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_APPROVE) && (isAdmin || hasPurchasePerm('canApproveFactory') || hasPurchasePerm('canApproveFactoryFinal')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT, {}, 'تایید نهایی تحویل و ارسال به انبار')} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black text-xs flex items-center gap-2" disabled={actionLoading}>
-                                <Warehouse size={16} className="text-indigo-200" />
+                            <button onClick={() => handleAction(PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT, {}, 'تایید نهایی تحویل و ارسال به انبار')} className="bg-indigo-600 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[11px] sm:text-xs flex items-center gap-1.5" disabled={actionLoading}>
+                                <Warehouse size={15} className="text-indigo-200 shrink-0" />
                                 <span>تایید نهایی تحویل و ارسال به انبار (مدیر کارخانه)</span>
                             </button>
                         )}
 
                         {/* Warehouse Receipt */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_WAREHOUSE_RECEIPT) && (isAdmin || hasPurchasePerm('canWarehouseFinalize')) && (
-                            <button onClick={() => setShowWarehouseModal(true)} className="bg-indigo-700 text-white px-8 py-3 rounded-2xl font-black shadow-lg shadow-indigo-200 hover:scale-105 transition-all text-xs">صدور رسید انبار نهایی</button>
+                            <button onClick={() => setShowWarehouseModal(true)} className="bg-indigo-700 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black shadow-md transition-all text-[11px] sm:text-xs">صدور رسید انبار نهایی</button>
                         )}
 
                         {/* Factory Manager Final Sign */}
                         {isCurrentStep(PurchaseRequestStatus.PENDING_FACTORY_FINAL_SIGN) && (isAdmin || hasPurchasePerm('canApproveFactory') || hasPurchasePerm('canApproveFactoryFinal')) && (
-                            <button onClick={() => handleAction(PurchaseRequestStatus.COMPLETED, {}, 'امضای الکترونیکی و بایگانی پرونده')} className="bg-indigo-900 text-white px-8 py-3 rounded-2xl font-black shadow-2xl transition-all hover:bg-black text-xs flex items-center gap-2">
-                                <Warehouse size={16} className="text-amber-400" />
+                            <button onClick={() => handleAction(PurchaseRequestStatus.COMPLETED, {}, 'امضای الکترونیکی و بایگانی پرونده')} className="bg-indigo-900 text-white px-3.5 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black shadow-md transition-all hover:bg-black text-[11px] sm:text-xs flex items-center gap-1.5">
+                                <Warehouse size={15} className="text-amber-400 shrink-0" />
                                 <span>امضا، تکمیل و بایگانی نهایی پرونده (مدیر کارخانه)</span>
                             </button>
                         )}
 
                         {isCurrentStep(PurchaseRequestStatus.REJECTED) && (
-                            <span className="text-red-600 font-bold bg-red-50 px-4 py-2 rounded-xl border border-red-200 italic text-xs">این درخواست رد شده است</span>
+                            <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded-xl border border-red-200 italic text-[11px]">این درخواست رد شده است</span>
                         )}
                         {isCurrentStep(PurchaseRequestStatus.DELIVERED_FROM_WAREHOUSE) && (
-                            <span className="text-emerald-700 font-bold bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 italic text-xs">کالا مستقیماً از موجودی انبار تحویل گردید</span>
+                            <span className="text-emerald-700 font-bold bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 italic text-[11px]">کالا مستقیماً از موجودی انبار تحویل گردید</span>
                         )}
                     </div>
 
-                    <div className="flex gap-4 border-r pr-4 border-gray-200">
+                    <div className="flex gap-2 justify-center md:justify-end md:border-r md:pr-4 border-gray-200">
                          {/* Robust Clickable Print Menu with Backdrop */}
-                         <div className="relative">
+                         <div className="relative flex-1 md:flex-initial">
                             {isPrintDropdownOpen && (
                                 <div 
                                     className="fixed inset-0 z-40" 
@@ -4411,16 +4660,16 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     setIsPrintDropdownOpen(!isPrintDropdownOpen);
                                     setIsShareDropdownOpen(false);
                                 }}
-                                className="flex items-center gap-2 p-3 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 active:scale-95 transition-all shadow-sm font-black text-xs cursor-pointer relative z-50"
+                                className="w-full md:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 sm:p-2.5 text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 active:scale-95 transition-all shadow-2xs font-black text-[11px] sm:text-xs cursor-pointer relative z-50 whitespace-nowrap"
                             >
-                                <Printer size={16} /> 
+                                <Printer size={14} /> 
                                 <span>چاپ اسناد</span>
-                                <ChevronDown size={14} className={`transition-transform duration-200 ${isPrintDropdownOpen ? 'rotate-180' : ''}`} />
+                                <ChevronDown size={13} className={`transition-transform duration-200 ${isPrintDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
 
                             {isPrintDropdownOpen && (
                                 <div 
-                                    className="absolute bottom-full mb-2 left-0 w-52 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in"
+                                    className="absolute bottom-full mb-2 right-0 sm:right-auto sm:left-0 w-52 bg-white rounded-2xl shadow-2xl border border-gray-200 p-2 z-50 animate-in slide-in-from-bottom-2 fade-in"
                                     onClick={(e) => e.stopPropagation()}
                                 >
                                     <button 
@@ -4476,7 +4725,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                          </div>
 
                          {/* Robust Clickable Share Menu with Backdrop */}
-                         <div className="relative">
+                         <div className="relative flex-1 md:flex-initial">
                             {isShareDropdownOpen && (
                                 <div 
                                     className="fixed inset-0 z-40" 
@@ -4490,12 +4739,12 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                                     setIsShareDropdownOpen(!isShareDropdownOpen);
                                     setIsPrintDropdownOpen(false);
                                 }}
-                                className="flex items-center gap-2 p-3 text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-sm font-black text-xs disabled:opacity-50 cursor-pointer relative z-50"
+                                className="w-full md:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 sm:p-2.5 text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-2xs font-black text-[11px] sm:text-xs disabled:opacity-50 cursor-pointer relative z-50 whitespace-nowrap"
                                 title="ارسال اسناد درخواست به گفتگو"
                             >
-                                {isSharingDoc ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />} 
+                                {isSharingDoc ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />} 
                                 <span>ارسال به گفتگو</span>
-                                <ChevronDown size={14} className={`transition-transform duration-200 ${isShareDropdownOpen ? 'rotate-180' : ''}`} />
+                                <ChevronDown size={13} className={`transition-transform duration-200 ${isShareDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
 
                             {isShareDropdownOpen && (
@@ -6065,20 +6314,48 @@ const PartsTab = ({ parts, currentUser, onPartUpdate, settings }: any) => {
 
 const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
     const [loading, setLoading] = useState(false);
+    const [uploadingImg, setUploadingImg] = useState(false);
+    const [uploadingPdf, setUploadingPdf] = useState(false);
     const [previewPdf, setPreviewPdf] = useState<{ url: string; fileName: string } | null>(null);
-    const [formData, setFormData] = useState<Partial<PartMasterData>>(initialData || {
-        name: '',
-        type: 'قطعات',
-        category: '',
-        subCategory: '',
-        dimensions: '',
-        machineName: '',
-        unit: 'عدد',
-        minStock: 0,
-        currentStock: 0,
-        image: '',
-        pdfAttachment: ''
+    const [activeImgSlide, setActiveImgSlide] = useState(0);
+    const [activePdfSlide, setActivePdfSlide] = useState(0);
+
+    const [formData, setFormData] = useState<Partial<PartMasterData>>(() => {
+        const base = initialData || {
+            name: '',
+            type: 'قطعات',
+            category: '',
+            subCategory: '',
+            dimensions: '',
+            machineName: '',
+            unit: 'عدد',
+            minStock: 0,
+            currentStock: 0,
+            image: '',
+            images: [],
+            pdfAttachment: '',
+            pdfAttachments: []
+        };
+        const initImages = Array.isArray(base.images) && base.images.length > 0
+            ? base.images.filter(Boolean)
+            : (base.image ? [base.image] : []);
+        const initPdfs = Array.isArray(base.pdfAttachments) && base.pdfAttachments.length > 0
+            ? base.pdfAttachments.filter(Boolean)
+            : (base.pdfAttachment ? [base.pdfAttachment] : []);
+        return {
+            ...base,
+            images: initImages,
+            image: initImages[0] || '',
+            pdfAttachments: initPdfs,
+            pdfAttachment: initPdfs[0] || ''
+        };
     });
+
+    const imageList = formData.images || (formData.image ? [formData.image] : []);
+    const pdfList = formData.pdfAttachments || (formData.pdfAttachment ? [formData.pdfAttachment] : []);
+
+    const safeImgSlide = imageList.length > 0 ? Math.min(activeImgSlide, imageList.length - 1) : 0;
+    const safePdfSlide = pdfList.length > 0 ? Math.min(activePdfSlide, pdfList.length - 1) : 0;
 
     const categories = Array.from(new Set(parts.map((p: any) => p.category).filter(Boolean)));
     const subCategories = Array.from(new Set(parts.filter((p: any) => p.category === formData.category).map((p: any) => p.subCategory).filter(Boolean)));
@@ -6088,13 +6365,20 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
         if(!formData.name || !formData.category) return alert('نام و گروه‌بندی الزامی است');
         setLoading(true);
         try {
-            const finalPart = { ...formData };
+            const syncedData: Partial<PartMasterData> = {
+                ...formData,
+                images: imageList,
+                image: imageList[0] || '',
+                pdfAttachments: pdfList,
+                pdfAttachment: pdfList[0] || ''
+            };
+            const finalPart = { ...syncedData };
             if (initialData?.id && !initialData.isVirtualForPurchase) {
-                await updatePartMasterData({ ...initialData, ...formData } as PartMasterData);
+                await updatePartMasterData({ ...initialData, ...syncedData } as PartMasterData);
             } else {
                 const newId = generateUUID();
                 finalPart.id = newId;
-                await savePartMasterData({ ...formData, id: newId } as PartMasterData);
+                await savePartMasterData({ ...syncedData, id: newId } as PartMasterData);
             }
             onSuccess(finalPart);
             onClose();
@@ -6105,26 +6389,88 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
         finally { setLoading(false); }
     };
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            uploadFileChunked(file, () => {}).then(res => setFormData({ ...formData, image: res.url }));
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        setUploadingImg(true);
+        try {
+            const uploadedUrls: string[] = [];
+            for (let i = 0; i < files.length; i++) {
+                const res = await uploadFileChunked(files[i], () => {});
+                if (res?.url) uploadedUrls.push(res.url);
+            }
+            if (uploadedUrls.length > 0) {
+                const nextImages = [...imageList, ...uploadedUrls];
+                setFormData(prev => ({
+                    ...prev,
+                    images: nextImages,
+                    image: nextImages[0] || ''
+                }));
+                setActiveImgSlide(nextImages.length - 1);
+            }
+        } catch (err) {
+            console.error('Image upload error:', err);
+            alert('خطا در بارگذاری تصویر');
+        } finally {
+            setUploadingImg(false);
+            if (e.target) e.target.value = '';
         }
     };
 
-    const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            uploadFileChunked(file, () => {}).then(res => setFormData({ ...formData, pdfAttachment: res.url }));
+    const handleRemoveImage = (idxToRemove: number) => {
+        const nextImages = imageList.filter((_, idx) => idx !== idxToRemove);
+        setFormData(prev => ({
+            ...prev,
+            images: nextImages,
+            image: nextImages[0] || ''
+        }));
+        setActiveImgSlide(Math.max(0, Math.min(safeImgSlide, nextImages.length - 1)));
+    };
+
+    const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        setUploadingPdf(true);
+        try {
+            const uploadedUrls: string[] = [];
+            for (let i = 0; i < files.length; i++) {
+                const res = await uploadFileChunked(files[i], () => {});
+                if (res?.url) uploadedUrls.push(res.url);
+            }
+            if (uploadedUrls.length > 0) {
+                const nextPdfs = [...pdfList, ...uploadedUrls];
+                setFormData(prev => ({
+                    ...prev,
+                    pdfAttachments: nextPdfs,
+                    pdfAttachment: nextPdfs[0] || ''
+                }));
+                setActivePdfSlide(nextPdfs.length - 1);
+            }
+        } catch (err) {
+            console.error('PDF upload error:', err);
+            alert('خطا در بارگذاری فایل PDF');
+        } finally {
+            setUploadingPdf(false);
+            if (e.target) e.target.value = '';
         }
+    };
+
+    const handleRemovePdf = (idxToRemove: number) => {
+        const nextPdfs = pdfList.filter((_, idx) => idx !== idxToRemove);
+        setFormData(prev => ({
+            ...prev,
+            pdfAttachments: nextPdfs,
+            pdfAttachment: nextPdfs[0] || ''
+        }));
+        setActivePdfSlide(Math.max(0, Math.min(safePdfSlide, nextPdfs.length - 1)));
     };
 
     return createPortal(
-        <div className="fixed inset-0 z-[100000008] flex items-start justify-center p-4 bg-black/60 backdrop-blur-sm pt-16 md:pt-20 overflow-y-auto">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-2xl p-8 animate-scale-in max-h-[92vh] overflow-y-auto no-scrollbar mb-10 relative">
-                <div className="flex justify-between items-center mb-8">
-                    <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Layers className="text-indigo-600"/> {initialData ? 'ویرایش کالا / قطعه' : 'معرفی کالا جدید'}</h2>
-                    <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"><XCircle size={28} className="text-gray-400"/></button>
+        <div className="fixed inset-0 z-[100000008] flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm overflow-hidden dir-rtl">
+            <div className="bg-white rounded-none sm:rounded-[2.5rem] w-full max-w-2xl p-4 sm:p-8 animate-scale-in h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-y-auto custom-scrollbar relative text-right">
+                <div className="flex justify-between items-center mb-4 sm:mb-6 pb-2.5 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-10">
+                    <h2 className="text-base sm:text-2xl font-black text-gray-800 flex items-center gap-2"><Layers size={20} className="text-indigo-600"/> {initialData ? 'ویرایش کالا / قطعه' : 'معرفی کالا جدید'}</h2>
+                    <button type="button" onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"><XCircle size={24} className="text-gray-400"/></button>
                 </div>
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
@@ -6154,75 +6500,190 @@ const PartModal = ({ onClose, onSuccess, initialData, parts }: any) => {
                         </div>
                     </div>
                     <div className="space-y-4">
-                        <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 px-1">موجودی و تصویر</label>
+                        <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2 px-1">موجودی، تصاویر و کاتالوگ‌ها (چندتایی با قابلیت ورق زدن)</label>
                             <div className="space-y-3">
                                 <div className="flex gap-4">
                                     <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 mb-1 block">واحد</label><input className="w-full border-2 border-gray-100 rounded-2xl p-3 text-sm" value={formData.unit} onChange={e=>setFormData({...formData, unit: e.target.value})} /></div>
                                     <div className="flex-1"><label className="text-[10px] font-bold text-gray-400 mb-1 block">حداقل موجودی</label><input type="number" className="w-full border-2 border-gray-100 rounded-2xl p-3 text-sm font-bold text-red-500" value={formData.minStock} onChange={e=>setFormData({...formData, minStock: +e.target.value})} /></div>
                                 </div>
-                                <div className="relative group h-32 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center overflow-hidden cursor-pointer hover:bg-gray-100 transition-all">
-                                    {formData.image ? (
-                                        <div className="relative w-full h-full">
-                                            <img src={formData.image} className="w-full h-full object-cover" alt="preview" />
-                                            <button 
-                                                type="button" 
-                                                onClick={(e) => { e.stopPropagation(); setFormData({ ...formData, image: '' }); }} 
-                                                className="absolute top-2 left-2 p-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md cursor-pointer z-10"
-                                                title="حذف تصویر"
-                                            >
-                                                <Trash2 size={14}/>
-                                            </button>
+
+                                {/* Multi-Image Carousel & Uploader */}
+                                <div className="bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-black text-gray-700 flex items-center gap-1.5">
+                                            <ImageIcon size={14} className="text-indigo-600" />
+                                            <span>تصاویر کالا ({imageList.length} تصویر)</span>
+                                        </span>
+                                        <label className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black flex items-center gap-1 cursor-pointer shadow-xs transition-all">
+                                            {uploadingImg ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                                            <span>افزودن عکس‌ها</span>
+                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                                        </label>
+                                    </div>
+
+                                    {imageList.length > 0 ? (
+                                        <div className="space-y-2">
+                                            <div className="relative h-36 bg-white rounded-2xl border border-gray-200 overflow-hidden flex items-center justify-center">
+                                                <img
+                                                    src={resolveImageUrl(imageList[safeImgSlide])}
+                                                    className="max-w-full max-h-full object-contain"
+                                                    alt={`part-${safeImgSlide + 1}`}
+                                                    referrerPolicy="no-referrer"
+                                                />
+                                                <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] font-black px-2 py-0.5 rounded-lg">
+                                                    {safeImgSlide + 1} از {imageList.length}
+                                                </div>
+                                                <div className="absolute top-2 left-2 flex items-center gap-1 z-10">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewPdf({ url: resolveImageUrl(imageList[safeImgSlide]), fileName: `تصویر_${safeImgSlide + 1}_${formData.name || 'part'}.jpg` })}
+                                                        className="p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md cursor-pointer"
+                                                        title="مشاهده تصویر"
+                                                    >
+                                                        <Eye size={13} />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveImage(safeImgSlide)}
+                                                        className="p-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md cursor-pointer"
+                                                        title="حذف این تصویر"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
+
+                                                {imageList.length > 1 && (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveImgSlide((safeImgSlide - 1 + imageList.length) % imageList.length)}
+                                                            className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center shadow-md cursor-pointer"
+                                                            title="تصویر قبلی"
+                                                        >
+                                                            <ChevronRight size={16} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setActiveImgSlide((safeImgSlide + 1) % imageList.length)}
+                                                            className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-black/70 hover:bg-black text-white flex items-center justify-center shadow-md cursor-pointer"
+                                                            title="تصویر بعدی"
+                                                        >
+                                                            <ChevronLeft size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {imageList.length > 1 && (
+                                                <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                                                    {imageList.map((imgUrl, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            type="button"
+                                                            onClick={() => setActiveImgSlide(idx)}
+                                                            className={`w-10 h-10 rounded-lg border-2 overflow-hidden shrink-0 cursor-pointer transition-all ${
+                                                                idx === safeImgSlide ? 'border-indigo-600 scale-105' : 'border-gray-200 opacity-65'
+                                                            }`}
+                                                        >
+                                                            <img src={resolveImageUrl(imgUrl)} className="w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
-                                        <>
-                                            <Upload className="text-gray-300 group-hover:text-indigo-400 transition-colors" size={32}/>
-                                            <p className="text-[10px] font-black text-gray-400 mt-2">کلیک جهت بارگذاری تصویر</p>
-                                        </>
+                                        <label className="h-28 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100/80 rounded-2xl transition-all">
+                                            <Upload className="text-gray-300" size={28}/>
+                                            <p className="text-[10px] font-black text-gray-400 mt-1.5">کلیک جهت بارگذاری یک یا چند تصویر کالا</p>
+                                            <input type="file" accept="image/*" multiple className="hidden" onChange={handleImageUpload} />
+                                        </label>
                                     )}
-                                    <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImageUpload} />
                                 </div>
 
-                                <div className="relative group p-4 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center gap-3 transition-all">
-                                    <div className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shrink-0">
-                                        <FileUp size={20} />
+                                {/* Multi-PDF Carousel & Uploader */}
+                                <div className="p-3.5 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl space-y-2.5">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-xl bg-red-50 text-red-500 flex items-center justify-center shrink-0">
+                                                <FileUp size={18} />
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-black text-gray-700">کاتالوگ‌ها و نقشه‌های PDF ({pdfList.length} فایل)</p>
+                                                <p className="text-[10px] text-gray-400">امکان آپلود چند فایل PDF و ورق زدن</p>
+                                            </div>
+                                        </div>
+                                        <label className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[10px] font-black flex items-center gap-1 cursor-pointer shadow-xs transition-all shrink-0">
+                                            {uploadingPdf ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                                            <span>افزودن PDF</span>
+                                            <input type="file" accept="application/pdf" multiple className="hidden" onChange={handlePdfUpload} />
+                                        </label>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-bold text-gray-700 truncate">{formData.pdfAttachment ? 'فایل ضمیمه / کاتالوگ بارگذاری شد' : 'بارگذاری کاتالوگ / PDF'}</p>
-                                        <p className="text-[10px] text-gray-400">{formData.pdfAttachment ? 'جهت جایگزینی کلیک کنید' : 'فقط فایل‌های PDF مجاز است'}</p>
-                                    </div>
-                                    {formData.pdfAttachment && (
-                                        <div className="flex items-center gap-1.5 shrink-0 z-10">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setPreviewPdf({ url: formData.pdfAttachment!, fileName: `Catalog_${formData.name || 'part'}.pdf` });
-                                                }}
-                                                className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer"
-                                                title="پیش‌نمایش PDF"
-                                            >
-                                                <Eye size={16} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setFormData({ ...formData, pdfAttachment: '' });
-                                                }}
-                                                className="p-1.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
-                                                title="حذف PDF"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+
+                                    {pdfList.length > 0 && (
+                                        <div className="bg-white border border-red-100 rounded-xl p-2.5 flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-1.5">
+                                                {pdfList.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActivePdfSlide((safePdfSlide - 1 + pdfList.length) % pdfList.length)}
+                                                        className="p-1 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 rounded-lg cursor-pointer"
+                                                        title="فایل PDF قبلی"
+                                                    >
+                                                        <ChevronRight size={15} />
+                                                    </button>
+                                                )}
+                                                <span className="text-xs font-black text-red-700 flex items-center gap-1">
+                                                    <FileText size={14} />
+                                                    <span>فایل PDF شماره {safePdfSlide + 1} از {pdfList.length}</span>
+                                                </span>
+                                                {pdfList.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setActivePdfSlide((safePdfSlide + 1) % pdfList.length)}
+                                                        className="p-1 bg-gray-100 hover:bg-red-50 text-gray-700 hover:text-red-600 rounded-lg cursor-pointer"
+                                                        title="فایل PDF بعدی"
+                                                    >
+                                                        <ChevronLeft size={15} />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPreviewPdf({ url: resolveImageUrl(pdfList[safePdfSlide]), fileName: `Catalog_${safePdfSlide + 1}_${formData.name || 'part'}.pdf` })}
+                                                    className="px-2 py-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg text-[11px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                                                    title="مشاهده PDF"
+                                                >
+                                                    <Eye size={13} />
+                                                    <span>مشاهده</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => downloadAndOpenFile(resolveImageUrl(pdfList[safePdfSlide]), `Catalog_${safePdfSlide + 1}_${formData.name || 'part'}.pdf`)}
+                                                    className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg text-[11px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                                                    title="دانلود PDF"
+                                                >
+                                                    <Download size={13} />
+                                                    <span>دانلود</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemovePdf(safePdfSlide)}
+                                                    className="p-1 bg-red-50 text-red-500 hover:bg-red-100 rounded-lg transition-colors cursor-pointer"
+                                                    title="حذف این PDF"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
-                                    <input type="file" accept="application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handlePdfUpload} />
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div className="md:col-span-2 pt-4">
-                        <button disabled={loading} className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70 cursor-pointer">
+                        <button disabled={loading || uploadingImg || uploadingPdf} className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 text-white font-black py-4 rounded-2xl shadow-xl shadow-indigo-100 flex items-center justify-center gap-3 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70 cursor-pointer">
                             {loading ? <Loader2 className="animate-spin"/> : <ClipboardCheck size={20}/>} {initialData ? 'ثبت تغییرات' : 'معرفی نهایی کالا'}
                         </button>
                     </div>

@@ -2125,7 +2125,7 @@ const Layout: React.FC<LayoutProps> = ({
                       </select>
                   )}
               </div>
-              <div className={`${(activeTab === 'chat' || activeTab === 'sayan') ? 'p-0 w-full max-w-full flex-1 flex flex-col min-h-0 overflow-x-hidden' : 'p-0 sm:p-2 md:p-4 w-full max-w-full min-h-full overflow-x-hidden'} mx-auto min-w-0`}>
+              <div className={`${(activeTab === 'chat' || activeTab === 'sayan') ? 'p-0 w-full max-w-full flex-1 flex flex-col min-h-0 overflow-x-hidden' : 'p-0 sm:p-2 md:p-4 w-full max-w-full'} mx-auto min-w-0`}>
                   {children}
               </div>
           </div>

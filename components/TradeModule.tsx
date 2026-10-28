@@ -6,7 +6,7 @@ import { getTradeRecords, saveTradeRecord, updateTradeRecord, deleteTradeRecord,
 import { getUsers } from '../services/authService';
 import { generateUUID, formatCurrency, formatNumberString, deformatNumberString, parsePersianDate, formatDate, calculateDaysDiff, calculateDaysBetween, getStatusLabel } from '../constants';
 import FormattedNumberInput from './FormattedNumberInput';
-import { Container, Plus, Search, CheckCircle2, Save, Trash2, X, Package, ArrowRight, History, Banknote, Coins, Wallet, FileSpreadsheet, Shield, LayoutDashboard, Printer, FileDown, Paperclip, Building2, FolderOpen, Home, Calculator, FileText, Microscope, ListFilter, Warehouse, Calendar as CalendarIcon, PieChart, BarChart, Clock, Leaf, Scale, ShieldCheck, Percent, Truck, CheckSquare, Square, ToggleLeft, ToggleRight, DollarSign, UserCheck, Check, Archive, AlertCircle, RefreshCw, Box, Loader2, Share2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, CalendarDays, Info, ArrowLeftRight, ArrowRightLeft, Edit2, Edit, Undo2, Eye, EyeOff, Copy } from 'lucide-react';
+import { Container, Plus, Search, CheckCircle2, Save, Trash2, X, Package, ArrowRight, History, Banknote, Coins, Wallet, FileSpreadsheet, Shield, LayoutDashboard, Printer, FileDown, Paperclip, Building2, FolderOpen, Home, Calculator, FileText, Microscope, ListFilter, Warehouse, Calendar as CalendarIcon, PieChart, BarChart, Clock, Leaf, Scale, ShieldCheck, Percent, Truck, CheckSquare, Square, ToggleLeft, ToggleRight, DollarSign, UserCheck, Check, Archive, AlertCircle, RefreshCw, Box, Loader2, Share2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, CalendarDays, Info, ArrowLeftRight, ArrowRightLeft, Edit2, Edit, Undo2, Eye, EyeOff, Copy, Layers } from 'lucide-react';
 import { apiCall, LS_KEYS, getLocalData } from '../services/apiService';
 import { downloadAndOpenFile } from '../services/fileService';
 import AllocationReport from './AllocationReport';
@@ -265,6 +265,9 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         }));
     };
     const [showQuickDocsPanel, setShowQuickDocsPanel] = useState(false);
+    const [showMobileStageDrawer, setShowMobileStageDrawer] = useState(false);
+    const [showMobileDocsModal, setShowMobileDocsModal] = useState(false);
+    const [showMobileMoreOptions, setShowMobileMoreOptions] = useState(false);
     const [sharePlatform, setSharePlatform] = useState<'whatsapp' | 'bale' | 'telegram' | null>(null);
     const [contactSearch, setContactSearch] = useState('');
     const [allContacts, setAllContacts] = useState<any[]>([]);
@@ -3088,8 +3091,61 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         const freightPerKgCurrency = totalWeight > 0 ? totalFreightCurrency / totalWeight : 0;
         const costPerKg = totalWeight > 0 ? grandTotalRialProject / totalWeight : 0;
 
+        const tradeTabs = [
+            ...(selectedRecord?.purchaseType === 'domestic_bourse' || Boolean(selectedRecord?.petrochemicalData)
+                ? [
+                    { id: 'domestic_petrochemical', label: 'خرید پتروشیمی و بورس کالا', icon: Building2 },
+                    { id: 'all_attachments', label: 'همه پیوست‌ها و مدارک', icon: Paperclip, count: selectedRecord?.attachments?.length || 0 }
+                ]
+                : [
+                    { id: 'timeline', label: 'تایم‌لاین', icon: Clock },
+                    { id: 'proforma', label: 'پروفرما', icon: FileText },
+                    { id: 'insurance', label: 'بیمه', icon: Shield },
+                    { id: 'allocation', label: 'صف و تخصیص ارز', icon: AlertCircle },
+                    { id: 'currency_purchase', label: 'خرید ارز', icon: DollarSign },
+                    { id: 'shipping_docs', label: 'اسناد حمل', icon: Truck },
+                    { id: 'inspection', label: 'بازرسی', icon: Search },
+                    { id: 'clearance_docs', label: 'ترخیصیه و انبار', icon: Warehouse },
+                    { id: 'green_leaf', label: 'برگ سبز', icon: CheckSquare },
+                    { id: 'internal_shipping', label: 'حمل داخلی', icon: Package },
+                    { id: 'agent_fees', label: 'هزینه‌های ترخیص', icon: Coins },
+                    { id: 'final_calculation', label: 'محاسبه نهایی', icon: Calculator },
+                    { id: 'all_attachments', label: 'همه پیوست‌ها و مدارک', icon: Paperclip, count: selectedRecord?.attachments?.length || 0 }
+                ])
+        ];
+
+        const currentTabIndex = tradeTabs.findIndex(t => t.id === activeTab);
+        const safeTabIndex = currentTabIndex >= 0 ? currentTabIndex : 0;
+        const currentTabObj = tradeTabs[safeTabIndex];
+
+        const handlePrevTab = () => {
+            if (safeTabIndex > 0) {
+                setActiveTab(tradeTabs[safeTabIndex - 1].id as any);
+            }
+        };
+
+        const handleNextTab = () => {
+            if (safeTabIndex < tradeTabs.length - 1) {
+                setActiveTab(tradeTabs[safeTabIndex + 1].id as any);
+            }
+        };
+
+        const stageToTabMap: Record<string, string> = {
+            [TradeStage.LICENSES]: 'proforma',
+            [TradeStage.INSURANCE]: 'insurance',
+            [TradeStage.ALLOCATION_QUEUE]: 'allocation',
+            [TradeStage.ALLOCATION_APPROVED]: 'allocation',
+            [TradeStage.CURRENCY_PURCHASE]: 'currency_purchase',
+            [TradeStage.SHIPPING_DOCS]: 'shipping_docs',
+            [TradeStage.INSPECTION]: 'inspection',
+            [TradeStage.CLEARANCE_DOCS]: 'clearance_docs',
+            [TradeStage.GREEN_LEAF]: 'green_leaf',
+            [TradeStage.INTERNAL_SHIPPING]: 'internal_shipping',
+            [TradeStage.AGENT_FEES]: 'agent_fees',
+        };
+
         return (
-            <div className="flex flex-col h-[calc(100dvh-140px)] md:h-[calc(100vh-100px)] animate-fade-in relative">
+            <div className="flex flex-col flex-1 min-h-0 md:h-[calc(100vh-100px)] animate-fade-in relative">
                 
                 {/* Final Cost Report Print Overlay */}
                 {showFinalReportPrint && (
@@ -3288,8 +3344,110 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     document.body
                 )}
 
-                {/* Header */}
-                <div className="glass-panel border-b p-2.5 sm:p-4 flex flex-col gap-2 sm:gap-3.5 shadow-xs z-10">
+                {/* Mobile Streamlined Header (Hidden on Desktop) */}
+                <div className="md:hidden glass-panel border-b border-gray-200 dark:border-zinc-800 px-2.5 py-2 flex flex-col gap-1 shadow-2xs z-20 shrink-0 bg-white/95 dark:bg-zinc-900/95 sticky top-0 backdrop-blur-md" data-html2canvas-ignore>
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <button 
+                                type="button" 
+                                data-subtab-back="true" 
+                                onClick={() => setViewMode('dashboard')} 
+                                className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full shrink-0 text-gray-700 dark:text-gray-300 active:scale-90 transition-transform"
+                                title="بازگشت به لیست پرونده‌ها"
+                            >
+                                <ArrowRight size={18} />
+                            </button>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-black text-sm text-gray-900 dark:text-white truncate max-w-[130px] sm:max-w-none">{selectedRecord.goodsName}</span>
+                                    <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 px-1.5 py-0.2 rounded-md font-bold">
+                                        {selectedRecord.fileNumber ? `#${selectedRecord.fileNumber}` : 'بدون پرونده'}
+                                    </span>
+                                    {selectedRecord.proformaNumber && (
+                                        <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800 px-1.5 py-0.2 rounded-md font-bold">
+                                            {selectedRecord.proformaNumber}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                    {selectedRecord.company} {selectedRecord.sellerName ? `| ${selectedRecord.sellerName}` : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Quick Mobile Actions */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            {/* Cost per kg badge */}
+                            <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-2 py-1 rounded-lg text-left font-mono">
+                                <span className="text-[8px] font-bold text-rose-600 dark:text-rose-400 block leading-none">کیلو:</span>
+                                <span className="font-black text-rose-700 dark:text-rose-300 text-xs leading-none">
+                                    {formatCurrency(costPerKg)}
+                                </span>
+                            </div>
+
+                            {/* Quick Docs Button */}
+                            <button 
+                                type="button" 
+                                onClick={() => setShowMobileDocsModal(true)} 
+                                className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 rounded-lg relative active:scale-95 transition-all"
+                                title="مشاهده فرم‌ها و اسناد استاندارد"
+                            >
+                                <FileText size={17} />
+                                <span className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full text-[9px] font-bold w-4 h-4 flex items-center justify-center">
+                                    {2 + (selectedRecord.shippingDocuments?.length || 0)}
+                                </span>
+                            </button>
+
+                            {/* More Options */}
+                            <button 
+                                type="button" 
+                                onClick={() => setShowMobileMoreOptions(true)} 
+                                className="p-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg active:scale-95"
+                                title="عملیات و ویرایش مشخصات"
+                            >
+                                <Edit size={16} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Mobile Stage Switcher (Hidden on Desktop) - NO HORIZONTAL SCROLLBAR */}
+                <div className="md:hidden bg-slate-50/95 dark:bg-zinc-900/95 border-b border-gray-200 dark:border-zinc-800 px-2.5 py-1.5 flex items-center justify-between gap-1 shadow-2xs shrink-0" data-html2canvas-ignore>
+                    <button 
+                        type="button" 
+                        onClick={handlePrevTab}
+                        disabled={safeTabIndex === 0}
+                        className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 ${safeTabIndex === 0 ? 'opacity-30 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 shadow-2xs'}`}
+                    >
+                        <ChevronRight size={14} />
+                        <span>قبلی</span>
+                    </button>
+
+                    <button 
+                        type="button" 
+                        onClick={() => setShowMobileStageDrawer(true)} 
+                        className="flex-1 max-w-[240px] mx-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 rounded-xl font-bold text-xs shadow-2xs active:scale-98 transition-all"
+                    >
+                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-mono font-bold shrink-0">
+                            {safeTabIndex + 1}
+                        </span>
+                        <span className="truncate">{currentTabObj?.label || 'انتخاب مرحله'}</span>
+                        <ChevronDown size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                    </button>
+
+                    <button 
+                        type="button" 
+                        onClick={handleNextTab}
+                        disabled={safeTabIndex === tradeTabs.length - 1}
+                        className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 ${safeTabIndex === tradeTabs.length - 1 ? 'opacity-30 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 shadow-2xs'}`}
+                    >
+                        <span>بعدی</span>
+                        <ChevronLeft size={14} />
+                    </button>
+                </div>
+
+                {/* Desktop Header & Tab Bar (Hidden on Mobile) */}
+                <div className="hidden md:flex glass-panel border-b p-3.5 flex-col gap-3 shadow-xs z-10 shrink-0">
                     <div className="flex flex-row items-center justify-between gap-2">
                         <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                             <button type="button" data-subtab-back="true" onClick={() => setViewMode('dashboard')} className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full shrink-0"><ArrowRight size={18} /></button>
@@ -3339,14 +3497,14 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                             </div>
                         </div>
 
-                        {/* MINI COST PER KG BOX (Compact on mobile) */}
-                        <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-right shrink-0">
-                            <span className="text-[8px] sm:text-[9px] font-bold text-rose-600 dark:text-rose-400 block mb-0.5 leading-none">قیمت تمام‌شده (کیلو)</span>
-                            <span className="font-mono font-black text-rose-700 dark:text-rose-300 text-xs sm:text-sm leading-none">{formatCurrency(calculateRecordCostPerKg(selectedRecord))} <span className="text-[9px] font-normal">ریال</span></span>
+                        {/* MINI COST PER KG BOX */}
+                        <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 px-3 py-1.5 rounded-xl text-right shrink-0">
+                            <span className="text-[9px] font-bold text-rose-600 dark:text-rose-400 block mb-0.5 leading-none">قیمت تمام‌شده (کیلو)</span>
+                            <span className="font-mono font-black text-rose-700 dark:text-rose-300 text-sm leading-none">{formatCurrency(calculateRecordCostPerKg(selectedRecord))} <span className="text-[9px] font-normal">ریال</span></span>
                         </div>
                     </div>
 
-                    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto py-0.5 custom-scrollbar">
+                    <div className="flex gap-1.5 sm:gap-2 overflow-x-auto py-0.5 custom-scrollbar scrollbar-none">
                         {(selectedRecord?.purchaseType === 'domestic_bourse' || Boolean(selectedRecord?.petrochemicalData)) ? (
                             <button type="button" onClick={() => setActiveTab('domestic_petrochemical')} className={`px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'domestic_petrochemical' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'}`}>
                                 🏢 خرید پتروشیمی و بورس کالا
@@ -3391,7 +3549,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-zinc-900">
+                <div className="flex-1 md:overflow-y-auto bg-gray-50 dark:bg-zinc-900">
                     
                     {activeTab === 'domestic_petrochemical' && (
                         <DomesticPetrochemicalTab
@@ -3433,7 +3591,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     return (
                                         <div key={stage} className="relative">
                                             <div className={`absolute -right-[22px] sm:-right-[41px] top-2 w-3.5 h-3.5 sm:w-6 sm:h-6 rounded-full border-2 sm:border-4 ${isCompleted ? 'bg-green-500 border-green-100' : 'bg-gray-300 border-gray-100'}`}></div>
-                                            <div className="glass-panel p-2.5 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-zinc-800 hover:shadow-md transition-shadow cursor-pointer" onClick={() => isAllocation ? setActiveTab('allocation') : handleStageClick(stage)}>
+                                            <div className="glass-panel p-3 sm:p-4 rounded-xl shadow-xs border border-gray-100 dark:border-zinc-800 hover:shadow-md transition-shadow cursor-pointer" onClick={() => isAllocation ? setActiveTab('allocation') : handleStageClick(stage)}>
                                                 <div className="flex justify-between items-start">
                                                     <div>
                                                         <h3 className="font-bold text-gray-800 dark:text-gray-100 text-xs sm:text-sm">{title}</h3>
@@ -3444,6 +3602,36 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                                 <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2 text-[10px] sm:text-xs">
                                                     {totalCostRial > 0 && <span className="bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded-lg">هزینه ریالی: {formatCurrency(totalCostRial)} ریال</span>}
                                                     {totalCostCurrency > 0 && <span className="bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-lg font-mono">هزینه ارزی: {formatNumberString(totalCostCurrency)} {selectedRecord.mainCurrency}</span>}
+                                                </div>
+                                                <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-zinc-800/80 flex items-center justify-between gap-2 flex-wrap">
+                                                    {stageToTabMap[stage] && (
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActiveTab(stageToTabMap[stage] as any);
+                                                            }} 
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 transition-all active:scale-95"
+                                                        >
+                                                            <span>ورود به برگه اختصاصی</span>
+                                                            <ArrowRight size={12} className="rotate-180" />
+                                                        </button>
+                                                    )}
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (isAllocation) {
+                                                                setActiveTab('allocation');
+                                                            } else {
+                                                                handleStageClick(stage);
+                                                            }
+                                                        }} 
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-zinc-800 dark:text-gray-300 transition-all active:scale-95"
+                                                    >
+                                                        <Edit2 size={12} />
+                                                        <span>ویرایش وضعیت و هزینه</span>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -5572,8 +5760,8 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     )}
                 </div>
 
-                {/* Standard Documents Quick Display Panel */}
-                <div className="bg-slate-50 border-t border-slate-200" data-html2canvas-ignore>
+                {/* Standard Documents Quick Display Panel (Desktop Only) */}
+                <div className="hidden md:block bg-slate-50 border-t border-slate-200 dark:bg-zinc-900 dark:border-zinc-800" data-html2canvas-ignore>
                     <div className="max-w-5xl mx-auto px-6 py-4">
                         <button type="button" 
                             onClick={() => setShowQuickDocsPanel(!showQuickDocsPanel)}
