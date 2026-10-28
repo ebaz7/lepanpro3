@@ -59,7 +59,8 @@ export function dismissUpdate(serverInfo?: AppVersionInfo | null): void {
   const sig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
   try {
     sessionStorage.setItem('dismissed_update_sig', sig);
-    localStorage.setItem('dismissed_update_sig', sig);
+    // DO NOT write dismissed_update_sig to localStorage so native apps will ask again on next app launch if binary is unupdated
+    localStorage.removeItem('dismissed_update_sig');
   } catch (_) {}
 }
 
@@ -194,9 +195,9 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
     const clientVer = nativeClient.version;
     const currentServerSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
 
-    // 1. Check if user dismissed this exact update in current session
-    const dismissedSig = sessionStorage.getItem('dismissed_update_sig') || localStorage.getItem('dismissed_update_sig');
-    if (dismissedSig && dismissedSig === currentServerSig) {
+    // 1. Check if user dismissed this exact update in CURRENT session only
+    const sessionDismissedSig = sessionStorage.getItem('dismissed_update_sig');
+    if (sessionDismissedSig && sessionDismissedSig === currentServerSig) {
       return { hasUpdate: false, serverInfo: data };
     }
 
@@ -318,7 +319,6 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
     } catch (_) {}
 
     // 2. Mark update signature in localStorage ONLY for Web platform
-    // (Native Android & Windows updates download installer files; client version changes only when user installs the new binary)
     if (serverInfo && isWeb) {
       const serverBuild = serverInfo.buildNumber || serverInfo.version;
       const serverVer = serverInfo.version || serverBuild;
@@ -346,31 +346,40 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         toast.success(`شروع دریافت فایل نصبی اندروید (نسخه ${serverInfo?.version || 'جدید'})...`, { duration: 6000 });
       } catch (_) {}
 
-      // 3b. Try Cordova/Capacitor system browser hand-off (opens Android OS Download Manager)
+      // 3b. Capacitor Browser plugin
+      try {
+        if (win.Capacitor?.Plugins?.Browser?.open) {
+          await win.Capacitor.Plugins.Browser.open({ url: apkUrl });
+        }
+      } catch (_) {}
+
+      // 3c. Capacitor App plugin openUrl
+      try {
+        if (win.Capacitor?.Plugins?.App?.openUrl) {
+          await win.Capacitor.Plugins.App.openUrl({ url: apkUrl });
+        }
+      } catch (_) {}
+
+      // 3d. System window / Location navigation (opens system browser & download manager on Android WebView)
       try {
         win.open(apkUrl, '_system');
       } catch (_) {}
 
-      // 3c. Try Capacitor App Plugin openUrl if available
       try {
-        if (win.Capacitor?.Plugins?.App?.openUrl) {
-          win.Capacitor.Plugins.App.openUrl({ url: apkUrl });
-        }
+        window.location.href = apkUrl;
       } catch (_) {}
 
-      // 3d. Fallback: programmatic anchor download trigger
+      // 3e. Programmatic anchor download link
       try {
         const a = document.createElement('a');
         a.href = apkUrl;
         a.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
-        a.target = '_blank';
+        a.target = '_system';
         a.rel = 'noopener noreferrer';
         document.body.appendChild(a);
         a.click();
         setTimeout(() => a.remove(), 1000);
-      } catch (_) {
-        window.open(apkUrl, '_blank');
-      }
+      } catch (_) {}
 
       return;
     }
@@ -425,6 +434,10 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
       if (!openedByTauri) {
         try {
           win.open(downloadUrl, '_system');
+        } catch (_) {}
+
+        try {
+          window.location.href = downloadUrl;
         } catch (_) {}
 
         try {
@@ -488,3 +501,4 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
     }
   }
 }
+
