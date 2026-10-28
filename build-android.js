@@ -218,13 +218,9 @@ async function buildAndroid() {
       gradleModified = true;
     }
 
-    // Ensure google-services plugin is only applied if google-services.json matches appPackageName
-    const unsafeGoogleServicesRegex = /if\s*\(\s*servicesJSON\.text\s*\)\s*\{\s*apply\s+plugin:\s*['"]com\.google\.gms\.google-services['"]\s*\}/;
-    if (unsafeGoogleServicesRegex.test(gradleText)) {
-      gradleText = gradleText.replace(
-        unsafeGoogleServicesRegex,
-        `if (servicesJSON.exists() && servicesJSON.text && servicesJSON.text.contains('"${appPackageName}"')) {\n        apply plugin: 'com.google.gms.google-services'\n    }`
-      );
+    // Ensure invalid v3SigningEnabled / v4SigningEnabled methods are removed
+    if (/v[34]SigningEnabled/.test(gradleText)) {
+      gradleText = gradleText.replace(/\s*v[34]SigningEnabled\s+true/g, '');
       gradleModified = true;
     }
 
