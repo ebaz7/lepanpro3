@@ -30,6 +30,11 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
     try {
       await applyApplicationUpdate(updateInfo);
       setIsSuccess(true);
+      setIsUpdating(false);
+      // Reset success state after 4 seconds to allow re-initiating if user desires
+      setTimeout(() => {
+        setIsSuccess(false);
+      }, 4000);
     } catch (e) {
       console.error('Update failed:', e);
       setIsUpdating(false);
@@ -42,10 +47,10 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
     : (updateInfo.version ? `نسخه ${updateInfo.version}` : 'آماده دریافت');
 
   const actionButtonText = isUpdating
-    ? (isWeb ? 'در حال اعمال و بارگذاری...' : isAndroid ? 'در حال دریافت APK...' : 'در حال دریافت...')
+    ? (isWeb ? 'در حال تازه‌سازی...' : isAndroid ? 'در حال ارسال به دانلودر...' : 'در حال دریافت فایل...')
     : isSuccess
-    ? 'اعمال شد'
-    : (isWeb ? 'تازه‌سازی و به‌روزرسانی' : isAndroid ? 'دانلود نسخه اندروید' : 'به‌روزرسانی');
+    ? (isWeb ? 'تازه‌سازی شد ✓' : isAndroid ? 'دانلود آغاز شد ✓' : 'دریافت آغاز شد ✓')
+    : (isWeb ? 'تازه‌سازی و به‌روزرسانی' : isAndroid ? 'دانلود فایل APK' : 'دانلود فایل نصبی');
 
   return (
     <div 
@@ -106,23 +111,27 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
               download
               onClick={(e) => {
                 e.stopPropagation();
-                // Direct location trigger as fallback for native WebViews
                 try {
                   window.location.href = updateInfo.downloadUrl!;
                 } catch (_) {}
               }}
-              className="hidden xs:flex items-center gap-1 text-[11px] font-bold px-3 py-2 bg-blue-100/70 hover:bg-blue-200/80 dark:bg-blue-900/40 dark:hover:bg-blue-800/60 text-blue-700 dark:text-blue-300 rounded-xl transition-all border border-blue-300/40 dark:border-blue-700/40"
+              className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 sm:px-3 sm:py-2 bg-blue-100/70 hover:bg-blue-200/80 dark:bg-blue-900/40 dark:hover:bg-blue-800/60 text-blue-700 dark:text-blue-300 rounded-xl transition-all border border-blue-300/40 dark:border-blue-700/40"
               title="دانلود مستقیم فایل نصبی"
             >
               <DownloadCloud size={14} />
-              <span>لینک مستقیم</span>
+              <span className="hidden sm:inline">لینک مستقیم</span>
+              <span className="sm:hidden">دانلود</span>
             </a>
           )}
 
           <button
             onClick={handleUpdateClick}
-            disabled={isUpdating || isSuccess}
-            className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-bold text-xs sm:text-sm px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-md shadow-blue-600/20 active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-75 disabled:cursor-not-allowed whitespace-nowrap cursor-pointer"
+            disabled={isUpdating}
+            className={`font-bold text-xs sm:text-sm px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl shadow-md transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer active:scale-95 ${
+              isSuccess 
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' 
+                : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-blue-600/20'
+            } disabled:opacity-75 disabled:cursor-not-allowed`}
           >
             {isUpdating ? (
               <>
@@ -132,7 +141,7 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
             ) : isSuccess ? (
               <>
                 <CheckCircle2 size={15} />
-                <span>اعمال شد</span>
+                <span>{actionButtonText}</span>
               </>
             ) : (
               <>

@@ -2541,14 +2541,14 @@ html[data-gpu-active="true"] * {
 .custom-scrollbar {
   -webkit-overflow-scrolling: touch !important;
   overscroll-behavior-y: auto;
-  touch-action: pan-y !important;
+  touch-action: pan-y pinch-zoom !important;
   pointer-events: auto !important;
 }
 
 .overflow-x-auto {
   -webkit-overflow-scrolling: touch !important;
   overscroll-behavior-x: auto;
-  touch-action: pan-x pan-y !important;
+  touch-action: pan-x pan-y pinch-zoom !important;
   pointer-events: auto !important;
 }
 
@@ -2557,7 +2557,7 @@ html[data-gpu-active="true"] * {
   overflow-x: hidden !important;
   overscroll-behavior-y: contain !important;
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
+  touch-action: pan-y pinch-zoom !important;
   pointer-events: auto !important;
 }
 
@@ -2575,7 +2575,7 @@ html, body, #root {
   max-height: none !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
-  touch-action: pan-y !important;
+  touch-action: pan-y pinch-zoom !important;
   overscroll-behavior-y: auto !important;
 }
 

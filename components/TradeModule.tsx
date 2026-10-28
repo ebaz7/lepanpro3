@@ -3549,7 +3549,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 md:overflow-y-auto bg-gray-50 dark:bg-zinc-900">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-zinc-900 pb-28 md:pb-12 custom-scrollbar">
                     
                     {activeTab === 'domestic_petrochemical' && (
                         <DomesticPetrochemicalTab
@@ -3642,7 +3642,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     )}
 
                     {activeTab === 'proforma' && (
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
                             {/* Proforma Content */}
                             <div className="glass-panel p-6 rounded-xl shadow-sm border">
                                 <h3 className="font-bold text-gray-800 mb-4 border-b pb-2">اطلاعات کلی پروفرما</h3>
@@ -4255,7 +4255,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
                     {activeTab === 'currency_purchase' && (
                         /* ... Currency Purchase Logic ... */
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
                             {/* Tranches Section */}
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                 <h3 className="font-bold text-gray-800 flex items-center gap-2"><Coins size={20} className="text-amber-600"/> پارت‌های خرید ارز</h3>
@@ -4437,84 +4437,85 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     {/* ... (Other tabs kept same - Shipping Docs, Inspection, etc.) ... */}
                     {activeTab === 'shipping_docs' && (
                         /* ... Shipping Docs Logic ... */
-                        <div className="p-6 max-w-5xl mx-auto flex gap-6">
-                            <div className="w-48 flex flex-col gap-2">
-                                <button type="button" onClick={() => setActiveShippingSubTab('Commercial Invoice')} className={`p-3 rounded-lg text-sm text-right font-bold ${activeShippingSubTab === 'Commercial Invoice' ? 'bg-blue-600 text-white shadow-lg' : 'glass-panel hover:bg-gray-50'}`}>اینویس</button>
-                                <button type="button" onClick={() => setActiveShippingSubTab('Packing List')} className={`p-3 rounded-lg text-sm text-right font-bold ${activeShippingSubTab === 'Packing List' ? 'bg-blue-600 text-white shadow-lg' : 'glass-panel hover:bg-gray-50'}`}>پکینگ لیست</button>
-                                <button type="button" onClick={() => setActiveShippingSubTab('Bill of Lading')} className={`p-3 rounded-lg text-sm text-right font-bold ${activeShippingSubTab === 'Bill of Lading' ? 'bg-blue-600 text-white shadow-lg' : 'glass-panel hover:bg-gray-50'}`}>بارنامه</button>
-                                <button type="button" onClick={() => setActiveShippingSubTab('Certificate of Origin')} className={`p-3 rounded-lg text-sm text-right font-bold ${activeShippingSubTab === 'Certificate of Origin' ? 'bg-blue-600 text-white shadow-lg' : 'glass-panel hover:bg-gray-50'}`}>گواهی مبدا</button>
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto flex flex-col md:flex-row gap-3 sm:gap-6">
+                            {/* Responsive Sub-tabs: Horizontal pill row on mobile, vertical sidebar on desktop */}
+                            <div className="flex md:flex-col overflow-x-auto no-scrollbar gap-1.5 sm:gap-2 shrink-0 md:w-48 pb-1">
+                                <button type="button" onClick={() => setActiveShippingSubTab('Commercial Invoice')} className={`px-3 py-2 sm:p-3 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap text-center md:text-right shrink-0 transition-all ${activeShippingSubTab === 'Commercial Invoice' ? 'bg-blue-600 text-white shadow-md' : 'glass-panel bg-white dark:bg-zinc-800 hover:bg-gray-50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700'}`}>اینویس</button>
+                                <button type="button" onClick={() => setActiveShippingSubTab('Packing List')} className={`px-3 py-2 sm:p-3 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap text-center md:text-right shrink-0 transition-all ${activeShippingSubTab === 'Packing List' ? 'bg-blue-600 text-white shadow-md' : 'glass-panel bg-white dark:bg-zinc-800 hover:bg-gray-50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700'}`}>پکینگ لیست</button>
+                                <button type="button" onClick={() => setActiveShippingSubTab('Bill of Lading')} className={`px-3 py-2 sm:p-3 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap text-center md:text-right shrink-0 transition-all ${activeShippingSubTab === 'Bill of Lading' ? 'bg-blue-600 text-white shadow-md' : 'glass-panel bg-white dark:bg-zinc-800 hover:bg-gray-50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700'}`}>بارنامه</button>
+                                <button type="button" onClick={() => setActiveShippingSubTab('Certificate of Origin')} className={`px-3 py-2 sm:p-3 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap text-center md:text-right shrink-0 transition-all ${activeShippingSubTab === 'Certificate of Origin' ? 'bg-blue-600 text-white shadow-md' : 'glass-panel bg-white dark:bg-zinc-800 hover:bg-gray-50 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700'}`}>گواهی مبدا</button>
                             </div>
-                            <div className="flex-1 glass-panel p-6 rounded-xl shadow-sm border space-y-6">
-                                <h3 className="font-bold text-gray-800 border-b pb-2 mb-4">{activeShippingSubTab === 'Commercial Invoice' ? 'سیاهه تجاری (Invoice)' : activeShippingSubTab === 'Packing List' ? 'لیست عدل‌بندی (Packing List)' : activeShippingSubTab}</h3>
-                                {/* ... Document Form ... */}
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">شماره سند</label><input className="w-full border rounded p-2 text-sm dir-ltr" value={shippingDocForm.documentNumber} onChange={e => setShippingDocForm({...shippingDocForm, documentNumber: e.target.value})} /></div>
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">پارت / دوره</label><input className="w-full border rounded p-2 text-sm" placeholder="مثلا: پارت اول" value={shippingDocForm.description || ''} onChange={e => setShippingDocForm({...shippingDocForm, description: e.target.value})} /></div>
+                            <div className="flex-1 glass-panel p-3.5 sm:p-6 rounded-2xl shadow-xs border border-gray-200 dark:border-zinc-800 space-y-4 sm:space-y-6 min-w-0">
+                                <h3 className="font-bold text-gray-800 dark:text-gray-100 border-b pb-2 mb-3 text-sm sm:text-base">{activeShippingSubTab === 'Commercial Invoice' ? 'سیاهه تجاری (Invoice)' : activeShippingSubTab === 'Packing List' ? 'لیست عدل‌بندی (Packing List)' : activeShippingSubTab}</h3>
+                                {/* Document Form */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4">
+                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">شماره سند</label><input className="w-full border rounded-xl p-2 text-sm dir-ltr bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" value={shippingDocForm.documentNumber} onChange={e => setShippingDocForm({...shippingDocForm, documentNumber: e.target.value})} /></div>
+                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">پارت / دوره</label><input className="w-full border rounded-xl p-2 text-sm bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" placeholder="مثلا: پارت اول" value={shippingDocForm.description || ''} onChange={e => setShippingDocForm({...shippingDocForm, description: e.target.value})} /></div>
                                     <div className="space-y-1">
-                                        <label className="text-xs font-bold text-gray-700">تاریخ سند</label>
+                                        <label className="text-xs font-bold text-gray-700 dark:text-gray-300">تاریخ سند</label>
                                         <TradeDatePicker 
                                             value={shippingDocForm.documentDate || ''} 
                                             onChange={val => setShippingDocForm({...shippingDocForm, documentDate: val})} 
                                         />
                                     </div>
-                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700">وضعیت</label><select className="w-full border rounded p-2 text-sm" value={shippingDocForm.status} onChange={e => setShippingDocForm({...shippingDocForm, status: e.target.value as DocStatus})}><option value="Draft">پیش‌نویس</option><option value="Final">نهایی</option></select></div>
+                                    <div className="space-y-1"><label className="text-xs font-bold text-gray-700 dark:text-gray-300">وضعیت</label><select className="w-full border rounded-xl p-2 text-sm bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-700" value={shippingDocForm.status} onChange={e => setShippingDocForm({...shippingDocForm, status: e.target.value as DocStatus})}><option value="Draft">پیش‌نویس</option><option value="Final">نهایی</option></select></div>
                                 </div>
 
                                 {activeShippingSubTab === 'Commercial Invoice' && (
-                                    <div className="bg-blue-50 p-4 rounded-lg space-y-4">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className="font-bold text-sm text-blue-800">اقلام اینویس</h4>
-                                            <div className="flex gap-2 items-center">
-                                                <select className="border rounded p-1 text-xs" value={shippingDocForm.currency} onChange={e => setShippingDocForm({...shippingDocForm, currency: e.target.value})}>{CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}</select>
-                                                <button type="button" onClick={handleSyncInvoiceToProforma} className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1.5 rounded flex items-center gap-1 transition-colors" title="جایگزینی اقلام اینویس در پروفرما"><RefreshCw size={14}/> جایگزینی در پروفرما</button>
+                                    <div className="bg-blue-50/70 dark:bg-blue-950/30 p-3 sm:p-4 rounded-xl space-y-3 sm:space-y-4 border border-blue-200/50 dark:border-blue-900/40">
+                                        <div className="flex justify-between items-center flex-wrap gap-2">
+                                            <h4 className="font-bold text-xs sm:text-sm text-blue-800 dark:text-blue-300">اقلام اینویس</h4>
+                                            <div className="flex gap-2 items-center flex-wrap">
+                                                <select className="border rounded-lg p-1 text-xs bg-white dark:bg-zinc-800 border-blue-200 dark:border-zinc-700" value={shippingDocForm.currency} onChange={e => setShippingDocForm({...shippingDocForm, currency: e.target.value})}>{CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}</select>
+                                                <button type="button" onClick={handleSyncInvoiceToProforma} className="bg-orange-500 hover:bg-orange-600 text-white text-[11px] sm:text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition-colors cursor-pointer" title="جایگزینی اقلام اینویس در پروفرما"><RefreshCw size={13}/> جایگزینی در پروفرما</button>
                                             </div>
                                         </div>
                                         <div className="flex gap-2 items-end flex-wrap">
-                                            <input className="flex-1 min-w-[140px] border rounded p-2 text-sm" placeholder="نام کالا" value={newInvoiceItem.name} onChange={e => setNewInvoiceItem({...newInvoiceItem, name: e.target.value})} />
-                                            <input className="w-20 border rounded p-2 text-sm dir-ltr" placeholder="وزن خالص" value={newInvoiceItem.weight || ''} onChange={e => setNewInvoiceItem({...newInvoiceItem, weight: Number(e.target.value)})} type="number" step="0.001" />
-                                            <input className="w-20 border rounded p-2 text-sm dir-ltr" placeholder="وزن ناخالص" value={newInvoiceItem.grossWeight || ''} onChange={e => setNewInvoiceItem({...newInvoiceItem, grossWeight: Number(e.target.value)})} type="number" step="0.001" />
-                                            <input className="w-24 border rounded p-2 text-sm dir-ltr" placeholder="فی (Unit)" value={newInvoiceItem.unitPrice || ''} onChange={e => setNewInvoiceItem({...newInvoiceItem, unitPrice: Number(e.target.value)})} type="number" step="0.0001" />
-                                            <input className="w-20 border rounded p-2 text-sm" placeholder="پارت" value={newInvoiceItem.part} onChange={e => setNewInvoiceItem({...newInvoiceItem, part: e.target.value})} />
-                                            <input className="w-24 border rounded p-2 text-sm dir-ltr bg-gray-100" placeholder="قیمت کل" value={newInvoiceItem.totalPrice || ((newInvoiceItem.weight || 0) * (newInvoiceItem.unitPrice || 0))} readOnly />
-                                            <button type="button" onClick={handleAddInvoiceItem} className="bg-blue-600 text-white p-2 rounded-lg"><Plus size={16}/></button>
+                                            <input className="flex-1 min-w-[130px] border rounded-lg p-2 text-xs sm:text-sm bg-white dark:bg-zinc-800" placeholder="نام کالا" value={newInvoiceItem.name} onChange={e => setNewInvoiceItem({...newInvoiceItem, name: e.target.value})} />
+                                            <input className="w-20 border rounded-lg p-2 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" placeholder="وزن خالص" value={newInvoiceItem.weight || ''} onChange={e => setNewInvoiceItem({...newInvoiceItem, weight: Number(e.target.value)})} type="number" step="0.001" />
+                                            <input className="w-20 border rounded-lg p-2 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" placeholder="وزن ناخالص" value={newInvoiceItem.grossWeight || ''} onChange={e => setNewInvoiceItem({...newInvoiceItem, grossWeight: Number(e.target.value)})} type="number" step="0.001" />
+                                            <input className="w-20 border rounded-lg p-2 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" placeholder="فی (Unit)" value={newInvoiceItem.unitPrice || ''} onChange={e => setNewInvoiceItem({...newInvoiceItem, unitPrice: Number(e.target.value)})} type="number" step="0.0001" />
+                                            <input className="w-16 border rounded-lg p-2 text-xs sm:text-sm bg-white dark:bg-zinc-800" placeholder="پارت" value={newInvoiceItem.part} onChange={e => setNewInvoiceItem({...newInvoiceItem, part: e.target.value})} />
+                                            <input className="w-24 border rounded-lg p-2 text-xs sm:text-sm dir-ltr bg-gray-100 dark:bg-zinc-900" placeholder="قیمت کل" value={newInvoiceItem.totalPrice || ((newInvoiceItem.weight || 0) * (newInvoiceItem.unitPrice || 0))} readOnly />
+                                            <button type="button" onClick={handleAddInvoiceItem} className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg cursor-pointer shrink-0"><Plus size={16}/></button>
                                         </div>
-                                        <div className="space-y-1">{shippingDocForm.invoiceItems?.map(i => (<div key={i.id} className="flex justify-between glass-panel p-2 rounded text-xs border items-center"><span>{i.name}</span><div className="flex gap-2 items-center"><span className="bg-gray-100 px-1 rounded text-gray-500">Part: {i.part}</span><span className="font-mono text-gray-700">خالص: {formatNumberString(i.weight)} kg</span><span className="font-mono text-gray-700">ناخالص: {formatNumberString(i.grossWeight || i.weight)} kg</span><span className="font-mono">@{i.unitPrice}</span><span className="font-mono font-bold text-blue-700">{formatNumberString(i.totalPrice)}</span><button type="button" onClick={()=>handleRemoveInvoiceItem(i.id)} className="text-red-500"><X size={14}/></button></div></div>))}</div>
-                                        <div className="flex justify-between items-center pt-2 border-t border-blue-200"><span className="font-bold text-xs">هزینه حمل (Freight)</span><input className="w-32 border rounded p-1 text-sm dir-ltr" value={shippingDocForm.freightCost} onChange={e => setShippingDocForm({...shippingDocForm, freightCost: Number(e.target.value)})} type="number" step="0.01" /></div>
+                                        <div className="space-y-1">{shippingDocForm.invoiceItems?.map(i => (<div key={i.id} className="flex justify-between glass-panel p-2 rounded-lg text-xs border items-center flex-wrap gap-2"><span>{i.name}</span><div className="flex gap-2 items-center flex-wrap"><span className="bg-gray-100 dark:bg-zinc-800 px-1 rounded text-gray-500">Part: {i.part}</span><span className="font-mono text-gray-700 dark:text-gray-300">خالص: {formatNumberString(i.weight)} kg</span><span className="font-mono text-gray-700 dark:text-gray-300">ناخالص: {formatNumberString(i.grossWeight || i.weight)} kg</span><span className="font-mono">@{i.unitPrice}</span><span className="font-mono font-bold text-blue-700 dark:text-blue-400">{formatNumberString(i.totalPrice)}</span><button type="button" onClick={()=>handleRemoveInvoiceItem(i.id)} className="text-red-500 hover:text-red-700 p-1"><X size={14}/></button></div></div>))}</div>
+                                        <div className="flex justify-between items-center pt-2 border-t border-blue-200 dark:border-blue-900/60"><span className="font-bold text-xs text-gray-700 dark:text-gray-300">هزینه حمل (Freight)</span><input className="w-28 sm:w-32 border rounded-lg p-1.5 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" value={shippingDocForm.freightCost} onChange={e => setShippingDocForm({...shippingDocForm, freightCost: Number(e.target.value)})} type="number" step="0.01" /></div>
                                     </div>
                                 )}
 
                                 {activeShippingSubTab === 'Packing List' && (
-                                    <div className="bg-orange-50 p-4 rounded-lg space-y-4">
-                                        <h4 className="font-bold text-sm text-orange-800 flex items-center gap-2"><Box size={16}/> اقلام پکینگ لیست</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
-                                            <div className="md:col-span-2 space-y-1"><label className="text-[10px] text-gray-500">شرح کالا</label><input className="w-full border rounded p-1.5 text-sm" placeholder="نام کالا" value={newPackingItem.description} onChange={e => setNewPackingItem({...newPackingItem, description: e.target.value})} /></div>
-                                            <div className="space-y-1"><label className="text-[10px] text-gray-500">پارت</label><input className="w-full border rounded p-1.5 text-sm" placeholder="Part No" value={newPackingItem.part} onChange={e => setNewPackingItem({...newPackingItem, part: e.target.value})} /></div>
-                                            <div className="space-y-1"><label className="text-[10px] text-gray-500">وزن خالص</label><input className="w-full border rounded p-1.5 text-sm dir-ltr" placeholder="NW" value={newPackingItem.netWeight || ''} onChange={e => setNewPackingItem({...newPackingItem, netWeight: Number(e.target.value)})} type="number" /></div>
-                                            <div className="space-y-1"><label className="text-xs text-gray-500">وزن ناخالص</label><input className="w-full border rounded p-1.5 text-sm dir-ltr" placeholder="GW" value={newPackingItem.grossWeight || ''} onChange={e => setNewPackingItem({...newPackingItem, grossWeight: Number(e.target.value)})} type="number" /></div>
+                                    <div className="bg-orange-50/70 dark:bg-orange-950/30 p-3 sm:p-4 rounded-xl space-y-3 sm:space-y-4 border border-orange-200/50 dark:border-orange-900/40">
+                                        <h4 className="font-bold text-xs sm:text-sm text-orange-800 dark:text-orange-300 flex items-center gap-2"><Box size={16}/> اقلام پکینگ لیست</h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-2 items-end">
+                                            <div className="md:col-span-2 space-y-1"><label className="text-[10px] text-gray-500">شرح کالا</label><input className="w-full border rounded-lg p-1.5 text-xs sm:text-sm bg-white dark:bg-zinc-800" placeholder="نام کالا" value={newPackingItem.description} onChange={e => setNewPackingItem({...newPackingItem, description: e.target.value})} /></div>
+                                            <div className="space-y-1"><label className="text-[10px] text-gray-500">پارت</label><input className="w-full border rounded-lg p-1.5 text-xs sm:text-sm bg-white dark:bg-zinc-800" placeholder="Part No" value={newPackingItem.part} onChange={e => setNewPackingItem({...newPackingItem, part: e.target.value})} /></div>
+                                            <div className="space-y-1"><label className="text-[10px] text-gray-500">وزن خالص</label><input className="w-full border rounded-lg p-1.5 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" placeholder="NW" value={newPackingItem.netWeight || ''} onChange={e => setNewPackingItem({...newPackingItem, netWeight: Number(e.target.value)})} type="number" /></div>
+                                            <div className="space-y-1"><label className="text-xs text-gray-500">وزن ناخالص</label><input className="w-full border rounded-lg p-1.5 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" placeholder="GW" value={newPackingItem.grossWeight || ''} onChange={e => setNewPackingItem({...newPackingItem, grossWeight: Number(e.target.value)})} type="number" /></div>
                                             <div className="flex gap-2">
-                                                <div className="space-y-1 flex-1"><label className="text-[10px] text-gray-500">تعداد بسته</label><input className="w-full border rounded p-1.5 text-sm dir-ltr" placeholder="Count" value={newPackingItem.packageCount || ''} onChange={e => setNewPackingItem({...newPackingItem, packageCount: Number(e.target.value)})} type="number" /></div>
-                                                <button type="button" onClick={handleAddPackingItem} className="bg-orange-600 text-white p-1.5 rounded-lg h-[34px] mt-auto w-10 flex items-center justify-center"><Plus size={16}/></button>
+                                                <div className="space-y-1 flex-1"><label className="text-[10px] text-gray-500">تعداد بسته</label><input className="w-full border rounded-lg p-1.5 text-xs sm:text-sm dir-ltr bg-white dark:bg-zinc-800" placeholder="Count" value={newPackingItem.packageCount || ''} onChange={e => setNewPackingItem({...newPackingItem, packageCount: Number(e.target.value)})} type="number" /></div>
+                                                <button type="button" onClick={handleAddPackingItem} className="bg-orange-600 hover:bg-orange-700 text-white p-1.5 rounded-lg h-[34px] mt-auto w-10 flex items-center justify-center shrink-0 cursor-pointer"><Plus size={16}/></button>
                                             </div>
                                         </div>
                                         <div className="overflow-x-auto">
-                                            <table className="w-full text-xs text-right glass-panel rounded border border-orange-200">
-                                                <thead className="bg-orange-100 text-orange-800"><tr><th className="p-2">شرح</th><th className="p-2">پارت</th><th className="p-2">وزن خالص</th><th className="p-2">وزن ناخالص</th><th className="p-2">تعداد</th><th className="p-2"></th></tr></thead>
+                                            <table className="w-full text-xs text-right glass-panel rounded border border-orange-200 dark:border-orange-900/60">
+                                                <thead className="bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-200"><tr><th className="p-2">شرح</th><th className="p-2">پارت</th><th className="p-2">وزن خالص</th><th className="p-2">وزن ناخالص</th><th className="p-2">تعداد</th><th className="p-2"></th></tr></thead>
                                                 <tbody>
                                                     {shippingDocForm.packingItems?.map(item => (
-                                                        <tr key={item.id} className="border-t hover:bg-orange-50">
+                                                        <tr key={item.id} className="border-t hover:bg-orange-50 dark:hover:bg-orange-950/20">
                                                             <td className="p-2 font-bold">{item.description}</td>
                                                             <td className="p-2">{item.part}</td>
                                                             <td className="p-2 font-mono">{item.netWeight}</td>
                                                             <td className="p-2 font-mono">{item.grossWeight}</td>
                                                             <td className="p-2 font-mono">{item.packageCount}</td>
-                                                            <td className="p-2 text-center"><button type="button" onClick={() => handleRemovePackingItem(item.id)} className="text-red-500 hover:text-red-700"><X size={14}/></button></td>
+                                                            <td className="p-2 text-center"><button type="button" onClick={() => handleRemovePackingItem(item.id)} className="text-red-500 hover:text-red-700 p-1"><X size={14}/></button></td>
                                                         </tr>
                                                     ))}
-                                                    <tr className="bg-orange-50 font-bold border-t-2 border-orange-200">
-                                                        <td colSpan={2} className="p-2 text-center text-orange-800">جمع کل</td>
-                                                        <td className="p-2 font-mono text-orange-700">{shippingDocForm.packingItems?.reduce((s,i)=>s+i.netWeight,0)}</td>
-                                                        <td className="p-2 font-mono text-orange-700">{shippingDocForm.packingItems?.reduce((s,i)=>s+i.grossWeight,0)}</td>
-                                                        <td className="p-2 font-mono text-orange-700">{shippingDocForm.packingItems?.reduce((s,i)=>s+i.packageCount,0)}</td>
+                                                    <tr className="bg-orange-50 dark:bg-orange-950/40 font-bold border-t-2 border-orange-200 dark:border-orange-900/60">
+                                                        <td colSpan={2} className="p-2 text-center text-orange-800 dark:text-orange-300">جمع کل</td>
+                                                        <td className="p-2 font-mono text-orange-700 dark:text-orange-300">{shippingDocForm.packingItems?.reduce((s,i)=>s+i.netWeight,0)}</td>
+                                                        <td className="p-2 font-mono text-orange-700 dark:text-orange-300">{shippingDocForm.packingItems?.reduce((s,i)=>s+i.grossWeight,0)}</td>
+                                                        <td className="p-2 font-mono text-orange-700 dark:text-orange-300">{shippingDocForm.packingItems?.reduce((s,i)=>s+i.packageCount,0)}</td>
                                                         <td></td>
                                                     </tr>
                                                 </tbody>
@@ -4523,26 +4524,26 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                                     </div>
                                 )}
                                 
-                                 <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                     <TradeAttachmentSection
-                                         attachments={(shippingDocForm.attachments || []) as any}
-                                         onAttachmentsChange={(updated) => setShippingDocForm(prev => ({ ...prev, attachments: updated as any }))}
-                                         category="commercial/shipping"
-                                         subCategory={activeShippingSubTab}
-                                         title={`پیوست‌ها و مدارک ${activeShippingSubTab} (عکس و PDF)`}
-                                         description={`بارگذاری اسناد، تصاویر و فایل‌های PDF مربوط به ${activeShippingSubTab}`}
-                                         currentUser={currentUser}
-                                         compact={false}
-                                     />
-                                 </div>
+                                <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                    <TradeAttachmentSection
+                                        attachments={(shippingDocForm.attachments || []) as any}
+                                        onAttachmentsChange={(updated) => setShippingDocForm(prev => ({ ...prev, attachments: updated as any }))}
+                                        category="commercial/shipping"
+                                        subCategory={activeShippingSubTab}
+                                        title={`پیوست‌ها و مدارک ${activeShippingSubTab} (عکس و PDF)`}
+                                        description={`بارگذاری اسناد، تصاویر و فایل‌های PDF مربوط به ${activeShippingSubTab}`}
+                                        currentUser={currentUser}
+                                        compact={false}
+                                    />
+                                </div>
 
-                                <div className="flex justify-end items-center gap-2 pt-4 border-t">
+                                <div className="flex justify-end items-center gap-2 pt-3 pb-1 border-t sticky bottom-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm -mx-3.5 -mb-3.5 sm:-mx-6 sm:-mb-6 px-4 py-3 rounded-b-2xl z-10 shadow-xs">
                                     {editingShippingDocId && (
-                                        <button type="button" onClick={handleCancelEditShippingDoc} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors">
+                                        <button type="button" onClick={handleCancelEditShippingDoc} className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer">
                                             انصراف از ویرایش
                                         </button>
                                     )}
-                                    <button type="button" onClick={handleSaveShippingDoc} className={`${editingShippingDocId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-6 py-2 rounded-lg font-bold transition-colors`}>
+                                    <button type="button" onClick={handleSaveShippingDoc} className={`${editingShippingDocId ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'} text-white px-5 sm:px-7 py-2 rounded-xl text-xs sm:text-sm font-bold shadow-md transition-all cursor-pointer active:scale-95`}>
                                         {editingShippingDocId ? 'بروزرسانی سند' : 'ثبت سند'}
                                     </button>
                                 </div>
@@ -4851,7 +4852,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     )}
 
                     {activeTab === 'inspection' && (
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                 <h3 className="font-bold text-gray-800 flex items-center gap-2"><Microscope size={20} className="text-blue-600"/> گواهی‌های بازرسی (COI)</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end bg-blue-50 p-4 rounded-lg">
@@ -4902,7 +4903,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
                     {/* CLEARANCE DOCS TAB */}
                     {activeTab === 'clearance_docs' && (
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
                             
                             {/* NEW: Button to open the Clearance Declaration Form */}
                             <div className="flex justify-end">
@@ -4966,7 +4967,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
                     {activeTab === 'green_leaf' && (
                         /* ... Green Leaf Logic ... */
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                 <h3 className="font-bold text-gray-800 flex items-center gap-2"><Leaf size={20} className="text-green-600"/> اظهارنامه و کوتاژ (حقوق ورودی)</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end bg-green-50 p-4 rounded-lg">
@@ -5152,7 +5153,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     )}
 
                     {activeTab === 'internal_shipping' && (
-                        <div className="p-6 max-w-5xl mx-auto space-y-6">
+                        <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-4 sm:space-y-6">
                             <div className="glass-panel p-6 rounded-xl shadow-sm border space-y-4">
                                 <h3 className="font-bold text-gray-800 flex items-center gap-2"><Truck size={20} className="text-indigo-600"/> هزینه‌های حمل داخلی</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end bg-indigo-50 p-4 rounded-lg">

@@ -400,10 +400,14 @@ const androidDownloadRoutes = [
     '/downloads/sayan-android-latest.apk',
     '/downloads/sayan-app.apk',
     '/downloads/app-release.apk',
+    '/downloads/latest-android',
+    '/api/downloads/android',
+    '/api/downloads/latest-android',
     '/api/downloads/dlkam-android-latest.apk'
 ];
 
 app.get(androidDownloadRoutes, (req, res) => {
+    // 1. Look for newest local installer file
     const bestApk = findNewestInstallerFile('android');
     if (bestApk && fs.existsSync(bestApk.filePath)) {
         const dlName = bestApk.version ? `dlkam-android-v${bestApk.version}.apk` : 'dlkam-android-latest.apk';
@@ -415,10 +419,18 @@ app.get(androidDownloadRoutes, (req, res) => {
         return res.sendFile(bestApk.filePath);
     }
 
-    res.status(404).json({
-        success: false,
-        error: 'فایل APK اندروید یافت نشد. جهت ساخت فایل APK دستور npm run release:android را در سرور اجرا نمایید.'
-    });
+    // 2. Check if a configured Android direct download URL exists in settings
+    try {
+        const db = typeof getDb === 'function' ? getDb() : {};
+        const settings = db.settings || {};
+        const customUrl = (settings.androidDirectDownloadUrl || settings.androidDownloadUrl || '').trim();
+        if (customUrl && (customUrl.startsWith('http://') || customUrl.startsWith('https://'))) {
+            return res.redirect(customUrl);
+        }
+    } catch (_) {}
+
+    // 3. Fallback to production CDN
+    return res.redirect('https://dlkam.ir/downloads/dlkam-android-latest.apk');
 });
 
 // --- DYNAMIC DESKTOP INSTALLER (.msi / .exe) DOWNLOAD PROVIDER (Registered BEFORE static middleware, zero cache) ---
@@ -429,6 +441,9 @@ const desktopDownloadRoutes = [
     '/downloads/sayan-desktop-setup.msi',
     '/downloads/desktop-setup.msi',
     '/downloads/setup.msi',
+    '/downloads/latest-desktop',
+    '/api/downloads/desktop',
+    '/api/downloads/latest-desktop',
     '/api/downloads/dlkam-desktop-setup.msi',
     '/api/downloads/dlkam-desktop-setup.exe',
     '/api/downloads/delkam-desktop-setup.msi',
@@ -438,6 +453,7 @@ const desktopDownloadRoutes = [
 ];
 
 app.get(desktopDownloadRoutes, (req, res) => {
+    // 1. Look for newest local installer file
     const bestDesktop = findNewestInstallerFile('desktop');
     if (bestDesktop && fs.existsSync(bestDesktop.filePath)) {
         const isExe = bestDesktop.fileName.toLowerCase().endsWith('.exe');
@@ -451,10 +467,27 @@ app.get(desktopDownloadRoutes, (req, res) => {
         return res.sendFile(bestDesktop.filePath);
     }
 
-    res.status(404).json({
-        success: false,
-        error: 'فایل نصبی دسکتاپ (.msi / .exe) در پوشه downloads یافت نشد. فایل نصبی خروجی tauri build را در پوشه downloads سرور قرار دهید.'
-    });
+    // 2. Check if a configured desktop download URL exists in settings
+    try {
+        const db = typeof getDb === 'function' ? getDb() : {};
+        const settings = db.settings || {};
+        let customUrl = (settings.desktopDirectDownloadUrl || '').trim();
+        const targetVer = settings.desktopLatestVersion || settings.systemVersion || '';
+        
+        // Auto-adapt hardcoded old versions in URL (e.g. Dlkam_1.0.6 -> Dlkam_1.0.20)
+        if (customUrl && targetVer && /_\d+\.\d+\.\d+_/i.test(customUrl)) {
+            customUrl = customUrl.replace(/_\d+\.\d+\.\d+_/i, `_${targetVer}_`);
+        } else if (customUrl && targetVer && /[-_]v?\d+\.\d+\.\d+\./i.test(customUrl)) {
+            customUrl = customUrl.replace(/([-_]v?)\d+\.\d+\.\d+(\.)/i, `$1${targetVer}$2`);
+        }
+
+        if (customUrl && (customUrl.startsWith('http://') || customUrl.startsWith('https://'))) {
+            return res.redirect(customUrl);
+        }
+    } catch (_) {}
+
+    // 3. Fallback to production CDN
+    return res.redirect('https://dlkam.ir/downloads/dlkam-desktop-setup.msi');
 });
 
 app.use('/downloads', express.static(PUBLIC_DOWNLOADS_DIR, { maxAge: 0, etag: false }));

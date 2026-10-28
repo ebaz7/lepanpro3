@@ -4,7 +4,8 @@ import {
   Send, Printer, Download, Calendar, Filter, ChevronDown, ChevronRight, 
   Sparkles, RefreshCw, BarChart2, PieChart as PieChartIcon, LineChart as LineChartIcon,
   CheckCircle2, AlertCircle, ArrowUpRight, ArrowDownRight, Layers, Award, ShieldAlert, X,
-  Image as ImageIcon, FileSpreadsheet, Eye, EyeOff, Check, Grid
+  Image as ImageIcon, FileSpreadsheet, Eye, EyeOff, Check, Grid,
+  Smartphone, UserCheck, MessageCircle, ExternalLink, Plus, Phone
 } from 'lucide-react';
 import { 
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, 
@@ -16,6 +17,7 @@ import html2canvas from 'html2canvas';
 import toast from 'react-hot-toast';
 import { getServerHost, apiCall } from '../../services/apiService';
 import { AiSayanReportModal } from '../AiSayanReportModal';
+import { SmartBotRecipientPicker } from '../SmartBotRecipientPicker';
 
 // ----------------------------------------------------------------------
 // TYPES & INTERFACES
@@ -426,7 +428,12 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   const [isBotModalOpen, setIsBotModalOpen] = useState<boolean>(false);
   const [isSendingBot, setIsSendingBot] = useState<boolean>(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['telegram', 'bale']);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['telegram', 'bale', 'whatsapp']);
+  const [botSendMode, setBotSendMode] = useState<'custom_recipients' | 'default_groups'>('custom_recipients');
+  const [customChatIdsTele, setCustomChatIdsTele] = useState<string[]>([]);
+  const [customChatIdsBale, setCustomChatIdsBale] = useState<string[]>([]);
+  const [customChatIdsWa, setCustomChatIdsWa] = useState<string[]>([]);
+  const [manualWhatsappPhone, setManualWhatsappPhone] = useState<string>('');
 
   // Toggle Category Expand
   const toggleCategory = (catName: string) => {
@@ -1177,15 +1184,36 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   // ----------------------------------------------------------------------
   const getHtmlForCurrentTab = () => {
     const printDateStr = toShamsiStr(new Date().toISOString());
-    const filterSummary = selectedCustomer !== 'all' ? (' | خریدار: ' + selectedCustomer) : '';
-    const searchSummary = searchQuery ? (' | جستجو: ' + searchQuery) : '';
+    const printTimeStr = new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+    const filterSummary = selectedCustomer !== 'all' ? ('خریدار: ' + selectedCustomer) : '';
+    const searchSummary = searchQuery ? ('جستجو: ' + searchQuery) : '';
+
+    const buildHeaderHtml = (headerTitle: string, extraNote: string = '') => `
+      <div class="header">
+        <div style="flex: 1; text-align: right;">
+          <h1 style="font-size: 16px; margin: 0 0 6px 0; font-weight: 900; color: #0f172a;">${headerTitle}</h1>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span style="background-color: #1e3a8a; color: #ffffff; padding: 3px 10px; border-radius: 6px; font-weight: 900; font-size: 11px; display: inline-block;">
+              بازه زمانی گزارش: از ${dateFrom} تا ${dateTo}
+            </span>
+            ${extraNote ? `<span style="background-color: #f1f5f9; color: #334155; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; border: 1px solid #cbd5e1;">${extraNote}</span>` : ''}
+            ${filterSummary ? `<span style="background-color: #f1f5f9; color: #334155; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; border: 1px solid #cbd5e1;">${filterSummary}</span>` : ''}
+            ${searchSummary ? `<span style="background-color: #f1f5f9; color: #334155; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; border: 1px solid #cbd5e1;">${searchSummary}</span>` : ''}
+          </div>
+        </div>
+        <div style="text-align: left; font-size: 9.5px; color: #64748b; line-height: 1.6; border-right: 2px solid #e2e8f0; padding-right: 12px; margin-right: 12px;">
+          <div>زمان چاپ گزارش: <strong style="color: #0f172a;">${printDateStr}</strong> - ${printTimeStr}</div>
+          <div style="font-size: 8.5px; color: #94a3b8; margin-top: 2px;">سامانه جامع سایان ERP</div>
+        </div>
+      </div>
+    `;
 
     if (activeTab === 'hierarchy') {
-      const title = 'گزارش سرفصل‌های اصلی کالا (۱۵ گروه سایان ERP)';
+      const title = 'گزارش سرفصل‌های اصلی کالا (۱۵ گروه اصلی سایان ERP)';
       const filename = 'Sayan_Sales_Categories_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
-      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
-        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 16px; margin: 0; font-weight: 900; color: #0f172a; } .header p { font-size: 10px; color: #64748b; margin-top: 3px; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; } .kpi-card { border: 1px solid #e2e8f0; padding: 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 12px; font-weight: 900; margin-top: 3px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
-        '<div class="header"><div><h1>گزارش سرفصل‌های اصلی کالا (۱۵ گروه اصلی سایان ERP)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + ' (' + dateFrom + ' تا ' + dateTo + ')</title>' +
+        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 15px; } .kpi-card { border: 1px solid #e2e8f0; padding: 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 12px; font-weight: 900; margin-top: 3px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 10px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        buildHeaderHtml(title) +
         '<div class="kpi-grid">' +
         '<div class="kpi-card"><div class="kpi-title">تعداد گروه‌های اصلی</div><div class="kpi-val">' + processedMetrics.categoryList.length + ' گروه</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">مجموع وزن خالص</div><div class="kpi-val">' + formatWeight(processedMetrics.rangeNetWgt) + ' ک‌گ</div></div>' +
@@ -1198,16 +1226,16 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     }
 
     if (activeTab === 'items') {
-      const title = 'گزارش تفکیکی و ریز کالاهای فروخته شده';
+      const title = 'گزارش تفکیکی و ریز کالاهای فروخته شده (سایان ERP)';
       const filename = 'Sayan_Sales_Detailed_Items_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
       const totQty = filteredItems.reduce((s, i) => s + (i.netQty || 0), 0);
       const totWgt = filteredItems.reduce((s, i: any) => s + (i.netWgt || i.netQty || 0), 0);
       const totAmt = filteredItems.reduce((s, i) => s + (i.netAmt || 0), 0);
       const avgFee = totWgt > 0 ? Math.round(totAmt / totWgt) : 0;
 
-      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
-        '<style>@page { size: A4 landscape; margin: 6mm 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 15px; margin: 0; font-weight: 900; } .header p { font-size: 10px; color: #64748b; margin-top: 2px; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
-        '<div class="header"><div><h1>گزارش تفکیکی و ریز کالاهای فروخته شده (سایان ERP)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + searchSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + ' (' + dateFrom + ' تا ' + dateTo + ')</title>' +
+        '<style>@page { size: A4 landscape; margin: 6mm 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        buildHeaderHtml(title) +
         '<div class="kpi-grid">' +
         '<div class="kpi-card"><div class="kpi-title">تعداد عناوین کالاها</div><div class="kpi-val">' + filteredItems.length + ' قلم</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">مجموع تعداد/بسته</div><div class="kpi-val">' + totQty.toLocaleString('fa-IR') + '</div></div>' +
@@ -1220,14 +1248,14 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     }
 
     if (activeTab === 'invoices') {
-      const title = 'گزارش کامل لیست فاکتورهای فروش';
+      const title = 'گزارش جامع لیست فاکتورهای فروش (سایان ERP)';
       const filename = 'Sayan_Sales_Invoices_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
       const totWgt = filteredInvoices.reduce((s, i) => s + (i.netWgt || 0), 0);
       const totAmt = filteredInvoices.reduce((s, i) => s + (i.netAmt || 0), 0);
 
-      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
-        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 15px; margin: 0; font-weight: 900; } .header p { font-size: 10px; color: #64748b; margin-top: 2px; } .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
-        '<div class="header"><div><h1>گزارش جامع لیست فاکتورهای فروش (سایان ERP)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + searchSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + ' (' + dateFrom + ' تا ' + dateTo + ')</title>' +
+        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        buildHeaderHtml(title) +
         '<div class="kpi-grid">' +
         '<div class="kpi-card"><div class="kpi-title">تعداد کل فاکتورها</div><div class="kpi-val">' + filteredInvoices.length + ' فقره</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">مجموع وزن فاکتورها</div><div class="kpi-val">' + formatWeight(totWgt) + ' ک‌گ</div></div>' +
@@ -1239,7 +1267,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     }
 
     if (activeTab === 'customers') {
-      const title = 'گزارش فروش بر اساس مشتریان و اشخاص';
+      const title = 'گزارش فروش بر اساس مشتریان و اشخاص (Customer Sales Breakdown)';
       const filename = 'Sayan_Sales_Customers_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
       const custs = sortedAndFilteredCustomers;
       const totInvoices = custs.reduce((s, c) => s + c.invoiceCount, 0);
@@ -1247,9 +1275,9 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       const totAmt = custs.reduce((s, c) => s + c.netAmt, 0);
       const avgFee = totWgt > 0 ? Math.round(totAmt / totWgt) : 0;
 
-      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title>' +
-        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .header h1 { font-size: 15px; margin: 0; font-weight: 900; } .header p { font-size: 10px; color: #64748b; margin-top: 2px; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
-        '<div class="header"><div><h1>گزارش فروش بر اساس مشتریان و اشخاص (Customer Sales Breakdown)</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + ' | تاریخ چاپ: ' + printDateStr + '</p></div></div>' +
+      const htmlContent = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + ' (' + dateFrom + ' تا ' + dateTo + ')</title>' +
+        '<style>@page { size: A4 portrait; margin: 8mm; } body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 10px; color: #0f172a; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; } .kpi-card { border: 1px solid #e2e8f0; padding: 6px 8px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 9px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 11px; font-weight: 900; margin-top: 2px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 9.5px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 5px 6px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: 900; } tr:nth-child(even) { background-color: #f8fafc; } .total { font-weight: 900; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+        buildHeaderHtml(title) +
         '<div class="kpi-grid">' +
         '<div class="kpi-card"><div class="kpi-title">تعداد مشتریان فعال</div><div class="kpi-val">' + custs.length + ' شخص</div></div>' +
         '<div class="kpi-card"><div class="kpi-title">تعداد فاکتورها</div><div class="kpi-val">' + totInvoices.toLocaleString('fa-IR') + '</div></div>' +
@@ -1264,7 +1292,9 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     const title = compareMode ? 'گزارش مدیریتی و تحلیلی مقایسه‌ای فروش سایان ERP' : 'داشبورد مدیریتی و خلاصه فروش سایان ERP';
     const filename = 'Sayan_Sales_Executive_' + dateFrom.replace(/\//g, '-') + '_to_' + dateTo.replace(/\//g, '-') + '.pdf';
 
-    const docHtml = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + '</title><style>body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 20px; background: #fff; color: #1e293b; direction: rtl; } .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; } .header h1 { font-size: 18px; margin: 0; color: #0f172a; font-weight: 900; } .header p { font-size: 11px; color: #64748b; margin: 4px 0 0; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; } .kpi-card { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 10px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: bold; } tr:nth-child(even) { background-color: #f1f5f9; } .total { font-weight: bold; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body><div class="header"><h1>' + title + '</h1><p>بازه گزارش: از ' + dateFrom + ' تا ' + dateTo + filterSummary + ' | تاریخ چاپ: ' + printDateStr + '</p></div><div class="kpi-grid"><div class="kpi-card"><div class="kpi-title">فروش خالص بازه</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetAmt) + ' ریال</div></div><div class="kpi-card"><div class="kpi-title">وزن خالص بازه</div><div class="kpi-val">' + formatWeight(processedMetrics.rangeNetWgt) + ' ک‌گ</div></div><div class="kpi-card"><div class="kpi-title">فی نهایی میانگین</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetFee) + ' ریال/ک‌گ</div></div><div class="kpi-card"><div class="kpi-title">تعداد فاکتورها</div><div class="kpi-val">' + processedMetrics.invoiceCount + ' عدد</div></div></div><h2>جدول عملکرد گروههای اصلی کالا (15 گروه)</h2><table><thead><tr><th>ردیف</th><th style="text-align: right;">نام گروه اصلی</th><th>وزن خالص (ک‌گ)</th><th>فروش خالص (ریال)</th><th>فی نهایی (ریال/ک‌گ)</th><th>سهم %</th></tr></thead><tbody>' + processedMetrics.categoryList.map((cat, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + cat.name + '</td><td>' + formatWeight(cat.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netFee) + '</td><td>' + cat.sharePct.toFixed(1) + '%</td></tr>').join('') + '<tr class="total"><td colspan="2" style="text-align: right;">جمع کل</td><td>' + formatWeight(processedMetrics.rangeNetWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetFee) + '</td><td>100%</td></tr></tbody></table></body></html>';
+    const docHtml = '<html dir="rtl" lang="fa"><head><meta charset="utf-8"><title>' + title + ' (' + dateFrom + ' تا ' + dateTo + ')</title><style>body { font-family: Tahoma, Vazirmatn, sans-serif; padding: 20px; background: #fff; color: #1e293b; direction: rtl; } .header { border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; } .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; } .kpi-card { border: 1px solid #cbd5e1; padding: 10px; border-radius: 6px; background: #f8fafc; text-align: center; } .kpi-title { font-size: 10px; color: #64748b; font-weight: bold; } .kpi-val { font-size: 14px; font-weight: bold; color: #0f172a; margin-top: 4px; font-family: monospace; } table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; border: 1px solid #cbd5e1; } th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: center; } th { background-color: #0f172a; color: #fff; font-weight: bold; } tr:nth-child(even) { background-color: #f1f5f9; } .total { font-weight: bold; background: #fef3c7 !important; border-top: 2px solid #0f172a; }</style></head><body>' +
+      buildHeaderHtml(title) +
+      '<div class="kpi-grid"><div class="kpi-card"><div class="kpi-title">فروش خالص بازه</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetAmt) + ' ریال</div></div><div class="kpi-card"><div class="kpi-title">وزن خالص بازه</div><div class="kpi-val">' + formatWeight(processedMetrics.rangeNetWgt) + ' ک‌گ</div></div><div class="kpi-card"><div class="kpi-title">فی نهایی میانگین</div><div class="kpi-val">' + formatMoney(processedMetrics.rangeNetFee) + ' ریال/ک‌گ</div></div><div class="kpi-card"><div class="kpi-title">تعداد فاکتورها</div><div class="kpi-val">' + processedMetrics.invoiceCount + ' عدد</div></div></div><h2>جدول عملکرد گروههای اصلی کالا (15 گروه)</h2><table><thead><tr><th>ردیف</th><th style="text-align: right;">نام گروه اصلی</th><th>وزن خالص (ک‌گ)</th><th>فروش خالص (ریال)</th><th>فی نهایی (ریال/ک‌گ)</th><th>سهم %</th></tr></thead><tbody>' + processedMetrics.categoryList.map((cat, idx) => '<tr><td>' + (idx + 1) + '</td><td style="text-align: right; font-weight: bold;">' + cat.name + '</td><td>' + formatWeight(cat.netWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(cat.netFee) + '</td><td>' + cat.sharePct.toFixed(1) + '%</td></tr>').join('') + '<tr class="total"><td colspan="2" style="text-align: right;">جمع کل</td><td>' + formatWeight(processedMetrics.rangeNetWgt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetAmt) + '</td><td style="text-align: left; font-family: monospace;">' + formatMoney(processedMetrics.rangeNetFee) + '</td><td>100%</td></tr></tbody></table></body></html>';
     return { htmlContent: docHtml, title, filename };
   };
 
@@ -1354,6 +1384,27 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   // ----------------------------------------------------------------------
   // BOT DISPATCH HANDLERS
   // ----------------------------------------------------------------------
+  const computedCustomTargets = useMemo(() => {
+    if (botSendMode === 'default_groups') {
+      return undefined;
+    }
+    const targets: string[] = [];
+    if (customChatIdsTele.length > 0) {
+      targets.push(...customChatIdsTele);
+    }
+    if (customChatIdsBale.length > 0) {
+      targets.push(...customChatIdsBale);
+    }
+    if (customChatIdsWa.length > 0) {
+      targets.push(...customChatIdsWa);
+    }
+    if (manualWhatsappPhone && manualWhatsappPhone.trim()) {
+      const cleanWa = manualWhatsappPhone.trim().replace(/[^0-9]/g, '');
+      if (cleanWa) targets.push(`wa_${cleanWa}`);
+    }
+    return targets.length > 0 ? Array.from(new Set(targets)) : undefined;
+  }, [botSendMode, customChatIdsTele, customChatIdsBale, customChatIdsWa, manualWhatsappPhone]);
+
   const handleSendCompareToBots = async () => {
     setIsSendingBot(true);
     try {
@@ -1377,7 +1428,8 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           dateToA: dateTo,
           dateFromB: salesDateFromB,
           dateToB: salesDateToB,
-          selectedPlatforms
+          selectedPlatforms,
+          customTargets: computedCustomTargets
         })
       });
 
@@ -1409,7 +1461,10 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
   const handleSendManualReport = async (targetDate: 'today' | 'yesterday' | 'custom') => {
     setIsSendingBot(true);
     try {
-      let bodyData: any = { selectedPlatforms };
+      let bodyData: any = { 
+        selectedPlatforms, 
+        customTargets: computedCustomTargets 
+      };
       if (targetDate === 'today') {
         bodyData.targetDate = 'today';
         bodyData.label = 'امروز';
@@ -1467,6 +1522,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
           dateFrom,
           dateTo,
           selectedPlatforms,
+          customTargets: computedCustomTargets,
           summary: {
             netAmount: processedMetrics.rangeNetAmt,
             netWeight: processedMetrics.rangeNetWgt,
@@ -4174,100 +4230,196 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       {/* BOT DISPATCH INTERACTIVE MODAL */}
       {/* ================================================================== */}
       {isBotModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scaleUp">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 dark:border-zinc-800 animate-scaleUp overflow-hidden">
             
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2 text-slate-900 font-extrabold text-sm">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 p-4 shrink-0 bg-slate-50/70 dark:bg-zinc-900/70">
+              <div className="flex items-center gap-2 text-slate-900 dark:text-zinc-100 font-extrabold text-sm">
                 <Send className="w-5 h-5 text-emerald-600" />
-                <span>ارسال گزارش فروش به پیام‌رسان‌ها (بات‌ها)</span>
+                <span>ارسال گزارش فروش به پیام‌رسان‌ها (بات‌ها و پی‌وی)</span>
               </div>
               <button 
                 onClick={() => setIsBotModalOpen(false)}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-zinc-200 hover:bg-slate-200/60 dark:hover:bg-zinc-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>نوع گزارش آماده ارسال:</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${compareMode ? 'bg-indigo-100 text-indigo-900' : 'bg-emerald-100 text-emerald-900'}`}>
-                  {compareMode ? '📊 گزارش مقایسه‌ای دوره A و B' : '📈 گزارش مدیریتی تک‌دوره‌ای'}
-                </span>
+            {/* Modal Body */}
+            <div className="p-4 overflow-y-auto space-y-4 custom-scrollbar">
+              {/* Report Summary Card */}
+              <div className="bg-slate-50 dark:bg-zinc-800/60 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/60 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-zinc-300">
+                  <span>نوع گزارش آماده ارسال:</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${compareMode ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-900 dark:text-indigo-200' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-900 dark:text-emerald-200'}`}>
+                    {compareMode ? '📊 گزارش مقایسه‌ای دوره A و B' : '📈 گزارش مدیریتی تک‌دوره‌ای'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                  {compareMode 
+                    ? `بازه A (${dateFrom} تا ${dateTo}) در مقایسه با بازه B (${salesDateFromB} تا ${salesDateToB}) به صورت فایل PDF تحلیلی ارسال می‌شود.`
+                    : `گزارش آمار و خلاصه فروش بازه ${dateFrom} تا ${dateTo} با سرتیتر تاریخ دقیق بازه ارسال خواهد شد.`}
+                </p>
               </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                {compareMode 
-                  ? `بازه A (${dateFrom} تا ${dateTo}) در مقایسه با بازه B (${salesDateFromB} تا ${salesDateToB}) به صورت فایل PDF تحلیلی ارسال می‌شود.`
-                  : `گزارش آمار و خلاصه فروش بازه ${dateFrom} تا ${dateTo} به گروه و چت‌های تنظیم شده ارسال خواهد شد.`}
-              </p>
+
+              {/* Destination Mode Selector (Default Groups vs Individual PVs) */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 block">نحوه انتخاب مقصد ارسال:</label>
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl border border-slate-200 dark:border-zinc-700">
+                  <button
+                    type="button"
+                    onClick={() => setBotSendMode('custom_recipients')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      botSendMode === 'custom_recipients'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-100'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>اشخاص، PV و شماره</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBotSendMode('default_groups')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      botSendMode === 'default_groups'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-100'
+                    }`}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>کانال‌ها و گروه‌های پیش‌فرض</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Platform Selection Checkboxes */}
+              <div className="space-y-2 bg-slate-50 dark:bg-zinc-800/60 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/60">
+                <span className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 block mb-1">پلتفرم‌های مقصد:</span>
+                
+                <div className="flex flex-wrap items-center gap-4">
+                  {[
+                    { id: 'telegram', label: 'تلگرام (Telegram)', color: 'text-blue-600 dark:text-blue-400' },
+                    { id: 'bale', label: 'بله (Bale)', color: 'text-emerald-600 dark:text-emerald-400' },
+                    { id: 'whatsapp', label: 'واتساپ (WhatsApp)', color: 'text-green-600 dark:text-green-400' }
+                  ].map(p => (
+                    <label key={p.id} className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-zinc-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedPlatforms.includes(p.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedPlatforms(prev => [...prev, p.id]);
+                          else setSelectedPlatforms(prev => prev.filter(x => x !== p.id));
+                        }}
+                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className={p.color}>{p.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* PV & Contact Picker Component */}
+              {botSendMode === 'custom_recipients' && (
+                <div className="space-y-3 pt-1">
+                  <div className="border border-slate-200 dark:border-zinc-700 rounded-2xl p-2.5 bg-white dark:bg-zinc-900">
+                    <SmartBotRecipientPicker
+                      selectedPlatforms={selectedPlatforms as any}
+                      selectedChatIdsTele={customChatIdsTele}
+                      onChangeTele={setCustomChatIdsTele}
+                      selectedChatIdsBale={customChatIdsBale}
+                      onChangeBale={setCustomChatIdsBale}
+                      selectedChatIdsWa={customChatIdsWa}
+                      onChangeWa={setCustomChatIdsWa}
+                      settings={settings}
+                      label="انتخاب افراد، مخاطبین بازرگانی یا گروه‌های مقصد (PV):"
+                      compact={true}
+                    />
+                  </div>
+
+                  {/* Manual WhatsApp Phone Number Entry */}
+                  {selectedPlatforms.includes('whatsapp') && (
+                    <div className="bg-green-50/70 dark:bg-green-950/30 p-3 rounded-2xl border border-green-200 dark:border-green-800/50 space-y-1.5">
+                      <label className="text-[11px] font-bold text-green-900 dark:text-green-300 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-green-600" />
+                        <span>ارسال مستقیم به شماره واتساپ (شماره دستی):</span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="tel"
+                          value={manualWhatsappPhone}
+                          onChange={(e) => setManualWhatsappPhone(e.target.value)}
+                          placeholder="مثال: 09123456789"
+                          className="w-full text-xs font-mono font-bold bg-white dark:bg-zinc-900 border border-green-300 dark:border-green-700/60 rounded-xl px-3 py-2 text-slate-800 dark:text-zinc-200 outline-none focus:ring-2 focus:ring-green-500"
+                        />
+                        {manualWhatsappPhone && (
+                          <button
+                            type="button"
+                            onClick={() => setManualWhatsappPhone('')}
+                            className="p-1.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            title="پاک کردن شماره"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-green-800/80 dark:text-green-400/80">
+                        شماره موبایل وارد شده برای دریافت پیام شخصی (PV) در اولویت قرار می‌گیرد.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Manual Quick Action Options */}
+              <div className="pt-2 space-y-1.5 border-t border-slate-100 dark:border-zinc-800">
+                <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-400 block">ارسال‌های دستی فوری:</span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSendManualReport('today')}
+                    disabled={isSendingBot || selectedPlatforms.length === 0}
+                    className="px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900 text-blue-800 dark:text-blue-300 font-bold rounded-xl text-[11px] border border-blue-200 dark:border-blue-800 transition-all cursor-pointer disabled:opacity-50 text-center"
+                  >
+                    ⚡ ارسال فروش امروز
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendManualReport('yesterday')}
+                    disabled={isSendingBot || selectedPlatforms.length === 0}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 font-bold rounded-xl text-[11px] border border-slate-300 dark:border-zinc-700 transition-all cursor-pointer disabled:opacity-50 text-center"
+                  >
+                    🗓️ ارسال فروش دیروز
+                  </button>
+                </div>
+              </div>
             </div>
 
-            {/* Platform Selection Checkboxes */}
-            <div className="space-y-2 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
-              <span className="text-[11px] font-bold text-slate-700 block mb-1">انتخاب پلتفرم‌های مقصد:</span>
-              
-              {[
-                { id: 'telegram', label: 'تلگرام (Telegram)', color: 'text-blue-600' },
-                { id: 'bale', label: 'بله (Bale)', color: 'text-emerald-600' },
-                { id: 'whatsapp', label: 'واتساپ / ایتا (WhatsApp)', color: 'text-green-600' }
-              ].map(p => (
-                <label key={p.id} className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedPlatforms.includes(p.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) setSelectedPlatforms(prev => [...prev, p.id]);
-                      else setSelectedPlatforms(prev => prev.filter(x => x !== p.id));
-                    }}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                  />
-                  <span className={p.color}>{p.label}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Manual Quick Action Options */}
-            <div className="pt-2 space-y-1.5 border-t border-slate-100">
-              <span className="text-[11px] font-bold text-slate-600 block">ارسال‌های دستی فوری:</span>
-              <div className="grid grid-cols-2 gap-2">
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2 shrink-0 bg-slate-50/70 dark:bg-zinc-900/70">
+              <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                {computedCustomTargets ? `${computedCustomTargets.length} مقصد سفارشی انتخاب شده` : 'ارسال به گروه‌های پیش‌فرض'}
+              </span>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => handleSendManualReport('today')}
-                  disabled={isSendingBot || selectedPlatforms.length === 0}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold rounded-xl text-[11px] border border-blue-200 transition-all cursor-pointer disabled:opacity-50 text-center"
+                  onClick={() => setIsBotModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                 >
-                  ⚡ ارسال فروش امروز
+                  انصراف
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleSendManualReport('yesterday')}
+                  onClick={handleSendToBots}
                   disabled={isSendingBot || selectedPlatforms.length === 0}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-[11px] border border-slate-300 transition-all cursor-pointer disabled:opacity-50 text-center"
+                  className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
                 >
-                  🗓️ ارسال فروش دیروز
+                  {isSendingBot && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  <span>{compareMode ? 'ارسال PDF مقایسه‌ای' : 'ارسال گزارش بازه فعلی'}</span>
                 </button>
               </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsBotModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
-              >
-                انصراف
-              </button>
-              <button
-                type="button"
-                onClick={handleSendToBots}
-                disabled={isSendingBot || selectedPlatforms.length === 0}
-                className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
-              >
-                {isSendingBot && <RefreshCw className="w-4 h-4 animate-spin" />}
-                <span>{compareMode ? 'ارسال PDF مقایسه‌ای' : 'ارسال گزارش بازه فعلی'}</span>
-              </button>
             </div>
 
           </div>

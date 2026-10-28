@@ -159,6 +159,7 @@ function App() {
   const activeTabRef = useRef(activeTab);
   const tabHistoryRef = useRef(tabHistory);
   const customBackRef = useRef<(() => void) | null>(null);
+  const lastBackTimestampRef = useRef<number>(0);
 
   useEffect(() => {
     // Launch Zero-Lag Hybrid Graphics Pipeline (GPU Compositor + Server Offload)
@@ -389,13 +390,24 @@ function App() {
   };
 
   const goBack = (isPopState: boolean = false) => {
-      // 1. Registered custom handler
-      if (customBackRef.current) {
-          customBackRef.current();
+      // 0. Debounce duplicate rapid invocations (e.g. Capacitor backButton + browser popstate firing within 350ms)
+      const now = Date.now();
+      if (now - lastBackTimestampRef.current < 350) {
           return true;
       }
+      lastBackTimestampRef.current = now;
+
+      // 1. Registered custom handler (e.g. viewer open, sub-dialogs)
+      if (customBackRef.current) {
+          try {
+              customBackRef.current();
+              return true;
+          } catch (e) {
+              console.warn('Error in custom back handler:', e);
+          }
+      }
       
-      // 2. Modals check
+      // 2. Modals and drawers check (close top-most open modal/drawer first)
       const activeModals = Array.from(
           document.querySelectorAll('.fixed.inset-0:not(.pointer-events-none):not(.invisible):not(.opacity-0), [role="dialog"], .notification-dropdown-container, .glass-panel.fixed:not(.pointer-events-none):not(.bottom-nav-bar), .modal-active')
       ).filter(el => {
@@ -426,9 +438,20 @@ function App() {
           return true;
       }
 
-      // 3. Tab history back
+      // 3. Sub-view / Detail view check inside active module (e.g. Trade record detail, Purchase request detail)
+      const subviewBackBtn = document.querySelector('button[data-subtab-back="true"], button[data-module-back="true"], .subtab-back-btn') as HTMLElement;
+      if (subviewBackBtn) {
+          const style = window.getComputedStyle(subviewBackBtn);
+          if (style.display !== 'none' && style.visibility !== 'hidden') {
+              subviewBackBtn.click();
+              return true;
+          }
+      }
+
+      // 4. Tab history back (pop exactly ONE tab step)
       if (tabHistoryRef.current.length > 1) {
           setTabHistory(prev => {
+              if (prev.length <= 1) return prev;
               const newHist = [...prev];
               newHist.pop();
               const prevTab = newHist[newHist.length - 1];
@@ -439,10 +462,9 @@ function App() {
           return true;
       }
 
-      // 4. Force back to dashboard if not at dashboard
+      // 5. Force back to dashboard if not at dashboard
       if (activeTabRef.current !== 'dashboard') {
           setActiveTab('dashboard', false);
-          // Force ref update for tab state in case rendering is slow
           activeTabRef.current = 'dashboard';
           return true;
       }

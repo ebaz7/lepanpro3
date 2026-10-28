@@ -1261,12 +1261,17 @@ export const generateReportPDF = async (
     const isCompare = title.includes("مقایسه") || title.includes("Compare");
     let resolvedDateBadge = customDateLabel;
     if (!resolvedDateBadge) {
-      const parenMatch = String(title || "").match(/\(([^)]*\d{4}[/.-]\d{1,2}[/.-]\d{1,2}[^)]*)\)/);
-      const rangeMatch = String(title || "").match(/(از\s*(?:تاریخ\s*)?\d{4}[/.-]\d{1,2}[/.-]\d{1,2}\s*تا\s*(?:تاریخ\s*)?\d{4}[/.-]\d{1,2}[/.-]\d{1,2})/);
-      const singleMatch = String(title || "").match(/(\d{4}[/.-]\d{1,2}[/.-]\d{1,2}\s*تا\s*\d{4}[/.-]\d{1,2}[/.-]\d{1,2})/);
+      const parenMatch = String(title || "").match(/\(([^)]*[\d\u06F0-\u06F9\u0660-\u0669]{4}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}[^)]*)\)/);
+      const rangeMatch = String(title || "").match(/(از\s*(?:تاریخ\s*)?[\d\u06F0-\u06F9\u0660-\u0669]{4}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}\s*تا\s*(?:تاریخ\s*)?[\d\u06F0-\u06F9\u0660-\u0669]{4}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2})/);
+      const singleMatch = String(title || "").match(/([\d\u06F0-\u06F9\u0660-\u0669]{4}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}\s*تا\s*[\d\u06F0-\u06F9\u0660-\u0669]{4}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2}[/.-][\d\u06F0-\u06F9\u0660-\u0669]{1,2})/);
       if (parenMatch) resolvedDateBadge = parenMatch[1].trim();
       else if (rangeMatch) resolvedDateBadge = rangeMatch[1].trim();
       else if (singleMatch) resolvedDateBadge = `از ${singleMatch[1].trim()}`;
+      else {
+        // Fallback: check if title has parenthesized text with a date separator
+        const anyParen = String(title || "").match(/\(([^)]+[/.-][^)]+)\)/);
+        if (anyParen) resolvedDateBadge = anyParen[1].trim();
+      }
     }
     const isPendingDocs = title.includes("اسناد") || title.includes("چک‌ها");
     const isDispatch = title.includes("خروج") || title.includes("بیجک");

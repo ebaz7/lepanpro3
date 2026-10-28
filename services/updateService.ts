@@ -1,5 +1,6 @@
 import { getEffectiveApiUrl } from './apiService';
 import { isTauriDesktop, isMobileApp, isWebApp } from '../utils/platformDetection';
+import toast from 'react-hot-toast';
 
 export interface AppVersionInfo {
   version: string;
@@ -362,52 +363,60 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
 
     // 3. Android platform: Trigger direct download/installation of APK
     if (isAndroid) {
-      let rawApk = serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || '/downloads/dlkam-android-latest.apk';
+      let rawApk = serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || '/downloads/latest-android';
       if (!rawApk.startsWith('http://') && !rawApk.startsWith('https://')) {
         rawApk = getEffectiveApiUrl(rawApk);
       }
       const apkUrl = rawApk.includes('?') ? `${rawApk}&t=${Date.now()}` : `${rawApk}?t=${Date.now()}`;
 
-      // 3a. Try Capacitor Browser Plugin
+      // 3a. Show user feedback
       try {
-        if (win.Capacitor?.Plugins?.Browser?.open) {
-          await win.Capacitor.Plugins.Browser.open({ url: apkUrl });
-          return;
+        toast.success(`شروع دریافت فایل نصبی اندروید (نسخه ${serverInfo?.version || 'جدید'})...`, { duration: 6000 });
+      } catch (_) {}
+
+      // 3b. Try Cordova/Capacitor system browser hand-off (opens Android OS Download Manager)
+      try {
+        win.open(apkUrl, '_system');
+      } catch (_) {}
+
+      // 3c. Try Capacitor App Plugin openUrl if available
+      try {
+        if (win.Capacitor?.Plugins?.App?.openUrl) {
+          win.Capacitor.Plugins.App.openUrl({ url: apkUrl });
         }
       } catch (_) {}
 
-      // 3b. Trigger location navigation to start download in Android system
+      // 3d. Fallback: programmatic anchor download trigger
       try {
-        window.location.href = apkUrl;
-      } catch (_) {}
-
-      // 3c. Programmatic fallback link invocation
-      setTimeout(() => {
-        try {
-          const a = document.createElement('a');
-          a.href = apkUrl;
-          a.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
-          a.target = '_self';
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        } catch (_) {
-          window.open(apkUrl, '_blank');
-        }
-      }, 300);
+        const a = document.createElement('a');
+        a.href = apkUrl;
+        a.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => a.remove(), 1000);
+      } catch (_) {
+        window.open(apkUrl, '_blank');
+      }
 
       return;
     }
 
     // 4. Desktop Tauri platform: trigger native updater or open download URL
     if (isDesktop) {
-      let rawDesktop = serverInfo?.downloadUrl || '/downloads/dlkam-desktop-setup.msi';
+      let rawDesktop = serverInfo?.downloadUrl || '/downloads/latest-desktop';
       if (!rawDesktop.startsWith('http://') && !rawDesktop.startsWith('https://')) {
         rawDesktop = getEffectiveApiUrl(rawDesktop);
       }
       const downloadUrl = rawDesktop.includes('?') ? `${rawDesktop}&t=${Date.now()}` : `${rawDesktop}?t=${Date.now()}`;
 
-      // 4a. If Tauri built-in auto-updater is active
+      // 4a. Show user feedback
+      try {
+        toast.success(`شروع دریافت فایل نصبی ویندوز (نسخه ${serverInfo?.version || 'جدید'})...`, { duration: 6000 });
+      } catch (_) {}
+
+      // 4b. If Tauri built-in auto-updater is active
       if (win.__TAURI__?.updater?.installUpdate) {
         try {
           await win.__TAURI__.updater.installUpdate();
@@ -420,7 +429,7 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         }
       }
 
-      // 4b. Open download link using Tauri shell API
+      // 4c. Open download link using Tauri shell API
       let openedByTauri = false;
       try {
         if (win.__TAURI__?.shell?.open) {
@@ -440,18 +449,23 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
         console.warn('Tauri shell.open failed:', err);
       }
 
-      // 4c. Direct location navigation for WebView2 installer download
+      // 4d. Fallback: trigger direct file download via anchor & system window
       if (!openedByTauri) {
         try {
-          window.location.href = downloadUrl;
-        } catch (_) {
+          win.open(downloadUrl, '_system');
+        } catch (_) {}
+
+        try {
           const link = document.createElement('a');
           link.href = downloadUrl;
-          link.target = '_self';
-          link.download = 'dlkam-desktop-setup.msi';
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.download = `dlkam-desktop-v${serverInfo?.version || 'latest'}.msi`;
           document.body.appendChild(link);
           link.click();
-          document.body.removeChild(link);
+          setTimeout(() => link.remove(), 1000);
+        } catch (_) {
+          window.open(downloadUrl, '_blank');
         }
       }
 
@@ -493,11 +507,12 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
   } catch (e) {
     console.error('Error during applyApplicationUpdate:', e);
   } finally {
+    // Hard refresh ONLY on pure web application (never on desktop/android installer download)
     if (isWeb) {
       setTimeout(() => {
         const cleanUrl = window.location.origin + window.location.pathname;
         window.location.replace(`${cleanUrl}?v=${Date.now()}`);
-      }, 300);
+      }, 400);
     }
   }
 }
