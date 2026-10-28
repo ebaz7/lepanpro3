@@ -3645,7 +3645,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
 
                 {modalTab === 'COMMENTS' ? (
                     <div 
-                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 bg-gray-50/50 dark:bg-gray-950/40 custom-scrollbar overscroll-contain space-y-3 sm:space-y-4"
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 bg-gray-50/50 dark:bg-gray-950/40 custom-scrollbar overscroll-y-auto space-y-3 sm:space-y-4"
                         style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                     >
                         <div className="max-w-4xl mx-auto space-y-3 sm:space-y-4">
@@ -3667,7 +3667,7 @@ const ViewRequestModal = ({ request, onClose, currentUser, onSuccess, settings, 
                     </div>
                 ) : (
                 <div 
-                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2.5 sm:p-4 md:p-6 space-y-3 sm:space-y-5 bg-gray-50/50 dark:bg-gray-950/40 custom-scrollbar overscroll-contain"
+                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2.5 sm:p-4 md:p-6 space-y-3 sm:space-y-5 bg-gray-50/50 dark:bg-gray-950/40 custom-scrollbar overscroll-y-auto"
                     style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                 >
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6">

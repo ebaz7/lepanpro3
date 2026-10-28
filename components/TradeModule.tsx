@@ -2685,7 +2685,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     </div>
                     
                     {/* Content */}
-                    <div className="flex-1 p-2 md:p-6 overflow-y-auto flex flex-col w-full min-h-0 bg-gray-50 custom-scrollbar overscroll-contain">
+                    <div className="flex-1 p-2 md:p-6 overflow-y-auto flex flex-col w-full min-h-0 bg-gray-50 dark:bg-zinc-900 custom-scrollbar overscroll-y-auto touch-pan-y">
                         <h2 className="text-xl font-bold mb-4 hidden md:block">
                             {activeReport === 'general' ? 'لیست کلی پرونده‌ها' : 
                             activeReport === 'allocation_queue' ? 'گزارش صف تخصیص' : 

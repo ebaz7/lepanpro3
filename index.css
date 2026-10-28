@@ -145,8 +145,9 @@
 }
 
 #main-scroll-container {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y pinch-zoom !important;
   overflow-x: hidden !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -816,8 +817,8 @@ html {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden !important;
-  overflow-y: hidden !important;
-  overscroll-behavior: none !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y pinch-zoom !important;
 }
 
 body {
@@ -831,8 +832,7 @@ body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden !important;
-  overflow-y: hidden !important;
-  overscroll-behavior: none !important;
+  overscroll-behavior-y: auto !important;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
@@ -841,7 +841,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   text-rendering: optimizeLegibility;
   transition: background 0.3s ease, color 0.3s ease;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y pinch-zoom !important;
 }
 
 #root {
@@ -851,8 +851,8 @@ body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden !important;
-  overflow-y: hidden !important;
-  overscroll-behavior: none !important;
+  overscroll-behavior-y: auto !important;
+  touch-action: pan-y pinch-zoom !important;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2555,7 +2555,7 @@ html[data-gpu-active="true"] * {
 #main-scroll-container {
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  overscroll-behavior-y: contain !important;
+  overscroll-behavior-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y pinch-zoom !important;
   pointer-events: auto !important;

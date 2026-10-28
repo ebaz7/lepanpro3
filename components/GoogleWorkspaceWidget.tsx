@@ -1905,7 +1905,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
             </div>
 
             <form onSubmit={handleSaveEvent} className="flex flex-col flex-1 overflow-hidden min-h-0">
-              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs overscroll-contain min-h-0">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs overscroll-y-auto min-h-0">
                 {/* Title */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">
@@ -2114,7 +2114,7 @@ export const GoogleWorkspaceWidget: React.FC<GoogleWorkspaceWidgetProps> = ({
             </div>
 
             <form onSubmit={handleSaveSystemNote} className="flex flex-col flex-1 overflow-hidden min-h-0">
-              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs overscroll-contain min-h-0">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs overscroll-y-auto min-h-0">
                 {/* Title */}
                 <div>
                   <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300 mb-1">

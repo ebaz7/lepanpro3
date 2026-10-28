@@ -7,9 +7,12 @@ import './index.css';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { installSafeStorageGlobalPolyfill } from './utils/safeStorage';
+import { installGlobalApiFetchInterceptor } from './services/apiService';
 
 // Protect against localStorage QuotaExceededError crashes everywhere
 installSafeStorageGlobalPolyfill();
+// Ensure relative API calls resolve to real server domain on Tauri Desktop and Capacitor Android
+installGlobalApiFetchInterceptor();
 
 // Expose libraries globally
 (window as any).html2canvas = html2canvas;

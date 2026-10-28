@@ -6,6 +6,7 @@ import {
     Code, Copy, Check
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
+import { getEffectiveApiUrl } from '../../services/apiService';
 
 interface Props {
     archiveCode: string | number;
@@ -50,7 +51,12 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
         setError(null);
         try {
             const cleanArch = String(archiveCode || docNo || '').trim();
-            const res = await fetch(`/api/sayan/cheque-receipts/real-document/${cleanArch}?fiscalYear=${fiscalYear}`);
+            const url = getEffectiveApiUrl(`/api/sayan/cheque-receipts/real-document/${cleanArch}?fiscalYear=${fiscalYear}`);
+            const res = await fetch(url);
+            if (!res.ok) {
+                setError(`خطا در پاسخ سرور (کد ${res.status})`);
+                return;
+            }
             const data = await res.json();
             if (data.success) {
                 setDocData(data.data || data);
@@ -241,7 +247,7 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-4 -webkit-overflow-scrolling-touch">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-auto touch-pan-y p-3.5 sm:p-5 space-y-4 -webkit-overflow-scrolling-touch">
                     {loading ? (
                         <div className="py-20 text-center flex flex-col items-center justify-center gap-3 text-slate-400">
                             <RefreshCw className="w-8 h-8 animate-spin text-purple-500" />

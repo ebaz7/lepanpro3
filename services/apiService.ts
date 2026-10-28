@@ -195,6 +195,66 @@ export const setServerHost = (url: string) => {
     localStorage.setItem('app_server_host', cleanUrl);
 };
 
+let isFetchInterceptorInstalled = false;
+
+export const installGlobalApiFetchInterceptor = () => {
+    if (isFetchInterceptorInstalled || typeof window === 'undefined') return;
+    isFetchInterceptorInstalled = true;
+
+    const originalFetch = window.fetch.bind(window);
+
+    window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
+        let urlString = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url);
+
+        const isApiCall = urlString.startsWith('/api/') || urlString === '/api' || urlString.startsWith('api/');
+        const isUploadCall = urlString.startsWith('/uploads/');
+
+        if (isApiCall) {
+            const effectiveUrl = getEffectiveApiUrl(urlString);
+            const token = getAuthToken();
+
+            let headers: Headers;
+            if (init?.headers) {
+                headers = new Headers(init.headers);
+            } else if (input instanceof Request && input.headers) {
+                headers = new Headers(input.headers);
+            } else {
+                headers = new Headers();
+            }
+
+            if (token && !headers.has('Authorization')) {
+                headers.set('Authorization', `Bearer ${token}`);
+            }
+
+            const updatedInit: RequestInit = {
+                ...init,
+                headers
+            };
+
+            if (typeof input === 'string' || input instanceof URL) {
+                return originalFetch(effectiveUrl, updatedInit);
+            } else {
+                return originalFetch(new Request(effectiveUrl, input), updatedInit);
+            }
+        } else if (isUploadCall) {
+            const effectiveUrl = resolveImageUrl(urlString);
+            if (typeof input === 'string' || input instanceof URL) {
+                return originalFetch(effectiveUrl, init);
+            } else {
+                return originalFetch(new Request(effectiveUrl, input), init);
+            }
+        }
+
+        return originalFetch(input, init);
+    };
+};
+
+try {
+    installGlobalApiFetchInterceptor();
+} catch (e) {
+    console.error('Failed to auto-install global fetch interceptor:', e);
+}
+
 const isNativeApp = Capacitor.isNativePlatform();
 
 const MOCK_USERS: User[] = [

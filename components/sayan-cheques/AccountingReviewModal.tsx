@@ -497,7 +497,7 @@ export const AccountingReviewModal: React.FC<Props> = ({
                 </div>
 
                 {/* Body Form (Smooth Momentum Scrolling Isolated Container) */}
-                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-6 space-y-4 sm:space-y-5 -webkit-overflow-scrolling-touch">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-auto touch-pan-y p-3.5 sm:p-6 space-y-4 sm:space-y-5 -webkit-overflow-scrolling-touch">
                     
                     {/* General Receipt Metadata Panel */}
                     <div className="bg-slate-50/90 dark:bg-slate-800/40 p-3.5 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-3.5">

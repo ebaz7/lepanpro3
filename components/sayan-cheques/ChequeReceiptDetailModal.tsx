@@ -381,7 +381,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 </div>
 
                 {/* Body Details */}
-                <div ref={detailContentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-4 sm:space-y-5 bg-white dark:bg-slate-900 -webkit-overflow-scrolling-touch">
+                <div ref={detailContentRef} className="flex-1 min-h-0 overflow-y-auto overscroll-y-auto touch-pan-y p-3.5 sm:p-5 space-y-4 sm:space-y-5 bg-white dark:bg-slate-900 -webkit-overflow-scrolling-touch">
                     {/* Top Info Grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 text-xs">
                         <div>
