@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.dikam.paymentorder',
-  appName: 'Payment Order System',
+  appName: 'dlkam',
   webDir: 'dist',
   server: {
     // Allows loading from external domains (HTTP/HTTPS)

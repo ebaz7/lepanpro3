@@ -16,10 +16,11 @@ import {
   ExternalLink,
   RefreshCw,
   Eye,
-  MessageSquare
+  MessageSquare,
+  Check
 } from 'lucide-react';
 import { resolveImageUrl } from '../services/apiService';
-import { downloadAndOpenFile } from '../services/fileService';
+import { downloadAndOpenFile, saveImageToGallery, checkFileExists, isFileMarkedSavedSync } from '../services/fileService';
 import { openSendToChat } from '../services/chatShareService';
 import { getCachedAsset } from '../utils/assetCache';
 import { getDisplayFileName } from '../utils/fileNameUtils';
@@ -43,6 +44,7 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
   const [rotation, setRotation] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isSavedLocally, setIsSavedLocally] = useState<boolean>(() => isFileMarkedSavedSync(fileName));
   const [previewUrl, setPreviewUrl] = useState<string>('');
 
   const resolvedUrl = resolveImageUrl(fileUrl);
@@ -95,14 +97,18 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
     }
   }, [isOpen, resolvedUrl]);
 
-  // Reset zoom & rotation when file changes
+  // Reset zoom & rotation when file changes, and check if file is already saved in app storage
   useEffect(() => {
     if (isOpen) {
       setZoom(1);
       setRotation(0);
       setIsDownloading(false);
+      setIsSavedLocally(isFileMarkedSavedSync(fileName));
+      checkFileExists(fileName).then(exists => {
+        if (exists) setIsSavedLocally(true);
+      });
     }
-  }, [isOpen, fileUrl]);
+  }, [isOpen, fileUrl, fileName]);
 
   // Handle ESC key and keyboard shortcuts
   useEffect(() => {
@@ -153,7 +159,13 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
     if (e) e.stopPropagation();
     setIsDownloading(true);
     try {
-      await downloadAndOpenFile(previewUrl || resolvedUrl, fileName || 'download');
+      if (detectedType === 'image') {
+        const ok = await saveImageToGallery(previewUrl || resolvedUrl, fileName || `image_${Date.now()}.jpg`);
+        if (ok) setIsSavedLocally(true);
+      } else {
+        const ok = await downloadAndOpenFile(previewUrl || resolvedUrl, fileName || 'download');
+        if (ok) setIsSavedLocally(true);
+      }
     } finally {
       setIsDownloading(false);
     }
@@ -306,15 +318,29 @@ export const FileViewerModal: React.FC<FileViewerProps> = ({
             <span className="hidden sm:inline">ارسال به گفتگو</span>
           </button>
 
-          {/* Direct Download Button */}
+          {/* Direct Save to Gallery / App Folder Button */}
           <button
             onClick={handleDownload}
             disabled={isDownloading}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all shadow-md cursor-pointer disabled:opacity-50"
-            title="دانلود فایل روی دستگاه"
+            className={`flex items-center gap-1.5 active:scale-95 text-white px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all shadow-md cursor-pointer disabled:opacity-50 ${
+              isSavedLocally
+                ? 'bg-emerald-600 hover:bg-emerald-500'
+                : 'bg-blue-600 hover:bg-blue-500'
+            }`}
+            title={detectedType === 'image' ? 'ذخیره تصویر در گالری' : isSavedLocally ? 'ذخیره شده در حافظه برنامه (باز کردن مستقیم)' : 'ذخیره در پوشه اختصاصی برنامه'}
           >
-            {isDownloading ? <RefreshCw size={15} className="animate-spin" /> : <Download size={15} />}
-            <span>دانلود</span>
+            {isDownloading ? (
+              <RefreshCw size={15} className="animate-spin" />
+            ) : isSavedLocally ? (
+              <Check size={15} />
+            ) : (
+              <Download size={15} />
+            )}
+            <span>
+              {detectedType === 'image'
+                ? (isSavedLocally ? 'ذخیره شده در گالری' : 'ذخیره در گالری')
+                : (isSavedLocally ? 'باز کردن از حافظه اپ' : 'ذخیره در برنامه')}
+            </span>
           </button>
 
           {/* Close Button */}

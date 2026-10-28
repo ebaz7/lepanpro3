@@ -234,6 +234,9 @@ const Layout: React.FC<LayoutProps> = ({
   
   // Mobile Drawer State
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [mobileMenuSearch, setMobileMenuSearch] = useState('');
+  const [mobileMenuCategory, setMobileMenuCategory] = useState<'all' | 'finance' | 'warehouse' | 'sales' | 'admin'>('all');
+  const isNativeAndroid = useMemo(() => Capacitor.isNativePlatform(), []);
   // Desktop Sidebar State: Collapsed by default, opens on mouse hover, can be pinned permanently
   const [isSidebarPinned, setIsSidebarPinned] = useState<boolean>(() => {
     return localStorage.getItem('app_sidebar_pinned') === 'true';
@@ -776,7 +779,23 @@ const Layout: React.FC<LayoutProps> = ({
     };
   }, [navItems, currentUser.mobileNavOrder, settings?.mobileNavOrder]);
 
-  const isBottomBarVisible = !showMobileMenu && !isModalOpen && !hasBackAction && activeTab === 'dashboard';
+  const isBottomBarVisible = !showMobileMenu && !isModalOpen && !hasBackAction && activeTab !== 'chat';
+
+  const getItemCategory = (id: string): 'finance' | 'warehouse' | 'sales' | 'admin' => {
+    if (['create', 'manage', 'ccti', 'cheque-receipts', 'balances'].includes(id)) return 'finance';
+    if (['create-exit', 'manage-exit', 'warehouse', 'security', 'meetings', 'purchase'].includes(id)) return 'warehouse';
+    if (['sayan', 'sayan-operations', 'manage-invoices', 'trade', 'products', 'sales'].includes(id)) return 'sales';
+    return 'admin';
+  };
+
+  const filteredMobileMenuItems = useMemo(() => {
+    const q = mobileMenuSearch.trim().toLowerCase();
+    return sortedItems.filter((item) => {
+      const matchesSearch = !q || item.label.toLowerCase().includes(q) || (item.desc && item.desc.toLowerCase().includes(q));
+      const matchesCat = mobileMenuCategory === 'all' || getItemCategory(item.id) === mobileMenuCategory;
+      return matchesSearch && matchesCat;
+    });
+  }, [sortedItems, mobileMenuSearch, mobileMenuCategory]);
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('BOTTOM_NAV_VISIBLE', { detail: isBottomBarVisible }));
@@ -1655,7 +1674,7 @@ const Layout: React.FC<LayoutProps> = ({
           </aside>
       </div>
       
-      {/* Mobile Drawer - Option 2: Elegant shadcn/ui style Slide-Up Bottom Sheet */}
+      {/* Mobile Drawer - Native Android App Launcher Sheet with Search & Categorized Modules */}
       <AnimatePresence>
         {showMobileMenu && (
           <div className="fixed inset-0 z-[100] md:hidden flex flex-col justify-end">
@@ -1664,7 +1683,8 @@ const Layout: React.FC<LayoutProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className={`absolute inset-0 bg-black/60 transition-all ${theme === 'light-aurora' ? 'backdrop-blur-[16px]' : 'backdrop-blur-md'}`} 
+                transition={{ duration: 0.18 }}
+                className={`absolute inset-0 bg-black/60 ${isNativeAndroid || lowSpecMode ? '' : 'backdrop-blur-sm'}`} 
                 onClick={() => setShowMobileMenu(false)}
               />
               {/* Slide-Up Panel */}
@@ -1672,88 +1692,173 @@ const Layout: React.FC<LayoutProps> = ({
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                className="relative w-full h-[88vh] max-h-[88dvh] sm:max-h-[85vh] bg-white dark:bg-zinc-950 rounded-t-3xl border-t border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden z-10 touch-pan-y"
+                transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="relative w-full h-[90vh] max-h-[90dvh] bg-white dark:bg-zinc-950 rounded-t-[28px] border-t border-zinc-200 dark:border-zinc-800 shadow-2xl flex flex-col overflow-hidden z-10 touch-pan-y"
               >
                   {/* Drag Handle */}
-                  <div className="w-full py-3 flex justify-center cursor-pointer shrink-0" onClick={() => setShowMobileMenu(false)}>
-                      <div className="w-12 h-1.5 bg-zinc-300 dark:bg-zinc-800 rounded-full" />
+                  <div className="w-full pt-2.5 pb-1.5 flex justify-center cursor-pointer shrink-0" onClick={() => setShowMobileMenu(false)}>
+                      <div className="w-11 h-1.5 bg-zinc-300 dark:bg-zinc-800 rounded-full" />
                   </div>
 
                   {/* Header */}
-                  <div className="px-6 pb-4 border-b border-zinc-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-zinc-950 shrink-0">
-                      <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center font-bold text-sm text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <div className="px-4 pb-3 border-b border-zinc-100 dark:border-zinc-900 flex justify-between items-center bg-white dark:bg-zinc-950 shrink-0">
+                      <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center font-black text-sm shadow-sm overflow-hidden shrink-0">
                               {currentUser.avatar ? <img src={resolveImageUrl(currentUser.avatar)} alt="" className="w-full h-full object-cover"/> : currentUser.fullName.charAt(0)}
                           </div>
-                          <div>
-                              <div className="font-bold text-zinc-900 dark:text-white text-sm">{currentUser.fullName}</div>
-                              <div className="text-[10px] text-zinc-500 font-medium">{getUserAllRolesDisplayName(currentUser)}</div>
+                          <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-black text-zinc-900 dark:text-white text-sm truncate">{currentUser.fullName}</span>
+                                <span className="px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 text-[9px] font-black">dlkam</span>
+                              </div>
+                              <div className="text-[10px] text-zinc-500 font-bold truncate">{getUserAllRolesDisplayName(currentUser)}</div>
                           </div>
                       </div>
-                      <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full text-zinc-500 transition-colors">
-                          <X size={18} />
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => { setShowMobileMenu(false); setShowProfileModal(true); }}
+                          className="p-2 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-xl text-zinc-600 dark:text-zinc-300 transition-colors"
+                          title="تنظیمات پروفایل و چیدمان منو"
+                        >
+                          <Settings size={17} />
+                        </button>
+                        <button onClick={() => setShowMobileMenu(false)} className="p-2 bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-xl text-zinc-500 transition-colors">
+                            <X size={18} />
+                        </button>
+                      </div>
+                  </div>
+
+                  {/* Fast Search & Category Filter Bar */}
+                  <div className="px-4 pt-3 pb-2 bg-zinc-50/70 dark:bg-zinc-900/40 border-b border-zinc-100 dark:border-zinc-900 shrink-0 space-y-2.5">
+                      <div className="relative">
+                        <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={mobileMenuSearch}
+                          onChange={(e) => setMobileMenuSearch(e.target.value)}
+                          placeholder="جستجوی سریع منو و امکانات (مثلاً: انبار، چک، سایان...)"
+                          className="w-full pr-9 pl-8 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-800 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-500"
+                        />
+                        {mobileMenuSearch && (
+                          <button
+                            onClick={() => setMobileMenuSearch('')}
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+                        {[
+                          { id: 'all', label: `همه (${sortedItems.length})` },
+                          { id: 'finance', label: 'مالی و پرداخت' },
+                          { id: 'warehouse', label: 'انبار و خروج' },
+                          { id: 'sales', label: 'فروش و سایان' },
+                          { id: 'admin', label: 'اداری و سیستم' },
+                        ].map((cat) => (
+                          <button
+                            key={cat.id}
+                            onClick={() => setMobileMenuCategory(cat.id as any)}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap transition-colors ${
+                              mobileMenuCategory === cat.id
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border border-zinc-200/80 dark:border-zinc-800'
+                            }`}
+                          >
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
                   </div>
                   
                   {/* Notification Alert in bottom-sheet if disabled */}
                   {canSeeNotifications && !notifEnabled && (
-                      <div className="px-6 mt-3 shrink-0">
-                          <div className="bg-red-50/80 border border-red-100 dark:bg-red-950/20 dark:border-red-950 p-3 rounded-xl flex items-center justify-between shadow-sm">
+                      <div className="px-4 mt-2.5 shrink-0">
+                          <div className="bg-red-50/80 border border-red-100 dark:bg-red-950/20 dark:border-red-950 p-2.5 rounded-xl flex items-center justify-between">
                               <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs font-bold">
-                                  <Bell size={16} />
-                                  <span>اعلان‌ها غیرفعال است</span>
+                                  <Bell size={15} />
+                                  <span>اعلان‌های لحظه‌ای غیرفعال است</span>
                               </div>
-                              <button onClick={handleToggleNotif} className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold shadow-md hover:bg-red-700">
+                              <button onClick={handleToggleNotif} className="bg-red-600 text-white px-3 py-1 rounded-lg text-[10px] font-bold">
                                   فعال‌سازی
                               </button>
                           </div>
                       </div>
                   )}
 
-                  {/* All menu items in a clean, high-end visual grid with full mobile touch-scrolling support */}
+                  {/* Categorized & Searchable Menu Grid */}
                   <div 
-                    className="px-5 py-4 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar space-y-6 pb-36"
+                    className="px-4 py-3 flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar space-y-5 pb-28"
                     style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                   >
                       <div>
-                          <h4 className="text-xs font-bold text-zinc-400 mb-3 block">تمام بخش‌ها و امکانات سیستم</h4>
-                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                              {sortedItems.map((item) => {
-                                  const Icon = item.icon;
-                                  const isActive = activeTab === item.id;
-                                  return (
-                                      <button 
-                                        key={item.id} 
-                                        onClick={() => { setActiveTab(item.id); setShowMobileMenu(false); }}
-                                        className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-all border relative ${
-                                            isActive 
-                                            ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold shadow-sm' 
-                                            : 'bg-zinc-50/80 dark:bg-zinc-900/60 border-zinc-200/60 dark:border-zinc-800/60 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                                        }`}
-                                      >
-                                          <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 dark:bg-blue-900/40' : 'bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800'}`}>
-                                              <Icon size={18} strokeWidth={2} />
-                                          </div>
-                                          <span className="text-[10px] font-bold text-center leading-tight truncate w-full">{item.label}</span>
-                                          {item.id === 'chat' && unreadChatCount > 0 && (
-                                              <span className="absolute top-2 left-2 bg-red-500 text-white text-[8px] px-1.5 py-0.5 rounded-full min-w-[14px] text-center font-bold shadow-sm">{unreadChatCount}</span>
-                                          )}
-                                      </button>
-                                  );
-                              })}
+                          <div className="flex items-center justify-between mb-2.5">
+                            <h4 className="text-[11px] font-black text-zinc-400">
+                              {mobileMenuCategory === 'all' ? 'دسترسی سریع به تمام ماژول‌ها' : 'ماژول‌های منتخب'}
+                            </h4>
+                            <span className="text-[10px] font-bold text-zinc-400">{filteredMobileMenuItems.length} بخش</span>
                           </div>
+
+                          {filteredMobileMenuItems.length === 0 ? (
+                            <div className="py-8 text-center text-xs font-bold text-zinc-400 bg-zinc-50 dark:bg-zinc-900/40 rounded-2xl border border-dashed border-zinc-200 dark:border-zinc-800">
+                              موردی مطابق با جستجوی شما یافت نشد.
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+                                {filteredMobileMenuItems.map((item) => {
+                                    const Icon = item.icon;
+                                    const isActive = activeTab === item.id;
+                                    return (
+                                        <button 
+                                          key={item.id} 
+                                          onClick={() => {
+                                            setActiveTab(item.id);
+                                            setShowMobileMenu(false);
+                                            setMobileMenuSearch('');
+                                          }}
+                                          className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl transition-transform active:scale-95 border relative min-h-[84px] ${
+                                              isActive 
+                                              ? 'bg-blue-600 text-white border-blue-600 font-black shadow-md shadow-blue-600/20' 
+                                              : 'bg-zinc-50/90 dark:bg-zinc-900/80 border-zinc-200/70 dark:border-zinc-800/80 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                                          }`}
+                                        >
+                                            <div className={`p-2 rounded-xl ${isActive ? 'bg-white/20 text-white' : 'bg-white dark:bg-zinc-950 text-blue-600 dark:text-blue-400 border border-zinc-200/60 dark:border-zinc-800'}`}>
+                                                <Icon size={20} strokeWidth={2.2} />
+                                            </div>
+                                            <span className="text-[11px] font-bold text-center leading-tight line-clamp-1 w-full">{item.label}</span>
+                                            {item.id === 'chat' && unreadChatCount > 0 && (
+                                                <span className="absolute top-1.5 left-1.5 bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-full min-w-[16px] text-center font-black shadow-sm">{unreadChatCount}</span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                          )}
                       </div>
 
-                      {/* Footer controls inside scrollable view */}
-                      <div className="pt-4 border-t border-zinc-100 dark:border-zinc-900 flex flex-col gap-2 pb-10">
-                          <h4 className="text-xs font-bold text-zinc-400 mb-1 block">تنظیمات و دسترسی سریع</h4>
-                          <div className="grid grid-cols-2 gap-3">
-                              <button onClick={() => { setShowMobileMenu(false); setShowProfileModal(true); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100">
-                                  <Settings size={14} className="text-zinc-500" /> تنظیمات پروفایل
+                      {/* Quick Settings Tiles for Android / Mobile */}
+                      <div className="pt-3 border-t border-zinc-100 dark:border-zinc-900 flex flex-col gap-2 pb-8">
+                          <h4 className="text-[11px] font-black text-zinc-400 mb-1 block">ابزارهای سریع و بهینه‌سازی اپلیکیشن</h4>
+                          <div className="grid grid-cols-2 gap-2.5">
+                              <button onClick={() => { setShowMobileMenu(false); setShowProfileModal(true); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 active:scale-95">
+                                  <Settings size={14} className="text-blue-500" /> چیدمان منو و پروفایل
                               </button>
-                              <button onClick={() => { setShowMobileMenu(false); toggleTheme(); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100">
-                                  <Sparkles size={14} className="text-purple-500 animate-pulse" /> تغییر پوسته UI
+                              <button onClick={() => { setShowMobileMenu(false); window.dispatchEvent(new CustomEvent('sayan:open-network-settings')); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 active:scale-95">
+                                  <Radio size={14} className="text-emerald-500" /> تنظیمات اتصال سرور
+                              </button>
+                              <button onClick={() => { toggleTheme(); }} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 active:scale-95">
+                                  <Sparkles size={14} className="text-purple-500" /> تغییر پوسته ظاهری
+                              </button>
+                              <button 
+                                onClick={toggleLowSpecMode} 
+                                className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold active:scale-95 ${
+                                  lowSpecMode 
+                                    ? 'bg-amber-500/15 border-amber-400 dark:border-amber-700 text-amber-700 dark:text-amber-300' 
+                                    : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'
+                                }`}
+                              >
+                                  <Zap size={14} className={lowSpecMode ? "text-amber-500 fill-amber-500" : "text-zinc-500"} />
+                                  <span>{lowSpecMode ? 'حالت بدون لگ: فعال' : 'حالت فوق‌سریع (بدون لگ)'}</span>
                               </button>
                           </div>
                           <button 
@@ -1761,31 +1866,20 @@ const Layout: React.FC<LayoutProps> = ({
                             className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold transition-colors ${
                               aiCopilotEnabled 
                                 ? 'bg-indigo-500/10 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' 
-                                : 'bg-zinc-50 dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100'
+                                : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400'
                             }`}
                           >
                               <BrainCircuit size={14} className={aiCopilotEnabled ? "text-indigo-600 dark:text-indigo-400" : "text-zinc-400"} />
-                              <span>{aiCopilotEnabled ? 'گزینه هوش مصنوعی (AI): فعال (کلیک جهت غیرفعال‌سازی)' : 'گزینه هوش مصنوعی (AI): غیرفعال (کلیک جهت فعال‌سازی)'}</span>
-                          </button>
-                          <button 
-                            onClick={toggleLowSpecMode} 
-                            className={`flex items-center justify-center gap-2 p-2.5 border rounded-xl text-xs font-bold transition-colors ${
-                              lowSpecMode 
-                                ? 'bg-amber-500/10 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300' 
-                                : 'bg-zinc-50 dark:bg-zinc-900/80 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100'
-                            }`}
-                          >
-                              <Zap size={14} className={lowSpecMode ? "text-amber-500 fill-amber-500" : "text-zinc-500"} />
-                              <span>{lowSpecMode ? 'حالت سیستم ضعیف (فعال - بدون لگ)' : 'حالت سیستم‌های ضعیف (حذف کامل لگ)'}</span>
+                              <span>{aiCopilotEnabled ? 'دستیار هوش مصنوعی (AI): فعال' : 'دستیار هوش مصنوعی (AI): غیرفعال'}</span>
                           </button>
                           {onToggleDarkMode && (
-                              <button onClick={onToggleDarkMode} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900/80 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100">
+                              <button onClick={onToggleDarkMode} className="flex items-center justify-center gap-2 p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-zinc-700 dark:text-zinc-300">
                                   {isDarkMode ? <Sun size={14} className="text-amber-400" /> : <Moon size={14} className="text-indigo-500" />}
                                   <span>{isDarkMode ? 'تغییر به حالت روشن (Light)' : 'تغییر به حالت تاریک (Dark)'}</span>
                               </button>
                           )}
-                          <button onClick={handleLogout} className="flex items-center justify-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30 border border-red-100 dark:border-red-950/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-colors">
-                              <LogOut size={14}/> خروج از سیستم
+                          <button onClick={handleLogout} className="flex items-center justify-center gap-2 p-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 border border-red-100 dark:border-red-950/50 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold transition-colors">
+                              <LogOut size={14}/> خروج از حساب کاربری
                           </button>
                       </div>
                   </div>
@@ -1794,113 +1888,108 @@ const Layout: React.FC<LayoutProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Mobile Bottom Navigation - Modern Apple Liquid Floating Dock */}
-      <AnimatePresence>
-        {isBottomBarVisible && (
-          <motion.div 
-            initial={{ y: 80, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 80, opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", damping: 25, stiffness: 280 }}
-            className="md:hidden fixed z-[90] bottom-4 left-4 right-4 bg-white/75 dark:bg-zinc-900/75 border border-white/40 dark:border-zinc-800/30 pb-2 pt-2 rounded-[20px] flex justify-around items-center backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.06)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.4)] px-2"
-          >
-              {bottomVisibleItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-                  return (
-                      <button 
-                          key={item.id}
-                          onClick={() => setActiveTab(item.id)} 
-                          className={`flex flex-col items-center gap-1 transition-all duration-200 flex-1 relative py-1 ${isActive ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                      >
-                          {isActive && (
-                              <motion.div 
-                                  layoutId="activeBottomTab"
-                                  className="absolute inset-x-2 inset-y-0.5 bg-blue-50/80 dark:bg-blue-950/40 rounded-xl -z-10 border border-blue-100/50 dark:border-blue-900/20"
-                                  transition={{ type: "spring", duration: 0.4 }}
-                              />
-                          )}
-                          <div className="relative">
-                              <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                              {item.id === 'chat' && unreadChatCount > 0 && (
-                                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-zinc-950 shadow-sm animate-pulse"></span>
-                              )}
-                          </div>
-                          <span className={`text-[9px] font-bold tracking-tight transition-all duration-200 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-500'}`}>{item.label}</span>
-                      </button>
-                  );
-              })}
-              
-              <button 
-                  onClick={() => setShowMobileMenu(true)} 
-                  className={`flex flex-col items-center gap-1 transition-all duration-200 flex-1 relative py-1 ${menuItems.some(m => m.id === activeTab) ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-              >
-                  {menuItems.some(m => m.id === activeTab) && (
-                      <motion.div 
-                          layoutId="activeBottomTab"
-                          className="absolute inset-x-2 inset-y-0.5 bg-blue-50/80 dark:bg-blue-950/40 rounded-xl -z-10 border border-blue-100/50 dark:border-blue-900/20"
-                          transition={{ type: "spring", duration: 0.4 }}
-                      />
-                  )}
-                  <div className="relative">
-                      <Menu size={18} strokeWidth={menuItems.some(m => m.id === activeTab) ? 2.5 : 2} />
-                      {menuItems.some(m => m.id === 'chat' && unreadChatCount > 0) && (
-                        <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-zinc-950 shadow-sm animate-pulse"></span>
-                      )}
-                  </div>
-                  <span className={`text-[9px] font-bold tracking-tight transition-all duration-200 ${menuItems.some(m => m.id === activeTab) ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-500'}`}>منو</span>
-              </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Mobile Bottom Navigation - Always accessible across main modules for 1-tap switching */}
+      {isBottomBarVisible && (
+        <div 
+          className={`md:hidden fixed z-[90] bottom-2.5 left-3 right-3 ${
+            isNativeAndroid || lowSpecMode
+              ? 'bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 shadow-lg'
+              : 'bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/70 dark:border-zinc-800/70 backdrop-blur-lg shadow-[0_10px_30px_rgba(0,0,0,0.12)]'
+          } pb-1.5 pt-1.5 rounded-2xl flex justify-around items-center px-1.5 bottom-nav-bar`}
+        >
+            {bottomVisibleItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                    <button 
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)} 
+                        className={`flex flex-col items-center gap-0.5 transition-colors flex-1 relative py-1.5 rounded-xl active:scale-95 ${
+                          isActive
+                            ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-black'
+                            : 'text-zinc-500 dark:text-zinc-400'
+                        }`}
+                    >
+                        <div className="relative">
+                            <Icon size={19} strokeWidth={isActive ? 2.5 : 2} />
+                            {item.id === 'chat' && unreadChatCount > 0 && (
+                              <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-zinc-900"></span>
+                            )}
+                        </div>
+                        <span className={`text-[10px] font-bold tracking-tight truncate max-w-[64px] ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-500 dark:text-zinc-400'}`}>{item.label}</span>
+                    </button>
+                );
+            })}
+            
+            <button 
+                onClick={() => setShowMobileMenu(true)} 
+                className={`flex flex-col items-center gap-0.5 transition-colors flex-1 relative py-1.5 rounded-xl active:scale-95 ${
+                  menuItems.some(m => m.id === activeTab)
+                    ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-black'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+            >
+                <div className="relative">
+                    <Menu size={19} strokeWidth={menuItems.some(m => m.id === activeTab) ? 2.5 : 2} />
+                    {menuItems.some(m => m.id === 'chat' && unreadChatCount > 0) && (
+                      <span className="absolute -top-1 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-zinc-900"></span>
+                    )}
+                </div>
+                <span className={`text-[10px] font-bold tracking-tight ${menuItems.some(m => m.id === activeTab) ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-500 dark:text-zinc-400'}`}>همه منوها</span>
+            </button>
+        </div>
+      )}
 
       <main className={`flex flex-1 flex-col overflow-hidden relative min-w-0 min-h-0 w-full max-w-full m-0 ${
           activeTab === 'dashboard'
             ? 'bg-transparent border-0 md:border-0 shadow-none md:my-0 md:ml-0 md:mr-0 rounded-none'
-            : 'md:my-4 md:ml-4 md:mr-2 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl md:rounded-[24px] border-0 md:border border-slate-200/50 dark:border-slate-800/50 shadow-sm'
+            : `md:my-4 md:ml-4 md:mr-2 ${isNativeAndroid || lowSpecMode ? 'bg-white dark:bg-slate-900' : 'bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl'} md:rounded-[24px] border-0 md:border border-slate-200/50 dark:border-slate-800/50 shadow-sm`
       }`}>
-          {/* Mobile Header - Sleek flat design matching shadcn/ui (Hidden in chat to avoid duplicate headers) */}
-          <header className={`px-3 py-2.5 md:hidden no-print items-center justify-between shrink-0 relative z-[60] safe-pt sticky top-0 bg-white/60 dark:bg-zinc-950/40 border-b border-zinc-200/30 dark:border-zinc-800/30 backdrop-blur-xl ${activeTab === 'chat' ? 'hidden' : 'flex'}`}>
-              <div className="flex items-center gap-3">
+          {/* Mobile Header - Native Android App Bar (Zero-lag, ergonomic, clean) */}
+          <header className={`px-3 py-2 md:hidden no-print items-center justify-between shrink-0 relative z-[60] safe-pt sticky top-0 ${
+            isNativeAndroid || lowSpecMode
+              ? 'bg-white dark:bg-zinc-950 border-b border-zinc-200/80 dark:border-zinc-800/80'
+              : 'bg-white/85 dark:bg-zinc-950/85 border-b border-zinc-200/50 dark:border-zinc-800/50 backdrop-blur-md'
+          } ${activeTab === 'chat' ? 'hidden' : 'flex'}`}>
+              <div className="flex items-center gap-2 min-w-0">
                   {activeTab === 'dashboard' ? (
                   <button 
                       onClick={() => setShowMobileMenu(true)} 
-                      className="flex items-center gap-3 transition-all active:scale-95"
+                      className="flex items-center gap-2.5 transition-transform active:scale-95"
                   >
-                      <div className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-800 overflow-hidden shadow-sm flex items-center justify-center font-bold text-xs text-zinc-700 dark:text-zinc-300">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white border border-blue-500/20 overflow-hidden shadow-sm flex items-center justify-center font-black text-xs shrink-0">
                           {currentUser.avatar ? <img src={resolveImageUrl(currentUser.avatar)} alt="" className="w-full h-full object-cover"/> : currentUser.fullName.charAt(0)}
                       </div>
                   </button>
                   ) : (
-                  <button 
-                      onClick={onBack} 
-                      className="flex items-center justify-center w-8 h-8 bg-zinc-100 dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-700 dark:text-zinc-200 active:scale-95 transition-all"
-                  >
-                      <ChevronRight size={18} />
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button 
+                        onClick={onBack} 
+                        className="flex items-center justify-center w-8 h-8 bg-zinc-100 dark:bg-zinc-900 rounded-xl border border-zinc-200/70 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200 active:scale-95 transition-transform"
+                        title="بازگشت"
+                    >
+                        <ChevronRight size={18} />
+                    </button>
+                    <button 
+                        onClick={() => setShowMobileMenu(true)} 
+                        className="flex items-center justify-center w-8 h-8 bg-blue-50 dark:bg-blue-950/50 rounded-xl border border-blue-200/60 dark:border-blue-800/60 text-blue-600 dark:text-blue-400 active:scale-95 transition-transform"
+                        title="باز کردن منوی کل سیستم"
+                    >
+                        <Menu size={16} />
+                    </button>
+                  </div>
                   )}
-                  <div>
-                     <h1 className="font-bold text-zinc-900 dark:text-zinc-100 text-xs tracking-tight">{navItems.find(i => i.id === activeTab)?.label || 'داشبورد'}</h1>
+                  <div className="min-w-0">
+                     <h1 className="font-black text-zinc-900 dark:text-zinc-100 text-sm tracking-tight truncate">
+                       {navItems.find(i => i.id === activeTab)?.label || 'داشبورد'}
+                     </h1>
                   </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                  {onOpenSplitView && (
-                    <button 
-                      onClick={onOpenSplitView}
-                      className={`p-2 border rounded-lg shadow-sm active:scale-95 transition-all ${
-                        secondaryTab 
-                          ? 'bg-purple-600 text-white border-purple-500 shadow-purple-500/20' 
-                          : 'bg-zinc-100 dark:bg-zinc-900 border-zinc-200/50 dark:border-zinc-800/50 text-zinc-700 dark:text-zinc-300'
-                      }`}
-                      title={secondaryTab ? 'مشاهده همزمان (فعال)' : 'مشاهده همزمان منوها (Split View)'}
-                    >
-                        <Columns size={16} />
-                    </button>
-                  )}
+              <div className="flex items-center gap-1.5 shrink-0">
                   <button 
                     onClick={() => setIsSearchOpen(true)}
-                    className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95"
-                    title="جستجو (Ctrl+K)"
+                    className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300 active:scale-95"
+                    title="جستجو"
                   >
                       <Search size={16} />
                   </button>
@@ -1908,7 +1997,7 @@ const Layout: React.FC<LayoutProps> = ({
                       <select 
                           value={financialYear} 
                           onChange={(e) => setFinancialYear(e.target.value)}
-                          className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-700 dark:text-zinc-200 font-bold rounded-lg text-[10px] px-2 py-1.5 mr-1 shadow-sm focus:outline-none"
+                          className="bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 text-zinc-700 dark:text-zinc-200 font-bold rounded-xl text-[11px] px-2 py-1.5 focus:outline-none"
                           dir="ltr"
                       >
                           {settings?.fiscalYears?.map(fy => (
@@ -1923,28 +2012,11 @@ const Layout: React.FC<LayoutProps> = ({
                       </select>
                   )}
                   <button 
-                    onClick={toggleAiCopilot}
-                    className={`p-2 border rounded-lg shadow-sm active:scale-95 transition-colors ${
-                      aiCopilotEnabled
-                        ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400'
-                        : 'bg-zinc-100 dark:bg-zinc-900 border-zinc-200/50 dark:border-zinc-800/50 text-zinc-400'
-                    }`}
-                    title={aiCopilotEnabled ? 'هوش مصنوعی: فعال (کلیک جهت غیرفعال کردن)' : 'هوش مصنوعی: غیرفعال (کلیک جهت فعال کردن)'}
-                  >
-                      <BrainCircuit size={16} />
-                  </button>
-                  <button 
                     onClick={toggleTheme}
-                    className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95"
+                    className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 rounded-xl text-zinc-700 dark:text-zinc-300 active:scale-95"
+                    title="تغییر پوسته"
                   >
-                      {theme === 'light-aurora' ? <Sparkles size={16} className="text-purple-500 animate-pulse" /> : theme === 'light' ? <Moon size={16} /> : <Sun size={16} className="text-yellow-400" />}
-                  </button>
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('sayan:open-network-settings'))}
-                    className="p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg text-zinc-700 dark:text-zinc-300 shadow-sm active:scale-95 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
-                    title="پیکربندی شبکه و سرور (Dual-Role Network)"
-                  >
-                    <Radio size={16} className="text-blue-500" />
+                      {theme === 'light-aurora' ? <Sparkles size={16} className="text-purple-500" /> : theme === 'light' ? <Moon size={16} /> : <Sun size={16} className="text-yellow-400" />}
                   </button>
                   {canSeeNotifications && (
                       <div className="relative notification-trigger" ref={mobileNotifRef}>
@@ -1955,9 +2027,9 @@ const Layout: React.FC<LayoutProps> = ({
                               if (nextState && markAllNotificationsAsRead) {
                                   markAllNotificationsAsRead();
                               }
-                          }} className="relative p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors shadow-sm active:scale-95">
+                          }} className="relative p-2 bg-zinc-100 dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 rounded-xl hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors active:scale-95">
                               <Bell size={16} className="text-zinc-700 dark:text-zinc-200" />
-                              {unreadCount > 0 && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>}
+                              {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>}
                           </button>
                       </div>
                   )}

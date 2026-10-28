@@ -162,10 +162,11 @@ async function buildAndroid() {
       modified = true;
     }
 
-    if (!manifestContent.includes('REQUEST_INSTALL_PACKAGES')) {
+    // Remove REQUEST_INSTALL_PACKAGES if present because Google Play Protect flags sideloaded apps with this permission as suspicious
+    if (manifestContent.includes('android.permission.REQUEST_INSTALL_PACKAGES')) {
       manifestContent = manifestContent.replace(
-        '<application',
-        '<uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <application'
+        /\s*<uses-permission\s+android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*\/>\s*/g,
+        '\n    '
       );
       modified = true;
     }
@@ -173,6 +174,28 @@ async function buildAndroid() {
     if (modified) {
       fs.writeFileSync(manifestPath, manifestContent, 'utf8');
     }
+  }
+
+  // Ensure res/xml/file_paths.xml exists for FileProvider
+  const xmlResDir = path.join(androidDir, 'app', 'src', 'main', 'res', 'xml');
+  const filePathsXml = path.join(xmlResDir, 'file_paths.xml');
+  if (!fs.existsSync(filePathsXml)) {
+    fs.mkdirSync(xmlResDir, { recursive: true });
+    fs.writeFileSync(
+      filePathsXml,
+      `<?xml version="1.0" encoding="utf-8"?>\n<paths xmlns:android="http://schemas.android.com/apk/res/android">\n    <files-path name="files" path="." />\n    <cache-path name="cache" path="." />\n    <external-path name="external" path="." />\n    <external-files-path name="external_files" path="." />\n    <external-cache-path name="external_cache" path="." />\n    <root-path name="root" path="." />\n</paths>\n`,
+      'utf8'
+    );
+  }
+
+  // Ensure res/values/strings.xml sets app_name and title_activity_main to "dlkam"
+  const stringsXmlPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'values', 'strings.xml');
+  if (fs.existsSync(stringsXmlPath)) {
+    let stringsXml = fs.readFileSync(stringsXmlPath, 'utf8');
+    stringsXml = stringsXml
+      .replace(/<string name="app_name">[^<]*<\/string>/, '<string name="app_name">dlkam</string>')
+      .replace(/<string name="title_activity_main">[^<]*<\/string>/, '<string name="title_activity_main">dlkam</string>');
+    fs.writeFileSync(stringsXmlPath, stringsXml, 'utf8');
   }
 
   // 6.5. Fix google-services.json package_name mismatch & guard build.gradle

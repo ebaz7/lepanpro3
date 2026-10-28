@@ -21,8 +21,9 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem } from '@capacitor/filesystem';
 import { sendNotification, clearAllActiveNotifications } from '../services/notificationService';
 import { playTaskAlarmSound } from '../services/soundService';
-import { downloadAndOpenFile, checkFileExists } from '../services/fileService';
+import { downloadAndOpenFile, checkFileExists, saveImageToGallery, isFileMarkedSavedSync } from '../services/fileService';
 import { resolveImageUrl, apiCall, getServerTime } from '../services/apiService';
+import { isTauriDesktop } from '../utils/platformDetection';
 
 interface ChatRoomProps { 
     currentUser: User | null; 
@@ -372,7 +373,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     // Check if files are downloaded (only check unverified attachments to avoid native FS bridge spam)
     const checkedAttachmentIdsRef = useRef<Set<string>>(new Set());
     useEffect(() => {
-        if (!Capacitor.isNativePlatform()) return;
+        const isNativeOrDesktop = Capacitor.isNativePlatform() || isTauriDesktop();
         const unchecked = displayMessages.filter(
             msg => msg.attachment?.fileName && !checkedAttachmentIdsRef.current.has(msg.id)
         );
@@ -387,7 +388,9 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 checkedAttachmentIdsRef.current.add(msg.id);
                 const fileName = msg.attachment?.fileName || 'file';
                 const uniqueLocalName = `${msg.id}_${fileName}`;
-                const exists = await checkFileExists(uniqueLocalName);
+                const exists = isNativeOrDesktop
+                    ? (await checkFileExists(uniqueLocalName) || await checkFileExists(fileName))
+                    : (isFileMarkedSavedSync(uniqueLocalName) || isFileMarkedSavedSync(fileName));
                 checks[msg.id] = exists;
                 if (downloadedFiles[msg.id] !== exists) hasChanges = true;
             }
@@ -509,18 +512,24 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         if (isDownloading[msgId]) return;
 
         setIsDownloading(prev => ({ ...prev, [msgId]: true }));
-        setFileProgress(prev => ({ ...prev, [msgId]: 0 }));
+        setFileProgress(prev => ({ ...prev, [msgId]: 5 }));
 
         const safeFileName = fileName || 'file';
         const uniqueLocalName = `${msgId}_${safeFileName}`;
-        await downloadAndOpenFile(url, uniqueLocalName, (p) => {
-            setFileProgress(prev => ({ ...prev, [msgId]: p }));
-        });
+        const isImageFile = /\.(jpg|jpeg|png|gif|webp)$/i.test(safeFileName) || /^data:image\//i.test(url);
+
+        const ok = isImageFile
+            ? await saveImageToGallery(url, safeFileName, (p) => {
+                setFileProgress(prev => ({ ...prev, [msgId]: p }));
+            })
+            : await downloadAndOpenFile(url, uniqueLocalName, (p) => {
+                setFileProgress(prev => ({ ...prev, [msgId]: p }));
+            });
 
         setTimeout(() => {
             setIsDownloading(prev => { const n = { ...prev }; delete n[msgId]; return n; });
             setFileProgress(prev => { const n = { ...prev }; delete n[msgId]; return n; });
-            if (Capacitor.isNativePlatform()) {
+            if (ok) {
                 setDownloadedFiles(prev => {
                     const updated = { ...prev, [msgId]: true };
                     try {
@@ -529,7 +538,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     return updated;
                 });
             }
-        }, 500);
+        }, 400);
     };
 
     // --- Refs ---
@@ -2481,33 +2490,74 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                     />
                                                     <button 
                                                         onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
-                                                        className="absolute bottom-2 left-2 p-1.5 bg-black/65 hover:bg-black/85 text-white rounded-lg opacity-0 group-hover/img:opacity-100 transition-opacity cursor-pointer shadow-sm"
-                                                        title="دانلود تصویر"
+                                                        disabled={isDownloading[msg.id]}
+                                                        className={`absolute bottom-2 left-2 px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md backdrop-blur-md ${
+                                                            downloadedFiles[msg.id]
+                                                                ? 'bg-emerald-600/90 text-white'
+                                                                : 'bg-black/75 hover:bg-black/90 text-white'
+                                                        }`}
+                                                        title={downloadedFiles[msg.id] ? 'ذخیره شده در گالری' : 'ذخیره در گالری'}
                                                     >
-                                                        <Download size={14} />
+                                                        {isDownloading[msg.id] ? (
+                                                            <>
+                                                                <Loader2 size={12} className="animate-spin" />
+                                                                <span>{fileProgress[msg.id]}%</span>
+                                                            </>
+                                                        ) : downloadedFiles[msg.id] ? (
+                                                            <>
+                                                                <Check size={12} />
+                                                                <span>در گالری ذخیره شد</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Download size={12} />
+                                                                <span>ذخیره در گالری</span>
+                                                            </>
+                                                        )}
                                                     </button>
                                                 </div>
                                             ) : (msg.attachment.fileName.match(/\.pdf$/i) || msg.attachment.url.match(/\.pdf$/i)) ? (
                                                 <div className={`border rounded-2xl p-2.5 flex items-center justify-between gap-2.5 transition-all shadow-xs min-w-[220px] sm:min-w-[270px] max-w-full ${
-                                                    isMe 
-                                                        ? 'bg-white/85 dark:bg-zinc-800/85 border-rose-200/90 dark:border-rose-900/50 hover:border-rose-400' 
-                                                        : 'bg-white/95 dark:bg-zinc-900/95 border-rose-200/80 dark:border-rose-900/50 hover:border-rose-400 dark:hover:border-rose-700'
+                                                    downloadedFiles[msg.id]
+                                                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300/80 dark:border-emerald-800/60'
+                                                        : isMe 
+                                                            ? 'bg-white/85 dark:bg-zinc-800/85 border-rose-200/90 dark:border-rose-900/50 hover:border-rose-400' 
+                                                            : 'bg-white/95 dark:bg-zinc-900/95 border-rose-200/80 dark:border-rose-900/50 hover:border-rose-400 dark:hover:border-rose-700'
                                                 }`}>
                                                     <div 
-                                                        onClick={() => setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName })}
+                                                        onClick={(e) => {
+                                                            if (downloadedFiles[msg.id] && (Capacitor.isNativePlatform() || isTauriDesktop())) {
+                                                                handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e);
+                                                            } else {
+                                                                setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName });
+                                                            }
+                                                        }}
                                                         className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group/pdf"
-                                                        title="مشاهده مستقیم سند PDF بدون نیاز به دانلود"
+                                                        title={downloadedFiles[msg.id] ? 'باز کردن فوری از حافظه برنامه (بدون نیاز به دانلود مجدد)' : 'مشاهده سند PDF'}
                                                     >
-                                                        <div className="w-10 h-10 bg-rose-50 dark:bg-rose-950/50 border border-rose-200/70 dark:border-rose-900/50 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0 group-hover/pdf:scale-105 transition-transform shadow-xs">
+                                                        <div className={`w-10 h-10 border rounded-xl flex items-center justify-center shrink-0 group-hover/pdf:scale-105 transition-transform shadow-xs ${
+                                                            downloadedFiles[msg.id]
+                                                                ? 'bg-emerald-100/80 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
+                                                                : 'bg-rose-50 dark:bg-rose-950/50 border-rose-200/70 dark:border-rose-900/50 text-rose-600 dark:text-rose-400'
+                                                        }`}>
                                                             <FileText size={20} />
                                                         </div>
-                                                        <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
-                                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full group-hover/pdf:text-rose-600 dark:group-hover/pdf:text-rose-400 transition-colors" dir="ltr" title={msg.attachment.fileName}>
+                                                        <div className="flex flex-col items-start gap-1 min-w-0 flex-1">
+                                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full transition-colors" dir="ltr" title={msg.attachment.fileName}>
                                                                 {msg.attachment.fileName}
                                                             </span>
-                                                            <div className="flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md border border-rose-100 dark:border-rose-900/30">
-                                                                <Eye size={11} />
-                                                                <span>مشاهده سند PDF</span>
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                {downloadedFiles[msg.id] ? (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-300 font-bold">
+                                                                        <Check size={11} />
+                                                                        <span>ذخیره شده در حافظه اپ · باز کردن</span>
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 text-[10px] text-rose-600 dark:text-rose-400 font-bold">
+                                                                        <Eye size={11} />
+                                                                        <span>مشاهده سند PDF</span>
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2516,20 +2566,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                         <button 
                                                             onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
                                                             disabled={isDownloading[msg.id]}
-                                                            className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                                                            className={`px-2.5 py-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer text-[10px] font-bold ${
                                                                 downloadedFiles[msg.id] 
-                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100' 
-                                                                    : 'bg-rose-50/80 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 hover:scale-105'
+                                                                    ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-xs' 
+                                                                    : 'bg-rose-50/80 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50'
                                                             }`}
-                                                            title={downloadedFiles[msg.id] ? 'دانلود شده (دانلود مجدد)' : 'دانلود مستقیم PDF'}
+                                                            title={downloadedFiles[msg.id] ? 'باز کردن از پوشه اختصاصی برنامه (بدون دانلود مجدد)' : 'ذخیره در پوشه برنامه و باز کردن'}
                                                         >
                                                             {isDownloading[msg.id] ? (
                                                                 <div className="flex items-center gap-1">
-                                                                    <Loader2 size={16} className="animate-spin text-rose-600"/>
-                                                                    <span className="text-[9px] font-black text-rose-600">{fileProgress[msg.id]}%</span>
+                                                                    <Loader2 size={15} className="animate-spin"/>
+                                                                    <span className="text-[9px] font-black">{fileProgress[msg.id]}%</span>
                                                                 </div>
                                                             ) : downloadedFiles[msg.id] ? (
-                                                                <Check size={16} className="text-emerald-600" />
+                                                                <>
+                                                                    <Check size={14} />
+                                                                    <span>باز کردن</span>
+                                                                </>
                                                             ) : (
                                                                 <Download size={16} />
                                                             )}
@@ -2538,25 +2591,46 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                 </div>
                                             ) : (
                                                 <div className={`border rounded-2xl p-2.5 flex items-center justify-between gap-2.5 transition-all shadow-xs min-w-[210px] sm:min-w-[260px] max-w-full ${
-                                                    isMe 
-                                                        ? 'bg-white/85 dark:bg-zinc-800/85 border-blue-200 dark:border-blue-900/40 hover:border-blue-400' 
-                                                        : 'bg-white/95 dark:bg-zinc-900/95 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-700'
+                                                    downloadedFiles[msg.id]
+                                                        ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-300/80 dark:border-emerald-800/60'
+                                                        : isMe 
+                                                            ? 'bg-white/85 dark:bg-zinc-800/85 border-blue-200 dark:border-blue-900/40 hover:border-blue-400' 
+                                                            : 'bg-white/95 dark:bg-zinc-900/95 border-zinc-200/80 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-700'
                                                 }`}>
                                                     <div 
-                                                        onClick={() => setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName })}
+                                                        onClick={(e) => {
+                                                            if (downloadedFiles[msg.id] && (Capacitor.isNativePlatform() || isTauriDesktop())) {
+                                                                handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e);
+                                                            } else {
+                                                                setPreviewAttachment({ isOpen: true, url: msg.attachment.url, fileName: msg.attachment.fileName });
+                                                            }
+                                                        }}
                                                         className="flex items-center gap-2.5 cursor-pointer min-w-0 flex-1 group/file"
-                                                        title="مشاهده و بررسی فایل"
+                                                        title={downloadedFiles[msg.id] ? 'باز کردن فوری از حافظه برنامه' : 'مشاهده و بررسی فایل'}
                                                     >
-                                                        <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/50 border border-blue-200/70 dark:border-blue-900/50 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 group-hover/file:scale-105 transition-transform shadow-xs">
+                                                        <div className={`w-10 h-10 border rounded-xl flex items-center justify-center shrink-0 group-hover/file:scale-105 transition-transform shadow-xs ${
+                                                            downloadedFiles[msg.id]
+                                                                ? 'bg-emerald-100/80 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400'
+                                                                : 'bg-blue-50 dark:bg-blue-950/50 border-blue-200/70 dark:border-blue-900/50 text-blue-600 dark:text-blue-400'
+                                                        }`}>
                                                             <File size={20} />
                                                         </div>
-                                                        <div className="flex flex-col items-start gap-0.5 min-w-0 flex-1">
-                                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full group-hover/file:text-blue-600 dark:group-hover/file:text-blue-400 transition-colors" dir="ltr" title={msg.attachment.fileName}>
+                                                        <div className="flex flex-col items-start gap-1 min-w-0 flex-1">
+                                                            <span className="text-xs font-bold text-zinc-800 dark:text-zinc-100 truncate w-full transition-colors" dir="ltr" title={msg.attachment.fileName}>
                                                                 {msg.attachment.fileName}
                                                             </span>
-                                                            <div className="flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-md">
-                                                                <Eye size={11} />
-                                                                <span>پیش‌نمایش / دریافت</span>
+                                                            <div className="flex items-center gap-1 text-[10px]">
+                                                                {downloadedFiles[msg.id] ? (
+                                                                    <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold">
+                                                                        <Check size={11} />
+                                                                        <span>ذخیره شده در حافظه اپ · باز کردن</span>
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 font-medium">
+                                                                        <Eye size={11} />
+                                                                        <span>پیش‌نمایش / دریافت</span>
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -2565,20 +2639,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                                         <button 
                                                             onClick={(e) => handleDownloadAttachment(msg.id, msg.attachment.url, msg.attachment.fileName, e)}
                                                             disabled={isDownloading[msg.id]}
-                                                            className={`p-2 rounded-xl transition-all flex items-center justify-center cursor-pointer ${
+                                                            className={`px-2.5 py-2 rounded-xl transition-all flex items-center justify-center gap-1 cursor-pointer text-[10px] font-bold ${
                                                                 downloadedFiles[msg.id] 
-                                                                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100' 
-                                                                    : 'bg-blue-50/80 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 hover:scale-105'
+                                                                    ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-xs' 
+                                                                    : 'bg-blue-50/80 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                                                             }`}
-                                                            title={downloadedFiles[msg.id] ? 'دانلود شده (دانلود مجدد)' : 'دانلود مستقیم فایل'}
+                                                            title={downloadedFiles[msg.id] ? 'باز کردن از پوشه اختصاصی برنامه (بدون دانلود مجدد)' : 'ذخیره در پوشه برنامه و باز کردن'}
                                                         >
                                                             {isDownloading[msg.id] ? (
                                                                 <div className="flex items-center gap-1">
-                                                                    <Loader2 size={16} className="animate-spin text-blue-600"/>
-                                                                    <span className="text-[9px] font-black text-blue-600">{fileProgress[msg.id]}%</span>
+                                                                    <Loader2 size={15} className="animate-spin"/>
+                                                                    <span className="text-[9px] font-black">{fileProgress[msg.id]}%</span>
                                                                 </div>
                                                             ) : downloadedFiles[msg.id] ? (
-                                                                <Check size={16} className="text-emerald-600" />
+                                                                <>
+                                                                    <Check size={14} />
+                                                                    <span>باز کردن</span>
+                                                                </>
                                                             ) : (
                                                                 <Download size={16} />
                                                             )}
@@ -3506,12 +3583,15 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             {showImageViewer && (
                 <div className="fixed inset-0 bg-black/90 z-[200] flex items-start pt-16 md:pt-24 pb-32 overflow-y-auto overflow-x-hidden justify-center animate-fade-in" onClick={() => setShowImageViewer(null)}>
                     <img src={showImageViewer} className="max-w-[90%] max-h-[90%] rounded shadow-2xl" onClick={e => e.stopPropagation()}/>
-                    <div className="absolute top-4 right-4 flex gap-4 z-50">
+                    <div className="absolute top-4 right-4 flex gap-3 z-50">
                         <button onClick={(e) => { 
                             e.stopPropagation(); 
-                            downloadAndOpenFile(showImageViewer, 'image_' + Date.now() + '.jpg'); 
-                        }} className="p-2 bg-white/20 rounded-full hover:bg-white/40 text-white"><DownloadCloud/></button>
-                        <button onClick={(e) => { e.stopPropagation(); setShowImageViewer(null); }} className="p-2 bg-white/20 rounded-full hover:bg-white/40 text-white"><X/></button>
+                            saveImageToGallery(showImageViewer, 'image_' + Date.now() + '.jpg'); 
+                        }} className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 shadow-lg cursor-pointer">
+                            <DownloadCloud size={16} />
+                            <span>ذخیره در گالری</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setShowImageViewer(null); }} className="p-2 bg-white/20 rounded-xl hover:bg-white/40 text-white cursor-pointer"><X/></button>
                     </div>
                 </div>
             )}

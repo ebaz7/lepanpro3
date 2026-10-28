@@ -88,6 +88,74 @@ async fn start_server_cmd(port: Option<u16>) -> Result<String, String> {
     Ok(format!("Embedded server started on 0.0.0.0:{}", target_port))
 }
 
+fn get_desktop_app_files_dir(handle: &tauri::AppHandle) -> PathBuf {
+    let base = handle
+        .path_resolver()
+        .app_local_data_dir()
+        .or_else(|| handle.path_resolver().app_config_dir())
+        .unwrap_or_else(|| PathBuf::from("."));
+    let dir = base.join("DlkamFiles");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+fn sanitize_desktop_filename(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            _ => c,
+        })
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        "file_download".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[tauri::command]
+fn check_local_file_exists(handle: tauri::AppHandle, file_name: String) -> bool {
+    let safe_name = sanitize_desktop_filename(&file_name);
+    let target = get_desktop_app_files_dir(&handle).join(safe_name);
+    if let Ok(meta) = fs::metadata(&target) {
+        return meta.is_file() && meta.len() > 0;
+    }
+    false
+}
+
+#[tauri::command]
+fn open_local_file(handle: tauri::AppHandle, file_name: String) -> Result<String, String> {
+    let safe_name = sanitize_desktop_filename(&file_name);
+    let target = get_desktop_app_files_dir(&handle).join(safe_name);
+    if !target.exists() {
+        return Err("FILE_NOT_FOUND".to_string());
+    }
+    let path_str = target.to_string_lossy().to_string();
+    let _ = tauri::api::shell::open(&handle.shell_scope(), path_str.clone(), None);
+    Ok(path_str)
+}
+
+#[tauri::command]
+fn save_and_open_local_file(
+    handle: tauri::AppHandle,
+    file_name: String,
+    bytes: Vec<u8>,
+    open_after: Option<bool>,
+) -> Result<String, String> {
+    let safe_name = sanitize_desktop_filename(&file_name);
+    let dir = get_desktop_app_files_dir(&handle);
+    let target = dir.join(&safe_name);
+    let mut file = File::create(&target).map_err(|e| e.to_string())?;
+    file.write_all(&bytes).map_err(|e| e.to_string())?;
+    let path_str = target.to_string_lossy().to_string();
+    if open_after.unwrap_or(true) {
+        let _ = tauri::api::shell::open(&handle.shell_scope(), path_str.clone(), None);
+    }
+    Ok(path_str)
+}
+
 #[tauri::command]
 fn check_desktop_update(
     handle: tauri::AppHandle,
@@ -257,7 +325,10 @@ fn main() {
             get_client_config,
             save_client_config,
             check_desktop_update,
-            start_server_cmd
+            start_server_cmd,
+            check_local_file_exists,
+            open_local_file,
+            save_and_open_local_file
         ])
         .run(tauri::generate_context!())
         .expect("error_running_tauri");
