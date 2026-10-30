@@ -127,15 +127,20 @@ echo.
 echo Checking and activating ONLYOFFICE Offline Document Server...
 where docker >nul 2>&1
 if %errorlevel% equ 0 (
-    echo [INFO] Docker detected. Ensuring ONLYOFFICE container is running on port 8088...
-    docker ps -a --filter "name=onlyoffice-documentserver" --format "{{.Names}}" | findstr /r "onlyoffice-documentserver" >nul 2>&1
-    if %errorlevel% equ 0 (
-        docker start onlyoffice-documentserver >nul 2>&1
+    docker info >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo [INFO] Docker is running. Ensuring ONLYOFFICE container is active on port 8088...
+        docker ps -a --filter "name=onlyoffice-documentserver" --format "{{.Names}}" 2>nul | findstr /r "onlyoffice-documentserver" >nul 2>&1
+        if !errorlevel! equ 0 (
+            docker start onlyoffice-documentserver >nul 2>&1
+        ) else (
+            docker run -i -t -d -p 8088:80 --name onlyoffice-documentserver --restart=always -e JWT_ENABLED=false -e ALLOW_PRIVATE_IP_ADDRESS=true -e USE_UNAUTHORIZED_STORAGE=true onlyoffice/documentserver >nul 2>&1
+        )
+        netsh advfirewall firewall add rule name="ONLYOFFICE_8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
+        echo [OK] ONLYOFFICE Document Server is active on port 8088.
     ) else (
-        docker run -i -t -d -p 8088:80 --name onlyoffice-documentserver --restart=always -e JWT_ENABLED=false -e ALLOW_PRIVATE_IP_ADDRESS=true -e USE_UNAUTHORIZED_STORAGE=true onlyoffice/documentserver >nul 2>&1
+        echo [NOTE] Docker Desktop is installed but not currently running. Skipping ONLYOFFICE container check.
     )
-    netsh advfirewall firewall add rule name="ONLYOFFICE_8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
-    echo [OK] ONLYOFFICE Document Server is active on port 8088.
 ) else (
     echo [NOTE] Docker not detected. To enable offline ONLYOFFICE, install Docker Desktop and choose option 5.
 )
@@ -213,14 +218,19 @@ if exist patch-dependencies.js node patch-dependencies.js
 echo.
 echo [4/6] Building Frontend...
 call npm run build
+if errorlevel 1 (
+    echo [ERROR] Frontend build failed!
+    pause
+    goto MENU
+)
 
 echo.
 echo [5/6] Restarting Windows Service...
-net stop PaymentSystem
+net stop PaymentSystem >nul 2>&1
 net start PaymentSystem
 
 echo.
-echo [6/6] Configuring Windows Firewall & ONLYOFFICE...
+echo [6/6] Configuring Windows Firewall and ONLYOFFICE...
 if exist .env (
     for /f "tokens=2 delims==" %%a in ('findstr "^PORT=" .env') do set APP_PORT=%%a
     if not "!APP_PORT!"=="" (
@@ -231,15 +241,20 @@ if exist .env (
 
 where docker >nul 2>&1
 if %errorlevel% equ 0 (
-    echo [INFO] Docker detected. Ensuring ONLYOFFICE container is running on port 8088...
-    docker ps -a --filter "name=onlyoffice-documentserver" --format "{{.Names}}" | findstr /r "onlyoffice-documentserver" >nul 2>&1
-    if %errorlevel% equ 0 (
-        docker start onlyoffice-documentserver >nul 2>&1
+    docker info >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo [INFO] Docker is running. Ensuring ONLYOFFICE container is active on port 8088...
+        docker ps -a --filter "name=onlyoffice-documentserver" --format "{{.Names}}" 2>nul | findstr /r "onlyoffice-documentserver" >nul 2>&1
+        if !errorlevel! equ 0 (
+            docker start onlyoffice-documentserver >nul 2>&1
+        ) else (
+            docker run -i -t -d -p 8088:80 --name onlyoffice-documentserver --restart=always -e JWT_ENABLED=false -e ALLOW_PRIVATE_IP_ADDRESS=true -e USE_UNAUTHORIZED_STORAGE=true onlyoffice/documentserver >nul 2>&1
+        )
+        netsh advfirewall firewall add rule name="ONLYOFFICE_8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
+        echo [OK] ONLYOFFICE Document Server is active on port 8088.
     ) else (
-        docker run -i -t -d -p 8088:80 --name onlyoffice-documentserver --restart=always -e JWT_ENABLED=false -e ALLOW_PRIVATE_IP_ADDRESS=true -e USE_UNAUTHORIZED_STORAGE=true onlyoffice/documentserver >nul 2>&1
+        echo [NOTE] Docker Desktop is installed but not currently running. Skipping ONLYOFFICE container check.
     )
-    netsh advfirewall firewall add rule name="ONLYOFFICE_8088" dir=in action=allow protocol=TCP localport=8088 >nul 2>&1
-    echo [OK] ONLYOFFICE Document Server is active on port 8088.
 ) else (
     echo [NOTE] Docker not detected. If you wish to use ONLYOFFICE offline, install Docker Desktop and choose option 5.
 )
