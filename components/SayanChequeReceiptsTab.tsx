@@ -153,9 +153,24 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const [systemUsersList, setSystemUsersList] = useState<Array<{ id: string; name: string; username: string; role: string; roles?: string[] }>>([]);
     const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
 
+    const apiFetch = async (urlPath: string, options: RequestInit = {}) => {
+        const url = getEffectiveApiUrl(urlPath);
+        const token = getAuthToken();
+        const headers: Record<string, string> = {
+            ...(options.headers as Record<string, string> || {})
+        };
+        if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return fetch(url, { ...options, headers });
+    };
+
     const fetchWorkflowConfig = async () => {
         try {
-            const res = await fetch('/api/sayan/cheque-receipts/workflow-config');
+            const res = await apiFetch('/api/sayan/cheque-receipts/workflow-config');
             if (res.ok) {
                 const data = await res.json();
                 if (data.success && data.config) {
@@ -263,7 +278,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     const fetchCashboxes = async () => {
         try {
-            const res = await fetch('/api/sayan/cheque-receipts/cashboxes');
+            const res = await apiFetch('/api/sayan/cheque-receipts/cashboxes');
             const data = await res.json();
             if (data.success && Array.isArray(data.cashboxes) && data.cashboxes.length > 0) {
                 setCashboxesList(data.cashboxes);
@@ -419,7 +434,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
         const listToCheck = overrideList || receiptsList;
         const localMax = getArchiveLatestSequence(listToCheck);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/meta?fiscalYear=${fiscalYear}`);
+            const res = await apiFetch(`/api/sayan/cheque-receipts/meta?fiscalYear=${fiscalYear}`);
             const data = await res.json();
             if (data.success) {
                 const apiNextRaw = data.nextPoshtNomreh || data.nextReceiptNo || data.nextAppReceiptNo;
@@ -441,12 +456,12 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const handleUpdateQuickReceiptNo = async (receiptId: string, newNo: string) => {
         const cleanNo = newNo.trim();
         if (!cleanNo) {
-            alert('لطفا شماره رسید را وارد کنید.');
+            setErrorMessage('لطفاً شماره رسید را وارد کنید.');
             return;
         }
         setSavingQuickReceiptNo(true);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/${receiptId}/update-receipt-no`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receiptId}/update-receipt-no`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -461,10 +476,10 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 setSuccessMessage(`شماره رسید با موفقیت به #${toPersianDigits(cleanNo)} تغییر یافت.`);
                 setTimeout(() => setSuccessMessage(null), 3500);
             } else {
-                alert(data.error || 'خطا در ویرایش شماره رسید');
+                setErrorMessage(data.error || 'خطا در ویرایش شماره رسید');
             }
         } catch (e: any) {
-            alert(e.message || 'خطا در ارتباط با سرور');
+            setErrorMessage(e.message || 'خطا در ارتباط با سرور');
         } finally {
             setSavingQuickReceiptNo(false);
         }
@@ -473,7 +488,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const fetchReceipts = async (silent = false) => {
         if (!silent) setLoadingReceipts(true);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts?fiscalYear=${fiscalYear}`);
+            const res = await apiFetch(`/api/sayan/cheque-receipts?fiscalYear=${fiscalYear}`);
             const data = await res.json();
             if (data.success && Array.isArray(data.data)) {
                 setReceiptsList(prev => {
@@ -558,7 +573,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     const fetchPersons = async (q: string, force = false) => {
         setSearchingPersons(true);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(q)}&fiscalYear=${fiscalYear}${force ? '&force=true' : ''}`);
+            const res = await apiFetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(q)}&fiscalYear=${fiscalYear}${force ? '&force=true' : ''}`);
             const data = await res.json();
             if (data.success && Array.isArray(data.persons)) {
                 setPersonSearchResults(data.persons);
@@ -872,7 +887,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
                 let serverUrl = '';
                 try {
-                    const uploadRes = await fetch('/api/upload', {
+                    const uploadRes = await apiFetch('/api/upload', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -921,13 +936,6 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
             return;
         }
 
-        if (targetTotalAmount && Number(targetTotalAmount) !== sumChequesAmount) {
-            const proceed = window.confirm(
-                `مجموع مبالغ ردیف‌ها (${sumChequesAmount.toLocaleString('fa-IR')} ریال) با جمع کل کلیک شده (${Number(targetTotalAmount).toLocaleString('fa-IR')} ریال) مغایرت دارد.\nآیا مایل به ثبت رسید بر اساس جمع کل ردیف‌ها هستید؟`
-            );
-            if (!proceed) return;
-        }
-
         setActionLoading('submit_new');
 
         try {
@@ -954,7 +962,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 createdByName: currentUser?.name || 'کاربر سیستم'
             };
 
-            const res = await fetch('/api/sayan/cheque-receipts', {
+            const res = await apiFetch('/api/sayan/cheque-receipts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -1032,7 +1040,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                 ? `/api/sayan/cheque-receipts/${receiptId}/accounting-review`
                 : `/api/sayan/cheque-receipts/${receiptId}`;
 
-            const res = await fetch(endpoint, {
+            const res = await apiFetch(endpoint, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1069,12 +1077,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     // CEO Approval & Direct Sayan Registration
     const handleApproveByCeo = async (receiptId: string) => {
-        const proceed = window.confirm('آیا از تایید نهایی این رسید چک و صدور سند در پایگاه‌داده سایان اطمینان دارید؟');
-        if (!proceed) return;
-
         setActionLoading(receiptId);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/${receiptId}/ceo-approve`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receiptId}/ceo-approve`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1100,12 +1105,18 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     // Reject / Return
     const handleReject = async (receiptId: string) => {
-        const reason = window.prompt('لطفاً دلیل عدم تایید یا عودت رسید را وارد نمایید:');
-        if (reason === null) return;
+        let reason = 'عودت جهت بررسی و اصلاح';
+        try {
+            const prompted = window.prompt('لطفاً دلیل عدم تایید یا عودت رسید را وارد نمایید:', reason);
+            if (prompted === null) return;
+            if (prompted.trim()) reason = prompted.trim();
+        } catch {
+            // Fallback if prompt is blocked in WebView
+        }
 
         setActionLoading(receiptId);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/${receiptId}/reject`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receiptId}/reject`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1131,12 +1142,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     // Full Draft / Receipt Delete
     const handleDeleteReceipt = async (receiptId: string) => {
-        const proceed = window.confirm('آیا از حذف کامل این رسید دریافت چک اطمینان دارید؟ این عملیات غیرقابل بازگشت است.');
-        if (!proceed) return;
-
         setActionLoading(receiptId);
         try {
-            const res = await fetch('/api/sayan/cheque-receipts/delete-draft', {
+            const res = await apiFetch('/api/sayan/cheque-receipts/delete-draft', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ receiptId })
@@ -1160,11 +1168,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
     // Fix invalid Sanad 1 receipts
     const [fixingSanadOne, setFixingSanadOne] = useState(false);
     const handleFixSanadOneReceipts = async () => {
-        const proceed = window.confirm('سیستم تمام اسنادی را که دارای شماره سند ۱ غیرواقعی هستند بررسی نموده و وضعیت آن‌ها را جهت ثبت رسمی و دریافت شماره سند و بایگانی واقعی در سایان آماده‌سازی می‌کند. آیا ادامه می‌دهید؟');
-        if (!proceed) return;
         setFixingSanadOne(true);
         try {
-            const res = await fetch('/api/sayan/cheque-receipts/fix-invalid-sanad-one', {
+            const res = await apiFetch('/api/sayan/cheque-receipts/fix-invalid-sanad-one', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fiscalYear })
@@ -1185,11 +1191,9 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
 
     // Re-register a single receipt into Sayan
     const handleReRegisterInSayan = async (receiptId: string) => {
-        const proceed = window.confirm('آیا از ثبت مجدد این رسید و صدور سند رسمی در پایگاه‌داده سایان اطمینان دارید؟');
-        if (!proceed) return;
         setActionLoading(receiptId);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/${receiptId}/re-register`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receiptId}/re-register`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ receiptId, currentUser })
@@ -2700,13 +2704,13 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                         <div className="p-6 flex-1 overflow-y-auto flex items-center justify-center bg-slate-50 dark:bg-slate-950/40">
                             {previewFile.fileType.startsWith('image/') ? (
                                 <img
-                                    src={previewFile.fileData}
+                                    src={resolveImageUrl(previewFile.url || previewFile.fileData || '')}
                                     alt={previewFile.fileName}
                                     className="max-w-full max-h-[55vh] object-contain rounded-xl shadow-md border border-slate-200 dark:border-slate-800"
                                 />
                             ) : previewFile.fileType === 'application/pdf' ? (
                                 <iframe
-                                    src={previewFile.fileData}
+                                    src={resolveImageUrl(previewFile.url || previewFile.fileData || '')}
                                     title={previewFile.fileName}
                                     className="w-full h-[55vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
                                 />
@@ -2726,7 +2730,7 @@ export const SayanChequeReceiptsTab: React.FC<Props> = ({
                                 type="button"
                                 onClick={() => {
                                     const link = document.createElement('a');
-                                    link.href = previewFile.fileData;
+                                    link.href = resolveImageUrl(previewFile.url || previewFile.fileData || '');
                                     link.download = previewFile.fileName;
                                     document.body.appendChild(link);
                                     link.click();

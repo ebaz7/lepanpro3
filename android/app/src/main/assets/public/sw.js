@@ -101,8 +101,8 @@ self.addEventListener('push', (event) => {
     const data = event.data.json();
     const options = {
       body: data.body || 'اعلان جدید',
-      icon: 'https://cdn-icons-png.flaticon.com/512/3135/3135706.png',
-      badge: 'https://cdn-icons-png.flaticon.com/512/3135/3135706.png',
+      icon: '/lepan-logo.png',
+      badge: '/lepan-logo.png',
       data: {
         url: data.url || '/',
         id: data.id

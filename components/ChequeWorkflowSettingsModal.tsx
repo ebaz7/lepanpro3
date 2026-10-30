@@ -14,6 +14,7 @@ import {
     Save,
     RotateCcw
 } from 'lucide-react';
+import { getEffectiveApiUrl, getAuthToken } from '../services/apiService';
 const toPersianDigits = (n: number | string) => String(n ?? '').replace(/[0-9]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[parseInt(d, 10)]);
 
 export interface ChequeWorkflowConfig {
@@ -89,9 +90,12 @@ export const ChequeWorkflowSettingsModal: React.FC<ChequeWorkflowSettingsModalPr
         setSaving(true);
         setErrorMessage(null);
         try {
-            const res = await fetch('/api/sayan/cheque-receipts/workflow-config', {
+            const token = getAuthToken();
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(getEffectiveApiUrl('/api/sayan/cheque-receipts/workflow-config'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(config)
             });
 

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ChequeItemInput, COMMON_IRANIAN_BANKS, toShamsiStr, fromShamsiStr, normalizeToAsciiDigits } from './ChequeItemRow';
 import { MobileAttachmentUploader, ReceiptAttachment } from './MobileAttachmentUploader';
+import { getEffectiveApiUrl, getAuthToken } from '../../services/apiService';
 import * as jalaali from 'jalaali-js';
 // @ts-ignore
 import DatePicker from "react-multi-date-picker";
@@ -318,7 +319,10 @@ export const AccountingReviewModal: React.FC<Props> = ({
     useEffect(() => {
         const fetchBox = async () => {
             try {
-                const res = await fetch('/api/sayan/cheque-receipts/cashboxes');
+                const token = getAuthToken();
+                const headers: Record<string, string> = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const res = await fetch(getEffectiveApiUrl('/api/sayan/cheque-receipts/cashboxes'), { headers });
                 const data = await res.json();
                 if (data.success && Array.isArray(data.cashboxes) && data.cashboxes.length > 0) {
                     setCashboxes(data.cashboxes);
@@ -365,7 +369,13 @@ export const AccountingReviewModal: React.FC<Props> = ({
         }
         const timer = setTimeout(async () => {
             try {
-                const res = await fetch(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(editPersonQuery.trim())}&fiscalYear=${fiscalYear}`);
+                const token = getAuthToken();
+                const headers: Record<string, string> = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                const res = await fetch(
+                    getEffectiveApiUrl(`/api/sayan/cheque-receipts/persons?query=${encodeURIComponent(editPersonQuery.trim())}&fiscalYear=${fiscalYear}`),
+                    { headers }
+                );
                 const data = await res.json();
                 if (data.success && Array.isArray(data.persons)) {
                     setEditPersonResults(data.persons);

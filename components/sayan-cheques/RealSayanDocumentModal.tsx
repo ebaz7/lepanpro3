@@ -6,7 +6,7 @@ import {
     Code, Copy, Check
 } from 'lucide-react';
 import * as jalaali from 'jalaali-js';
-import { getEffectiveApiUrl } from '../../services/apiService';
+import { getEffectiveApiUrl, getAuthToken } from '../../services/apiService';
 
 interface Props {
     archiveCode: string | number;
@@ -52,7 +52,10 @@ export const RealSayanDocumentModal: React.FC<Props> = ({
         try {
             const cleanArch = String(archiveCode || docNo || '').trim();
             const url = getEffectiveApiUrl(`/api/sayan/cheque-receipts/real-document/${cleanArch}?fiscalYear=${fiscalYear}`);
-            const res = await fetch(url);
+            const token = getAuthToken();
+            const headers: Record<string, string> = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(url, { headers });
             if (!res.ok) {
                 setError(`خطا در پاسخ سرور (کد ${res.status})`);
                 return;

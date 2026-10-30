@@ -11,6 +11,7 @@ import { UserRole } from '../../types';
 import { shareElementToChat, openSendToChat } from '../../services/chatShareService';
 import { FileViewerModal } from '../FileViewerModal';
 import { MobileAttachmentUploader } from './MobileAttachmentUploader';
+import { getEffectiveApiUrl, getAuthToken, resolveImageUrl } from '../../services/apiService';
 
 interface Props {
     receipt: any;
@@ -79,15 +80,29 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
         setTempReceiptNo(String(initialReceipt?.receiptNo || initialReceipt?.id || ''));
     }, [initialReceipt]);
 
+    const apiFetch = async (urlPath: string, options: RequestInit = {}) => {
+        const url = getEffectiveApiUrl(urlPath);
+        const token = getAuthToken();
+        const headers: Record<string, string> = {
+            ...(options.headers as Record<string, string> || {})
+        };
+        if (options.body && typeof options.body === 'string' && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return fetch(url, { ...options, headers });
+    };
+
     const handleSaveReceiptNo = async () => {
         const cleanNo = tempReceiptNo.trim();
         if (!cleanNo) {
-            alert('لطفا شماره رسید را وارد کنید.');
             return;
         }
         setSavingReceiptNo(true);
         try {
-            const res = await fetch(`/api/sayan/cheque-receipts/${receipt.id}/update-receipt-no`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receipt.id}/update-receipt-no`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -100,11 +115,9 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 setReceipt(data.receipt);
                 setIsEditingReceiptNo(false);
                 if (onUpdateReceipt) onUpdateReceipt(data.receipt);
-            } else {
-                alert(data.error || 'خطا در ویرایش شماره رسید');
             }
         } catch (e: any) {
-            alert(e.message || 'خطا در ارتباط با سرور');
+            console.error('Error updating receipt no:', e);
         } finally {
             setSavingReceiptNo(false);
         }
@@ -140,7 +153,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 }
             }
 
-            const res = await fetch(`/api/sayan/cheque-receipts/${receipt.id}`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receipt.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -153,12 +166,9 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                 setReceipt(data.receipt);
                 if (onUpdateReceipt) onUpdateReceipt(data.receipt);
                 setShowUploader(false);
-            } else {
-                alert(data.error || 'خطا در بارگذاری و ذخیره پیوست‌ها');
             }
         } catch (err: any) {
             console.error('Error saving attachments in detail modal:', err);
-            alert('خطای ارتباط با سرور در هنگام ذخیره پیوست‌ها');
         } finally {
             setSavingAttachments(false);
         }
@@ -166,13 +176,12 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
 
     const handleDeleteAttachment = async (indexToDelete: number) => {
         if (!receipt?.id) return;
-        if (!window.confirm('آیا از حذف این پیوست اطمینان دارید؟')) return;
         setSavingAttachments(true);
         try {
             const currentAtts = [...(receipt.attachments || [])];
             currentAtts.splice(indexToDelete, 1);
 
-            const res = await fetch(`/api/sayan/cheque-receipts/${receipt.id}`, {
+            const res = await apiFetch(`/api/sayan/cheque-receipts/${receipt.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -184,12 +193,9 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
             if (data.success && data.receipt) {
                 setReceipt(data.receipt);
                 if (onUpdateReceipt) onUpdateReceipt(data.receipt);
-            } else {
-                alert(data.error || 'خطا در حذف پیوست');
             }
         } catch (err: any) {
             console.error('Error deleting attachment:', err);
-            alert('خطا در حذف پیوست');
         } finally {
             setSavingAttachments(false);
         }
@@ -676,7 +682,8 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
                         {receipt.attachments && receipt.attachments.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {receipt.attachments.map((att: any, idx: number) => {
-                                    const fileSrc = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
+                                    const rawFileSrc = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
+                                    const fileSrc = resolveImageUrl(rawFileSrc);
                                     const isPdf = att.fileName?.toLowerCase().endsWith('.pdf') || att.fileType?.includes('pdf') || att.fileData?.startsWith('data:application/pdf');
                                     return (
                                         <div key={idx} className="p-3 bg-white dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 shadow-xs">
@@ -866,7 +873,7 @@ export const ChequeReceiptDetailModal: React.FC<Props> = ({
             <FileViewerModal
                 isOpen={!!previewAttachment}
                 onClose={() => setPreviewAttachment(null)}
-                fileUrl={previewAttachment?.resolvedSrc || previewAttachment?.fileData || previewAttachment?.url || (previewAttachment?.fileName ? `/uploads/${previewAttachment.fileName}` : '')}
+                fileUrl={resolveImageUrl(previewAttachment?.resolvedSrc || previewAttachment?.fileData || previewAttachment?.url || (previewAttachment?.fileName ? `/uploads/${previewAttachment.fileName}` : ''))}
                 fileName={previewAttachment?.fileName || 'پیش‌نمایش پیوست'}
             />
         </div>,

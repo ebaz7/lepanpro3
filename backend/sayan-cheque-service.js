@@ -115,6 +115,8 @@ export const formatToShamsiDate = (dateVal) => {
     }
 };
 
+export const normalizeSayanDate = formatToShamsiDate;
+
 /**
  * Convert Date or DateTime string to Shamsi with exact time (YYYY/MM/DD - HH:mm:ss)
  * Preserves exact hours, minutes, and seconds without timezone degradation.
@@ -817,7 +819,7 @@ export const getChequeReceiptsHistory = async (fiscalYear = '4', search = '') =>
                 RTRIM(LTRIM(CONCAT(COALESCE(g.Field_006, ''), ' ', COALESCE(g.Field_007, '')))) as PersonName
             FROM BUR_TBL_008 h WITH (NOLOCK)
             LEFT JOIN GNR_TBL_001 g WITH (NOLOCK) ON RTRIM(LTRIM(g.Field_003)) = RTRIM(LTRIM(h.Field_010))
-            WHERE h.Field_009 = '11' AND h.Field_004 = '${fy}'
+            WHERE h.Field_009 = '11'
             ORDER BY CAST(h.Field_001 as bigint) DESC
         `;
         const headers = await executeSayanQuery(headersSql);
@@ -844,7 +846,7 @@ export const getChequeReceiptsHistory = async (fiscalYear = '4', search = '') =>
                             c.Field_016 as PoshtNomreh
                         FROM BUR_TBL_009 r WITH (NOLOCK)
                         LEFT JOIN BUR_TBL_012 c WITH (NOLOCK) ON c.Field_001 = r.Field_007
-                        WHERE r.Field_004 IN (${archList}) AND r.Field_003 = '${fy}'
+                        WHERE r.Field_004 IN (${archList})
                         ORDER BY CAST(r.Field_025 as int) ASC
                     `;
                     const detailRows = await executeSayanQuery(rowsSql);

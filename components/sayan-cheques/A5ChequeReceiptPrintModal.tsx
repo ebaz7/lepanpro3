@@ -20,6 +20,7 @@ import {
 import * as jalaali from 'jalaali-js';
 import { formatChequeAmountInWords } from '../../utils/persianNumberToWords';
 import { shareElementToChat, openSendToChat } from '../../services/chatShareService';
+import { resolveImageUrl } from '../../services/apiService';
 
 export interface A5ChequeData {
     id?: string | number;
@@ -246,7 +247,7 @@ function buildA5ChequePrintHtml(receipt: A5ChequeData, printTarget: 'all' | 'rec
     if (includeAttachments) {
         attachments.forEach((att, idx) => {
             const isImg = att.fileType?.startsWith('image/') || att.fileData?.startsWith('data:image');
-            const src = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
+            const src = resolveImageUrl(att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : ''));
 
             pagesHtml += `
             <div class="print-page a5-landscape" style="page-break-before: always; break-before: page;">
@@ -888,7 +889,7 @@ export const A5ChequeReceiptPrintModal: React.FC<Props> = ({
                     {/* Attached Images Preview */}
                     {hasAttachments && attachments.map((att, idx) => {
                         const isImg = att.fileType?.startsWith('image/') || att.fileData?.startsWith('data:image');
-                        const src = att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : '');
+                        const src = resolveImageUrl(att.fileData || att.url || (att.fileName ? `/uploads/${att.fileName}` : ''));
 
                         return (
                             <div key={att.id || idx} className="flex justify-center items-center">

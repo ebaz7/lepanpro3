@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { FileViewerModal } from '../FileViewerModal';
 import { getDisplayFileName } from '../../utils/fileNameUtils';
+import { getEffectiveApiUrl, getAuthToken, resolveImageUrl } from '../../services/apiService';
 
 export interface ReceiptAttachment {
     id?: string;
@@ -210,6 +211,7 @@ const uploadFileWithRetry = async (blob: Blob, originalFileName: string, retries
     }
 
     for (let attempt = 1; attempt <= retries; attempt++) {
+        const token = getAuthToken();
         // 1. Direct Multipart Fast Upload (Priority 1)
         try {
             const formData = new FormData();
@@ -217,9 +219,12 @@ const uploadFileWithRetry = async (blob: Blob, originalFileName: string, retries
 
             const controller = new AbortController();
             const timeoutTimer = setTimeout(() => controller.abort(), 20000); // 20s timeout
+            const headers: Record<string, string> = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const response = await fetch('/api/upload-file', {
+            const response = await fetch(getEffectiveApiUrl('/api/upload-file'), {
                 method: 'POST',
+                headers,
                 body: formData,
                 signal: controller.signal
             });
@@ -245,10 +250,12 @@ const uploadFileWithRetry = async (blob: Blob, originalFileName: string, retries
 
             const controller = new AbortController();
             const timeoutTimer = setTimeout(() => controller.abort(), 20000);
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const response = await fetch('/api/upload', {
+            const response = await fetch(getEffectiveApiUrl('/api/upload'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({
                     fileName: safeName,
                     fileData: dataUrl
@@ -607,8 +614,9 @@ export const MobileAttachmentUploader: React.FC<MobileAttachmentUploaderProps> =
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
                     {attachments.map((att, idx) => {
                         const isImg = att.fileType?.startsWith('image/') || att.fileData?.startsWith('data:image') || att.fileName?.match(/\.(jpg|jpeg|png|webp|bmp)$/i);
-                        const src = att.url || att.fileData || (att.fileName ? `/uploads/${att.fileName}` : '');
-                        const displayFileName = getDisplayFileName(att.fileName, src);
+                        const rawSrc = att.url || att.fileData || (att.fileName ? `/uploads/${att.fileName}` : '');
+                        const src = resolveImageUrl(rawSrc);
+                        const displayFileName = getDisplayFileName(att.fileName, rawSrc);
 
                         return (
                             <div
@@ -707,7 +715,7 @@ export const MobileAttachmentUploader: React.FC<MobileAttachmentUploaderProps> =
             <FileViewerModal
                 isOpen={!!previewAttachment}
                 onClose={() => setPreviewAttachment(null)}
-                fileUrl={previewAttachment?.url || previewAttachment?.fileData || (previewAttachment?.fileName ? `/uploads/${previewAttachment.fileName}` : '')}
+                fileUrl={resolveImageUrl(previewAttachment?.url || previewAttachment?.fileData || (previewAttachment?.fileName ? `/uploads/${previewAttachment.fileName}` : ''))}
                 fileName={previewAttachment?.fileName || 'پیش‌نمایش تصویر / سند چک'}
             />
         </div>
