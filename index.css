@@ -2561,6 +2561,30 @@ html[data-gpu-active="true"] * {
   pointer-events: auto !important;
 }
 
+/* Unrestricted smooth touch scrolling for Trade Dossiers on Android and mobile */
+.trade-dossier-view,
+.trade-dossier-content {
+  touch-action: pan-y pinch-zoom !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: auto !important;
+}
+
+.trade-dossier-view * {
+  touch-action: manipulation;
+}
+
+@media (max-width: 767px) {
+  .trade-dossier-view,
+  .trade-dossier-content {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+  }
+}
+
 /* Ensure root and app container allow scroll propagation */
 html, body, #root {
   min-height: 100%;

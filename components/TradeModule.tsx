@@ -326,18 +326,18 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
     }, [selectedRecord, settings, availableBanks]);
 
     useEffect(() => {
-        const hasActiveModal = showNewModal || showEditMetadataModal || !!editingStage || !!selectedTrancheForDeliveries || showTransferModal || showProformaPrint || !!proformaPrintTarget || showFinalReportPrint || showClearancePrint || !!selectedShippingDocForPrint;
+        const hasActiveModal = showNewModal || showEditMetadataModal || !!editingStage || !!selectedTrancheForDeliveries || showTransferModal || showProformaPrint || !!proformaPrintTarget || showFinalReportPrint || showClearancePrint || !!selectedShippingDocForPrint || showMobileStageDrawer || showMobileDocsModal || showMobileMoreOptions;
         const needsCustomBack = hasActiveModal || viewMode !== 'dashboard' || navLevel !== 'ROOT';
 
         if (needsCustomBack) {
-            window.scrollTo({ top: 0, behavior: 'instant' });
-            const mainScroll = document.getElementById('main-scroll-container');
-            if (mainScroll) {
-                mainScroll.scrollTo({ top: 0, behavior: 'instant' });
-            }
-
             const handleBack = () => {
-                if (showTransferModal) {
+                if (showMobileStageDrawer) {
+                    setShowMobileStageDrawer(false);
+                } else if (showMobileDocsModal) {
+                    setShowMobileDocsModal(false);
+                } else if (showMobileMoreOptions) {
+                    setShowMobileMoreOptions(false);
+                } else if (showTransferModal) {
                     setShowTransferModal(false);
                 } else if (showProformaPrint || proformaPrintTarget) {
                     setShowProformaPrint(false);
@@ -374,7 +374,15 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         return () => {
             window.dispatchEvent(new CustomEvent('UNREGISTER_BACK_ACTION'));
         };
-    }, [showNewModal, showEditMetadataModal, editingStage, viewMode, navLevel, selectedCompany, selectedTrancheForDeliveries, showTransferModal, showProformaPrint, proformaPrintTarget, showFinalReportPrint, showClearancePrint, selectedShippingDocForPrint]);
+    }, [showNewModal, showEditMetadataModal, editingStage, viewMode, navLevel, selectedCompany, selectedTrancheForDeliveries, showTransferModal, showProformaPrint, proformaPrintTarget, showFinalReportPrint, showClearancePrint, selectedShippingDocForPrint, showMobileStageDrawer, showMobileDocsModal, showMobileMoreOptions]);
+
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        const mainScroll = document.getElementById('main-scroll-container');
+        if (mainScroll) {
+            mainScroll.scrollTo({ top: 0, behavior: 'instant' });
+        }
+    }, [viewMode, activeTab, selectedRecord?.id]);
 
     useEffect(() => {
         loadRecords();
@@ -2641,10 +2649,10 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
 
     if (viewMode === 'reports') {
         return (
-            <div className="flex flex-col h-[calc(100dvh-140px)] md:h-[calc(100vh-100px)] bg-gray-50 md:rounded-2xl overflow-hidden md:border">
+            <div className="flex flex-col md:h-[calc(100vh-100px)] bg-gray-50 md:rounded-2xl md:overflow-hidden md:border touch-pan-y">
                 
                 {/* --- RESPONSIVE HEADER NAV FOR MOBILE --- */}
-                <div className="md:hidden glass-panel border-b p-3 flex flex-wrap gap-2 justify-center shadow-sm z-20">
+                <div className="md:hidden sticky top-0 glass-panel border-b p-3 flex flex-wrap gap-2 justify-center shadow-sm z-20">
                     <button type="button" onClick={() => setViewMode('dashboard')} className="p-2 bg-gray-100 rounded-lg"><ChevronRight size={20}/></button>
                     <button type="button" onClick={() => setActiveReport('general')} className={`px-3 py-1.5 rounded-lg text-xs border ${activeReport === 'general' ? 'bg-blue-600 text-white' : 'glass-panel text-gray-700'}`}>لیست کلی</button>
                     <button type="button" onClick={() => setActiveReport('allocation_queue')} className={`px-3 py-1.5 rounded-lg text-xs border ${activeReport === 'allocation_queue' ? 'bg-blue-600 text-white' : 'glass-panel text-gray-700'}`}>صف تخصیص</button>
@@ -2654,7 +2662,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     <button type="button" onClick={() => setActiveReport('company_performance')} className={`px-3 py-1.5 rounded-lg text-xs border ${activeReport === 'company_performance' ? 'bg-blue-600 text-white' : 'glass-panel text-gray-700'}`}>عملکرد</button>
                 </div>
 
-                <div className="flex flex-1 overflow-hidden">
+                <div className="flex flex-1 md:overflow-hidden">
                     {/* Desktop Sidebar (Hidden on Mobile) */}
                     <div className="hidden md:flex w-64 glass-panel border-l p-4 flex-col gap-2 flex-shrink-0 h-full overflow-y-auto z-10">
                         <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><FileSpreadsheet size={20}/> گزارشات بازرگانی</h3>
@@ -2685,7 +2693,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     </div>
                     
                     {/* Content */}
-                    <div className="flex-1 p-2 md:p-6 overflow-y-auto flex flex-col w-full min-h-0 bg-gray-50 dark:bg-zinc-900 custom-scrollbar overscroll-y-auto touch-pan-y">
+                    <div className="flex-1 p-2 md:p-6 md:overflow-y-auto flex flex-col w-full min-h-0 bg-gray-50 dark:bg-zinc-900 custom-scrollbar overscroll-y-auto touch-pan-y pb-24 md:pb-6">
                         <h2 className="text-xl font-bold mb-4 hidden md:block">
                             {activeReport === 'general' ? 'لیست کلی پرونده‌ها' : 
                             activeReport === 'allocation_queue' ? 'گزارش صف تخصیص' : 
@@ -3145,7 +3153,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
         };
 
         return (
-            <div className="flex flex-col flex-1 min-h-0 md:h-[calc(100vh-100px)] animate-fade-in relative">
+            <div className="flex flex-col flex-1 min-h-0 md:h-[calc(100vh-100px)] animate-fade-in relative touch-pan-y trade-dossier-view">
                 
                 {/* Final Cost Report Print Overlay */}
                 {showFinalReportPrint && (
@@ -3344,106 +3352,321 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                     document.body
                 )}
 
-                {/* Mobile Streamlined Header (Hidden on Desktop) */}
-                <div className="md:hidden glass-panel border-b border-gray-200 dark:border-zinc-800 px-2.5 py-2 flex flex-col gap-1 shadow-2xs z-20 shrink-0 bg-white/95 dark:bg-zinc-900/95 sticky top-0 backdrop-blur-md" data-html2canvas-ignore>
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <button 
-                                type="button" 
-                                data-subtab-back="true" 
-                                onClick={() => setViewMode('dashboard')} 
-                                className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full shrink-0 text-gray-700 dark:text-gray-300 active:scale-90 transition-transform"
-                                title="بازگشت به لیست پرونده‌ها"
-                            >
-                                <ArrowRight size={18} />
-                            </button>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-black text-sm text-gray-900 dark:text-white truncate max-w-[130px] sm:max-w-none">{selectedRecord.goodsName}</span>
-                                    <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 px-1.5 py-0.2 rounded-md font-bold">
-                                        {selectedRecord.fileNumber ? `#${selectedRecord.fileNumber}` : 'بدون پرونده'}
-                                    </span>
-                                    {selectedRecord.proformaNumber && (
-                                        <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800 px-1.5 py-0.2 rounded-md font-bold">
-                                            {selectedRecord.proformaNumber}
-                                        </span>
-                                    )}
+                {/* Mobile Stage Drawer Bottom Sheet */}
+                {showMobileStageDrawer && createPortal(
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowMobileStageDrawer(false)}>
+                        <div 
+                            className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-lg p-5 border border-gray-200 dark:border-zinc-800 text-right max-h-[85vh] flex flex-col animate-slide-up" 
+                            dir="rtl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100 dark:border-zinc-800 shrink-0">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                                    <h3 className="font-bold text-base text-gray-900 dark:text-gray-100">انتخاب مرحله پرونده</h3>
                                 </div>
-                                <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                    {selectedRecord.company} {selectedRecord.sellerName ? `| ${selectedRecord.sellerName}` : ''}
-                                </div>
+                                <button type="button" onClick={() => setShowMobileStageDrawer(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-400 hover:text-gray-600 cursor-pointer">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="overflow-y-auto space-y-1.5 custom-scrollbar pr-1 flex-1 py-1">
+                                {tradeTabs.map((tab, idx) => {
+                                    const TabIcon = tab.icon;
+                                    const isActive = tab.id === activeTab;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setActiveTab(tab.id as any);
+                                                setShowMobileStageDrawer(false);
+                                            }}
+                                            className={`w-full flex items-center justify-between p-3 rounded-2xl text-right transition-all cursor-pointer active:scale-98 ${
+                                                isActive 
+                                                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 font-black' 
+                                                    : 'bg-gray-50 hover:bg-gray-100 dark:bg-zinc-800/60 dark:hover:bg-zinc-800 text-gray-800 dark:text-gray-200 font-bold border border-gray-100 dark:border-zinc-800'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold shrink-0 ${
+                                                    isActive ? 'bg-white text-blue-600' : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                                                }`}>
+                                                    {idx + 1}
+                                                </span>
+                                                {TabIcon && <TabIcon size={16} className={isActive ? 'text-white' : 'text-blue-600 dark:text-blue-400'} />}
+                                                <span className="text-xs sm:text-sm">{tab.label}</span>
+                                            </div>
+                                            {tab.count !== undefined && tab.count > 0 && (
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                                                    isActive ? 'bg-white/20 text-white' : 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300'
+                                                }`}>
+                                                    {tab.count}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
+                    </div>,
+                    document.body
+                )}
 
-                        {/* Quick Mobile Actions */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            {/* Cost per kg badge */}
-                            <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-2 py-1 rounded-lg text-left font-mono">
-                                <span className="text-[8px] font-bold text-rose-600 dark:text-rose-400 block leading-none">کیلو:</span>
-                                <span className="font-black text-rose-700 dark:text-rose-300 text-xs leading-none">
-                                    {formatCurrency(costPerKg)}
-                                </span>
+                {/* Mobile Documents Bottom Sheet */}
+                {showMobileDocsModal && createPortal(
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowMobileDocsModal(false)}>
+                        <div 
+                            className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-lg p-5 border border-gray-200 dark:border-zinc-800 text-right max-h-[85vh] flex flex-col animate-slide-up" 
+                            dir="rtl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100 dark:border-zinc-800 shrink-0">
+                                <div className="flex items-center gap-2">
+                                    <FileText size={18} className="text-blue-600" />
+                                    <h3 className="font-bold text-base text-gray-900 dark:text-gray-100">اسناد و مدارک استاندارد پرونده</h3>
+                                </div>
+                                <button type="button" onClick={() => setShowMobileDocsModal(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-400 hover:text-gray-600 cursor-pointer">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="overflow-y-auto space-y-2 custom-scrollbar py-2 flex-1">
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setShowMobileDocsModal(false); setShowProformaPrint(true); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-900 rounded-2xl font-bold text-xs hover:bg-blue-100 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Printer size={16} className="text-blue-600" />
+                                        <span>مشاهده پروفرما استاندارد</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setShowMobileDocsModal(false); setShowClearancePrint(true); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-900 rounded-2xl font-bold text-xs hover:bg-emerald-100 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Printer size={16} className="text-emerald-600" />
+                                        <span>مشاهده اعلامیه ورود و ترخیصیه</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setShowMobileDocsModal(false); setShowFinalReportPrint(true); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-900 rounded-2xl font-bold text-xs hover:bg-rose-100 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Calculator size={16} className="text-rose-600" />
+                                        <span>گزارش چاپی بهای تمام‌شده نهایی</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+
+                                {selectedRecord.shippingDocuments && selectedRecord.shippingDocuments.length > 0 && (
+                                    <div className="pt-2">
+                                        <span className="text-[11px] font-bold text-gray-500 block mb-2">اسناد حمل ثبت‌شده:</span>
+                                        <div className="space-y-1.5">
+                                            {selectedRecord.shippingDocuments.map(doc => (
+                                                <button
+                                                    key={doc.id}
+                                                    type="button"
+                                                    onClick={() => { setShowMobileDocsModal(false); setSelectedShippingDocForPrint(doc); }}
+                                                    className="w-full flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-900 rounded-xl font-bold text-xs hover:bg-amber-100 transition-all cursor-pointer"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Printer size={14} className="text-amber-600" />
+                                                        <span>سند حمل: {doc.documentNumber || doc.type}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-mono text-gray-500">{doc.documentDate || ''}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+
+                {/* Mobile More Options Bottom Sheet */}
+                {showMobileMoreOptions && createPortal(
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setShowMobileMoreOptions(false)}>
+                        <div 
+                            className="bg-white dark:bg-zinc-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-lg p-5 border border-gray-200 dark:border-zinc-800 text-right animate-slide-up" 
+                            dir="rtl"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100 dark:border-zinc-800">
+                                <div className="flex items-center gap-2">
+                                    <Edit size={18} className="text-blue-600" />
+                                    <h3 className="font-bold text-base text-gray-900 dark:text-gray-100">عملیات و مدیریت پرونده</h3>
+                                </div>
+                                <button type="button" onClick={() => setShowMobileMoreOptions(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-400 hover:text-gray-600 cursor-pointer">
+                                    <X size={20} />
+                                </button>
+                            </div>
+                            <div className="space-y-2 py-1">
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setShowMobileMoreOptions(false); openEditMetadata(); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-900 rounded-2xl font-bold text-xs hover:bg-blue-100 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Edit size={16} className="text-blue-600" />
+                                        <span>ویرایش مشخصات اصلی پرونده (کالا، شرکت، فروشنده)</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+
+                                <button 
+                                    type="button" 
+                                    onClick={(e) => { setShowMobileMoreOptions(false); handleDuplicateRecord(selectedRecord, e); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-900 rounded-2xl font-bold text-xs hover:bg-indigo-100 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <Copy size={16} className="text-indigo-600" />
+                                        <span>کپی آنی و ایجاد پرونده جدید از این پرونده</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setShowMobileMoreOptions(false); setShowTransferModal(true); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-900 rounded-2xl font-bold text-xs hover:bg-amber-100 transition-all cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <ArrowRightLeft size={16} className="text-amber-600" />
+                                        <span>انتقال به گروه کالایی دیگر</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setShowMobileMoreOptions(false); setViewMode('dashboard'); }}
+                                    className="w-full flex items-center justify-between p-3.5 bg-gray-100 dark:bg-zinc-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 rounded-2xl font-bold text-xs hover:bg-gray-200 transition-all cursor-pointer mt-2"
+                                >
+                                    <div className="flex items-center gap-2.5">
+                                        <ArrowRight size={16} />
+                                        <span>بازگشت به لیست پرونده‌ها</span>
+                                    </div>
+                                    <ChevronLeft size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    </div>,
+                    document.body
+                )}
+
+                {/* Mobile Unified Sticky Header (Header + Stage Switcher) */}
+                <div className="md:hidden sticky top-0 z-30 shrink-0 shadow-2xs backdrop-blur-md" data-html2canvas-ignore>
+                    {/* Top Row: Goods Name, File Number, Cost per Kg, Docs, Edit */}
+                    <div className="glass-panel border-b border-gray-200 dark:border-zinc-800 px-2.5 py-2 flex flex-col gap-1 bg-white/95 dark:bg-zinc-900/95">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <button 
+                                    type="button" 
+                                    data-subtab-back="true" 
+                                    onClick={() => setViewMode('dashboard')} 
+                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full shrink-0 text-gray-700 dark:text-gray-300 active:scale-90 transition-transform cursor-pointer"
+                                    title="بازگشت به لیست پرونده‌ها"
+                                >
+                                    <ArrowRight size={18} />
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-black text-sm text-gray-900 dark:text-white truncate max-w-[130px] sm:max-w-none">{selectedRecord.goodsName}</span>
+                                        <span className="text-[10px] font-mono text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800 px-1.5 py-0.2 rounded-md font-bold">
+                                            {selectedRecord.fileNumber ? `#${selectedRecord.fileNumber}` : 'بدون پرونده'}
+                                        </span>
+                                        {selectedRecord.proformaNumber && (
+                                            <span className="text-[10px] font-mono text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/40 border border-purple-200 dark:border-purple-800 px-1.5 py-0.2 rounded-md font-bold">
+                                                {selectedRecord.proformaNumber}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                        {selectedRecord.company} {selectedRecord.sellerName ? `| ${selectedRecord.sellerName}` : ''}
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Quick Docs Button */}
-                            <button 
-                                type="button" 
-                                onClick={() => setShowMobileDocsModal(true)} 
-                                className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 rounded-lg relative active:scale-95 transition-all"
-                                title="مشاهده فرم‌ها و اسناد استاندارد"
-                            >
-                                <FileText size={17} />
-                                <span className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full text-[9px] font-bold w-4 h-4 flex items-center justify-center">
-                                    {2 + (selectedRecord.shippingDocuments?.length || 0)}
-                                </span>
-                            </button>
+                            {/* Quick Mobile Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                {/* Cost per kg badge */}
+                                <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-2 py-1 rounded-lg text-left font-mono">
+                                    <span className="text-[8px] font-bold text-rose-600 dark:text-rose-400 block leading-none">کیلو:</span>
+                                    <span className="font-black text-rose-700 dark:text-rose-300 text-xs leading-none">
+                                        {formatCurrency(costPerKg)}
+                                    </span>
+                                </div>
 
-                            {/* More Options */}
-                            <button 
-                                type="button" 
-                                onClick={() => setShowMobileMoreOptions(true)} 
-                                className="p-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg active:scale-95"
-                                title="عملیات و ویرایش مشخصات"
-                            >
-                                <Edit size={16} />
-                            </button>
+                                {/* Quick Docs Button */}
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowMobileDocsModal(true)} 
+                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-slate-200 rounded-lg relative active:scale-95 transition-all cursor-pointer"
+                                    title="مشاهده فرم‌ها و اسناد استاندارد"
+                                >
+                                    <FileText size={17} />
+                                    <span className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full text-[9px] font-bold w-4 h-4 flex items-center justify-center">
+                                        {2 + (selectedRecord.shippingDocuments?.length || 0)}
+                                    </span>
+                                </button>
+
+                                {/* More Options */}
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowMobileMoreOptions(true)} 
+                                    className="p-1.5 text-gray-500 hover:text-gray-800 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg active:scale-95 cursor-pointer"
+                                    title="عملیات و ویرایش مشخصات"
+                                >
+                                    <Edit size={16} />
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Mobile Stage Switcher (Hidden on Desktop) - NO HORIZONTAL SCROLLBAR */}
-                <div className="md:hidden bg-slate-50/95 dark:bg-zinc-900/95 border-b border-gray-200 dark:border-zinc-800 px-2.5 py-1.5 flex items-center justify-between gap-1 shadow-2xs shrink-0" data-html2canvas-ignore>
-                    <button 
-                        type="button" 
-                        onClick={handlePrevTab}
-                        disabled={safeTabIndex === 0}
-                        className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 ${safeTabIndex === 0 ? 'opacity-30 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 shadow-2xs'}`}
-                    >
-                        <ChevronRight size={14} />
-                        <span>قبلی</span>
-                    </button>
+                    {/* Bottom Row: Stage Navigation (Prev / Current Stage Picker / Next) */}
+                    <div className="bg-slate-50/95 dark:bg-zinc-900/95 border-b border-gray-200 dark:border-zinc-800 px-2.5 py-1.5 flex items-center justify-between gap-1">
+                        <button 
+                            type="button" 
+                            onClick={handlePrevTab}
+                            disabled={safeTabIndex === 0}
+                            className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 cursor-pointer ${safeTabIndex === 0 ? 'opacity-30 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 shadow-2xs'}`}
+                        >
+                            <ChevronRight size={14} />
+                            <span>قبلی</span>
+                        </button>
 
-                    <button 
-                        type="button" 
-                        onClick={() => setShowMobileStageDrawer(true)} 
-                        className="flex-1 max-w-[240px] mx-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 rounded-xl font-bold text-xs shadow-2xs active:scale-98 transition-all"
-                    >
-                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-mono font-bold shrink-0">
-                            {safeTabIndex + 1}
-                        </span>
-                        <span className="truncate">{currentTabObj?.label || 'انتخاب مرحله'}</span>
-                        <ChevronDown size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
-                    </button>
+                        <button 
+                            type="button" 
+                            onClick={() => setShowMobileStageDrawer(true)} 
+                            className="flex-1 max-w-[240px] mx-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 rounded-xl font-bold text-xs shadow-2xs active:scale-98 transition-all cursor-pointer"
+                        >
+                            <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-mono font-bold shrink-0">
+                                {safeTabIndex + 1}
+                            </span>
+                            <span className="truncate">{currentTabObj?.label || 'انتخاب مرحله'}</span>
+                            <ChevronDown size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                        </button>
 
-                    <button 
-                        type="button" 
-                        onClick={handleNextTab}
-                        disabled={safeTabIndex === tradeTabs.length - 1}
-                        className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 ${safeTabIndex === tradeTabs.length - 1 ? 'opacity-30 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 shadow-2xs'}`}
-                    >
-                        <span>بعدی</span>
-                        <ChevronLeft size={14} />
-                    </button>
+                        <button 
+                            type="button" 
+                            onClick={handleNextTab}
+                            disabled={safeTabIndex === tradeTabs.length - 1}
+                            className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 cursor-pointer ${safeTabIndex === tradeTabs.length - 1 ? 'opacity-30 cursor-not-allowed text-gray-400' : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-zinc-700 hover:bg-gray-50 shadow-2xs'}`}
+                        >
+                            <span>بعدی</span>
+                            <ChevronLeft size={14} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Desktop Header & Tab Bar (Hidden on Mobile) */}
@@ -3549,7 +3772,7 @@ const TradeModule: React.FC<TradeModuleProps> = ({ currentUser }) => {
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-zinc-900 pb-28 md:pb-12 custom-scrollbar">
+                <div className="flex-1 md:overflow-y-auto md:overflow-x-hidden bg-gray-50 dark:bg-zinc-900 pb-28 md:pb-12 custom-scrollbar touch-pan-y overscroll-y-auto trade-dossier-content">
                     
                     {activeTab === 'domestic_petrochemical' && (
                         <DomesticPetrochemicalTab

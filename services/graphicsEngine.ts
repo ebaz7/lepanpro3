@@ -77,18 +77,19 @@ class HybridGraphicsEngineClient {
       .overflow-y-auto,
       #main-scroll-container {
         -webkit-overflow-scrolling: touch !important;
-        overscroll-behavior-y: contain;
-        touch-action: pan-y !important;
+        overscroll-behavior-y: auto !important;
+        touch-action: pan-y pinch-zoom !important;
       }
 
-      /* Input responsiveness - 0ms touch delay while preserving vertical pan-y scroll */
+      /* Input responsiveness - 0ms touch delay while preserving vertical/horizontal touch scroll */
       button, 
       a, 
       input, 
       select, 
       textarea, 
+      label,
       [role="button"] {
-        touch-action: pan-y manipulation;
+        touch-action: manipulation !important;
       }
 
       /* Performance Turbo Mode for Tauri WebView2 & Android WebView */
