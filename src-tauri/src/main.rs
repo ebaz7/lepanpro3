@@ -131,14 +131,8 @@ fn launch_local_file_or_installer(handle: &tauri::AppHandle, target: &PathBuf) {
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-        if lower.ends_with(".exe") {
-            if std::process::Command::new(target).spawn().is_ok() {
-                return;
-            }
-        } else if lower.ends_with(".msi") {
+        // 1. MSI installer
+        if lower.ends_with(".msi") {
             if std::process::Command::new("msiexec")
                 .args(["/i", &path_str])
                 .spawn()
@@ -148,12 +142,62 @@ fn launch_local_file_or_installer(handle: &tauri::AppHandle, target: &PathBuf) {
             }
         }
 
-        if std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path_str])
-            .creation_flags(CREATE_NO_WINDOW)
+        // 2. Windows EXE installer
+        // Elevation (UAC) is needed by installer executables.
+        // Calling powershell Start-Process with -Verb RunAs prompts Windows UAC cleanly on desktop.
+        let escaped_path = path_str.replace('\'', "''");
+        let ps_cmd = format!(
+            "$p = '{}'; if (Test-Path $p) {{ Start-Process -FilePath $p -Verb RunAs }}",
+            escaped_path
+        );
+
+        if let Ok(mut child) = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                &ps_cmd,
+            ])
+            .spawn()
+        {
+            let _ = child.wait();
+            return;
+        }
+
+        // 3. Fallback: explorer.exe "<path>"
+        // Explorer executes files in standard interactive desktop session with ShellExecuteExW
+        if std::process::Command::new("explorer")
+            .arg(&path_str)
             .spawn()
             .is_ok()
         {
+            return;
+        }
+
+        // 4. Fallback: cmd.exe /C start "" "<path>" (without CREATE_NO_WINDOW so elevation/dialogs are not suppressed)
+        if std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path_str])
+            .spawn()
+            .is_ok()
+        {
+            return;
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if std::process::Command::new("open").arg(&path_str).spawn().is_ok() {
+            return;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if std::process::Command::new("xdg-open").arg(&path_str).spawn().is_ok() {
             return;
         }
     }
@@ -170,6 +214,39 @@ fn open_local_file(handle: tauri::AppHandle, file_name: String) -> Result<String
     }
     let path_str = target.to_string_lossy().to_string();
     launch_local_file_or_installer(&handle, &target);
+    Ok(path_str)
+}
+
+#[tauri::command]
+fn open_local_file_dir(handle: tauri::AppHandle, file_name: String) -> Result<String, String> {
+    let safe_name = sanitize_desktop_filename(&file_name);
+    let target = get_desktop_app_files_dir(&handle).join(safe_name);
+    if !target.exists() {
+        return Err("FILE_NOT_FOUND".to_string());
+    }
+    let path_str = target.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("explorer")
+            .args(["/select,", &path_str])
+            .spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .args(["-R", &path_str])
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(parent) = target.parent() {
+            let _ = std::process::Command::new("xdg-open")
+                .arg(parent)
+                .spawn();
+        }
+    }
+
     Ok(path_str)
 }
 
@@ -387,6 +464,7 @@ fn main() {
             start_server_cmd,
             check_local_file_exists,
             open_local_file,
+            open_local_file_dir,
             save_and_open_local_file
         ])
         .run(tauri::generate_context!())

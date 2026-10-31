@@ -585,23 +585,58 @@ export async function applyApplicationUpdate(
         return;
       }
 
-      onProgress?.(2, `در حال دانلود نسخه جدید ویندوز (v${targetVer})...`);
-      const exeBlob = await fetchBinaryWithProgress(downloadUrl, serverInfo?.desktopFileSize || 15000000, onProgress);
-      const arrayBuffer = await exeBlob.arrayBuffer();
-      const bytes = Array.from(new Uint8Array(arrayBuffer));
+      // Check if file is ALREADY downloaded locally!
+      let fileExists = false;
+      try {
+        fileExists = await invoke<boolean>('check_local_file_exists', { fileName: exeFileName });
+      } catch (e) {
+        fileExists = false;
+      }
 
-      const savedPath = await invoke<string>('save_and_open_local_file', {
-        fileName: exeFileName,
-        bytes,
-        openAfter: true
-      });
+      let savedPath = '';
 
-      onProgress?.(100, 'فایل نصبی دانلود و اجرا شد ✓');
-      toast.success(`فایل نصبی نسخه v${targetVer} دانلود و اجرا شد (${savedPath}) ✓`, { duration: 7000 });
+      if (fileExists) {
+        onProgress?.(80, 'فایل نصبی موجود است — در حال اجرای نصاب...');
+        try {
+          savedPath = await invoke<string>('open_local_file', { fileName: exeFileName });
+        } catch (openErr) {
+          console.warn('open_local_file returned error, attempting direct shell open:', openErr);
+        }
+      } else {
+        onProgress?.(2, `در حال دانلود نسخه جدید ویندوز (v${targetVer})...`);
+        const exeBlob = await fetchBinaryWithProgress(downloadUrl, serverInfo?.desktopFileSize || 15000000, onProgress);
+        const arrayBuffer = await exeBlob.arrayBuffer();
+        const bytes = Array.from(new Uint8Array(arrayBuffer));
+
+        onProgress?.(95, 'ذخیره فایل و اجرای نصاب ویندوز...');
+        savedPath = await invoke<string>('save_and_open_local_file', {
+          fileName: exeFileName,
+          bytes,
+          openAfter: true
+        });
+
+        // Complementary open_local_file call
+        try {
+          await invoke<string>('open_local_file', { fileName: exeFileName });
+        } catch {}
+      }
+
+      // Complementary execution via Tauri shell open API
+      if (savedPath) {
+        try {
+          const { open } = await import('@tauri-apps/api/shell');
+          await open(savedPath);
+        } catch (shellOpenErr) {
+          console.debug('Tauri shell.open complementary invocation:', shellOpenErr);
+        }
+      }
+
+      onProgress?.(100, 'پنجره نصاب ویندوز باز شد ✓');
+      toast.success(`فایل نصبی نسخه v${targetVer} اجرا شد ✓ مراحل نصب را در پنجره باز شده تکمیل فرمایید.`, { duration: 9000 });
       return;
     } catch (tauriSaveErr) {
       console.warn('Tauri in-app download/exec failed:', tauriSaveErr);
-      toast.error('خطا در دانلود درون‌برنامه‌ای — از دکمه «لینک مستقیم» استفاده کنید.');
+      toast.error('خطا در دانلود یا اجرای نصاب درون‌برنامه‌ای — از دکمه «لینک مستقیم» استفاده کنید.');
       throw tauriSaveErr;
     }
   }
@@ -656,5 +691,57 @@ export async function applyApplicationUpdate(
     }
   }
 }
+
+/**
+ * Check if the desktop update installer file is already downloaded and present in local app cache
+ */
+export async function isDesktopUpdateFileReady(fileName: string): Promise<boolean> {
+  if (!isTauriDesktop()) return false;
+  try {
+    const { invoke } = await import('@tauri-apps/api/tauri');
+    return await invoke<boolean>('check_local_file_exists', { fileName });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Directly execute and launch the downloaded desktop update installer
+ */
+export async function openDesktopUpdateFile(fileName: string): Promise<string> {
+  if (!isTauriDesktop()) throw new Error('Not running in Tauri desktop');
+  const { invoke } = await import('@tauri-apps/api/tauri');
+  let savedPath = '';
+  try {
+    savedPath = await invoke<string>('open_local_file', { fileName });
+  } catch (err) {
+    console.warn('open_local_file failed:', err);
+  }
+
+  // Complementary shell open
+  if (savedPath) {
+    try {
+      const { open } = await import('@tauri-apps/api/shell');
+      await open(savedPath);
+    } catch (e) {
+      console.debug('Tauri shell open fallback:', e);
+    }
+  }
+  return savedPath || fileName;
+}
+
+/**
+ * Open Windows File Explorer / Folder containing the downloaded file with the file highlighted
+ */
+export async function openDesktopUpdateFolder(fileName: string): Promise<string> {
+  if (!isTauriDesktop()) throw new Error('Not running in Tauri desktop');
+  const { invoke } = await import('@tauri-apps/api/tauri');
+  try {
+    return await invoke<string>('open_local_file_dir', { fileName });
+  } catch {
+    return await invoke<string>('open_local_file', { fileName });
+  }
+}
+
 
 
