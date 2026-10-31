@@ -675,36 +675,19 @@ const Settings: React.FC<SettingsProps> = ({
 
   const handleApplyUpdateAndRelaunch = async () => {
     const targetVer = updateManifestInfo?.version || settings.desktopLatestVersion || settings.systemVersion || currentAppVersion;
-    if (targetVer) {
-      localStorage.setItem('applied_desktop_version', targetVer);
-      localStorage.setItem('applied_android_version', targetVer);
-      localStorage.setItem('applied_server_version', targetVer);
-      localStorage.setItem('app_native_client_version', targetVer);
-      setCurrentAppVersion(targetVer);
-      setUpdateStatus("up_to_date");
-    }
-
-    const isTauri = typeof window !== "undefined" && Boolean((window as any).__TAURI__);
-    if (isTauri && (window as any).__TAURI__?.updater?.installUpdate) {
-      try {
-        await (window as any).__TAURI__.updater.installUpdate();
-        if ((window as any).__TAURI__?.process?.relaunch) {
-          await (window as any).__TAURI__.process.relaunch();
-        }
-        return;
-      } catch (e) {
-        console.warn("Tauri install failed:", e);
+    await applyApplicationUpdate(
+      {
+        version: targetVer,
+        desktopLatestVersion: targetVer,
+        androidLatestVersion: targetVer,
+        buildNumber: targetVer,
+        downloadUrl: `/api/downloads/latest-desktop?v=${encodeURIComponent(targetVer)}&ext=exe`,
+        androidDownloadUrl: `/api/downloads/latest-android?v=${encodeURIComponent(targetVer)}`
+      },
+      (pct) => {
+        setDownloadProgress(pct);
       }
-    }
-
-    // Direct download trigger if available
-    const dlUrl =
-      updateManifestInfo?.downloadUrl ||
-      settings.desktopDirectDownloadUrl ||
-      `${window.location.origin}/downloads/dlkam-desktop-setup.msi`;
-    
-    window.open(dlUrl, "_blank");
-    alert("پکیج نسخه جدید آماده نصب است. فایل ستاپ دانلود و اجرا خواهد شد و تا انتشار نسخه بالاتر، پیام آپدیت تکرار نخواهد شد.");
+    );
   };
 
   const handleTestDesktopUpdateFeed = async () => {

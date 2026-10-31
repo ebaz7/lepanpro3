@@ -3,7 +3,7 @@
  *   - package.json
  *   - src-tauri/tauri.conf.json
  *   - src-tauri/Cargo.toml
- *   - android/app/build.gradle (versionName & versionCode)
+ *   - android/app/build.gradle (versionName & strictly-increasing versionCode)
  *   - services/updateService.ts (CURRENT_CLIENT_BUILD.version)
  *   - release-version.json (read dynamically by running server.js)
  *   - database.json & db.json (systemVersion, desktopLatestVersion, androidLatestVersion)
@@ -20,6 +20,50 @@ const gradlePath = path.join(ROOT_DIR, 'android', 'app', 'build.gradle');
 const updateServicePath = path.join(ROOT_DIR, 'services', 'updateService.ts');
 const releaseJsonPath = path.join(ROOT_DIR, 'release-version.json');
 const dbPaths = [path.join(ROOT_DIR, 'database.json'), path.join(ROOT_DIR, 'db.json')];
+const downloadDirs = [path.join(ROOT_DIR, 'downloads'), path.join(ROOT_DIR, 'public', 'downloads')];
+
+function compareSemVer(v1, v2) {
+  if (!v1 && !v2) return 0;
+  if (v1 && !v2) return 1;
+  if (!v1 && v2) return -1;
+  const p1 = String(v1).replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
+  const p2 = String(v2).replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
+  const len = Math.max(p1.length, p2.length);
+  for (let i = 0; i < len; i++) {
+    const a = p1[i] || 0;
+    const b = p2[i] || 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+  return 0;
+}
+
+function extractVersionFromFileName(fileName) {
+  const match = String(fileName || '').match(/(?:v|_|-)(\d+\.\d+\.\d+)/i);
+  return match ? match[1] : null;
+}
+
+function findHighestDiskInstallerVersion(platformType) {
+  const isAndroid = platformType === 'android';
+  let maxVer = null;
+  for (const dir of downloadDirs) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        const lower = f.toLowerCase();
+        const isMatch = isAndroid
+          ? lower.endsWith('.apk')
+          : (lower.endsWith('.exe') || lower.endsWith('.msi'));
+        if (!isMatch) continue;
+        const ver = extractVersionFromFileName(f);
+        if (ver && (!maxVer || compareSemVer(ver, maxVer) > 0)) {
+          maxVer = ver;
+        }
+      }
+    } catch (_) {}
+  }
+  return maxVer;
+}
 
 function bumpPatchVersion(ver) {
   const clean = String(ver || '1.0.0').trim().replace(/^v/i, '');
@@ -40,27 +84,68 @@ function versionToCode(ver) {
 
 function syncBuildVersion(options = {}) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-  let currentVersion = (pkg.version || '1.0.0').trim();
+  let maxKnownVersion = (pkg.version || '1.0.0').trim();
 
+  const updateMax = (cand) => {
+    if (cand && compareSemVer(cand, maxKnownVersion) > 0) {
+      maxKnownVersion = String(cand).trim().replace(/^v/i, '');
+    }
+  };
+
+  // Check release-version.json
   if (fs.existsSync(releaseJsonPath)) {
     try {
       const rel = JSON.parse(fs.readFileSync(releaseJsonPath, 'utf8'));
-      if (rel.version && rel.version.localeCompare(currentVersion, undefined, { numeric: true }) > 0) {
-        currentVersion = rel.version;
-      }
+      updateMax(rel.version);
+      updateMax(rel.desktopLatestVersion);
+      updateMax(rel.androidLatestVersion);
     } catch (_) {}
   }
 
-  let targetVersion = currentVersion;
+  // Check database.json / db.json
+  for (const dbPath of dbPaths) {
+    if (fs.existsSync(dbPath)) {
+      try {
+        const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+        updateMax(db?.settings?.systemVersion);
+        updateMax(db?.settings?.desktopLatestVersion);
+        updateMax(db?.settings?.androidLatestVersion);
+      } catch (_) {}
+    }
+  }
+
+  // Check actual installer files in downloads/ so git pull never resets the version backwards
+  const diskDesktopVer = findHighestDiskInstallerVersion('desktop');
+  const diskAndroidVer = findHighestDiskInstallerVersion('android');
+  updateMax(diskDesktopVer);
+  updateMax(diskAndroidVer);
+
+  let targetVersion = maxKnownVersion;
   if (options.explicitVersion) {
     targetVersion = String(options.explicitVersion).trim().replace(/^v/i, '');
   } else if (options.bump) {
-    targetVersion = bumpPatchVersion(currentVersion);
+    targetVersion = bumpPatchVersion(maxKnownVersion);
   }
 
   const buildNumber = `b_${Date.now()}`;
   const timestamp = Date.now();
-  const versionCode = versionToCode(targetVersion);
+  let versionCode = versionToCode(targetVersion);
+
+  // Ensure versionCode in build.gradle is strictly greater than any existing versionCode
+  if (fs.existsSync(gradlePath)) {
+    try {
+      const gradleRaw = fs.readFileSync(gradlePath, 'utf8');
+      const existingCodeMatch = gradleRaw.match(/versionCode\s+(\d+)/);
+      if (existingCodeMatch && existingCodeMatch[1]) {
+        const existingCode = parseInt(existingCodeMatch[1], 10) || 0;
+        if (options.bump && versionCode <= existingCode) {
+          versionCode = existingCode + 1;
+        } else if (versionCode < existingCode) {
+          versionCode = existingCode;
+        }
+      }
+    } catch (_) {}
+  }
 
   console.log(`\n==============================================================`);
   console.log(`📌 تنظیم نسخه یکپارچه سیستم روی: v${targetVersion} (کد بیلد اندروید: ${versionCode})`);
@@ -102,13 +187,6 @@ function syncBuildVersion(options = {}) {
       /versionName\s+"[^"]*"/,
       `versionName "${targetVersion}"`
     );
-    const unsafeGsRegex = /if\s*\(\s*servicesJSON\.text\s*\)\s*\{\s*apply\s+plugin:\s*['"]com\.google\.gms\.google-services['"]\s*\}/;
-    if (unsafeGsRegex.test(gradleContent)) {
-      gradleContent = gradleContent.replace(
-        unsafeGsRegex,
-        `if (servicesJSON.exists() && servicesJSON.text && servicesJSON.text.contains('"com.dikam.paymentorder"')) {\n        apply plugin: 'com.google.gms.google-services'\n    }`
-      );
-    }
     fs.writeFileSync(gradlePath, gradleContent, 'utf8');
     console.log(`   ✅ android/app/build.gradle -> versionName "${targetVersion}", versionCode ${versionCode}`);
   }
@@ -128,7 +206,6 @@ function syncBuildVersion(options = {}) {
           cloned.client_info.android_client_info.package_name = 'com.dikam.paymentorder';
           gsJson.client.push(cloned);
           fs.writeFileSync(googleServicesPath, JSON.stringify(gsJson, null, 2) + '\n', 'utf8');
-          console.log(`   ✅ android/app/google-services.json -> package_name "com.dikam.paymentorder" added`);
         }
       }
     } catch (_) {}
@@ -143,7 +220,7 @@ function syncBuildVersion(options = {}) {
     } catch (_) {}
   }
 
-  // 6. Write release-version.json
+  // 6. Write release-version.json (keeping desktopLatestVersion and androidLatestVersion accurate to what was actually built)
   let existingRelease = {};
   if (fs.existsSync(releaseJsonPath)) {
     try {
@@ -151,11 +228,18 @@ function syncBuildVersion(options = {}) {
     } catch (_) {}
   }
 
+  const newDesktopLatest = options.platform === 'android'
+    ? (diskDesktopVer || existingRelease.desktopLatestVersion || null)
+    : targetVersion;
+  const newAndroidLatest = options.platform === 'tauri'
+    ? (diskAndroidVer || existingRelease.androidLatestVersion || null)
+    : targetVersion;
+
   const releasePayload = {
     ...existingRelease,
     version: targetVersion,
-    desktopLatestVersion: options.platform === 'android' ? (existingRelease.desktopLatestVersion || targetVersion) : targetVersion,
-    androidLatestVersion: options.platform === 'tauri' ? (existingRelease.androidLatestVersion || targetVersion) : targetVersion,
+    desktopLatestVersion: newDesktopLatest,
+    androidLatestVersion: newAndroidLatest,
     buildNumber,
     versionCode,
     timestamp,
@@ -171,15 +255,11 @@ function syncBuildVersion(options = {}) {
         if (db && typeof db === 'object') {
           if (!db.settings) db.settings = {};
           db.settings.systemVersion = targetVersion;
-          if (options.platform !== 'android') {
-            db.settings.desktopLatestVersion = targetVersion;
-          } else if (!db.settings.desktopLatestVersion) {
-            db.settings.desktopLatestVersion = targetVersion;
+          if (newDesktopLatest) {
+            db.settings.desktopLatestVersion = newDesktopLatest;
           }
-          if (options.platform !== 'tauri') {
-            db.settings.androidLatestVersion = targetVersion;
-          } else if (!db.settings.androidLatestVersion) {
-            db.settings.androidLatestVersion = targetVersion;
+          if (newAndroidLatest) {
+            db.settings.androidLatestVersion = newAndroidLatest;
           }
           db.settings.systemBuildNumber = buildNumber;
           db.settings.systemUpdatePublishedAt = timestamp;
@@ -200,3 +280,4 @@ if (require.main === module) {
 }
 
 module.exports = { syncBuildVersion };
+

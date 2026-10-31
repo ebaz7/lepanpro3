@@ -303,13 +303,13 @@ app.get('/manifest.json', (req, res) => {
 
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '7d' })); // Cache uploads for speed
 
-// Helper to compare semantic version strings (e.g. "1.0.7" > "1.0.3")
+// Helper to compare semantic version strings (e.g. "1.0.27" > "1.0.6")
 function compareInstallerSemVer(v1, v2) {
     if (!v1 && !v2) return 0;
     if (v1 && !v2) return 1;
     if (!v1 && v2) return -1;
-    const p1 = String(v1).split('.').map(n => parseInt(n, 10) || 0);
-    const p2 = String(v2).split('.').map(n => parseInt(n, 10) || 0);
+    const p1 = String(v1).replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
+    const p2 = String(v2).replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
     const len = Math.max(p1.length, p2.length);
     for (let i = 0; i < len; i++) {
         const a = p1[i] || 0;
@@ -321,29 +321,51 @@ function compareInstallerSemVer(v1, v2) {
 }
 
 function extractVersionFromFileName(fileName) {
-    const match = String(fileName || '').match(/(?:v|_)(\d+\.\d+\.\d+)/i);
+    const match = String(fileName || '').match(/(?:v|_|-)(\d+\.\d+\.\d+)/i);
     return match ? match[1] : null;
 }
 
-function findNewestInstallerFile(platformType) {
+function readBuildConfigVersion(platformType) {
+    try {
+        if (platformType === 'android') {
+            const gradlePath = path.join(ROOT_DIR, 'android', 'app', 'build.gradle');
+            if (fs.existsSync(gradlePath)) {
+                const content = fs.readFileSync(gradlePath, 'utf8');
+                const m = content.match(/versionName\s+["'](\d+\.\d+\.\d+)["']/);
+                if (m && m[1]) return m[1];
+            }
+        } else {
+            const tauriConfPath = path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json');
+            if (fs.existsSync(tauriConfPath)) {
+                const conf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
+                if (conf?.package?.version) return String(conf.package.version).trim();
+            }
+        }
+    } catch (_) {}
+    return null;
+}
+
+function findNewestInstallerFile(platformType, preferredExt = null) {
     const isAndroid = platformType === 'android';
     const searchDirs = isAndroid
         ? [
-            path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release'),
             DOWNLOADS_DIR,
             PUBLIC_DOWNLOADS_DIR,
+            path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'release'),
             ROOT_DIR,
             path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'debug')
         ]
         : [
-            path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
-            path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
             DOWNLOADS_DIR,
             PUBLIC_DOWNLOADS_DIR,
+            path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
+            path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
             ROOT_DIR
         ];
 
     const candidates = [];
+    const seenPaths = new Set();
+
     for (const dir of searchDirs) {
         if (!fs.existsSync(dir)) continue;
         try {
@@ -352,14 +374,20 @@ function findNewestInstallerFile(platformType) {
                 const lower = f.toLowerCase();
                 const isMatch = isAndroid
                     ? lower.endsWith('.apk')
-                    : (lower.endsWith('.msi') || (lower.endsWith('.exe') && (lower.includes('dlkam') || lower.includes('sayan') || lower.includes('setup'))));
+                    : (lower.endsWith('.msi') || (lower.endsWith('.exe') && (lower.includes('dlkam') || lower.includes('sayan') || lower.includes('setup') || lower.includes('delkam'))));
                 if (!isMatch) continue;
-                const fullPath = path.join(dir, f);
+                const fullPath = path.resolve(dir, f);
+                if (seenPaths.has(fullPath)) continue;
+                seenPaths.add(fullPath);
+
                 const stat = fs.statSync(fullPath);
-                if (!stat.isFile() || stat.size < 1024) continue;
+                if (!stat.isFile() || stat.size < 102400) continue; // Ignore tiny/corrupt files < 100KB
+                const ext = lower.endsWith('.apk') ? 'apk' : (lower.endsWith('.exe') ? 'exe' : 'msi');
                 candidates.push({
                     filePath: fullPath,
                     fileName: f,
+                    ext,
+                    size: stat.size,
                     mtimeMs: stat.mtimeMs,
                     version: extractVersionFromFileName(f)
                 });
@@ -369,28 +397,96 @@ function findNewestInstallerFile(platformType) {
 
     if (candidates.length === 0) return null;
 
-    // Sort: if files are within 60 seconds of the newest mtimeMs, prefer higher semantic version; otherwise prefer newest mtimeMs or highest semantic version
+    // 1. Identify all candidates that carry an explicit semantic version in their filename (e.g. dlkam-desktop-v1.0.26.exe)
+    const versionedCandidates = candidates.filter(c => Boolean(c.version));
+
+    if (versionedCandidates.length > 0) {
+        // Find the maximum semantic version among all versioned installer files on disk
+        let maxVersion = versionedCandidates[0].version;
+        for (const c of versionedCandidates) {
+            if (compareInstallerSemVer(c.version, maxVersion) > 0) {
+                maxVersion = c.version;
+            }
+        }
+
+        // Collect all files matching this highest semantic version
+        let topVersionFiles = versionedCandidates.filter(c => compareInstallerSemVer(c.version, maxVersion) === 0);
+
+        // Check if an unversioned file (e.g. app-release.apk or dlkam-desktop-setup.exe) was built significantly more recently (> 2 minutes newer) with a different size
+        const newestTopMtime = Math.max(...topVersionFiles.map(c => c.mtimeMs));
+        const unversionedNewer = candidates
+            .filter(c => !c.version && (c.mtimeMs - newestTopMtime > 120000) && !topVersionFiles.some(t => t.size === c.size))
+            .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+        if (unversionedNewer.length > 0) {
+            const chosenUnver = unversionedNewer[0];
+            const fallbackVer = readBuildConfigVersion(platformType);
+            if (fallbackVer && compareInstallerSemVer(fallbackVer, maxVersion) > 0) {
+                chosenUnver.version = fallbackVer;
+                return chosenUnver;
+            }
+        }
+
+        // On Desktop: prefer .exe (NSIS installer) over .msi because .exe upgrades cleanly in-place without MSI product code conflicts
+        const wantExt = preferredExt || (isAndroid ? 'apk' : 'exe');
+        const matchingExtFiles = topVersionFiles.filter(c => c.ext === wantExt);
+        if (matchingExtFiles.length > 0) {
+            matchingExtFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
+            return matchingExtFiles[0];
+        }
+
+        topVersionFiles.sort((a, b) => b.mtimeMs - a.mtimeMs);
+        return topVersionFiles[0];
+    }
+
+    // 2. Fallback if only unversioned installer files exist on disk
     candidates.sort((a, b) => {
-        const verCmp = compareInstallerSemVer(a.version, b.version);
-        if (a.version && b.version && verCmp !== 0) {
-            return -verCmp;
+        if (!isAndroid && a.ext !== b.ext && Math.abs(a.mtimeMs - b.mtimeMs) < 120000) {
+            return a.ext === 'exe' ? -1 : 1;
         }
-        if (Math.abs(b.mtimeMs - a.mtimeMs) > 5000) {
-            return b.mtimeMs - a.mtimeMs;
-        }
-        if (verCmp !== 0) return -verCmp;
         return b.mtimeMs - a.mtimeMs;
     });
-
-    const newestByTime = [...candidates].sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-    const newestByVer = candidates[0];
-    // Pick whichever was actually modified most recently (or if same build batch, the versioned one)
-    const chosen = (newestByTime.mtimeMs - newestByVer.mtimeMs > 10000) ? newestByTime : newestByVer;
-    if (!chosen.version) {
-        const versionedPeer = candidates.find(c => c.version && Math.abs(c.mtimeMs - chosen.mtimeMs) < 120000);
-        if (versionedPeer) chosen.version = versionedPeer.version;
-    }
+    const chosen = candidates[0];
+    chosen.version = readBuildConfigVersion(platformType) || '1.0.0';
     return chosen;
+}
+
+function sendAndroidInstallerResponse(req, res) {
+    const bestApk = findNewestInstallerFile('android');
+    if (bestApk && fs.existsSync(bestApk.filePath)) {
+        const dlName = bestApk.version ? `dlkam-android-v${bestApk.version}.apk` : 'dlkam-android-latest.apk';
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', `attachment; filename="${dlName}"`);
+        if (bestApk.size) {
+            res.setHeader('Content-Length', String(bestApk.size));
+        }
+        return res.sendFile(bestApk.filePath);
+    }
+    return res.status(404).json({ error: 'فایل نصبی اندروید (APK) در پوشه downloads سرور یافت نشد.' });
+}
+
+function sendDesktopInstallerResponse(req, res) {
+    const reqExt = String(req.query?.ext || req.query?.format || '').toLowerCase();
+    const preferredExt = (reqExt === 'msi') ? 'msi' : 'exe';
+    const bestDesktop = findNewestInstallerFile('desktop', preferredExt);
+    if (bestDesktop && fs.existsSync(bestDesktop.filePath)) {
+        const isExe = bestDesktop.fileName.toLowerCase().endsWith('.exe');
+        const ext = isExe ? 'exe' : 'msi';
+        const dlName = bestDesktop.version ? `dlkam-desktop-v${bestDesktop.version}.${ext}` : `dlkam-desktop-setup.${ext}`;
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', isExe ? 'application/x-msdownload' : 'application/x-msi');
+        res.setHeader('Content-Disposition', `attachment; filename="${dlName}"`);
+        if (bestDesktop.size) {
+            res.setHeader('Content-Length', String(bestDesktop.size));
+        }
+        return res.sendFile(bestDesktop.filePath);
+    }
+    return res.status(404).json({ error: 'فایل نصبی ویندوز در پوشه downloads سرور یافت نشد.' });
 }
 
 // --- DYNAMIC ANDROID APK DOWNLOAD PROVIDER (Registered BEFORE static middleware, zero cache) ---
@@ -406,41 +502,20 @@ const androidDownloadRoutes = [
     '/api/downloads/dlkam-android-latest.apk'
 ];
 
-app.get(androidDownloadRoutes, (req, res) => {
-    // 1. Look for newest local installer file
-    const bestApk = findNewestInstallerFile('android');
-    if (bestApk && fs.existsSync(bestApk.filePath)) {
-        const dlName = bestApk.version ? `dlkam-android-v${bestApk.version}.apk` : 'dlkam-android-latest.apk';
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-        res.setHeader('Content-Disposition', `attachment; filename="${dlName}"`);
-        return res.sendFile(bestApk.filePath);
-    }
+app.get(androidDownloadRoutes, sendAndroidInstallerResponse);
 
-    // 2. Check if a configured Android direct download URL exists in settings
-    try {
-        const db = typeof getDb === 'function' ? getDb() : {};
-        const settings = db.settings || {};
-        const customUrl = (settings.androidDirectDownloadUrl || settings.androidDownloadUrl || '').trim();
-        if (customUrl && (customUrl.startsWith('http://') || customUrl.startsWith('https://'))) {
-            return res.redirect(customUrl);
-        }
-    } catch (_) {}
-
-    // 3. Fallback to production CDN
-    return res.redirect('https://dlkam.ir/downloads/dlkam-android-latest.apk');
-});
-
-// --- DYNAMIC DESKTOP INSTALLER (.msi / .exe) DOWNLOAD PROVIDER (Registered BEFORE static middleware, zero cache) ---
+// --- DYNAMIC DESKTOP INSTALLER (.exe / .msi) DOWNLOAD PROVIDER (Registered BEFORE static middleware, zero cache) ---
 const desktopDownloadRoutes = [
     '/downloads/dlkam-desktop-setup.msi',
     '/downloads/dlkam-desktop-setup.exe',
     '/downloads/delkam-desktop-setup.msi',
+    '/downloads/delkam-desktop-setup.exe',
     '/downloads/sayan-desktop-setup.msi',
+    '/downloads/sayan-desktop-setup.exe',
     '/downloads/desktop-setup.msi',
+    '/downloads/desktop-setup.exe',
     '/downloads/setup.msi',
+    '/downloads/setup.exe',
     '/downloads/latest-desktop',
     '/api/downloads/desktop',
     '/api/downloads/latest-desktop',
@@ -452,42 +527,21 @@ const desktopDownloadRoutes = [
     '/api/downloads/setup.msi'
 ];
 
-app.get(desktopDownloadRoutes, (req, res) => {
-    // 1. Look for newest local installer file
-    const bestDesktop = findNewestInstallerFile('desktop');
-    if (bestDesktop && fs.existsSync(bestDesktop.filePath)) {
-        const isExe = bestDesktop.fileName.toLowerCase().endsWith('.exe');
-        const ext = isExe ? 'exe' : 'msi';
-        const dlName = bestDesktop.version ? `dlkam-desktop-v${bestDesktop.version}.${ext}` : `dlkam-desktop-setup.${ext}`;
-        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.setHeader('Content-Type', isExe ? 'application/x-msdownload' : 'application/x-msi');
-        res.setHeader('Content-Disposition', `attachment; filename="${dlName}"`);
-        return res.sendFile(bestDesktop.filePath);
+app.get(desktopDownloadRoutes, sendDesktopInstallerResponse);
+
+// Catch-all interceptor for ANY .apk, .exe, or .msi requested under /downloads/* or /api/downloads/*
+// This ensures even older installed Tauri/Android clients requesting a hardcoded or old version filename
+// ALWAYS receive the newest built installer file from disk!
+app.get(['/downloads/:fileName', '/api/downloads/:fileName'], (req, res, next) => {
+    if (req.query?.exact === '1') return next();
+    const fname = String(req.params.fileName || '').toLowerCase();
+    if (fname.endsWith('.apk')) {
+        return sendAndroidInstallerResponse(req, res);
     }
-
-    // 2. Check if a configured desktop download URL exists in settings
-    try {
-        const db = typeof getDb === 'function' ? getDb() : {};
-        const settings = db.settings || {};
-        let customUrl = (settings.desktopDirectDownloadUrl || '').trim();
-        const targetVer = settings.desktopLatestVersion || settings.systemVersion || '';
-        
-        // Auto-adapt hardcoded old versions in URL (e.g. Dlkam_1.0.6 -> Dlkam_1.0.20)
-        if (customUrl && targetVer && /_\d+\.\d+\.\d+_/i.test(customUrl)) {
-            customUrl = customUrl.replace(/_\d+\.\d+\.\d+_/i, `_${targetVer}_`);
-        } else if (customUrl && targetVer && /[-_]v?\d+\.\d+\.\d+\./i.test(customUrl)) {
-            customUrl = customUrl.replace(/([-_]v?)\d+\.\d+\.\d+(\.)/i, `$1${targetVer}$2`);
-        }
-
-        if (customUrl && (customUrl.startsWith('http://') || customUrl.startsWith('https://'))) {
-            return res.redirect(customUrl);
-        }
-    } catch (_) {}
-
-    // 3. Fallback to production CDN
-    return res.redirect('https://dlkam.ir/downloads/dlkam-desktop-setup.msi');
+    if (fname.endsWith('.exe') || fname.endsWith('.msi')) {
+        return sendDesktopInstallerResponse(req, res);
+    }
+    return next();
 });
 
 app.use('/downloads', express.static(PUBLIC_DOWNLOADS_DIR, { maxAge: 0, etag: false }));
@@ -8349,21 +8403,37 @@ const getSyncedVersionSettings = (db) => {
             const dbTimestamp = Number(db.settings.systemUpdatePublishedAt) || 0;
             if (relData.version && relTimestamp >= dbTimestamp) {
                 db.settings.systemVersion = relData.version;
-                db.settings.desktopLatestVersion = relData.desktopLatestVersion || relData.version;
-                db.settings.androidLatestVersion = relData.androidLatestVersion || relData.version;
                 db.settings.systemBuildNumber = relData.buildNumber || `b_${relTimestamp}`;
                 db.settings.systemUpdatePublishedAt = relTimestamp;
             }
         }
-        // Auto-detect actual newest built desktop (.msi/.exe) and Android (.apk) files on disk
+        // Strictly determine desktop (.exe/.msi) and Android (.apk) versions from the ACTUAL newest installer files on disk!
         if (typeof findNewestInstallerFile === 'function') {
-            const bestDesktop = findNewestInstallerFile('desktop');
+            const bestDesktop = findNewestInstallerFile('desktop', 'exe');
             if (bestDesktop && bestDesktop.version) {
                 db.settings.desktopLatestVersion = bestDesktop.version;
+                db.settings.hasDesktopInstaller = true;
+                db.settings.desktopInstallerFileName = bestDesktop.fileName;
+                db.settings.desktopInstallerExt = bestDesktop.ext || 'exe';
+                db.settings.desktopInstallerSize = bestDesktop.size || 0;
+                if (compareInstallerSemVer(bestDesktop.version, db.settings.systemVersion || '1.0.0') > 0) {
+                    db.settings.systemVersion = bestDesktop.version;
+                }
+            } else {
+                db.settings.hasDesktopInstaller = false;
             }
+
             const bestAndroid = findNewestInstallerFile('android');
             if (bestAndroid && bestAndroid.version) {
                 db.settings.androidLatestVersion = bestAndroid.version;
+                db.settings.hasAndroidInstaller = true;
+                db.settings.androidInstallerFileName = bestAndroid.fileName;
+                db.settings.androidInstallerSize = bestAndroid.size || 0;
+                if (compareInstallerSemVer(bestAndroid.version, db.settings.systemVersion || '1.0.0') > 0) {
+                    db.settings.systemVersion = bestAndroid.version;
+                }
+            } else {
+                db.settings.hasAndroidInstaller = false;
             }
         }
     } catch (_) {}
@@ -8374,21 +8444,27 @@ const getSyncedVersionSettings = (db) => {
 app.get('/api/desktop/updater.json', (req, res) => {
     const db = getDb();
     const settings = getSyncedVersionSettings(db);
-    const version = settings.desktopLatestVersion || settings.systemVersion || '1.0.0';
-    const androidVersion = settings.androidLatestVersion || settings.systemVersion || version;
+    const bestDesktop = findNewestInstallerFile('desktop', 'exe');
+    const bestAndroid = findNewestInstallerFile('android');
+
+    const desktopVersion = bestDesktop?.version || settings.desktopLatestVersion || '1.0.0';
+    const androidVersion = bestAndroid?.version || settings.androidLatestVersion || '1.0.0';
+    const desktopExt = bestDesktop?.ext || 'exe';
     const notes = settings.desktopReleaseNotes || settings.releaseNotes || 'نسخه جدید سیستم مدیریت انبار و حسابداری سایان با قابلیت‌های بهبود یافته.';
     const pubDate = settings.systemUpdatePublishedAt ? new Date(Number(settings.systemUpdatePublishedAt)).toISOString() : new Date().toISOString();
-    let downloadUrl = settings.desktopDirectDownloadUrl || '';
-    if (!downloadUrl || downloadUrl.includes('/updater.json')) {
-        downloadUrl = `${req.protocol}://${req.get('host')}/downloads/dlkam-desktop-setup.msi`;
-    }
-    const androidDownloadUrl = `${req.protocol}://${req.get('host')}/downloads/dlkam-android-latest.apk`;
+
+    const downloadUrl = `${req.protocol}://${req.get('host')}/api/downloads/latest-desktop?v=${encodeURIComponent(desktopVersion)}&ext=${desktopExt}`;
+    const androidDownloadUrl = `${req.protocol}://${req.get('host')}/api/downloads/latest-android?v=${encodeURIComponent(androidVersion)}`;
 
     // Standard Tauri v1 Auto-Updater JSON schema
     const updaterManifest = {
-        version: version,
-        desktopLatestVersion: version,
+        version: desktopVersion,
+        desktopLatestVersion: desktopVersion,
         androidLatestVersion: androidVersion,
+        hasDesktopInstaller: Boolean(bestDesktop),
+        hasAndroidInstaller: Boolean(bestAndroid),
+        desktopFileName: bestDesktop ? `dlkam-desktop-v${desktopVersion}.${desktopExt}` : null,
+        androidFileName: bestAndroid ? `dlkam-android-v${androidVersion}.apk` : null,
         notes: notes,
         pub_date: pubDate,
         url: downloadUrl,
@@ -8410,24 +8486,40 @@ app.get('/api/desktop/updater.json', (req, res) => {
             }
         }
     };
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(updaterManifest);
 });
 
 app.get('/api/desktop/check-update', (req, res) => {
     const db = getDb();
     const settings = getSyncedVersionSettings(db);
+    const bestDesktop = findNewestInstallerFile('desktop', 'exe');
+    const bestAndroid = findNewestInstallerFile('android');
+    const desktopVersion = bestDesktop?.version || settings.desktopLatestVersion || '1.0.0';
+    const androidVersion = bestAndroid?.version || settings.androidLatestVersion || '1.0.0';
+    const desktopExt = bestDesktop?.ext || 'exe';
+
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json({
-        latestVersion: settings.desktopLatestVersion || settings.systemVersion || '1.0.0',
-        androidLatestVersion: settings.androidLatestVersion || settings.systemVersion || '1.0.0',
+        latestVersion: desktopVersion,
+        desktopLatestVersion: desktopVersion,
+        androidLatestVersion: androidVersion,
+        hasDesktopInstaller: Boolean(bestDesktop),
+        hasAndroidInstaller: Boolean(bestAndroid),
+        desktopFileName: bestDesktop ? `dlkam-desktop-v${desktopVersion}.${desktopExt}` : null,
+        desktopFileSize: bestDesktop?.size || 0,
+        androidFileName: bestAndroid ? `dlkam-android-v${androidVersion}.apk` : null,
+        androidFileSize: bestAndroid?.size || 0,
         releaseNotes: settings.desktopReleaseNotes || 'پایدار و به‌روز',
-        updateUrl: settings.desktopUpdateUrl || '',
-        directDownloadUrl: settings.desktopDirectDownloadUrl || '',
+        updateUrl: `/api/desktop/updater.json`,
+        directDownloadUrl: `/api/downloads/latest-desktop?v=${encodeURIComponent(desktopVersion)}&ext=${desktopExt}`,
+        androidDownloadUrl: `/api/downloads/latest-android?v=${encodeURIComponent(androidVersion)}`,
         autoCheck: settings.desktopAutoCheckUpdates !== false,
         updateIntervalMinutes: Number(settings.desktopUpdateIntervalMinutes) || 60,
         lastCheckTime: settings.desktopLastCheckTime || null,
         updateChannel: settings.desktopUpdateChannel || 'stable',
         localServerUrl: settings.desktopLocalServerUrl || 'http://localhost:3000',
-        cloudServerUrl: settings.desktopCloudServerUrl || 'https://ais-dev-wjlf3a3s2y7mgngiaxufff-97484218589.us-east1.run.app'
+        cloudServerUrl: settings.desktopCloudServerUrl || 'https://dlkam.ir'
     });
 });
 
@@ -12124,20 +12216,34 @@ app.get('/api/version', (req, res) => {
     try {
         const db = typeof getDb === 'function' ? getDb() : {};
         const settings = getSyncedVersionSettings(db);
-        const version = settings.systemVersion || settings.desktopLatestVersion || '1.0.0';
-        const desktopLatestVersion = settings.desktopLatestVersion || version;
-        const androidLatestVersion = settings.androidLatestVersion || version;
+        const bestDesktop = findNewestInstallerFile('desktop', 'exe');
+        const bestAndroid = findNewestInstallerFile('android');
+
+        const version = settings.systemVersion || bestDesktop?.version || bestAndroid?.version || '1.0.0';
+        // Strictly use actual installer file versions on disk for Desktop and Android
+        const desktopLatestVersion = bestDesktop?.version || null;
+        const androidLatestVersion = bestAndroid?.version || null;
+        const desktopExt = bestDesktop?.ext || 'exe';
+
         const buildNumber = settings.systemBuildNumber || (settings.systemUpdatePublishedAt ? `b_${settings.systemUpdatePublishedAt}` : '100');
-        const title = settings.releaseTitle || 'نسخۀ جدید';
+        const title = settings.releaseTitle || 'نسخه جدید سامانه';
         const releaseNotes = settings.releaseNotes || settings.desktopReleaseNotes || 'به‌روزرسانی و بهینه‌سازی سامانه مالی و بازرگانی';
         const publishedAt = settings.systemUpdatePublishedAt || 0;
-        const androidDownloadUrl = settings.androidDownloadUrl || '/downloads/dlkam-android-latest.apk';
-        const downloadUrl = settings.desktopDirectDownloadUrl || '/downloads/dlkam-desktop-setup.msi';
+
+        const androidDownloadUrl = `/api/downloads/latest-android?v=${encodeURIComponent(androidLatestVersion || version)}`;
+        const downloadUrl = `/api/downloads/latest-desktop?v=${encodeURIComponent(desktopLatestVersion || version)}&ext=${desktopExt}`;
         
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.json({ 
             version,
             desktopLatestVersion,
             androidLatestVersion,
+            hasDesktopInstaller: Boolean(bestDesktop),
+            hasAndroidInstaller: Boolean(bestAndroid),
+            desktopFileName: bestDesktop ? `dlkam-desktop-v${desktopLatestVersion}.${desktopExt}` : null,
+            desktopFileSize: bestDesktop?.size || 0,
+            androidFileName: bestAndroid ? `dlkam-android-v${androidLatestVersion}.apk` : null,
+            androidFileSize: bestAndroid?.size || 0,
             buildNumber, 
             title, 
             releaseNotes,
@@ -12148,7 +12254,7 @@ app.get('/api/version', (req, res) => {
             autoCheck: settings.desktopAutoCheckUpdates !== false
         });
     } catch (e) {
-        res.json({ version: '1.0.0', buildNumber: '100', title: 'نسخۀ جدید', androidDownloadUrl: '/downloads/dlkam-android-latest.apk' });
+        res.json({ version: '1.0.0', buildNumber: '100', title: 'نسخۀ جدید', androidDownloadUrl: '/api/downloads/latest-android' });
     }
 });
 
@@ -12163,11 +12269,14 @@ app.post('/api/version/publish', async (req, res) => {
         const db = typeof getDb === 'function' ? getDb() : {};
         if (!db.settings) db.settings = {};
 
+        const bestDesktop = findNewestInstallerFile('desktop', 'exe');
+        const bestAndroid = findNewestInstallerFile('android');
+
         const now = Date.now();
         const buildNumber = `b_${now.toString(36).toUpperCase()}`;
         const newVersion = version.trim();
-        const newDesktopVer = (desktopLatestVersion || newVersion).trim();
-        const newAndroidVer = (androidLatestVersion || newVersion).trim();
+        const newDesktopVer = bestDesktop?.version || (desktopLatestVersion || newVersion).trim();
+        const newAndroidVer = bestAndroid?.version || (androidLatestVersion || newVersion).trim();
         const newTitle = title?.trim() || `نسخه جدید ${newVersion}`;
         const newNotes = releaseNotes?.trim() || 'به‌روزرسانی، ارتقای عملکرد و بهینه‌سازی کلی سیستم.';
 

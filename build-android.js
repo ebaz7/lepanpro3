@@ -162,11 +162,11 @@ async function buildAndroid() {
       modified = true;
     }
 
-    // Remove REQUEST_INSTALL_PACKAGES if present because Google Play Protect flags sideloaded apps with this permission as suspicious
-    if (manifestContent.includes('android.permission.REQUEST_INSTALL_PACKAGES')) {
+    // Ensure REQUEST_INSTALL_PACKAGES is present so the app can directly launch the Android Package Installer for in-place updates
+    if (!manifestContent.includes('android.permission.REQUEST_INSTALL_PACKAGES')) {
       manifestContent = manifestContent.replace(
-        /\s*<uses-permission\s+android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*\/>\s*/g,
-        '\n    '
+        '<uses-permission android:name="android.permission.INTERNET" />',
+        '<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />'
       );
       modified = true;
     }
@@ -176,17 +176,15 @@ async function buildAndroid() {
     }
   }
 
-  // Ensure res/xml/file_paths.xml exists for FileProvider
+  // Ensure res/xml/file_paths.xml exists for FileProvider (without <root-path> which triggers Play Protect heuristics)
   const xmlResDir = path.join(androidDir, 'app', 'src', 'main', 'res', 'xml');
   const filePathsXml = path.join(xmlResDir, 'file_paths.xml');
-  if (!fs.existsSync(filePathsXml)) {
-    fs.mkdirSync(xmlResDir, { recursive: true });
-    fs.writeFileSync(
-      filePathsXml,
-      `<?xml version="1.0" encoding="utf-8"?>\n<paths xmlns:android="http://schemas.android.com/apk/res/android">\n    <files-path name="files" path="." />\n    <cache-path name="cache" path="." />\n    <external-path name="external" path="." />\n    <external-files-path name="external_files" path="." />\n    <external-cache-path name="external_cache" path="." />\n    <root-path name="root" path="." />\n</paths>\n`,
-      'utf8'
-    );
-  }
+  fs.mkdirSync(xmlResDir, { recursive: true });
+  fs.writeFileSync(
+    filePathsXml,
+    `<?xml version="1.0" encoding="utf-8"?>\n<paths xmlns:android="http://schemas.android.com/apk/res/android">\n    <files-path name="files" path="." />\n    <cache-path name="cache" path="." />\n    <external-path name="external" path="." />\n    <external-files-path name="external_files" path="." />\n    <external-cache-path name="external_cache" path="." />\n</paths>\n`,
+    'utf8'
+  );
 
   // Ensure res/values/strings.xml sets app_name and title_activity_main to "dlkam"
   const stringsXmlPath = path.join(androidDir, 'app', 'src', 'main', 'res', 'values', 'strings.xml');
@@ -301,10 +299,32 @@ async function buildAndroid() {
   }
   purgeHeavyBinariesFromAssets(assetsPublicDir);
 
-  // 7. Compile Signed APK using Gradle
+  // Ensure android/app/src/main/assets/capacitor.config.json uses the unified packageId
+  const capAssetsConfigPath = path.join(androidDir, 'app', 'src', 'main', 'assets', 'capacitor.config.json');
+  if (fs.existsSync(capAssetsConfigPath)) {
+    try {
+      const capCfg = JSON.parse(fs.readFileSync(capAssetsConfigPath, 'utf-8'));
+      if (capCfg.appId !== 'com.dikam.paymentorder') {
+        capCfg.appId = 'com.dikam.paymentorder';
+        fs.writeFileSync(capAssetsConfigPath, JSON.stringify(capCfg, null, 2), 'utf-8');
+      }
+    } catch (_) {}
+  }
+
+  // 7. Compile Signed APK using Gradle (with persistent keystore backup so updates always share the exact same signature)
   const isRelease = !process.argv.includes('--debug');
   const keystorePath = path.join(androidDir, 'app', 'release-key.keystore');
-  if (isRelease && !fs.existsSync(keystorePath)) {
+  const backupKeystoreDir = path.join(__dirname, '.keystore-backup');
+  const backupKeystorePath = path.join(backupKeystoreDir, 'release-key.keystore');
+
+  if (!fs.existsSync(keystorePath) && fs.existsSync(backupKeystorePath)) {
+    try {
+      fs.copyFileSync(backupKeystorePath, keystorePath);
+      console.log('🔐 فایل امضای دیجیتال (release-key.keystore) از نسخه پشتیبان بازیابی شد تا نصب به صورت Update انجام شود.');
+    } catch (_) {}
+  }
+
+  if (!fs.existsSync(keystorePath)) {
     try {
       let keytoolCmd = 'keytool';
       const keytoolCandidates = [
@@ -319,6 +339,13 @@ async function buildAndroid() {
         }
       }
       execSync(`${keytoolCmd} -genkeypair -v -keystore "${keystorePath}" -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Dlkam, OU=IT, O=Dlkam, L=Tehran, S=Tehran, C=IR"`, { stdio: 'inherit' });
+    } catch (_) {}
+  }
+
+  if (fs.existsSync(keystorePath)) {
+    try {
+      if (!fs.existsSync(backupKeystoreDir)) fs.mkdirSync(backupKeystoreDir, { recursive: true });
+      fs.copyFileSync(keystorePath, backupKeystorePath);
     } catch (_) {}
   }
 

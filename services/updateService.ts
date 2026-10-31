@@ -1,11 +1,19 @@
 import { getEffectiveApiUrl } from './apiService';
 import { isTauriDesktop, isMobileApp, isWebApp } from '../utils/platformDetection';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { FileOpener } from '@capacitor-community/file-opener';
 import toast from 'react-hot-toast';
 
 export interface AppVersionInfo {
   version: string;
-  desktopLatestVersion?: string;
-  androidLatestVersion?: string;
+  desktopLatestVersion?: string | null;
+  androidLatestVersion?: string | null;
+  hasDesktopInstaller?: boolean;
+  hasAndroidInstaller?: boolean;
+  desktopFileName?: string | null;
+  desktopFileSize?: number;
+  androidFileName?: string | null;
+  androidFileSize?: number;
   buildNumber: string;
   title?: string;
   releaseNotes?: string;
@@ -19,13 +27,13 @@ export interface AppVersionInfo {
 
 // Current client build embedded in the bundle
 export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
-  version: '1.0.6',
-  buildNumber: '100',
+  version: '1.0.28',
+  buildNumber: '10028',
   title: 'نسخه جاری',
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'
 };
 
-// Helper: compare semantic versions (e.g. "1.3.2" vs "1.3.3")
+// Helper: compare semantic versions (e.g. "1.0.27" vs "1.0.26")
 export function compareSemVer(v1: string, v2: string): number {
   const p1 = (v1 || '').replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
   const p2 = (v2 || '').replace(/[^0-9.]/g, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -46,8 +54,25 @@ export function isCapacitorAndroid(): boolean {
   return Boolean(
     (win.Capacitor?.isNativePlatform?.() && win.Capacitor?.getPlatform?.() === 'android') ||
     (win.Capacitor?.platform === 'android') ||
+    Boolean(win.DlkamAndroid) ||
     (isMobileApp() && /android/i.test(navigator.userAgent))
   );
+}
+
+// Build an Android intent:// URL that forces Capacitor WebView to open the URL in Chrome / System Browser
+export function buildAndroidBrowserIntentUrl(httpUrl: string): string {
+  try {
+    const clean = httpUrl.trim();
+    if (clean.startsWith('https://')) {
+      const rest = clean.substring('https://'.length);
+      return `intent://${rest}#Intent;scheme=https;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+    }
+    if (clean.startsWith('http://')) {
+      const rest = clean.substring('http://'.length);
+      return `intent://${rest}#Intent;scheme=http;action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+    }
+  } catch (_) {}
+  return httpUrl;
 }
 
 // Dismiss an update so it does not keep showing up in current session
@@ -59,7 +84,6 @@ export function dismissUpdate(serverInfo?: AppVersionInfo | null): void {
   const sig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
   try {
     sessionStorage.setItem('dismissed_update_sig', sig);
-    // DO NOT write dismissed_update_sig to localStorage so native apps will ask again on next app launch if binary is unupdated
     localStorage.removeItem('dismissed_update_sig');
   } catch (_) {}
 }
@@ -74,28 +98,28 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
   let detectedVersion = CURRENT_CLIENT_BUILD.version;
   let detectedBuild = CURRENT_CLIENT_BUILD.buildNumber;
 
-  // 1. Check Tauri app.getVersion()
+  // 1. Check Tauri app.getVersion() — authoritative version of the installed Windows .exe binary
   try {
     if (isTauriDesktop()) {
       if (win.__TAURI__?.app?.getVersion) {
         const ver = await win.__TAURI__.app.getVersion();
-        if (ver && compareSemVer(ver, detectedVersion) > 0) {
-          detectedVersion = ver;
-          detectedBuild = ver;
+        if (ver) {
+          detectedVersion = String(ver).trim();
+          detectedBuild = detectedVersion;
         }
       }
       return { version: detectedVersion, buildNumber: detectedBuild };
     }
   } catch (_) {}
 
-  // 2. Check Capacitor App.getInfo()
+  // 2. Check Capacitor App.getInfo() — authoritative version of the installed Android .apk binary
   try {
     if (isCapacitorAndroid()) {
       if (win.Capacitor?.Plugins?.App?.getInfo) {
         const info = await win.Capacitor.Plugins.App.getInfo();
-        if (info?.version && compareSemVer(info.version, detectedVersion) > 0) {
-          detectedVersion = info.version;
-          detectedBuild = info.build || info.version;
+        if (info?.version) {
+          detectedVersion = String(info.version).trim();
+          detectedBuild = String(info.build || info.version).trim();
         }
       }
       return { version: detectedVersion, buildNumber: detectedBuild };
@@ -106,6 +130,9 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
 }
 
 // Check for updates by querying /api/version and /api/desktop/check-update
+// IMPORTANT:
+// - On Windows Desktop (Tauri): ONLY announces an update when an actual .exe/.msi file on disk has a higher version than the installed Tauri binary.
+// - On Android (Capacitor): ONLY announces an update when an actual .apk file on disk has a higher version than the installed Android APK binary.
 export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverInfo: AppVersionInfo | null }> {
   try {
     const versionApiUrl = getEffectiveApiUrl(`/api/version?t=${Date.now()}`);
@@ -127,8 +154,10 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       console.debug('Failed fetching /api/version:', e);
     }
 
-    // If on Desktop, also query desktop specific endpoint
     const isDesktop = isTauriDesktop();
+    const isAndroid = isCapacitorAndroid();
+
+    // If on Desktop, also query desktop specific endpoint
     if (isDesktop) {
       try {
         const desktopApiUrl = getEffectiveApiUrl(`/api/desktop/check-update?t=${Date.now()}`);
@@ -139,12 +168,25 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
           const desktopData = await desktopRes.json();
           if (desktopData) {
             desktopDownloadUrl = desktopData.directDownloadUrl || desktopData.updateUrl || '';
-            if (!data || !data.version) {
+            if (data) {
+              if (desktopData.desktopLatestVersion || desktopData.latestVersion) {
+                data.desktopLatestVersion = desktopData.desktopLatestVersion || desktopData.latestVersion;
+              }
+              if (typeof desktopData.hasDesktopInstaller === 'boolean') {
+                data.hasDesktopInstaller = desktopData.hasDesktopInstaller;
+              }
+              if (desktopData.desktopFileName) data.desktopFileName = desktopData.desktopFileName;
+              if (desktopData.desktopFileSize) data.desktopFileSize = desktopData.desktopFileSize;
+            } else {
               data = {
-                version: desktopData.latestVersion || '',
+                version: desktopData.desktopLatestVersion || desktopData.latestVersion || '',
+                desktopLatestVersion: desktopData.desktopLatestVersion || desktopData.latestVersion || null,
+                hasDesktopInstaller: desktopData.hasDesktopInstaller,
+                desktopFileName: desktopData.desktopFileName || null,
+                desktopFileSize: desktopData.desktopFileSize || 0,
                 buildNumber: desktopData.latestVersion || '',
                 releaseNotes: desktopData.releaseNotes || 'به‌روزرسانی نرم‌افزار دسکتاپ',
-                title: 'نسخه جدید سامانه'
+                title: 'نسخه جدید ویندوز آماده نصب'
               };
             }
           }
@@ -154,68 +196,78 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
       }
     }
 
-    if (!data || (!data.version && !data.buildNumber)) {
+    if (!data) {
       return { hasUpdate: false, serverInfo: null };
     }
-
-    const defaultAndroidUrl = getEffectiveApiUrl('/downloads/dlkam-android-latest.apk');
-    const defaultDesktopUrl = getEffectiveApiUrl('/downloads/dlkam-desktop-setup.msi');
-
-    data.androidDownloadUrl = androidDownloadUrl || data.androidDownloadUrl || defaultAndroidUrl;
-
-    if (isCapacitorAndroid()) {
-      data.downloadUrl = data.androidDownloadUrl;
-    } else if (isDesktop) {
-      data.downloadUrl = data.downloadUrl || desktopDownloadUrl || defaultDesktopUrl;
-    } else {
-      // Pure Web: no file download URL needed, update is web-based reload/cache clear
-      data.downloadUrl = '';
-    }
-
-    const isAndroid = isCapacitorAndroid();
-    const isNative = isDesktop || isAndroid;
-    const targetServerVer = isAndroid
-      ? (data.androidLatestVersion || data.version || data.buildNumber)
-      : isDesktop
-        ? (data.desktopLatestVersion || data.version || data.buildNumber)
-        : (data.version || data.buildNumber);
-
-    data.version = targetServerVer;
-    const serverBuild = data.buildNumber || targetServerVer;
-    const serverVer = targetServerVer;
-    const serverTimestamp = Number(data.timestamp) || 0;
 
     if (typeof window === 'undefined') {
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // Determine actual native client version (Tauri, Capacitor, or Web baseline)
     const nativeClient = await getNativeClientVersion();
-    const clientBuild = nativeClient.buildNumber;
     const clientVer = nativeClient.version;
+    const clientBuild = nativeClient.buildNumber;
+
+    // --- 1. ANDROID NATIVE APK CHECK (Strictly file-based) ---
+    if (isAndroid) {
+      const actualApkVer = data.androidLatestVersion || '';
+      if (!actualApkVer || data.hasAndroidInstaller === false) {
+        return { hasUpdate: false, serverInfo: data };
+      }
+
+      const defaultAndroidUrl = getEffectiveApiUrl(`/api/downloads/latest-android?v=${encodeURIComponent(actualApkVer)}`);
+      data.version = actualApkVer;
+      data.androidDownloadUrl = androidDownloadUrl
+        ? (androidDownloadUrl.startsWith('http') ? androidDownloadUrl : getEffectiveApiUrl(androidDownloadUrl))
+        : defaultAndroidUrl;
+      data.downloadUrl = data.androidDownloadUrl;
+
+      const currentServerSig = `android_${actualApkVer}`;
+      const sessionDismissedSig = sessionStorage.getItem('dismissed_update_sig');
+      if (sessionDismissedSig && sessionDismissedSig === currentServerSig) {
+        return { hasUpdate: false, serverInfo: data };
+      }
+
+      const semVerComp = compareSemVer(actualApkVer, clientVer);
+      return { hasUpdate: semVerComp > 0, serverInfo: data };
+    }
+
+    // --- 2. WINDOWS DESKTOP TAURI CHECK (Strictly file-based) ---
+    if (isDesktop) {
+      const actualDesktopVer = data.desktopLatestVersion || '';
+      if (!actualDesktopVer || data.hasDesktopInstaller === false) {
+        return { hasUpdate: false, serverInfo: data };
+      }
+
+      const defaultDesktopUrl = getEffectiveApiUrl(`/api/downloads/latest-desktop?v=${encodeURIComponent(actualDesktopVer)}&ext=exe`);
+      data.version = actualDesktopVer;
+      const rawUrl = desktopDownloadUrl || data.downloadUrl || '';
+      data.downloadUrl = rawUrl
+        ? (rawUrl.startsWith('http') ? rawUrl : getEffectiveApiUrl(rawUrl))
+        : defaultDesktopUrl;
+
+      const currentServerSig = `desktop_${actualDesktopVer}`;
+      const sessionDismissedSig = sessionStorage.getItem('dismissed_update_sig');
+      if (sessionDismissedSig && sessionDismissedSig === currentServerSig) {
+        return { hasUpdate: false, serverInfo: data };
+      }
+
+      const semVerComp = compareSemVer(actualDesktopVer, clientVer);
+      return { hasUpdate: semVerComp > 0, serverInfo: data };
+    }
+
+    // --- 3. WEB BROWSER CHECK ---
+    data.downloadUrl = '';
+    const serverVer = data.version || data.buildNumber;
+    const serverBuild = data.buildNumber || serverVer;
+    const serverTimestamp = Number(data.timestamp) || 0;
     const currentServerSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
 
-    // 1. Check if user dismissed this exact update in CURRENT session only
     const sessionDismissedSig = sessionStorage.getItem('dismissed_update_sig');
     if (sessionDismissedSig && sessionDismissedSig === currentServerSig) {
       return { hasUpdate: false, serverInfo: data };
     }
 
-    // 2. Compare version semantically
-    const semVerComp = compareSemVer(serverVer, clientVer);
-
-    // For Native Android & Tauri Desktop:
-    // Strictly compare native binary version against server version!
-    // As long as server version > client version (semVerComp > 0), the update banner MUST be displayed
-    // until the user actually installs the new APK/MSI binary.
-    if (isNative) {
-      if (semVerComp > 0) {
-        return { hasUpdate: true, serverInfo: data };
-      }
-      return { hasUpdate: false, serverInfo: data };
-    }
-
-    // 3. Web-only checks: check if user already applied this exact server release signature on web
     const lastAppliedSig = localStorage.getItem('last_applied_release_sig');
     if (lastAppliedSig && lastAppliedSig === currentServerSig) {
       return { hasUpdate: false, serverInfo: data };
@@ -229,28 +281,21 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
 
     const baselineBuild = localStorage.getItem('baseline_server_build');
     const baselineTimestamp = Number(localStorage.getItem('baseline_server_timestamp')) || 0;
+    const semVerComp = compareSemVer(serverVer, clientVer);
 
-    // If server version is strictly older than client version, no update
     if (semVerComp < 0) {
       return { hasUpdate: false, serverInfo: data };
     }
-
-    // If server version is strictly newer than client version
     if (semVerComp > 0) {
       return { hasUpdate: true, serverInfo: data };
     }
-
-    // When semVer is equal (e.g. 1.0.0 == 1.0.0) on Web, check timestamp if server was updated after baseline
     if (serverBuild !== clientBuild && baselineBuild && baselineBuild !== serverBuild) {
       if (serverTimestamp > 0 && baselineTimestamp > 0 && serverTimestamp > baselineTimestamp) {
         return { hasUpdate: true, serverInfo: data };
       }
     }
 
-    return {
-      hasUpdate: false,
-      serverInfo: data
-    };
+    return { hasUpdate: false, serverInfo: data };
   } catch (error) {
     console.debug('Update check failed (offline or network error):', error);
     return { hasUpdate: false, serverInfo: null };
@@ -277,7 +322,6 @@ export async function publishApplicationUpdate(payload: {
       return { success: false, error: data.error || 'خطا در انتشار به‌روزرسانی' };
     }
 
-    // Notify window components immediately and reset baseline so clients detect it as new
     if (typeof window !== 'undefined') {
       localStorage.removeItem('last_applied_release_sig');
       localStorage.removeItem('applied_server_version');
@@ -295,205 +339,284 @@ export async function publishApplicationUpdate(payload: {
   }
 }
 
-// Apply update: clear caches, instruct SW to skip waiting, download APK if Android, download MSI if Desktop
-export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null): Promise<void> {
+// Helper: Convert Blob to Base64 string without data: prefix
+function blobToRawBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result || '');
+      const commaIdx = result.indexOf(',');
+      resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Helper: Fetch binary file with real-time progress reporting
+async function fetchBinaryWithProgress(
+  url: string,
+  expectedSize: number = 0,
+  onProgress?: (pct: number, statusText: string) => void
+): Promise<Blob> {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`HTTP_${response.status}`);
+  }
+
+  const contentLength = Number(response.headers.get('content-length')) || expectedSize || 18 * 1024 * 1024;
+  if (!response.body || !response.body.getReader) {
+    onProgress?.(60, 'در حال دریافت فایل...');
+    const blob = await response.blob();
+    onProgress?.(100, 'دریافت کامل شد ✓');
+    return blob;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedLength = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      receivedLength += value.length;
+      const pct = Math.min(99, Math.max(1, Math.round((receivedLength / contentLength) * 100)));
+      const loadedMB = (receivedLength / (1024 * 1024)).toFixed(1);
+      const totalMB = (contentLength / (1024 * 1024)).toFixed(1);
+      onProgress?.(pct, `در حال دانلود: ${pct}% (${loadedMB} از ${totalMB} مگابایت)`);
+    }
+  }
+
+  onProgress?.(100, 'دانلود کامل شد — در حال باز کردن نصب‌کننده...');
+  return new Blob(chunks as BlobPart[]);
+}
+
+// Apply update:
+// - Android: Downloads the newest .apk with live progress, saves it to phone storage & Downloads/Dlkam, and launches the Android Package Installer (or opens Chrome via intent:// if direct install permission is restricted).
+// - Desktop (Tauri): Downloads the newest .exe installer with live progress, saves it via Tauri's native save_and_open_local_file command, and immediately executes the Windows Setup wizard.
+// - Web: Purges caches and reloads.
+export async function applyApplicationUpdate(
+  serverInfo?: AppVersionInfo | null,
+  onProgress?: (pct: number, statusText: string) => void
+): Promise<void> {
   const isAndroid = isCapacitorAndroid();
   const isDesktop = isTauriDesktop();
   const isWeb = !isAndroid && !isDesktop;
   const win = typeof window !== 'undefined' ? (window as any) : {};
 
+  // 1. Send automated backup to bots asynchronously with strict 1.5s timeout
   try {
-    // 1. Send automated backup to bots asynchronously with strict 1.5s timeout
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const backupUrl = getEffectiveApiUrl('/api/backups/send-to-bot');
-      fetch(backupUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason: `پشتیبان خودکار ${isAndroid ? 'اندروید' : isDesktop ? 'دسکتاپ' : 'تحت‌وب'} قبل از بروزرسانی به نسخه ${serverInfo?.version || serverInfo?.buildNumber || 'جدید'}`
-        }),
-        signal: controller.signal
-      }).catch(() => {}).finally(() => clearTimeout(timeoutId));
-    } catch (_) {}
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+    const backupUrl = getEffectiveApiUrl('/api/backups/send-to-bot');
+    fetch(backupUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: `پشتیبان خودکار ${isAndroid ? 'اندروید' : isDesktop ? 'دسکتاپ' : 'تحت‌وب'} قبل از بروزرسانی به نسخه ${serverInfo?.version || serverInfo?.buildNumber || 'جدید'}`
+      }),
+      signal: controller.signal
+    }).catch(() => {}).finally(() => clearTimeout(timeoutId));
+  } catch (_) {}
 
-    // 2. Mark update signature in localStorage ONLY for Web platform
-    if (serverInfo && isWeb) {
-      const serverBuild = serverInfo.buildNumber || serverInfo.version;
-      const serverVer = serverInfo.version || serverBuild;
-      const serverTimestamp = Number(serverInfo.timestamp) || 0;
-      const serverSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
-      localStorage.setItem('last_applied_release_sig', serverSig);
-      localStorage.setItem('applied_server_version', serverVer);
-      localStorage.setItem('applied_server_build', serverBuild);
-      localStorage.setItem('baseline_server_build', serverBuild);
-      localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
-      sessionStorage.removeItem('dismissed_update_sig');
-      localStorage.removeItem('dismissed_update_sig');
+  // 2. ANDROID PLATFORM: Real download + launch Android Package Installer
+  if (isAndroid) {
+    const targetVer = serverInfo?.androidLatestVersion || serverInfo?.version || 'latest';
+    const apkFileName = serverInfo?.androidFileName || `dlkam-android-v${targetVer}.apk`;
+    let rawApk = serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || `/api/downloads/latest-android?v=${encodeURIComponent(targetVer)}`;
+    if (!rawApk.startsWith('http://') && !rawApk.startsWith('https://')) {
+      rawApk = getEffectiveApiUrl(rawApk);
     }
+    const apkUrl = rawApk.includes('?') ? `${rawApk}&t=${Date.now()}` : `${rawApk}?t=${Date.now()}`;
+    const APK_MIME = 'application/vnd.android.package-archive';
 
-    // 3. Android platform: Trigger direct download/installation of APK
-    if (isAndroid) {
-      let rawApk = serverInfo?.androidDownloadUrl || serverInfo?.downloadUrl || '/downloads/latest-android';
-      if (!rawApk.startsWith('http://') && !rawApk.startsWith('https://')) {
-        rawApk = getEffectiveApiUrl(rawApk);
+    try {
+      // 2a. If the new native DownloadManager bridge method exists in MainActivity.java, invoke it alongside in-app download
+      if (win.DlkamAndroid && typeof win.DlkamAndroid.downloadAndInstallApk === 'function') {
+        const startedNative = win.DlkamAndroid.downloadAndInstallApk(apkUrl, apkFileName);
+        if (startedNative) {
+          onProgress?.(20, 'در حال دانلود در نوار اعلان اندروید...');
+        }
       }
-      const apkUrl = rawApk.includes('?') ? `${rawApk}&t=${Date.now()}` : `${rawApk}?t=${Date.now()}`;
 
-      // 3a. Show user feedback
-      try {
-        toast.success(`شروع دریافت فایل نصبی اندروید (نسخه ${serverInfo?.version || 'جدید'})...`, { duration: 6000 });
-      } catch (_) {}
+      // 2b. Download APK bytes inside the app with real-time percentage progress
+      onProgress?.(2, 'در حال اتصال به سرور و شروع دانلود APK...');
+      const apkBlob = await fetchBinaryWithProgress(apkUrl, serverInfo?.androidFileSize || 19000000, onProgress);
+      const base64Data = await blobToRawBase64(apkBlob);
 
-      // 3b. Capacitor Browser plugin
+      let installerOpened = false;
+
+      // 2c. Save via Native DlkamAndroid bridge (saves to DlkamFiles AND public Downloads/Dlkam folder)
+      if (win.DlkamAndroid && typeof win.DlkamAndroid.saveFileToAppFolder === 'function') {
+        const saved = win.DlkamAndroid.saveFileToAppFolder(base64Data, apkFileName, APK_MIME);
+        if (saved) {
+          toast.success(`فایل ${apkFileName} در پوشه Downloads/Dlkam ذخیره شد ✓`, { duration: 6000 });
+
+          if (typeof win.DlkamAndroid.installApkFromAppFolder === 'function') {
+            installerOpened = Boolean(win.DlkamAndroid.installApkFromAppFolder(apkFileName));
+          }
+
+          if (!installerOpened && typeof win.DlkamAndroid.getAppFolderFilePath === 'function') {
+            const absPath = win.DlkamAndroid.getAppFolderFilePath(apkFileName);
+            if (absPath) {
+              try {
+                await FileOpener.open({
+                  filePath: absPath.startsWith('file://') ? absPath : `file://${absPath}`,
+                  contentType: APK_MIME
+                });
+                installerOpened = true;
+              } catch (_) {}
+            }
+          }
+
+          if (!installerOpened && typeof win.DlkamAndroid.openFileFromAppFolder === 'function') {
+            installerOpened = Boolean(win.DlkamAndroid.openFileFromAppFolder(apkFileName, APK_MIME));
+          }
+        }
+      }
+
+      // 2d. Also try Capacitor Filesystem + FileOpener
+      if (!installerOpened) {
+        const writeDirs = [Directory.External, Directory.Cache, Directory.Data];
+        for (const dir of writeDirs) {
+          try {
+            const res = await Filesystem.writeFile({
+              path: apkFileName,
+              data: base64Data,
+              directory: dir,
+              recursive: true
+            });
+            if (res?.uri) {
+              try {
+                await FileOpener.open({
+                  filePath: res.uri,
+                  contentType: APK_MIME
+                });
+                installerOpened = true;
+                break;
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+      }
+
+      // 2e. If direct in-app PackageInstaller launch was blocked by Android OS (e.g. on an older APK without REQUEST_INSTALL_PACKAGES),
+      // trigger Chrome / System Browser via intent:// scheme so Android's system downloader opens the installer immediately!
+      if (!installerOpened) {
+        const intentUrl = buildAndroidBrowserIntentUrl(apkUrl);
+        try {
+          window.location.href = intentUrl;
+        } catch (_) {}
+      }
+
+      onProgress?.(100, 'دانلود کامل شد — آماده نصب ✓');
+      return;
+    } catch (downloadErr) {
+      console.warn('In-app APK fetch failed, opening external system browser via intent://:', downloadErr);
+      onProgress?.(50, 'در حال انتقال به دانلودر سیستم اندروید...');
+      const intentUrl = buildAndroidBrowserIntentUrl(apkUrl);
       try {
-        if (win.Capacitor?.Plugins?.Browser?.open) {
-          await win.Capacitor.Plugins.Browser.open({ url: apkUrl });
+        if (win.DlkamAndroid && typeof win.DlkamAndroid.openExternalUrl === 'function') {
+          win.DlkamAndroid.openExternalUrl(apkUrl);
+          return;
         }
       } catch (_) {}
-
-      // 3c. Capacitor App plugin openUrl
       try {
-        if (win.Capacitor?.Plugins?.App?.openUrl) {
-          await win.Capacitor.Plugins.App.openUrl({ url: apkUrl });
-        }
-      } catch (_) {}
-
-      // 3d. System window / Location navigation (opens system browser & download manager on Android WebView)
-      try {
-        win.open(apkUrl, '_system');
-      } catch (_) {}
-
-      try {
-        window.location.href = apkUrl;
-      } catch (_) {}
-
-      // 3e. Programmatic anchor download link
-      try {
-        const a = document.createElement('a');
-        a.href = apkUrl;
-        a.download = `dlkam-android-v${serverInfo?.version || 'latest'}.apk`;
-        a.target = '_system';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => a.remove(), 1000);
-      } catch (_) {}
-
+        window.location.href = intentUrl;
+      } catch (_) {
+        window.open(apkUrl, '_system');
+      }
       return;
     }
+  }
 
-    // 4. Desktop Tauri platform: trigger native updater or open download URL
-    if (isDesktop) {
-      let rawDesktop = serverInfo?.downloadUrl || '/downloads/latest-desktop';
-      if (!rawDesktop.startsWith('http://') && !rawDesktop.startsWith('https://')) {
-        rawDesktop = getEffectiveApiUrl(rawDesktop);
-      }
-      const downloadUrl = rawDesktop.includes('?') ? `${rawDesktop}&t=${Date.now()}` : `${rawDesktop}?t=${Date.now()}`;
+  // 3. WINDOWS DESKTOP (TAURI) PLATFORM: Real download of newest .exe + automatic execution
+  if (isDesktop) {
+    const targetVer = serverInfo?.desktopLatestVersion || serverInfo?.version || 'latest';
+    const exeFileName = serverInfo?.desktopFileName || `dlkam-desktop-v${targetVer}.exe`;
+    let rawDesktop = serverInfo?.downloadUrl || `/api/downloads/latest-desktop?v=${encodeURIComponent(targetVer)}&ext=exe`;
+    if (!rawDesktop.startsWith('http://') && !rawDesktop.startsWith('https://')) {
+      rawDesktop = getEffectiveApiUrl(rawDesktop);
+    }
+    const downloadUrl = rawDesktop.includes('?') ? `${rawDesktop}&t=${Date.now()}` : `${rawDesktop}?t=${Date.now()}`;
 
-      // 4a. Show user feedback
-      try {
-        toast.success(`شروع دریافت فایل نصبی ویندوز (نسخه ${serverInfo?.version || 'جدید'})...`, { duration: 6000 });
-      } catch (_) {}
+    try {
+      onProgress?.(2, `در حال دانلود نسخه جدید ویندوز (v${targetVer})...`);
+      const exeBlob = await fetchBinaryWithProgress(downloadUrl, serverInfo?.desktopFileSize || 15000000, onProgress);
+      const arrayBuffer = await exeBlob.arrayBuffer();
+      const bytes = Array.from(new Uint8Array(arrayBuffer));
 
-      // 4b. If Tauri built-in auto-updater is active
-      if (win.__TAURI__?.updater?.installUpdate) {
-        try {
-          await win.__TAURI__.updater.installUpdate();
-          if (win.__TAURI__?.process?.relaunch) {
-            await win.__TAURI__.process.relaunch();
-            return;
-          }
-        } catch (e) {
-          console.warn('Tauri updater failed, falling back to direct browser download:', e);
-        }
-      }
+      // Invoke Tauri's native Rust command save_and_open_local_file (built into src-tauri/src/main.rs)
+      // This saves dlkam-desktop-vX.Y.Z.exe to disk and immediately launches the Windows installer!
+      const { invoke } = await import('@tauri-apps/api/tauri');
+      const savedPath = await invoke<string>('save_and_open_local_file', {
+        fileName: exeFileName,
+        bytes,
+        openAfter: true
+      });
 
-      // 4c. Open download link using Tauri shell API
-      let openedByTauri = false;
+      onProgress?.(100, 'فایل نصبی دانلود و اجرا شد ✓');
+      toast.success(`فایل نصبی نسخه v${targetVer} دانلود و اجرا شد (${savedPath}) ✓`, { duration: 7000 });
+      return;
+    } catch (tauriSaveErr) {
+      console.warn('Tauri in-app download/exec fallback to shell.open:', tauriSaveErr);
+      onProgress?.(80, 'در حال باز کردن لینک مستقیم فایل نصبی...');
       try {
         if (win.__TAURI__?.shell?.open) {
           await win.__TAURI__.shell.open(downloadUrl);
-          openedByTauri = true;
-        } else if (win.__TAURI_IPC__) {
-          const { invoke } = win.__TAURI__?.tauri || win.__TAURI__ || {};
-          if (invoke) {
-            await invoke('tauri', {
-              __tauriModule: 'Shell',
-              message: { cmd: 'openWith', path: downloadUrl }
-            });
-            openedByTauri = true;
-          }
+          return;
         }
-      } catch (err) {
-        console.warn('Tauri shell.open failed:', err);
-      }
-
-      // 4d. Fallback: trigger direct file download via anchor & system window
-      if (!openedByTauri) {
-        try {
-          win.open(downloadUrl, '_system');
-        } catch (_) {}
-
-        try {
-          window.location.href = downloadUrl;
-        } catch (_) {}
-
-        try {
-          const link = document.createElement('a');
-          link.href = downloadUrl;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.download = `dlkam-desktop-v${serverInfo?.version || 'latest'}.msi`;
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => link.remove(), 1000);
-        } catch (_) {
-          window.open(downloadUrl, '_blank');
-        }
-      }
-
+      } catch (_) {}
+      window.open(downloadUrl, '_blank');
       return;
     }
+  }
 
-    // 5. Web Browser Platform: Purge caches, instruct ServiceWorker, and hard-refresh
-    if (isWeb) {
+  // 4. WEB BROWSER PLATFORM: Mark update applied, clear caches, and reload
+  if (isWeb) {
+    try {
+      if (serverInfo) {
+        const serverBuild = serverInfo.buildNumber || serverInfo.version;
+        const serverVer = serverInfo.version || serverBuild;
+        const serverTimestamp = Number(serverInfo.timestamp) || 0;
+        const serverSig = `${serverVer}_${serverBuild}_${serverTimestamp}`;
+        localStorage.setItem('last_applied_release_sig', serverSig);
+        localStorage.setItem('applied_server_version', serverVer);
+        localStorage.setItem('applied_server_build', serverBuild);
+        localStorage.setItem('baseline_server_build', serverBuild);
+        localStorage.setItem('baseline_server_timestamp', serverTimestamp.toString());
+        sessionStorage.removeItem('dismissed_update_sig');
+        localStorage.removeItem('dismissed_update_sig');
+      }
+
       if ('caches' in window) {
-        try {
-          const cacheKeys = await caches.keys();
-          await Promise.all(
-            cacheKeys.map(key => {
-              if (key !== 'auth-session-v1' && key !== 'shown-notifications-v1') {
-                return caches.delete(key);
-              }
-              return Promise.resolve(true);
-            })
-          );
-        } catch (e) {
-          console.warn('Failed clearing caches:', e);
-        }
+        const cacheKeys = await caches.keys();
+        await Promise.all(
+          cacheKeys.map(key => {
+            if (key !== 'auth-session-v1' && key !== 'shown-notifications-v1') {
+              return caches.delete(key);
+            }
+            return Promise.resolve(true);
+          })
+        );
       }
 
       if ('serviceWorker' in navigator) {
-        try {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          for (const reg of registrations) {
-            if (reg.waiting) {
-              reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            }
-            try {
-              await reg.update();
-            } catch (_) {}
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
           }
-        } catch (_) {}
+          try {
+            await reg.update();
+          } catch (_) {}
+        }
       }
-    }
-  } catch (e) {
-    console.error('Error during applyApplicationUpdate:', e);
-  } finally {
-    // Hard refresh ONLY on pure web application (never on desktop/android installer download)
-    if (isWeb) {
+    } catch (e) {
+      console.warn('Failed clearing web caches:', e);
+    } finally {
       setTimeout(() => {
         const cleanUrl = window.location.origin + window.location.pathname;
         window.location.replace(`${cleanUrl}?v=${Date.now()}`);
@@ -501,4 +624,5 @@ export async function applyApplicationUpdate(serverInfo?: AppVersionInfo | null)
     }
   }
 }
+
 

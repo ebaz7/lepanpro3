@@ -1,6 +1,6 @@
 {
-	"appId": "com.payment.system",
-	"appName": "Payment Order System",
+	"appId": "com.dikam.paymentorder",
+	"appName": "Dlkam",
 	"webDir": "dist",
 	"server": {
 		"androidScheme": "https",

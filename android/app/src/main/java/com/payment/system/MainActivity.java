@@ -42,11 +42,49 @@ public class MainActivity extends BridgeActivity {
         // Save server URL in native SharedPreferences on start so SyncWorker has immediate access to it
         saveWebServerUrlToSharedPreferences();
 
-        // Register Native File & Gallery Bridge on WebView
+        // Register Native File & Gallery Bridge on WebView + DownloadListener for APK / file downloads
         try {
             if (this.getBridge() != null && this.getBridge().getWebView() != null) {
                 WebView webView = this.getBridge().getWebView();
                 webView.addJavascriptInterface(new DlkamAndroidBridge(this), "DlkamAndroid");
+                webView.setDownloadListener((url, userAgent, contentDisposition, mimetype, contentLength) -> {
+                    try {
+                        android.app.DownloadManager.Request request = new android.app.DownloadManager.Request(Uri.parse(url));
+                        String fileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimetype);
+                        if (fileName == null || fileName.trim().isEmpty()) {
+                            fileName = "dlkam-android-latest.apk";
+                        }
+                        if (url.toLowerCase().contains(".apk") && !fileName.toLowerCase().endsWith(".apk")) {
+                            fileName = fileName + ".apk";
+                        }
+                        String resolvedMime = (fileName.toLowerCase().endsWith(".apk") || (mimetype != null && mimetype.contains("package-archive")))
+                                ? "application/vnd.android.package-archive"
+                                : mimetype;
+                        if (resolvedMime != null && !resolvedMime.isEmpty()) {
+                            request.setMimeType(resolvedMime);
+                        }
+                        if (userAgent != null) {
+                            request.addRequestHeader("User-Agent", userAgent);
+                        }
+                        request.setTitle(fileName);
+                        request.setDescription("در حال دانلود فایل بروزرسانی سامانه...");
+                        request.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                        request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
+                        android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
+                        if (dm != null) {
+                            dm.enqueue(request);
+                            android.widget.Toast.makeText(getApplicationContext(), "دانلود فایل آغاز شد (پوشه Downloads)...", android.widget.Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                    } catch (Exception dlErr) {
+                        Log.w(TAG, "DownloadManager enqueue failed, falling back to ACTION_VIEW", dlErr);
+                    }
+                    try {
+                        Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                        browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(browserIntent);
+                    } catch (Exception ignored) {}
+                });
             }
         } catch (Exception e) {
             Log.e(TAG, "Failed to register DlkamAndroid JavascriptInterface", e);
@@ -82,6 +120,7 @@ public class MainActivity extends BridgeActivity {
         int dot = fileName.lastIndexOf('.');
         if (dot >= 0 && dot < fileName.length() - 1) {
             String ext = fileName.substring(dot + 1).toLowerCase();
+            if (ext.equals("apk")) return "application/vnd.android.package-archive";
             String guessed = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
             if (guessed != null) return guessed;
             if (ext.equals("pdf")) return "application/pdf";
@@ -178,7 +217,11 @@ public class MainActivity extends BridgeActivity {
                 );
                 Intent viewIntent = new Intent(Intent.ACTION_VIEW);
                 viewIntent.setDataAndType(contentUri, resolvedMime);
-                viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                if ( "application/vnd.android.package-archive".equals(resolvedMime) ) {
+                    viewIntent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
+                    viewIntent.putExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME, context.getPackageName());
+                }
                 try {
                     context.startActivity(viewIntent);
                     return true;
@@ -190,6 +233,24 @@ public class MainActivity extends BridgeActivity {
                 }
             } catch (Exception e) {
                 Log.e(TAG, "openFileFromAppFolder error", e);
+                return false;
+            }
+        }
+
+        @JavascriptInterface
+        public boolean installApkFromAppFolder(String fileName) {
+            return openFileFromAppFolder(fileName, "application/vnd.android.package-archive");
+        }
+
+        @JavascriptInterface
+        public boolean openExternalUrl(String url) {
+            try {
+                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(browserIntent);
+                return true;
+            } catch (Exception e) {
+                Log.e(TAG, "openExternalUrl error", e);
                 return false;
             }
         }
