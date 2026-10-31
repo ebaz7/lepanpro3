@@ -282,6 +282,14 @@ fn get_or_create_config(handle: &tauri::AppHandle) -> ClientConfig {
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    {
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--disable-features=msSmartScreenProtection --enable-gpu-rasterization --enable-zero-copy",
+        );
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             let handle = app.app_handle();
@@ -307,15 +315,28 @@ fn main() {
 
             let main_window = WindowBuilder::new(app, "main", window_url)
                 .title(window_title)
+                .inner_size(1366.0, 840.0)
+                .min_inner_size(960.0, 640.0)
                 .resizable(true)
                 .fullscreen(false)
-                .maximized(true)
                 .decorations(true)
                 .center()
                 .build();
 
             match main_window {
-                Ok(_) => println!("Main desktop window successfully spawned with local UI."),
+                Ok(win) => {
+                    println!("Main desktop window successfully spawned with local UI.");
+                    let _ = win.maximize();
+                    let _ = win.show();
+                    let _ = win.set_focus();
+                    let win_clone = win.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                        let _ = win_clone.maximize();
+                        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+                        let _ = win_clone.maximize();
+                    });
+                }
                 Err(e) => eprintln!("Error spawning desktop window: {:?}", e),
             }
 

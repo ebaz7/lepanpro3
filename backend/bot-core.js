@@ -7336,18 +7336,46 @@ export const sendTreasuryChequesReport = async (db, customTargets = null, select
     let targets = [];
     if (customTargets) {
         if (Array.isArray(customTargets) && customTargets.length > 0) {
-            targets = customTargets;
+            customTargets.forEach(item => {
+                if (!item) return;
+                if (typeof item === 'object') {
+                    const plat = item.platform || 'telegram';
+                    const rawId = item.id || item.groupId || item.chatId;
+                    if (rawId) {
+                        String(rawId).split(/[,،;\n\r]+/).map(s => s.trim()).filter(Boolean).forEach(singleId => {
+                            targets.push({ platform: plat, id: singleId });
+                        });
+                    }
+                } else if (typeof item === 'string') {
+                    const trimmed = item.trim();
+                    if (!trimmed) return;
+                    if (trimmed.startsWith('wa_')) {
+                        targets.push({ platform: 'whatsapp', id: trimmed.slice(3) });
+                    } else if (/^(\+98|98|09)\d{9}$/.test(trimmed) || trimmed.includes('@c.us') || trimmed.includes('@g.us')) {
+                        targets.push({ platform: 'whatsapp', id: trimmed });
+                    } else {
+                        platforms.forEach(p => {
+                            if (p !== 'whatsapp') targets.push({ platform: p, id: trimmed });
+                        });
+                    }
+                }
+            });
         } else if (typeof customTargets === 'object') {
             // Support { telegram: '...', bale: '...', whatsapp: '...' }
-            if (customTargets.telegram && typeof customTargets.telegram === 'string' && customTargets.telegram.trim()) {
-                targets.push({ platform: 'telegram', id: customTargets.telegram.trim() });
-            }
-            if (customTargets.bale && typeof customTargets.bale === 'string' && customTargets.bale.trim()) {
-                targets.push({ platform: 'bale', id: customTargets.bale.trim() });
-            }
-            if (customTargets.whatsapp && typeof customTargets.whatsapp === 'string' && customTargets.whatsapp.trim()) {
-                targets.push({ platform: 'whatsapp', id: customTargets.whatsapp.trim() });
-            }
+            ['telegram', 'bale', 'whatsapp'].forEach(plat => {
+                const val = customTargets[plat];
+                if (val && typeof val === 'string' && val.trim()) {
+                    val.split(/[,،;\n\r]+/).map(s => s.trim()).filter(Boolean).forEach(singleId => {
+                        targets.push({ platform: plat, id: singleId });
+                    });
+                } else if (Array.isArray(val)) {
+                    val.forEach(singleId => {
+                        if (singleId && String(singleId).trim()) {
+                            targets.push({ platform: plat, id: String(singleId).trim() });
+                        }
+                    });
+                }
+            });
         }
     }
 
@@ -7976,11 +8004,15 @@ export const sendTreasuryChequesReport = async (db, customTargets = null, select
                 sentCount++;
                 sendDetails.push({ target: target.id, platform: 'bale', success: true });
             } else if (target.platform === 'whatsapp') {
-                await whatsapp.sendMessage(cleanId, msg);
+                const waTextRes = await whatsapp.sendMessage(cleanId, msg);
+                if (waTextRes && waTextRes.success === false) {
+                    throw new Error(waTextRes.error || 'خطا در ارسال پیام واتساپ');
+                }
                 if (pdfBuffer) {
                     try {
+                        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
                         await whatsapp.sendMessage(cleanId, `📄 ${reportTitleText}`, {
-                            data: pdfBuffer.toString('base64'),
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: `${filePrefix}_${todayShamsi.replace(/\//g, '-')}.pdf`
                         });
@@ -7990,8 +8022,9 @@ export const sendTreasuryChequesReport = async (db, customTargets = null, select
                 }
                 if (excelBuffer) {
                     try {
+                        const safeExcelBuf = Buffer.isBuffer(excelBuffer) ? excelBuffer : Buffer.from(excelBuffer);
                         await whatsapp.sendMessage(cleanId, `📊 فایل اکسل ${reportTitleText}`, {
-                            data: excelBuffer.toString('base64'),
+                            data: safeExcelBuf.toString('base64'),
                             mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                             filename: `${filePrefix}_${todayShamsi.replace(/\//g, '-')}.xlsx`
                         });

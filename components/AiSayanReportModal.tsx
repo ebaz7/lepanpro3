@@ -970,9 +970,9 @@ export const AiSayanReportModal: React.FC<AiSayanReportModalProps> = ({
 
             {/* SEND TO BOTS MODAL */}
             {isBotModalOpen && (
-                <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animation-fade-in" dir="rtl">
-                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 w-full max-w-2xl rounded-2xl shadow-2xl p-5 sm:p-6 space-y-4">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
+                <div className="fixed inset-0 z-[10000] flex items-center justify-center p-3 sm:p-4 pb-16 sm:pb-20 bg-slate-950/80 backdrop-blur-xs animation-fade-in" dir="rtl">
+                    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 w-full max-w-2xl max-h-[82vh] flex flex-col overflow-hidden rounded-2xl shadow-2xl p-4 sm:p-5 space-y-3">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800 shrink-0">
                             <div className="flex items-center gap-2">
                                 <Bot className="w-5 h-5 text-indigo-600" />
                                 <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
@@ -988,7 +988,7 @@ export const AiSayanReportModal: React.FC<AiSayanReportModalProps> = ({
                             </button>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-3 overflow-y-auto flex-1 custom-scrollbar pr-1">
                             <div>
                                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
                                     انتخاب پیام‌رسان‌های مقصد:
@@ -1077,7 +1077,7 @@ export const AiSayanReportModal: React.FC<AiSayanReportModalProps> = ({
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-zinc-800">
+                        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-zinc-800 shrink-0">
                             <button
                                 type="button"
                                 onClick={() => setIsBotModalOpen(false)}

@@ -936,8 +936,52 @@ const buildProductionCaption = (dateStr, totals, waste) => {
 
 // Unified Helper to collect configured bot targets for specific categories (sales, production, accounting, or all)
 const collectBotTargets = (db, { category = 'all', platforms = ['telegram', 'bale', 'whatsapp'], customTargets = null } = {}) => {
-    if (customTargets && Array.isArray(customTargets) && customTargets.length > 0) {
-        return customTargets;
+    if (customTargets) {
+        const normalizedCustom = [];
+        const addNormalizedTarget = (plat, rawId) => {
+            if (!plat || !rawId || !platforms.includes(plat)) return;
+            String(rawId).split(/[,،;\n\r]+/).map(s => s.trim()).filter(Boolean).forEach(singleId => {
+                const cleanId = utils.sanitizeGroupId ? utils.sanitizeGroupId(singleId) : singleId;
+                if (cleanId && !normalizedCustom.some(t => t.platform === plat && t.id === cleanId)) {
+                    normalizedCustom.push({ platform: plat, id: cleanId });
+                }
+            });
+        };
+
+        if (Array.isArray(customTargets) && customTargets.length > 0) {
+            customTargets.forEach(item => {
+                if (!item) return;
+                if (typeof item === 'object') {
+                    const plat = item.platform || 'telegram';
+                    const rawId = item.id || item.groupId || item.chatId;
+                    addNormalizedTarget(plat, rawId);
+                } else if (typeof item === 'string') {
+                    const trimmed = item.trim();
+                    if (!trimmed) return;
+                    if (trimmed.startsWith('wa_')) {
+                        addNormalizedTarget('whatsapp', trimmed.slice(3));
+                    } else if (/^(\+98|98|09)\d{9}$/.test(trimmed) || trimmed.includes('@c.us') || trimmed.includes('@g.us')) {
+                        addNormalizedTarget('whatsapp', trimmed);
+                    } else {
+                        platforms.forEach(p => {
+                            if (p !== 'whatsapp') addNormalizedTarget(p, trimmed);
+                        });
+                    }
+                }
+            });
+            if (normalizedCustom.length > 0) return normalizedCustom;
+        } else if (typeof customTargets === 'object' && !Array.isArray(customTargets)) {
+            ['telegram', 'bale', 'whatsapp'].forEach(plat => {
+                if (customTargets[plat]) {
+                    if (Array.isArray(customTargets[plat])) {
+                        customTargets[plat].forEach(id => addNormalizedTarget(plat, id));
+                    } else {
+                        addNormalizedTarget(plat, customTargets[plat]);
+                    }
+                }
+            });
+            if (normalizedCustom.length > 0) return normalizedCustom;
+        }
     }
     const settings = db.settings || {};
     const salesTargets = [];
@@ -1282,24 +1326,28 @@ ${categoryBreakdown ? `\n📋 *تفکیک عملکرد بر اساس نام اق
         let successfulSends = 0;
         const sendDetails = [];
         let lastErr = null;
+        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
         for (const tgt of uniqueSalesTargets) {
             try {
                 if (tgt.platform === 'telegram') {
-                    await telegram.sendBotDocument(tgt.id, pdfBuffer, filename, caption);
+                    await telegram.sendBotDocument(tgt.id, safePdfBuf, filename, caption);
                     successfulSends++;
                     sendDetails.push({ platform: 'telegram', id: tgt.id, status: 'success' });
                 } else if (tgt.platform === 'bale') {
-                    await bale.sendBotDocument(tgt.id, pdfBuffer, filename, caption);
+                    await bale.sendBotDocument(tgt.id, safePdfBuf, filename, caption);
                     successfulSends++;
                     sendDetails.push({ platform: 'bale', id: tgt.id, status: 'success' });
                 } else if (tgt.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        await wa.sendMessage(tgt.id, caption, {
-                            data: pdfBuffer.toString('base64'),
+                        const waRes = await wa.sendMessage(tgt.id, caption, {
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: filename
                         });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
                         successfulSends++;
                         sendDetails.push({ platform: 'whatsapp', id: tgt.id, status: 'success' });
                     } else {
@@ -1623,24 +1671,28 @@ app.post('/api/sayan/sales-report/send-compare', async (req, res) => {
         let successfulSends = 0;
         const sendDetails = [];
         let lastErr = null;
+        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
         for (const tgt of uniqueSalesTargets) {
             try {
                 if (tgt.platform === 'telegram') {
-                    await telegram.sendBotDocument(tgt.id, pdfBuffer, filename, caption);
+                    await telegram.sendBotDocument(tgt.id, safePdfBuf, filename, caption);
                     successfulSends++;
                     sendDetails.push({ platform: 'telegram', id: tgt.id, status: 'success' });
                 } else if (tgt.platform === 'bale') {
-                    await bale.sendBotDocument(tgt.id, pdfBuffer, filename, caption);
+                    await bale.sendBotDocument(tgt.id, safePdfBuf, filename, caption);
                     successfulSends++;
                     sendDetails.push({ platform: 'bale', id: tgt.id, status: 'success' });
                 } else if (tgt.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        await wa.sendMessage(tgt.id, caption, {
-                            data: pdfBuffer.toString('base64'),
+                        const waRes = await wa.sendMessage(tgt.id, caption, {
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: filename
                         });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
                         successfulSends++;
                         sendDetails.push({ platform: 'whatsapp', id: tgt.id, status: 'success' });
                     } else {
@@ -1871,24 +1923,28 @@ app.post('/api/sayan/sales-report/send-executive', async (req, res) => {
         let successfulSends = 0;
         const sendDetails = [];
         let lastErr = null;
+        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
         for (const tgt of uniqueTargets) {
             try {
                 if (tgt.platform === 'telegram') {
-                    await telegram.sendBotDocument(tgt.id, pdfBuffer, filename, caption);
+                    await telegram.sendBotDocument(tgt.id, safePdfBuf, filename, caption);
                     successfulSends++;
                     sendDetails.push({ platform: 'telegram', id: tgt.id, status: 'success' });
                 } else if (tgt.platform === 'bale') {
-                    await bale.sendBotDocument(tgt.id, pdfBuffer, filename, caption);
+                    await bale.sendBotDocument(tgt.id, safePdfBuf, filename, caption);
                     successfulSends++;
                     sendDetails.push({ platform: 'bale', id: tgt.id, status: 'success' });
                 } else if (tgt.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        await wa.sendMessage(tgt.id, caption, {
-                            data: pdfBuffer.toString('base64'),
+                        const waRes = await wa.sendMessage(tgt.id, caption, {
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: filename
                         });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
                         successfulSends++;
                         sendDetails.push({ platform: 'whatsapp', id: tgt.id, status: 'success' });
                     } else {
@@ -3601,14 +3657,15 @@ app.post('/api/warehouse-overview/send-negative-alert', async (req, res) => {
         let sentCount = 0;
         const sendErrors = [];
 
+        const safePdfBuf = pdfBuffer ? (Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer)) : null;
         for (const target of targets) {
             try {
                 if (target.platform === 'telegram') {
                     const tg = await safeImport('./backend/telegram.js');
                     if (tg) {
-                        if (pdfBuffer && (sendFormat === 'pdf_and_caption' || sendFormat === 'pdf_only')) {
+                        if (safePdfBuf && (sendFormat === 'pdf_and_caption' || sendFormat === 'pdf_only')) {
                             const tgCaption = sendFormat === 'pdf_and_caption' ? msg : `📄 گزارش وضعیت و تراز انبارها (${reportDate})`;
-                            await tg.sendBotDocument(target.id, pdfBuffer, filename, tgCaption);
+                            await tg.sendBotDocument(target.id, safePdfBuf, filename, tgCaption);
                             sentCount++;
                         } else if (tg.sendBotMessage) {
                             await tg.sendBotMessage(target.id, msg, { parse_mode: 'Markdown' });
@@ -3618,9 +3675,9 @@ app.post('/api/warehouse-overview/send-negative-alert', async (req, res) => {
                 } else if (target.platform === 'bale') {
                     const bale = await safeImport('./backend/bale.js');
                     if (bale) {
-                        if (pdfBuffer && (sendFormat === 'pdf_and_caption' || sendFormat === 'pdf_only')) {
+                        if (safePdfBuf && (sendFormat === 'pdf_and_caption' || sendFormat === 'pdf_only')) {
                             const baleCaption = sendFormat === 'pdf_and_caption' ? msg : `📄 گزارش وضعیت و تراز انبارها (${reportDate})`;
-                            await bale.sendBotDocument(target.id, pdfBuffer, filename, baleCaption);
+                            await bale.sendBotDocument(target.id, safePdfBuf, filename, baleCaption);
                             sentCount++;
                         } else if (bale.sendBotMessage) {
                             await bale.sendBotMessage(target.id, msg);
@@ -3630,14 +3687,18 @@ app.post('/api/warehouse-overview/send-negative-alert', async (req, res) => {
                 } else if (target.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        if (pdfBuffer && (sendFormat === 'pdf_and_caption' || sendFormat === 'pdf_only')) {
-                            await wa.sendMessage(target.id, msg, {
-                                data: pdfBuffer.toString('base64'),
+                        let waRes;
+                        if (safePdfBuf && (sendFormat === 'pdf_and_caption' || sendFormat === 'pdf_only')) {
+                            waRes = await wa.sendMessage(target.id, msg, {
+                                data: safePdfBuf.toString('base64'),
                                 mimeType: 'application/pdf',
                                 filename
                             });
                         } else {
-                            await wa.sendMessage(target.id, msg);
+                            waRes = await wa.sendMessage(target.id, msg);
+                        }
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
                         }
                         sentCount++;
                     }
@@ -3823,13 +3884,14 @@ app.post('/api/warehouse-overview/send-ai-advisor-report', async (req, res) => {
         let sentCount = 0;
         const sendErrors = [];
 
+        const safePdfBuf = pdfBuffer ? (Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer)) : null;
         for (const target of targets) {
             try {
                 if (target.platform === 'telegram') {
                     const tg = await safeImport('./backend/telegram.js');
                     if (tg) {
-                        if (pdfBuffer) {
-                            await tg.sendBotDocument(target.id, pdfBuffer, filename, msg);
+                        if (safePdfBuf) {
+                            await tg.sendBotDocument(target.id, safePdfBuf, filename, msg);
                             sentCount++;
                         } else if (tg.sendBotMessage) {
                             await tg.sendBotMessage(target.id, msg, { parse_mode: 'Markdown' });
@@ -3839,8 +3901,8 @@ app.post('/api/warehouse-overview/send-ai-advisor-report', async (req, res) => {
                 } else if (target.platform === 'bale') {
                     const bale = await safeImport('./backend/bale.js');
                     if (bale) {
-                        if (pdfBuffer) {
-                            await bale.sendBotDocument(target.id, pdfBuffer, filename, msg);
+                        if (safePdfBuf) {
+                            await bale.sendBotDocument(target.id, safePdfBuf, filename, msg);
                             sentCount++;
                         } else if (bale.sendBotMessage) {
                             await bale.sendBotMessage(target.id, msg);
@@ -3850,14 +3912,18 @@ app.post('/api/warehouse-overview/send-ai-advisor-report', async (req, res) => {
                 } else if (target.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        if (pdfBuffer) {
-                            await wa.sendMessage(target.id, msg, {
-                                data: pdfBuffer.toString('base64'),
+                        let waRes;
+                        if (safePdfBuf) {
+                            waRes = await wa.sendMessage(target.id, msg, {
+                                data: safePdfBuf.toString('base64'),
                                 mimeType: 'application/pdf',
                                 filename
                             });
                         } else {
-                            await wa.sendMessage(target.id, msg);
+                            waRes = await wa.sendMessage(target.id, msg);
+                        }
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
                         }
                         sentCount++;
                     }
@@ -4705,30 +4771,38 @@ app.post('/api/sayan/production-report/send-bot', async (req, res) => {
         const filename = `Production_Report_${dateFrom.replace(/[\/\\]/g, '-')}.pdf`;
         const settings = db.settings || {};
         
-        const uniqueTargets = collectBotTargets(db, { category: 'production' });
+        const uniqueTargets = collectBotTargets(db, {
+            category: 'production',
+            platforms: req.body.selectedPlatforms || ['telegram', 'bale', 'whatsapp'],
+            customTargets: req.body.customTargets || null
+        });
 
         if (uniqueTargets.length === 0) {
             return res.status(400).json({ error: 'هیچ شناسه گروه آمار تولید (تلگرام، بله یا واتساپ) در تنظیمات سیستم یافت نشد. لطفاً در «تنظیمات سیستم -> اطلاع‌رسانی ربات» شناسه گروه آمار تولید را وارد نمایید.' });
         }
 
+        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
         let sentCount = 0;
         let lastError = null;
         for (const target of uniqueTargets) {
             try {
                 if (target.platform === 'telegram') {
-                    await telegram.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    await telegram.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     sentCount++;
                 } else if (target.platform === 'bale') {
-                    await bale.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    await bale.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     sentCount++;
                 } else if (target.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        await wa.sendMessage(target.id, caption, {
-                            data: pdfBuffer.toString('base64'),
+                        const waRes = await wa.sendMessage(target.id, caption, {
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: filename
                         });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
                         sentCount++;
                     }
                 }
@@ -5293,31 +5367,39 @@ app.post('/api/sayan/production-returns/send-bot', async (req, res) => {
         const pdfBuffer = await Renderer.generatePdfBuffer(html);
 
         const filename = `Sayan_Returns_${dateFrom.replace(/[\/\\]/g, '-')}.pdf`;
-        const uniqueTargets = collectBotTargets(db, { category: 'production_returns' });
+        const uniqueTargets = collectBotTargets(db, {
+            category: 'production_returns',
+            platforms: req.body.selectedPlatforms || ['telegram', 'bale', 'whatsapp'],
+            customTargets: req.body.customTargets || null
+        });
 
         if (uniqueTargets.length === 0) {
             return res.status(400).json({ error: 'هیچ شناسه گروه برگشت از تولید (کد ۴۴) در تنظیمات بات یافت نشد. لطفا ابتدا شناسه گروه‌های مربوطه را در بخش تنظیمات سیستم ذخیره نمایید.' });
         }
 
+        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
         let sentCount = 0;
         let lastError = null;
 
         for (const target of uniqueTargets) {
             try {
                 if (target.platform === 'telegram' && telegram) {
-                    await telegram.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    await telegram.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     sentCount++;
                 } else if (target.platform === 'bale' && bale) {
-                    await bale.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    await bale.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     sentCount++;
                 } else if (target.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        await wa.sendMessage(target.id, caption, {
-                            data: pdfBuffer.toString('base64'),
+                        const waRes = await wa.sendMessage(target.id, caption, {
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: filename
                         });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
                         sentCount++;
                     }
                 }
@@ -5374,30 +5456,38 @@ ${groupByLabel ? `🏷️ *نوع تفکیک:* ${groupByLabel}\n` : ''}
 📎 جزئیات کامل ردیف‌های تولیدی در فایل PDF ضمیمه ارسال گردید.`;
 
         const filename = `Production_Compare_Report_${dateFromA.replace(/[\/\\]/g, '-')}.pdf`;
-        const uniqueTargets = collectBotTargets(db, { category: 'production_compare' });
+        const uniqueTargets = collectBotTargets(db, {
+            category: 'production_compare',
+            platforms: req.body.selectedPlatforms || ['telegram', 'bale', 'whatsapp'],
+            customTargets: req.body.customTargets || null
+        });
 
         if (uniqueTargets.length === 0) {
             return res.status(400).json({ error: 'هیچ شناسه گروه مقایسه آمار تولید (تلگرام، بله یا واتساپ) در تنظیمات سیستم یافت نشد. لطفاً در تنظیمات سیستم شناسه گروه مقایسه آمار تولید را وارد نمایید.' });
         }
 
+        const safePdfBuf = Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer);
         let sentCount = 0;
         let lastError = null;
         for (const target of uniqueTargets) {
             try {
                 if (target.platform === 'telegram') {
-                    await telegram.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    await telegram.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     sentCount++;
                 } else if (target.platform === 'bale') {
-                    await bale.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    await bale.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     sentCount++;
                 } else if (target.platform === 'whatsapp') {
                     const wa = await safeImport('./backend/whatsapp.js');
                     if (wa && wa.sendMessage) {
-                        await wa.sendMessage(target.id, caption, {
-                            data: pdfBuffer.toString('base64'),
+                        const waRes = await wa.sendMessage(target.id, caption, {
+                            data: safePdfBuf.toString('base64'),
                             mimeType: 'application/pdf',
                             filename: filename
                         });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
                         sentCount++;
                     }
                 }
@@ -7049,29 +7139,39 @@ app.post('/unsubscribe', unsubscribeHandler);
 
 app.post('/api/bot/send-document', async (req, res) => {
     try {
-        const { base64Data, filename, caption, platforms = ['telegram', 'bale'], customTargets } = req.body;
+        const { base64Data, filename, caption, platforms = ['telegram', 'bale', 'whatsapp'], customTargets } = req.body;
         if (!base64Data || !filename) {
             return res.status(400).json({ error: 'Missing required data' });
         }
         
         const buffer = Buffer.from(base64Data, 'base64');
+        const db = getDb();
         let targets = [];
         
-        // If no custom targets, maybe use some default or require them?
-        // Let's assume customTargets is passed or we broadcast to a default list.
         if (customTargets && customTargets.length > 0) {
             for (const t of customTargets) {
-                targets.push({ platform: t.platform, id: t.groupId });
+                const rawId = t.groupId || t.id || t.chatId;
+                if (rawId) {
+                    String(rawId).split(/[,،;\n\r]+/).map(s => s.trim()).filter(Boolean).forEach(singleId => {
+                        targets.push({ platform: t.platform, id: singleId });
+                    });
+                }
             }
         } else {
-            // Default targets from settings if any?
-            const settings = getSettings();
-            if (settings.chatGroups) {
-                targets = settings.chatGroups;
+            targets = collectBotTargets(db, { category: 'accounting', platforms });
+            if (targets.length === 0) {
+                const settings = getSettings();
+                if (settings.chatGroups) {
+                    targets = settings.chatGroups;
+                }
             }
         }
         
         const results = [];
+        const mimeType = filename.endsWith('.xlsx')
+            ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            : (filename.endsWith('.png') ? 'image/png' : 'application/pdf');
+
         for (const target of targets) {
             if (!platforms.includes(target.platform)) continue;
             try {
@@ -7081,12 +7181,29 @@ app.post('/api/bot/send-document', async (req, res) => {
                 } else if (target.platform === 'bale' && bale) {
                     await bale.sendBotDocument(target.id, buffer, filename, caption || '');
                     results.push({ platform: 'bale', id: target.id, success: true });
+                } else if (target.platform === 'whatsapp') {
+                    const wa = await safeImport('./backend/whatsapp.js');
+                    if (wa && wa.sendMessage) {
+                        const waRes = await wa.sendMessage(target.id, caption || `📄 ${filename}`, {
+                            data: buffer.toString('base64'),
+                            mimeType,
+                            filename
+                        });
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
+                        results.push({ platform: 'whatsapp', id: target.id, success: true });
+                    }
                 }
             } catch (err) {
                 results.push({ platform: target.platform, id: target.id, success: false, error: err.message });
             }
         }
         
+        const anySuccess = results.some(r => r.success);
+        if (!anySuccess && results.length > 0) {
+            return res.status(500).json({ error: results.map(r => `${r.platform}: ${r.error}`).join(' | '), results });
+        }
         res.json({ success: true, results });
     } catch (e) {
         console.error("Error in /api/bot/send-document:", e);
@@ -14587,36 +14704,50 @@ app.post('/api/ai/sayan-send-bot', async (req, res) => {
         caption += `📎 جزئیات مهندسی و نمودارهای تحلیلی در فایل PDF پیوست ارسال گردید.`;
 
         const filename = `Sayan_AI_Analysis_${Date.now()}.pdf`;
+        const safePdfBuf = pdfBuffer ? (Buffer.isBuffer(pdfBuffer) ? pdfBuffer : Buffer.from(pdfBuffer)) : null;
         let sentCount = 0;
+        let lastErr = null;
 
         for (const target of targets) {
             try {
                 if (target.platform === 'telegram' && telegram) {
-                    if (pdfBuffer && attachPdf) {
-                        await telegram.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    if (safePdfBuf && attachPdf) {
+                        await telegram.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     } else {
                         await telegram.sendBotMessage(target.id, caption);
                     }
                     sentCount++;
                 } else if (target.platform === 'bale' && bale) {
-                    if (pdfBuffer && attachPdf) {
-                        await bale.sendBotDocument(target.id, pdfBuffer, filename, caption);
+                    if (safePdfBuf && attachPdf) {
+                        await bale.sendBotDocument(target.id, safePdfBuf, filename, caption);
                     } else {
                         await bale.sendBotMessage(target.id, caption);
                     }
                     sentCount++;
-                } else if (target.platform === 'whatsapp' && whatsapp && whatsapp.sendMessage) {
-                    if (pdfBuffer && attachPdf) {
-                        const b64 = pdfBuffer.toString('base64');
-                        await whatsapp.sendMessage(target.id, caption, { data: b64, mimeType: 'application/pdf', filename });
-                    } else {
-                        await whatsapp.sendMessage(target.id, caption);
+                } else if (target.platform === 'whatsapp') {
+                    const wa = await safeImport('./backend/whatsapp.js');
+                    if (wa && wa.sendMessage) {
+                        let waRes;
+                        if (safePdfBuf && attachPdf) {
+                            const b64 = safePdfBuf.toString('base64');
+                            waRes = await wa.sendMessage(target.id, caption, { data: b64, mimeType: 'application/pdf', filename });
+                        } else {
+                            waRes = await wa.sendMessage(target.id, caption);
+                        }
+                        if (waRes && waRes.success === false) {
+                            throw new Error(waRes.error || 'خطا در ارسال واتساپ');
+                        }
+                        sentCount++;
                     }
-                    sentCount++;
                 }
             } catch (dispatchErr) {
+                lastErr = dispatchErr.message;
                 console.error(`Failed to send Sayan AI analysis to ${target.platform} (${target.id}):`, dispatchErr.message);
             }
+        }
+
+        if (sentCount === 0) {
+            return res.status(500).json({ error: `ارسال تحلیل هوش مصنوعی ناموفق بود: ${lastErr || 'خطا در ارتباط با پیام‌رسان‌ها'}` });
         }
 
         res.json({ success: true, sentCount, message: `تحلیل هوش مصنوعی به ${sentCount} مقصد ارسال گردید.` });

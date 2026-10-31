@@ -65,7 +65,7 @@ export const WarehouseOverviewTab: React.FC = () => {
     const [isSendingBot, setIsSendingBot] = useState(false);
     const [botDestinationType, setBotDestinationType] = useState<'default' | 'production' | 'custom'>('default');
     const [customTargetId, setCustomTargetId] = useState('');
-    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['telegram', 'bale']);
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['telegram', 'bale', 'whatsapp']);
     const [botReportScope, setBotReportScope] = useState<'both' | 'overview_only' | 'variance_only'>('both');
     const [botSendFormat, setBotSendFormat] = useState<'pdf_and_caption' | 'pdf_only' | 'caption_only'>('pdf_and_caption');
     const [botNotifyInApp, setBotNotifyInApp] = useState<boolean>(true);
@@ -4313,8 +4313,8 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
 
             {/* 🤖 BOT DISPATCH & ALARM NOTIFICATION MODAL */}
             {isBotModalOpen && typeof document !== 'undefined' && createPortal(
-                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-900/75 backdrop-blur-md animate-fade-in" dir="rtl">
-                    <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-5 sm:p-7 space-y-5 max-h-[92vh] flex flex-col overflow-hidden">
+                <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 md:p-6 pb-16 sm:pb-20 bg-slate-900/75 backdrop-blur-md animate-fade-in" dir="rtl">
+                    <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 max-h-[82vh] flex flex-col overflow-hidden">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-red-50 text-red-600 rounded-2xl">
@@ -4524,9 +4524,22 @@ const getSayanGroupSum = (groupCode: string, isLastYear: boolean, field: 'weight
                                                 if (e.target.checked) setSelectedPlatforms([...selectedPlatforms, 'bale']);
                                                 else setSelectedPlatforms(selectedPlatforms.filter(p => p !== 'bale'));
                                             }}
-                                            className="w-4 h-4 text-blue-600 rounded border-slate-300"
+                                            className="w-4 h-4 text-emerald-600 rounded border-slate-300"
                                         />
                                         <span>بله (Bale)</span>
+                                    </label>
+
+                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedPlatforms.includes('whatsapp')}
+                                            onChange={(e) => {
+                                                if (e.target.checked) setSelectedPlatforms([...selectedPlatforms, 'whatsapp']);
+                                                else setSelectedPlatforms(selectedPlatforms.filter(p => p !== 'whatsapp'));
+                                            }}
+                                            className="w-4 h-4 text-green-600 rounded border-slate-300"
+                                        />
+                                        <span>واتساپ (WhatsApp)</span>
                                     </label>
                                 </div>
                             </div>

@@ -950,18 +950,26 @@ export const sendMessage = async (number, text, mediaData) => {
     if (mediaData && (mediaData.data || mediaData.buffer)) {
         try {
             let cleanBase64 = '';
-            if (Buffer.isBuffer(mediaData.data)) {
-                cleanBase64 = mediaData.data.toString('base64');
-            } else if (Buffer.isBuffer(mediaData.buffer)) {
-                cleanBase64 = mediaData.buffer.toString('base64');
-            } else if (typeof mediaData.data === 'string') {
-                cleanBase64 = mediaData.data.trim();
-                if (cleanBase64.includes(';base64,')) {
-                    cleanBase64 = cleanBase64.split(';base64,')[1];
-                } else if (cleanBase64.startsWith('data:')) {
-                    cleanBase64 = cleanBase64.replace(/^data:[^,]+,/, '');
+            const rawMedia = mediaData.data || mediaData.buffer;
+            if (Buffer.isBuffer(rawMedia)) {
+                cleanBase64 = rawMedia.toString('base64');
+            } else if (rawMedia instanceof Uint8Array || ArrayBuffer.isView(rawMedia)) {
+                cleanBase64 = Buffer.from(rawMedia).toString('base64');
+            } else if (typeof rawMedia === 'string') {
+                const trimmed = rawMedia.trim();
+                // Handle case where Uint8Array.toString('base64') produced comma-separated bytes "37,80,68,70,..."
+                if (/^\d+(,\d+)+$/.test(trimmed.slice(0, 120))) {
+                    const bytes = trimmed.split(',').map(n => Number(n));
+                    cleanBase64 = Buffer.from(bytes).toString('base64');
+                } else {
+                    cleanBase64 = trimmed;
+                    if (cleanBase64.includes(';base64,')) {
+                        cleanBase64 = cleanBase64.split(';base64,')[1];
+                    } else if (cleanBase64.startsWith('data:')) {
+                        cleanBase64 = cleanBase64.replace(/^data:[^,]+,/, '');
+                    }
+                    cleanBase64 = cleanBase64.replace(/\s+/g, '');
                 }
-                cleanBase64 = cleanBase64.replace(/\s+/g, '');
             }
 
             if (cleanBase64 && cleanBase64.length % 4 !== 0) {

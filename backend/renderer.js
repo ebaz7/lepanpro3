@@ -864,7 +864,7 @@ export const generateRecordImage = async (record, type, options = {}) => {
 
         const card = await page.$("#capture-wrapper");
         if (!card) throw new Error("Element #capture-wrapper not found in EXIT document");
-        const buffer = await card.screenshot({ type: "png" });
+        const buffer = Buffer.from(await card.screenshot({ type: "png" }));
         return buffer;
       } finally {
         await page.close().catch(() => {});
@@ -1040,7 +1040,7 @@ export const generateRecordImage = async (record, type, options = {}) => {
       await page.setViewport({ width: 600, height: 850, deviceScaleFactor: 2 });
       await page.setContent(html, { waitUntil: "networkidle0" });
       const card = await page.$("#capture-wrapper");
-      const buffer = await card.screenshot({ type: "png" });
+      const buffer = Buffer.from(await card.screenshot({ type: "png" }));
       await page.close();
       return buffer;
     }
@@ -1049,7 +1049,7 @@ export const generateRecordImage = async (record, type, options = {}) => {
       waitUntil: "networkidle0",
     });
     const card = await page.$(".card");
-    const buffer = await card.screenshot({ type: "png" });
+    const buffer = Buffer.from(await card.screenshot({ type: "png" }));
     await page.close();
     return buffer;
   } catch (e) {
@@ -1082,7 +1082,7 @@ export const generatePdfBuffer = async (html, options = {}) => {
       ...options,
       timeout: 90000,
     };
-    const pdf = await page.pdf(pdfOptions);
+    const pdf = Buffer.from(await page.pdf(pdfOptions));
     await page.close();
     return pdf;
   } catch (e) {
@@ -1110,11 +1110,11 @@ export const generateVoucherPDF = async (order) => {
                 <table><thead><tr><th>#</th><th>روش</th><th>مبلغ</th><th>بانک</th><th>شرح</th></tr></thead><tbody>${linesHtml}</tbody></table>
             </div></body></html>`;
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: "A5",
       landscape: true,
       printBackground: true,
-    });
+    }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -1143,7 +1143,7 @@ export const generateExitPermitPDF = async (permit) => {
                 <div class="voucher-signatures" style="margin-top:100px"><div><div class="sig-box"></div><div>فروش</div></div><div><div class="sig-box"></div><div>مدیریت</div></div><div><div class="sig-box"></div><div>انبار</div></div><div><div class="sig-box"></div><div>انتظامات</div></div></div>
             </div></body></html>`;
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({ format: "A4", printBackground: true });
+    const pdf = Buffer.from(await page.pdf({ format: "A4", printBackground: true }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -1231,11 +1231,11 @@ export const generateBijakPDF = async (tx) => {
             </div></body></html>`;
 
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: "A5",
       landscape: false,
       printBackground: true,
-    });
+    }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -1662,12 +1662,12 @@ export const generateReportPDF = async (
 </html>`;
 
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: "A4",
       landscape,
       printBackground: true,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
-    });
+    }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -1711,7 +1711,7 @@ export const generateMeetingAnnouncementImage = async (meeting) => {
     await page.setViewport({ width: 640, height: 800, deviceScaleFactor: 2 });
     await page.setContent(html, { waitUntil: "networkidle0" });
     const card = await page.$(".card");
-    const buffer = await card.screenshot({ type: "png" });
+    const buffer = Buffer.from(await card.screenshot({ type: "png" }));
     await page.close();
     return buffer;
   } catch (e) {
@@ -2218,7 +2218,7 @@ export const generateMeetingMinutesPDF = async (meeting) => {
         </body></html>`;
 
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf = await page.pdf({ format: "A4", printBackground: true });
+    const pdf = Buffer.from(await page.pdf({ format: "A4", printBackground: true }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -2670,7 +2670,7 @@ export const generateSecretariatLetterPDF = async (
       }
     }
 
-    return pdf;
+    return Buffer.isBuffer(pdf) ? pdf : Buffer.from(pdf);
   } catch (e) {
     console.error("Generate Letter PDF Error:", e.message);
     throw e;
@@ -3161,12 +3161,12 @@ export const generateProductionReportPDF = async (
     `;
 
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: 'A4',
       landscape: true,
       printBackground: true,
       margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
-    });
+    }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -3276,12 +3276,12 @@ export const generateProductionCompareReportPDF = async (
     `;
 
     await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: 'A4',
       portrait: true,
       printBackground: true,
       margin: { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
-    });
+    }));
     await page.close();
     return pdf;
   } catch (e) {
@@ -3742,13 +3742,13 @@ export const generateWarehouseOverviewReportPDF = async (reportData = {}) => {
       console.warn("[Renderer] setContent domcontentloaded timeout, setting directly:", loadErr.message);
       await page.setContent(html);
     }
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: 'A4',
       portrait: true,
       printBackground: true,
       preferCSSPageSize: true,
       margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' }
-    });
+    }));
     return pdf;
   } catch (e) {
     console.error("Generate Warehouse Overview Report PDF Error:", e);
@@ -3956,13 +3956,13 @@ export const generateAiWarehouseAdvisorReportPDF = async (advisorData = {}) => {
       console.warn("[Renderer] setContent domcontentloaded timeout, setting directly:", loadErr.message);
       await page.setContent(html);
     }
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: 'A4',
       portrait: true,
       printBackground: true,
       preferCSSPageSize: true,
       margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' }
-    });
+    }));
     return pdf;
   } catch (e) {
     console.error("Generate AI Advisor Report PDF Error:", e);
@@ -4177,13 +4177,13 @@ export const generateSayanAiReportPDF = async (reportData = {}) => {
       console.warn("[Renderer] setContent domcontentloaded timeout, setting directly:", loadErr.message);
       await page.setContent(html);
     }
-    const pdf = await page.pdf({
+    const pdf = Buffer.from(await page.pdf({
       format: 'A4',
       portrait: true,
       printBackground: true,
       preferCSSPageSize: true,
       margin: { top: '6mm', right: '6mm', bottom: '6mm', left: '6mm' }
-    });
+    }));
     return pdf;
   } catch (e) {
     console.error("Generate Sayan AI Report PDF Error:", e);

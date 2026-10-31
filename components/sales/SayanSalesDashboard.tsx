@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, FileText, Users, 
   Send, Printer, Download, Calendar, Filter, ChevronDown, ChevronRight, 
@@ -1388,22 +1389,33 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
     if (botSendMode === 'default_groups') {
       return undefined;
     }
-    const targets: string[] = [];
-    if (customChatIdsTele.length > 0) {
-      targets.push(...customChatIdsTele);
+    const targets: { platform: string; id: string }[] = [];
+    if (selectedPlatforms.includes('telegram') && customChatIdsTele.length > 0) {
+      customChatIdsTele.forEach(id => {
+        if (id && id.trim()) targets.push({ platform: 'telegram', id: id.trim() });
+      });
     }
-    if (customChatIdsBale.length > 0) {
-      targets.push(...customChatIdsBale);
+    if (selectedPlatforms.includes('bale') && customChatIdsBale.length > 0) {
+      customChatIdsBale.forEach(id => {
+        if (id && id.trim()) targets.push({ platform: 'bale', id: id.trim() });
+      });
     }
-    if (customChatIdsWa.length > 0) {
-      targets.push(...customChatIdsWa);
+    if (selectedPlatforms.includes('whatsapp')) {
+      if (customChatIdsWa.length > 0) {
+        customChatIdsWa.forEach(id => {
+          if (id && id.trim()) targets.push({ platform: 'whatsapp', id: id.trim() });
+        });
+      }
+      if (manualWhatsappPhone && manualWhatsappPhone.trim()) {
+        const cleanWa = manualWhatsappPhone.trim().replace(/[^0-9]/g, '');
+        if (cleanWa) targets.push({ platform: 'whatsapp', id: cleanWa });
+      }
     }
-    if (manualWhatsappPhone && manualWhatsappPhone.trim()) {
-      const cleanWa = manualWhatsappPhone.trim().replace(/[^0-9]/g, '');
-      if (cleanWa) targets.push(`wa_${cleanWa}`);
-    }
-    return targets.length > 0 ? Array.from(new Set(targets)) : undefined;
-  }, [botSendMode, customChatIdsTele, customChatIdsBale, customChatIdsWa, manualWhatsappPhone]);
+    const unique = targets.filter(
+      (t, i, arr) => arr.findIndex(x => x.platform === t.platform && x.id === t.id) === i
+    );
+    return unique.length > 0 ? unique : undefined;
+  }, [botSendMode, selectedPlatforms, customChatIdsTele, customChatIdsBale, customChatIdsWa, manualWhatsappPhone]);
 
   const handleSendCompareToBots = async () => {
     setIsSendingBot(true);
@@ -4229,12 +4241,12 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
       {/* ================================================================== */}
       {/* BOT DISPATCH INTERACTIVE MODAL */}
       {/* ================================================================== */}
-      {isBotModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 dark:border-zinc-800 animate-scaleUp overflow-hidden">
+      {isBotModalOpen && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[10000] flex items-center justify-center p-3 sm:p-4 pb-16 sm:pb-20" dir="rtl">
+          <div className="bg-white dark:bg-zinc-900 rounded-3xl max-w-lg w-full max-h-[80vh] sm:max-h-[82vh] flex flex-col shadow-2xl border border-slate-200 dark:border-zinc-800 animate-scaleUp overflow-hidden">
             
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 p-4 shrink-0 bg-slate-50/70 dark:bg-zinc-900/70">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 px-4 py-3 shrink-0 bg-slate-50/70 dark:bg-zinc-900/70">
               <div className="flex items-center gap-2 text-slate-900 dark:text-zinc-100 font-extrabold text-sm">
                 <Send className="w-5 h-5 text-emerald-600" />
                 <span>ارسال گزارش فروش به پیام‌رسان‌ها (بات‌ها و پی‌وی)</span>
@@ -4248,7 +4260,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
             </div>
 
             {/* Modal Body */}
-            <div className="p-4 overflow-y-auto space-y-4 custom-scrollbar">
+            <div className="p-3.5 sm:p-4 overflow-y-auto flex-1 min-h-0 space-y-3 custom-scrollbar">
               {/* Report Summary Card */}
               <div className="bg-slate-50 dark:bg-zinc-800/60 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/60 space-y-2">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-zinc-300">
@@ -4398,7 +4410,7 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2 shrink-0 bg-slate-50/70 dark:bg-zinc-900/70">
+            <div className="px-4 py-3 border-t border-slate-100 dark:border-zinc-800 flex items-center justify-between gap-2 shrink-0 bg-slate-50/70 dark:bg-zinc-900/70">
               <span className="text-[11px] text-slate-500 dark:text-zinc-400">
                 {computedCustomTargets ? `${computedCustomTargets.length} مقصد سفارشی انتخاب شده` : 'ارسال به گروه‌های پیش‌فرض'}
               </span>
@@ -4423,7 +4435,8 @@ export const SayanSalesDashboard: React.FC<SayanSalesDashboardProps> = ({
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* AI Strategic & Engineering Sales Report Modal */}

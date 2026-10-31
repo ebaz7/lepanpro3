@@ -54,12 +54,16 @@ export const initTelegram = async (token) => {
         ]).catch(e => console.error("TG SetCommands Err:", e.message));
 
         const sendFn = (id, txt, opts) => bot.sendMessage(id, txt, opts).catch(e => console.error("TG Send Err:", e.message));
-        const sendPhotoFn = (platform, id, buf, cap, opts) => bot.sendPhoto(id, buf, { caption: cap, ...opts }).catch(e => console.error("TG Photo Err:", e.message));
+        const sendPhotoFn = (platform, id, buf, cap, opts) => {
+            const safeBuf = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+            return bot.sendPhoto(id, safeBuf, { caption: cap, ...opts }).catch(e => console.error("TG Photo Err:", e.message));
+        };
         
         // FIXED: Ensure options { filename } is passed as fileOptions with 3-attempt retry system
         const sendDocFn = async (id, buf, name, cap, attempt = 1) => {
             try {
-                return await bot.sendDocument(id, buf, { caption: cap }, { filename: name });
+                const safeBuf = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+                return await bot.sendDocument(id, safeBuf, { caption: cap }, { filename: name });
             } catch (e) {
                 console.error(`TG Doc Err (Attempt ${attempt}/3):`, e.message);
                 if (attempt < 3) {
@@ -222,9 +226,10 @@ export const sendBotPhoto = async (chatId, buffer, caption, opts) => {
         if (token) await initTelegram(token);
     }
     if (!bot) return Promise.reject(new Error("ربات تلگرام غیرفعال است. لطفاً توکن ربات تلگرام را در «تنظیمات سیستم ⚙️ -> تب ربات‌ها» وارد نمایید."));
+    const safeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
     const safeCaption = caption && caption.length > 1000 ? caption.slice(0, 995) + '...' : caption;
     const fileOptions = { filename: opts?.filename || 'image.png', contentType: opts?.contentType || 'image/png' };
-    return bot.sendPhoto(chatId, buffer, { caption: safeCaption, ...opts }, fileOptions);
+    return bot.sendPhoto(chatId, safeBuf, { caption: safeCaption, ...opts }, fileOptions);
 };
 
 export const sendBotDocument = async (chatId, buffer, name, caption) => {
@@ -234,11 +239,12 @@ export const sendBotDocument = async (chatId, buffer, name, caption) => {
         if (token) await initTelegram(token);
     }
     if (!bot) return Promise.reject(new Error("ربات تلگرام غیرفعال است. لطفاً توکن ربات تلگرام را در «تنظیمات سیستم ⚙️ -> تب ربات‌ها» وارد نمایید."));
+    const safeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
     const safeCaption = caption && caption.length > 1000 ? caption.slice(0, 995) + '...' : caption;
     const contentType = name && name.endsWith('.xlsx')
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         : (name && name.endsWith('.csv') ? 'text/csv' : 'application/pdf');
-    return bot.sendDocument(chatId, buffer, { caption: safeCaption }, { filename: name || 'document.pdf', contentType });
+    return bot.sendDocument(chatId, safeBuf, { caption: safeCaption }, { filename: name || 'document.pdf', contentType });
 };
 
 export const deleteBotMessage = async (chatId, messageId) => {

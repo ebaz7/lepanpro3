@@ -204,10 +204,11 @@ const poll = async () => {
                 const sendFn = (id, txt, opts) => callApi('sendMessage', { chat_id: id, text: txt, ...opts }).catch(e => console.error("Bale Send Err", e.message));
                 
                 const sendPhotoFn = (platform, id, buffer, caption, opts) => {
+                    const safeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
                     const form = new FormData();
-                    form.append('chat_id', id);
-                    form.append('photo', buffer, { filename: 'image.png' });
-                    form.append('caption', caption);
+                    form.append('chat_id', String(id));
+                    form.append('photo', safeBuf, { filename: 'image.png' });
+                    form.append('caption', caption || '');
                     if (opts && opts.reply_markup) form.append('reply_markup', JSON.stringify(opts.reply_markup));
                     return callApi('sendPhoto', form, true).catch(e => console.error("Bale Photo Err", e.message));
                 };
@@ -215,9 +216,10 @@ const poll = async () => {
                 // FIXED: Ensure buffer is appended correctly with filename and 3-attempt retry system
                 const sendDocFn = async (id, buffer, name, caption, attempt = 1) => {
                     try {
+                        const safeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
                         const form = new FormData();
-                        form.append('chat_id', id);
-                        form.append('document', buffer, { filename: name || 'document.pdf' });
+                        form.append('chat_id', String(id));
+                        form.append('document', safeBuf, { filename: name || 'document.pdf' });
                         form.append('caption', caption || '');
                         const res = await callApi('sendDocument', form, true);
                         if (!res || !res.ok) {
@@ -397,11 +399,12 @@ export const sendBotPhoto = (chatId, buffer, caption, opts) => {
         if (token) initBaleBot(token);
     }
     if (!botToken) return Promise.reject(new Error("ربات بله غیرفعال است. لطفاً توکن ربات بله را در «تنظیمات سیستم ⚙️ -> تب ربات‌ها» وارد نمایید."));
+    const safeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
     const safeCaption = caption && caption.length > 1000 ? caption.slice(0, 995) + '...' : caption;
     const form = new FormData();
-    form.append('chat_id', chatId);
+    form.append('chat_id', String(chatId));
     const filename = (opts && opts.filename) ? opts.filename : 'image.png';
-    form.append('photo', buffer, { filename });
+    form.append('photo', safeBuf, { filename });
     form.append('caption', safeCaption || '');
     if (opts && opts.reply_markup) form.append('reply_markup', JSON.stringify(opts.reply_markup));
     return callApi('sendPhoto', form, true);
@@ -414,13 +417,14 @@ export const sendBotDocument = (chatId, buffer, name, caption) => {
         if (token) initBaleBot(token);
     }
     if (!botToken) return Promise.reject(new Error("ربات بله غیرفعال است. لطفاً توکن ربات بله را در «تنظیمات سیستم ⚙️ -> تب ربات‌ها» وارد نمایید."));
+    const safeBuf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
     const safeCaption = caption && caption.length > 1000 ? caption.slice(0, 995) + '...' : caption;
     const contentType = name && name.endsWith('.xlsx')
         ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         : (name && name.endsWith('.csv') ? 'text/csv' : 'application/pdf');
     const form = new FormData();
-    form.append('chat_id', chatId);
-    form.append('document', buffer, { filename: name || 'document.pdf', contentType });
+    form.append('chat_id', String(chatId));
+    form.append('document', safeBuf, { filename: name || 'document.pdf', contentType });
     form.append('caption', safeCaption || '');
     return callApi('sendDocument', form, true);
 };

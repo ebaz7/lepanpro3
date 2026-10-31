@@ -108,7 +108,7 @@ async function buildAndPublishTauri() {
         NODE_OPTIONS: '--max-old-space-size=4096',
         CARGO_BUILD_JOBS: '1',
         CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16',
-        CARGO_PROFILE_RELEASE_OPT_LEVEL: '0',
+        CARGO_PROFILE_RELEASE_OPT_LEVEL: '2',
         CARGO_PROFILE_RELEASE_LTO: 'false',
         CARGO_PROFILE_RELEASE_DEBUG: 'false',
         CARGO_PROFILE_RELEASE_INCREMENTAL: 'false'

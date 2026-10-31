@@ -542,40 +542,49 @@ export default function ProductionReturnTab({
         toast.success(`فیلتر روی کالای "${itemName}" اعمال شد`);
     };
 
-    // Send Telegram Bot Notification
+    // Send Bot Notification (Telegram, Bale, WhatsApp)
     const handleSendReturnsBot = async () => {
         setIsSendingBot(true);
         try {
-            const textLines = [
-                `🔄 *گزارش برگشت از تولید به انبار (عملیات ۴۴)*`,
-                `📅 بازه: ${dateFrom || "ابتدای دوره"} الی ${dateTo || "امروز"}`,
-                `⚖️ *مجموع کل وزن:* ${Math.round(analyzedData.totalWeight).toLocaleString("fa-IR")} کیلوگرم`,
-                `🧶 *محصولات تولیدی:* ${Math.round(analyzedData.totalProductsWeight).toLocaleString("fa-IR")} کیلوگرم`,
-                `🧵 *مواد اولیه و کش:* ${Math.round(analyzedData.totalRawMaterialWeight).toLocaleString("fa-IR")} کیلوگرم`,
-                `📄 *تعداد اسناد:* ${analyzedData.documentsList.length.toLocaleString("fa-IR")} سند`,
-                ``,
-                `📊 *گروه‌های کالا (سرفصل‌های موجود در اسناد):*`
-            ];
-
-            analyzedData.groupsList.forEach((grp, idx) => {
-                textLines.push(`${idx + 1}. [${grp.code}] ${grp.title} (${grp.parentCategory}): ${Math.round(grp.totalQty).toLocaleString("fa-IR")} ک‌گ (${grp.subItems.length} قلم)`);
-            });
-
-            const effectiveUrl = getEffectiveApiUrl('/api/telegram/send');
+            const effectiveUrl = getEffectiveApiUrl('/api/sayan/production-returns/send-bot');
             const res = await fetch(effectiveUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ message: textLines.join("\n") })
+                body: JSON.stringify({
+                    dateFrom: dateFrom || "ابتدای دوره",
+                    dateTo: dateTo || "امروز",
+                    summary: {
+                        totalWeight: analyzedData.totalWeight,
+                        totalProductsWeight: analyzedData.totalProductsWeight,
+                        totalRawMaterialWeight: analyzedData.totalRawMaterialWeight,
+                        documentsCount: analyzedData.documentsList.length
+                    },
+                    groups: (analyzedData.groupsList || []).map(grp => ({
+                        code: grp.code,
+                        title: grp.title,
+                        parentCategory: grp.parentCategory,
+                        totalQty: grp.totalQty,
+                        itemsCount: grp.subItems.length
+                    })),
+                    topItems: (analyzedData.itemsList || []).slice(0, 15).map(it => ({
+                        code: it.code,
+                        name: it.name,
+                        totalQty: it.totalQty,
+                        docsCount: it.docsCount
+                    })),
+                    selectedPlatforms: ['telegram', 'bale', 'whatsapp']
+                })
             });
 
-            if (res.ok) {
-                toast.success("گزارش برگشت از تولید با موفقیت به ربات ارسال شد ✅");
+            const result = await res.json().catch(() => ({}));
+            if (res.ok && result.success !== false) {
+                toast.success(result.message || "گزارش برگشت از تولید با موفقیت به تلگرام، بله و واتساپ ارسال شد ✅");
             } else {
-                toast.error("خطا در ارسال پیام به بات تلگرام");
+                toast.error(result.error || "خطا در ارسال گزارش به پیام‌رسان‌ها");
             }
         } catch (e) {
             console.error("Bot send error:", e);
-            toast.error("عدم برقراری ارتباط با سرور بات");
+            toast.error("عدم برقراری ارتباط با سرور پیام‌رسان‌ها");
         } finally {
             setIsSendingBot(false);
         }
