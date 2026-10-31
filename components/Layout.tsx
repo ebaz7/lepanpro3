@@ -186,10 +186,21 @@ const Layout: React.FC<LayoutProps> = ({
 
   useEffect(() => {
     const scrollContainer = document.getElementById('main-scroll-container');
-    if (scrollContainer) {
+    if (scrollContainer && !secondaryTab) {
       scrollContainer.scrollTop = 0;
     }
-  }, [activeTab]);
+    const primarySplitScroll = document.getElementById('split-pane-primary-scroll');
+    if (primarySplitScroll) {
+      primarySplitScroll.scrollTop = 0;
+    }
+  }, [activeTab, secondaryTab]);
+
+  useEffect(() => {
+    const secondarySplitScroll = document.getElementById('split-pane-secondary-scroll');
+    if (secondarySplitScroll) {
+      secondarySplitScroll.scrollTop = 0;
+    }
+  }, [secondaryTab]);
 
   useEffect(() => {
     const handleGlobalClose = () => {
@@ -604,36 +615,32 @@ const Layout: React.FC<LayoutProps> = ({
     };
   }, [settings?.desktopUpdateIntervalMinutes, settings?.desktopAutoCheckUpdates]);
 
-  // Global robust mouse wheel scrolling anywhere on screen
+  // Global mouse wheel forwarding ONLY when wheel occurs on outer non-scrollable margins outside main-scroll-container and outside split-view
   useEffect(() => {
     const handleGlobalWheel = (e: WheelEvent) => {
+      if (secondaryTab) return;
       const scrollContainer = document.getElementById('main-scroll-container');
-      if (!scrollContainer) return;
+      if (!scrollContainer || scrollContainer.classList.contains('split-view-no-scroll')) return;
 
-      let target = e.target as HTMLElement | null;
-      let scrollTarget: HTMLElement | null = null;
-      while (target && target !== document.body) {
-        if (target === scrollContainer) break;
-        const overflowY = window.getComputedStyle(target).overflowY;
-        if ((overflowY === 'auto' || overflowY === 'scroll') && target.scrollHeight > target.clientHeight) {
-          scrollTarget = target;
-          break;
-        }
-        target = target.parentElement;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // If the cursor is already inside main-scroll-container, sidebar, or a modal/dialog/split-pane, let the browser's native wheel scrolling work untouched
+      if (
+        scrollContainer.contains(target) ||
+        target.closest('aside, [role="dialog"], .fixed, [data-split-pane-scroll]')
+      ) {
+        return;
       }
 
-      if (scrollTarget) {
-        scrollTarget.scrollTop += e.deltaY;
-      } else {
-        scrollContainer.scrollTop += e.deltaY;
-      }
+      scrollContainer.scrollTop += e.deltaY;
     };
 
     window.addEventListener('wheel', handleGlobalWheel, { passive: true });
     return () => {
       window.removeEventListener('wheel', handleGlobalWheel);
     };
-  }, []);
+  }, [secondaryTab]);
 
   useEffect(() => {
     getSettings().then(data => {
@@ -1941,7 +1948,7 @@ const Layout: React.FC<LayoutProps> = ({
       )}
 
       <main className={`flex flex-1 flex-col overflow-hidden relative min-w-0 min-h-0 w-full max-w-full m-0 ${
-          activeTab === 'dashboard'
+          activeTab === 'dashboard' && !secondaryTab
             ? 'bg-transparent border-0 md:border-0 shadow-none md:my-0 md:ml-0 md:mr-0 rounded-none'
             : `md:my-4 md:ml-4 md:mr-2 ${isNativeAndroid || lowSpecMode ? 'bg-white dark:bg-slate-900' : 'bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl'} md:rounded-[24px] border-0 md:border border-slate-200/50 dark:border-slate-800/50 shadow-sm`
       }`}>
@@ -2036,10 +2043,10 @@ const Layout: React.FC<LayoutProps> = ({
               </div>
           </header>
           
-          <div className={`flex-1 ${activeTab === 'chat' ? 'flex flex-col overflow-hidden pb-0 min-h-0' : isBottomBarVisible ? 'overflow-y-auto overflow-x-hidden pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-24' : 'overflow-y-auto overflow-x-hidden pb-24'} bg-transparent min-w-0 w-full max-w-full custom-scrollbar`} id="main-scroll-container">
+          <div className={`flex-1 ${(activeTab === 'chat' || Boolean(secondaryTab)) ? 'flex flex-col overflow-hidden pb-0 min-h-0 h-full split-view-no-scroll' : isBottomBarVisible ? 'overflow-y-auto overflow-x-hidden pb-[calc(80px+env(safe-area-inset-bottom))] md:pb-24' : 'overflow-y-auto overflow-x-hidden pb-24'} bg-transparent min-w-0 w-full max-w-full custom-scrollbar`} id="main-scroll-container">
               {/* Bale-Style Top Update Banner for Web, Mobile, and PWA */}
               {isUpdateAvailable && !isUpdateDismissed && updateInfo && (
-                <div className="p-2 sm:p-3 sm:pb-1 no-print animate-slide-down">
+                <div className="p-2 sm:p-3 sm:pb-1 no-print animate-slide-down shrink-0">
                   <UpdateBanner
                     updateInfo={updateInfo}
                     onDismiss={() => {
@@ -2050,8 +2057,8 @@ const Layout: React.FC<LayoutProps> = ({
                 </div>
               )}
 
-              <div className={`${activeTab === 'chat' ? 'hidden' : 'hidden md:flex'} justify-end p-4 ${
-                  activeTab === 'dashboard' 
+              <div className={`${(activeTab === 'chat' && !secondaryTab) ? 'hidden' : 'hidden md:flex'} justify-end p-4 shrink-0 ${
+                  activeTab === 'dashboard' && !secondaryTab
                     ? 'bg-transparent border-b-0' 
                     : 'bg-white/20 dark:bg-zinc-950/15 border-b border-zinc-200/40 dark:border-zinc-800/40 backdrop-blur-md'
               } z-40 shadow-sm no-print items-center gap-2`}>
@@ -2125,7 +2132,7 @@ const Layout: React.FC<LayoutProps> = ({
                       </select>
                   )}
               </div>
-              <div className={`${(activeTab === 'chat' || activeTab === 'sayan') ? 'p-0 w-full max-w-full flex-1 flex flex-col min-h-0 overflow-x-hidden' : 'p-0 sm:p-2 md:p-4 w-full max-w-full'} mx-auto min-w-0`}>
+              <div className={`${Boolean(secondaryTab) ? 'p-1.5 sm:p-2 md:p-3 w-full max-w-full flex-1 flex flex-col min-h-0 h-full overflow-hidden' : (activeTab === 'chat' || activeTab === 'sayan') ? 'p-0 w-full max-w-full flex-1 flex flex-col min-h-0 overflow-x-hidden' : 'p-0 sm:p-2 md:p-4 w-full max-w-full'} mx-auto min-w-0`}>
                   {children}
               </div>
           </div>

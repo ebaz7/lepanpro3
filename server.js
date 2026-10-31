@@ -11322,7 +11322,20 @@ app.post('/api/exit-permits/:id/notify-customer', async (req, res) => {
             return res.status(404).json({ success: false, error: 'برگه خروج یافت نشد' });
         }
         const result = await notifyCustomerCargoExit(permit, db, true);
-        res.json({ success: true, result });
+        if (result?.adminNotified && result?.missingPhoneBuyers?.length > 0) {
+            broadcastNotification(
+                `⚠️ عدم ثبت شماره مشتری (حواله #${permit.permitNumber})`,
+                `برای خریدار «${result.missingPhoneBuyers.join('، ')}» شماره‌ای ثبت نشده است و پیام خروج بار ارسال نشد.`,
+                '/manage-exit',
+                ['admin', 'ceo', 'sales_manager']
+            ).catch(() => {});
+        }
+        res.json({
+            success: Boolean(result?.success),
+            adminNotified: Boolean(result?.adminNotified),
+            error: result?.reason || undefined,
+            result
+        });
     } catch (e) {
         console.error("Manual customer notify error in server.js:", e);
         res.status(500).json({ success: false, error: e.message });

@@ -2552,13 +2552,33 @@ html[data-gpu-active="true"] * {
   pointer-events: auto !important;
 }
 
-#main-scroll-container {
+#main-scroll-container:not(.split-view-no-scroll) {
   overflow-y: auto !important;
   overflow-x: hidden !important;
   overscroll-behavior-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y pinch-zoom !important;
   pointer-events: auto !important;
+}
+
+#main-scroll-container.split-view-no-scroll {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  height: 100% !important;
+  max-height: 100% !important;
+}
+
+[data-split-pane-scroll] {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior-y: contain !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y pinch-zoom !important;
+  pointer-events: auto !important;
+}
+
+[data-split-pane-scroll="chat"] {
+  overflow: hidden !important;
 }
 
 /* Unrestricted smooth touch scrolling for Trade Dossiers on Android and mobile */

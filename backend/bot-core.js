@@ -3060,6 +3060,7 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
     const freshDb = db || getDb();
     const settings = freshDb.settings || {};
     const salesContacts = settings.salesContacts || [];
+    const savedContacts = settings.savedContacts || [];
     const botSubscribers = freshDb.botSubscribers || [];
 
     // Deduplication check for automatic calls to prevent duplicate triggers
@@ -3068,12 +3069,126 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
         return { success: true, skipped: true, reason: 'قبلاً ارسال شده است' };
     }
 
+    const normalizeExactName = (str) => {
+        if (!str) return '';
+        return String(str)
+            .replace(/ي/g, 'ی')
+            .replace(/ك/g, 'ک')
+            .replace(/[آأإ]/g, 'ا')
+            .replace(/ة/g, 'ه')
+            .replace(/[\u200B-\u200D\uFEFF\u200C]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+    };
+
+    const cleanPhone10 = (phone) => {
+        if (!phone) return '';
+        const digits = String(phone)
+            .replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+            .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
+            .replace(/[^0-9]/g, '');
+        return digits.length >= 10 ? digits.slice(-10) : '';
+    };
+
+    const notifyAdminsMissingCustomerPhone = async (buyerName) => {
+        const displayBuyer = buyerName || p.recipientName || 'نامشخص';
+        const adminAlertMsg =
+            `⚠️ *هشدار عدم ثبت شماره تماس مشتری (عدم ارسال پیام خروج بار)*\n\n` +
+            `پیام واتساپ تایید نهایی خروج کارخانه برای حواله شماره *#${p.permitNumber}* (شرکت: *${p.company || '-'}*) به مشتری ارسال نشد.\n\n` +
+            `👤 *نام خریدار (گیرنده ثبت شده):* *${displayBuyer}*\n` +
+            `❌ *علت:* برای شخص «*${displayBuyer}*» هیچ شماره تلفنی در سامانه ثبت نشده است.\n\n` +
+            `📦 *کالاها:* ${p.goodsName || '-'}\n` +
+            `🚛 *راننده:* ${p.driverName || '-'} (پلاک: ${p.plateNumber || '-'})\n\n` +
+            `💡 لطفاً شماره موبایل دقیق این خریدار را در بخش مخاطبین فروش / مشتریان ثبت نموده و مجدداً ارسال به مشتری را بزنید.`;
+
+        // Collect all Admin / CEO / Sales Manager phone numbers & bot IDs
+        const adminUsers = (freshDb.users || []).filter(u =>
+            u.role === 'admin' ||
+            u.role === 'ceo' ||
+            u.role === 'sales_manager' ||
+            (Array.isArray(u.roles) && (u.roles.includes('admin') || u.roles.includes('ceo') || u.roles.includes('sales_manager')))
+        );
+
+        const adminPhoneMap = new Map();
+        const addAdminPhone = (rawPhone) => {
+            const c10 = cleanPhone10(rawPhone);
+            if (c10 && !adminPhoneMap.has(c10)) {
+                adminPhoneMap.set(c10, String(rawPhone).trim());
+            }
+        };
+
+        for (const u of adminUsers) {
+            if (u.phoneNumber) addAdminPhone(u.phoneNumber);
+            if (u.mobile) addAdminPhone(u.mobile);
+        }
+        if (settings.salesManagerWhatsapp) addAdminPhone(settings.salesManagerWhatsapp);
+        if (settings.defaultSalesManager) addAdminPhone(settings.defaultSalesManager);
+        const compNotif = settings.companyNotifications?.[p.company] || settings.companyNotifications?.[p.company?.trim()] || {};
+        if (compNotif.salesManager) addAdminPhone(compNotif.salesManager);
+
+        // 1. Send WhatsApp alert to Admins
+        if (settings.whatsappEnabled !== false) {
+            try {
+                const waModule = await import('./whatsapp.js');
+                if (waModule && waModule.sendMessage) {
+                    // If no admin phone was configured in users/settings, fallback to connected WhatsApp self number if available
+                    if (adminPhoneMap.size === 0 && waModule.getStatus) {
+                        const st = waModule.getStatus();
+                        const selfUser = st?.user?.id ? String(st.user.id).split(':')[0].split('@')[0] : '';
+                        if (selfUser) addAdminPhone(selfUser);
+                    }
+                    for (const [, targetAdminPhone] of adminPhoneMap.entries()) {
+                        try {
+                            await waModule.sendMessage(targetAdminPhone, adminAlertMsg);
+                            console.log(`[notifyCustomerCargoExit] ⚠️ Sent missing-phone alert to Admin WhatsApp (${targetAdminPhone}) for buyer "${displayBuyer}"`);
+                        } catch (waAdminErr) {
+                            console.warn(`[notifyCustomerCargoExit] Failed to send missing-phone alert to Admin WhatsApp (${targetAdminPhone}):`, waAdminErr.message);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("[notifyCustomerCargoExit] Admin WhatsApp alert error:", e.message);
+            }
+        }
+
+        // 2. Also notify Admin on Telegram & Bale if configured
+        const adminTgIds = new Set();
+        const adminBaleIds = new Set();
+        if (settings.telegramAdminId) adminTgIds.add(String(settings.telegramAdminId).trim());
+        for (const u of adminUsers) {
+            if (u.telegramChatId) adminTgIds.add(String(u.telegramChatId).trim());
+            if (u.telegramId) adminTgIds.add(String(u.telegramId).trim());
+            if (u.baleChatId) adminBaleIds.add(String(u.baleChatId).trim());
+            if (u.baleId) adminBaleIds.add(String(u.baleId).trim());
+        }
+
+        if (adminTgIds.size > 0 && settings.telegramBotToken) {
+            import('./telegram.js').then(async (tgMod) => {
+                if (!tgMod || !tgMod.sendBotMessage) return;
+                for (const tgId of adminTgIds) {
+                    await tgMod.sendBotMessage(sanitizeGroupId(tgId), adminAlertMsg).catch(() => {});
+                }
+            }).catch(() => {});
+        }
+
+        if (adminBaleIds.size > 0 && settings.baleBotToken) {
+            import('./bale.js').then(async (baleMod) => {
+                if (!baleMod || !baleMod.sendBotMessage) return;
+                for (const bId of adminBaleIds) {
+                    await baleMod.sendBotMessage(sanitizeGroupId(bId), adminAlertMsg).catch(() => {});
+                }
+            }).catch(() => {});
+        }
+    };
+
     // Collect all destinations/customers
     const destinationsList = (p.destinations && p.destinations.length > 0)
         ? p.destinations
         : [{ recipientName: p.recipientName || '', phone: '', address: p.destinationAddress || '' }];
 
     let sentSummary = [];
+    let missingPhoneBuyers = [];
 
     // Pre-generate invoice image if possible
     let imgB64 = null;
@@ -3104,63 +3219,118 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
         return `  ▫️ ${idx + 1}. *${it.goodsName}* (${count} کارتن${w > 0 ? ` | ${w} کیلوگرم` : ''})`;
     }).join('\n');
 
+    const driverPhone10 = cleanPhone10(p.driverPhone);
+    const normDriverName = normalizeExactName(p.driverName);
+    const allKnownContacts = [...salesContacts, ...savedContacts];
+
     for (const dest of destinationsList) {
+        // Strictly use the exact buyer name selected when registering the exit permit
         const destName = (dest.recipientName || p.recipientName || '').trim();
-        let targetPhone = (dest.phone || '').trim();
+        const normDest = normalizeExactName(destName);
+
+        if (!normDest) {
+            await notifyAdminsMissingCustomerPhone('نامشخص (نام خریدار ثبت نشده)');
+            missingPhoneBuyers.push('نامشخص');
+            continue;
+        }
+
+        let targetPhone = '';
         let targetTgId = null;
         let targetBaleId = null;
         let matchedContact = null;
 
-        // 1. Try resolving contact from salesContacts
         let sCode = dest.sayanPersonCode || p.sayanPersonCode;
         let sTafsili = dest.sayanTafsiliCode || p.sayanTafsiliCode;
 
-        if (sCode || sTafsili) {
-            matchedContact = salesContacts.find(c => 
-                (sCode && c.sayanPersonCode && String(c.sayanPersonCode).trim() === String(sCode).trim()) ||
-                (sTafsili && c.sayanTafsiliCode && String(c.sayanTafsiliCode).trim() === String(sTafsili).trim())
-            );
-        }
+        // 1. Strict Exact Match in salesContacts / savedContacts by exact normalized buyer name first
+        matchedContact = allKnownContacts.find(c => {
+            if (!c || (!c.name && !c.sayanPersonName)) return false;
+            const normC = normalizeExactName(c.name);
+            const normSayanC = normalizeExactName(c.sayanPersonName);
+            return (normC && normC === normDest) || (normSayanC && normSayanC === normDest);
+        });
 
-        if (!matchedContact && destName) {
-            const normDest = destName.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').trim().toLowerCase();
-            matchedContact = salesContacts.find(c => {
-                if (!c.name) return false;
-                const normC = c.name.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').trim().toLowerCase();
-                return normC === normDest || normC.includes(normDest) || normDest.includes(normC);
+        // 2. If not matched by name, check Sayan code ONLY if the contact's name also matches the buyer name (prevents stale Sayan code mismatch)
+        if (!matchedContact && (sCode || sTafsili)) {
+            matchedContact = allKnownContacts.find(c => {
+                const codeMatches =
+                    (sCode && c.sayanPersonCode && String(c.sayanPersonCode).trim() === String(sCode).trim()) ||
+                    (sTafsili && c.sayanTafsiliCode && String(c.sayanTafsiliCode).trim() === String(sTafsili).trim());
+                if (!codeMatches) return false;
+                const normC = normalizeExactName(c.name);
+                const normSayanC = normalizeExactName(c.sayanPersonName);
+                return (normC && normC === normDest) || (normSayanC && normSayanC === normDest);
             });
         }
 
-        // Live Sayan Fallback: If no phone or matched contact found yet, query Sayan live database by destination name or code
-        if (!targetPhone && !matchedContact && (destName || sCode || sTafsili)) {
+        if (matchedContact) {
+            const contactMobile = matchedContact.mobile || matchedContact.phone || matchedContact.sayanMobile || '';
+            if (cleanPhone10(contactMobile)) {
+                targetPhone = String(contactMobile).trim();
+            }
+            if (matchedContact.telegramId) targetTgId = String(matchedContact.telegramId).trim();
+            if (matchedContact.baleId) targetBaleId = String(matchedContact.baleId).trim();
+            if (!sCode && matchedContact.sayanPersonCode) sCode = matchedContact.sayanPersonCode;
+            if (!sTafsili && matchedContact.sayanTafsiliCode) sTafsili = matchedContact.sayanTafsiliCode;
+        }
+
+        // 3. Check dest.phone from the permit ONLY if targetPhone is not yet found, and ensure it is NOT the driver's phone
+        if (!targetPhone && dest.phone && cleanPhone10(dest.phone)) {
+            const destPhone10 = cleanPhone10(dest.phone);
+            const isDriverPhone = driverPhone10 && destPhone10 === driverPhone10 && normDest !== normDriverName;
+            if (!isDriverPhone) {
+                targetPhone = String(dest.phone).trim();
+            } else {
+                console.warn(`[notifyCustomerCargoExit] Ignored dest.phone (${dest.phone}) because it belongs to the driver (${p.driverName}), not buyer "${destName}".`);
+            }
+        }
+
+        // 4. Live Sayan Fallback: Query GNR_TBL_001 ONLY for exact buyer name match (never partial match to a different person)
+        if (!targetPhone && destName) {
             try {
-                const sayanSearchTerm = destName || sCode || sTafsili;
-                const sanitizedTerm = String(sayanSearchTerm).replace(/'/g, "''").trim();
-                if (sanitizedTerm.length >= 2) {
+                const sanitizedName = String(destName).replace(/'/g, "''").trim();
+                const sanitizedCode = sCode ? String(sCode).replace(/'/g, "''").trim() : '';
+                const sanitizedTafsili = sTafsili ? String(sTafsili).replace(/'/g, "''").trim() : '';
+                if (sanitizedName.length >= 2) {
                     const { executeSayanQuery } = await import('./sayan-order-automation.js');
+                    const codeFilter = [
+                        sanitizedCode ? `Field_003 = '${sanitizedCode}'` : '',
+                        sanitizedTafsili ? `Field_030 = '${sanitizedTafsili}'` : ''
+                    ].filter(Boolean).join(' OR ');
+
                     const liveSql = `
-                        SELECT TOP 3 
+                        SELECT TOP 20 
                             RTRIM(LTRIM(Field_003)) as PersonCode,
                             RTRIM(LTRIM(COALESCE(Field_015, ''))) as Mobile,
                             RTRIM(LTRIM(COALESCE(Field_030, Field_021, Field_003))) as TafsiliCode,
+                            RTRIM(LTRIM(COALESCE(Field_006, ''))) as FirstName,
+                            RTRIM(LTRIM(COALESCE(Field_007, ''))) as LastName,
                             RTRIM(LTRIM(COALESCE(Field_006, '') + ' ' + COALESCE(Field_007, ''))) as FullName
                         FROM GNR_TBL_001 WITH (NOLOCK)
                         WHERE (
-                            Field_006 LIKE N'%${sanitizedTerm}%' OR 
-                            Field_007 LIKE N'%${sanitizedTerm}%' OR 
-                            Field_003 = '${sanitizedTerm}' OR
-                            Field_030 = '${sanitizedTerm}'
-                        ) AND Field_015 IS NOT NULL AND LEN(RTRIM(LTRIM(Field_015))) >= 10
+                            RTRIM(LTRIM(COALESCE(Field_006, '') + ' ' + COALESCE(Field_007, ''))) LIKE N'%${sanitizedName}%' OR
+                            Field_007 LIKE N'%${sanitizedName}%'
+                            ${codeFilter ? `OR (${codeFilter})` : ''}
+                        )
                     `;
                     const liveRows = await executeSayanQuery(liveSql, 15000).catch(() => []);
-                    if (liveRows && liveRows.length > 0) {
-                        const foundRow = liveRows[0];
-                        if (foundRow.Mobile) {
-                            targetPhone = String(foundRow.Mobile).trim();
-                            console.log(`[notifyCustomerCargoExit] Resolved customer mobile ${targetPhone} directly from Sayan live GNR_TBL_001 for "${destName}"`);
+                    if (Array.isArray(liveRows) && liveRows.length > 0) {
+                        // Strictly find the row whose normalized name EXACTLY matches the buyer's name
+                        const exactRow = liveRows.find(r => {
+                            const nFull = normalizeExactName(r.FullName);
+                            const nLast = normalizeExactName(r.LastName);
+                            const nRev = normalizeExactName(`${r.LastName || ''} ${r.FirstName || ''}`);
+                            return (nFull && nFull === normDest) || (nLast && nLast === normDest) || (nRev && nRev === normDest);
+                        });
+
+                        if (exactRow) {
+                            if (exactRow.Mobile && cleanPhone10(exactRow.Mobile)) {
+                                targetPhone = String(exactRow.Mobile).trim();
+                                console.log(`[notifyCustomerCargoExit] Resolved exact buyer mobile ${targetPhone} from Sayan GNR_TBL_001 for "${destName}"`);
+                            }
+                            if (!sCode && exactRow.PersonCode) sCode = exactRow.PersonCode;
+                            if (!sTafsili && exactRow.TafsiliCode) sTafsili = exactRow.TafsiliCode;
                         }
-                        if (!sCode && foundRow.PersonCode) sCode = foundRow.PersonCode;
-                        if (!sTafsili && foundRow.TafsiliCode) sTafsili = foundRow.TafsiliCode;
                     }
                 }
             } catch (liveSayanErr) {
@@ -3168,28 +3338,39 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
             }
         }
 
-        if (matchedContact) {
-            if (!targetPhone && matchedContact.mobile) {
-                targetPhone = matchedContact.mobile.trim();
-            }
-            if (matchedContact.telegramId) targetTgId = matchedContact.telegramId.trim();
-            if (matchedContact.baleId) targetBaleId = matchedContact.baleId.trim();
-        }
-
-        // 2. Check bot subscribers by phone
+        // 5. Check botSubscribers ONLY by exact buyer name or already-verified buyer phone
         if (targetPhone) {
-            const clean10 = targetPhone.replace(/[^0-9]/g, '').slice(-10);
-            const sub = botSubscribers.find(s => s.mobile && s.mobile.replace(/[^0-9]/g, '').slice(-10) === clean10);
+            const clean10 = cleanPhone10(targetPhone);
+            const sub = botSubscribers.find(s => s.mobile && cleanPhone10(s.mobile) === clean10);
             if (sub) {
                 if (!targetTgId && sub.telegramChatId) targetTgId = sub.telegramChatId;
                 if (!targetBaleId && sub.baleChatId) targetBaleId = sub.baleChatId;
             }
+        } else {
+            const exactSub = botSubscribers.find(s => s.fullName && normalizeExactName(s.fullName) === normDest);
+            if (exactSub) {
+                if (exactSub.mobile && cleanPhone10(exactSub.mobile)) {
+                    targetPhone = String(exactSub.mobile).trim();
+                }
+                if (!targetTgId && exactSub.telegramChatId) targetTgId = exactSub.telegramChatId;
+                if (!targetBaleId && exactSub.baleChatId) targetBaleId = exactSub.baleChatId;
+            }
         }
 
-        // If no phone or bot IDs, skip
-        if (!targetPhone && !targetTgId && !targetBaleId) {
-            console.warn(`[notifyCustomerCargoExit] No customer phone or bot ID found for: "${destName}". Skipping.`);
-            continue;
+        // 6. Final safety check: Never send customer notification to the driver's phone number
+        if (targetPhone && driverPhone10 && cleanPhone10(targetPhone) === driverPhone10 && normDest !== normDriverName) {
+            console.warn(`[notifyCustomerCargoExit] Blocked sending customer notification to driver phone (${targetPhone}) for buyer "${destName}".`);
+            targetPhone = '';
+        }
+
+        // 7. If no valid phone number is registered for this exact buyer, notify Admin via WhatsApp!
+        if (!targetPhone || !cleanPhone10(targetPhone)) {
+            console.warn(`[notifyCustomerCargoExit] No phone registered for exact buyer "${destName}" on Permit #${p.permitNumber}. Alerting Admin.`);
+            missingPhoneBuyers.push(destName);
+            await notifyAdminsMissingCustomerPhone(destName);
+            if (!targetTgId && !targetBaleId) {
+                continue;
+            }
         }
 
         const sayanAccountInfo = (sTafsili || sCode) ? `\n🔗 *حساب سایان:* کد تفصیلی ${sTafsili || sCode}` : '';
@@ -3271,7 +3452,7 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
 
         let channelResults = { phone: targetPhone, name: destName, wa: false, tg: false, bale: false };
 
-        // 1. WhatsApp Delivery
+        // 1. WhatsApp Delivery (Strictly to the verified customer phone only)
         if (targetPhone && settings.whatsappEnabled !== false) {
             try {
                 const waModule = await import('./whatsapp.js');
@@ -3344,8 +3525,13 @@ export const notifyCustomerCargoExit = async (p, db = null, manual = false) => {
     }
 
     return {
-        success: sentSummary.length > 0,
-        recipientsNotified: sentSummary
+        success: sentSummary.length > 0 && missingPhoneBuyers.length === 0,
+        recipientsNotified: sentSummary,
+        missingPhoneBuyers,
+        adminNotified: missingPhoneBuyers.length > 0,
+        reason: missingPhoneBuyers.length > 0
+            ? `شماره تماس برای خریدار «${missingPhoneBuyers.join('، ')}» ثبت نشده است؛ پیام هشدار به واتساپ ادمین ارسال شد.`
+            : undefined
     };
 };
 
@@ -3570,7 +3756,7 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
             }
         }
 
-        // --- Customer & Driver Notification when Cargo Exits Factory (Weight, Plate, Driver details to Customer & Driver WhatsApp & Bots) ---
+        // --- Customer Notification ONLY when Cargo Exits Factory (Strictly to Customer, NEVER to Driver) ---
         if ((p.status === 'خارج شده (بایگانی)' || p.status === 'خارج شد') && !isEdit && !isDelete) {
             (async () => {
                 try {
@@ -3579,53 +3765,6 @@ export const notifyExitPermitStep = async (p, platform, chatId, sendPhotoFn, db,
                     console.error("❌ Customer cargo exit notification failed:", cErr.message);
                 }
             })();
-
-            if (p.driverPhone && settings.whatsappEnabled !== false) {
-                const surveyUrl = `${(settings.appBaseUrl || 'https://dlkam.ir').replace(/\/+$/, '')}/#customer-survey?id=${p.permitNumber}`;
-                
-                let driverGoodsList = '';
-                if (p.items && p.items.length > 0) {
-                    driverGoodsList = p.items.map((it, idx) => {
-                        const cartons = it.cartonCount || it.deliveredCartons || it.cartons || 0;
-                        const w = it.deliveredWeight || it.weight || 0;
-                        return `${idx + 1}. ${it.goodsName || 'کالا'} ${cartons ? `(${cartons} کارتن)` : ''} ${w ? `- ${Number(w).toLocaleString()} kg` : ''}`;
-                    }).join('\n');
-                } else if (p.goodsName) {
-                    driverGoodsList = `1. ${p.goodsName} (${p.cartonCount || 0} کارتن) ${p.netWeight ? `- ${Number(p.netWeight).toLocaleString()} kg` : ''}`;
-                } else {
-                    driverGoodsList = 'ثبت نشده';
-                }
-
-                const driverWeight = totalDelivWeight > 0 ? totalDelivWeight : (totalReqWeight > 0 ? totalReqWeight : (Number(p.netWeight || p.totalWeight || 0)));
-                const driverCartons = totalDelivCount > 0 ? totalDelivCount : (totalReqCount > 0 ? totalReqCount : (Number(p.cartonCount || p.totalCartons || 0)));
-
-                const driverCaption = `🚛 *تایید نهایی خروج بار از کارخانه*\n\n` +
-                    `راننده گرامی جناب آقای *${p.driverName || 'راننده محترم'}* (خودرو: *${p.plateNumber || '-'}*)\n` +
-                    `مجوز خروج شماره *‎#${p.permitNumber}* مربوط به شرکت *${p.company || '-'}* تایید و بارگیری تکمیل گردید.\n\n` +
-                    `⚖️ *وزن کل خروجی بار:* *${driverWeight > 0 ? driverWeight.toLocaleString() : '-'} کیلوگرم*\n` +
-                    `📦 *تعداد کارتن / بسته‌ها:* *${driverCartons > 0 ? driverCartons.toLocaleString() : '-'} عدد*\n\n` +
-                    `📦 *اقلام و کالاهای بارگیری شده:*\n${driverGoodsList}\n\n` +
-                    `📍 *مقصد:* ${p.destinationAddress || 'تحویل مشتری'}\n` +
-                    `سفر بی‌خطری را برای شما آرزومندیم. 🛣️\n\n` +
-                    `⭐ *فرم نظرسنجی و ارزیابی کیفیت خدمات مشتریان:*\n` +
-                    `${surveyUrl}`;
-
-                const driverImg = imgNoPrice || imgPrice;
-                import('./whatsapp.js').then(async (mod) => {
-                    if (mod && mod.sendMessage) {
-                        if (driverImg) {
-                            const b64 = Buffer.from(driverImg).toString('base64');
-                            await mod.sendMessage(p.driverPhone, driverCaption, {
-                                data: b64,
-                                mimeType: 'image/png',
-                                filename: `exit_permit_${p.permitNumber}.png`
-                            }).catch(() => {});
-                        } else {
-                            await mod.sendMessage(p.driverPhone, driverCaption).catch(() => {});
-                        }
-                    }
-                }).catch(() => {});
-            }
         }
 
         // Distinctly and separately fire off to all targets with bulletproof fallbacks

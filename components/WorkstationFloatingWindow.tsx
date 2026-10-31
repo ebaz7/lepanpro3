@@ -115,7 +115,14 @@ export const WorkstationFloatingWindow: React.FC<WorkstationFloatingWindowProps>
       </div>
 
       {/* Window Body Container */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-0 relative bg-zinc-50/50 dark:bg-zinc-900/30 flex flex-col min-h-0">
+      <div
+        data-split-pane-scroll={tabId === 'chat' ? 'chat' : 'floating'}
+        className={`flex-1 min-h-0 h-full relative bg-zinc-50/50 dark:bg-zinc-900/30 ${
+          tabId === 'chat'
+            ? 'flex flex-col overflow-hidden p-0'
+            : 'overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-2 pb-12'
+        }`}
+      >
         {children}
       </div>
     </motion.div>

@@ -125,6 +125,42 @@ fn check_local_file_exists(handle: tauri::AppHandle, file_name: String) -> bool 
     false
 }
 
+fn launch_local_file_or_installer(handle: &tauri::AppHandle, target: &PathBuf) {
+    let path_str = target.to_string_lossy().to_string();
+    let lower = path_str.to_lowercase();
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        if lower.ends_with(".exe") {
+            if std::process::Command::new(target).spawn().is_ok() {
+                return;
+            }
+        } else if lower.ends_with(".msi") {
+            if std::process::Command::new("msiexec")
+                .args(["/i", &path_str])
+                .spawn()
+                .is_ok()
+            {
+                return;
+            }
+        }
+
+        if std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path_str])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .is_ok()
+        {
+            return;
+        }
+    }
+
+    let _ = tauri::api::shell::open(&handle.shell_scope(), path_str, None);
+}
+
 #[tauri::command]
 fn open_local_file(handle: tauri::AppHandle, file_name: String) -> Result<String, String> {
     let safe_name = sanitize_desktop_filename(&file_name);
@@ -133,7 +169,7 @@ fn open_local_file(handle: tauri::AppHandle, file_name: String) -> Result<String
         return Err("FILE_NOT_FOUND".to_string());
     }
     let path_str = target.to_string_lossy().to_string();
-    let _ = tauri::api::shell::open(&handle.shell_scope(), path_str.clone(), None);
+    launch_local_file_or_installer(&handle, &target);
     Ok(path_str)
 }
 
@@ -149,9 +185,11 @@ fn save_and_open_local_file(
     let target = dir.join(&safe_name);
     let mut file = File::create(&target).map_err(|e| e.to_string())?;
     file.write_all(&bytes).map_err(|e| e.to_string())?;
+    file.sync_all().ok();
+    drop(file);
     let path_str = target.to_string_lossy().to_string();
     if open_after.unwrap_or(true) {
-        let _ = tauri::api::shell::open(&handle.shell_scope(), path_str.clone(), None);
+        launch_local_file_or_installer(&handle, &target);
     }
     Ok(path_str)
 }

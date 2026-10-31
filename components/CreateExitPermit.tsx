@@ -116,7 +116,30 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
 
     const handleRecipientChange = async (val: string) => {
         const d = [...destinations];
+        const prevAutoContact = (d[0] as any)._autoSelectedName;
         d[0].recipientName = val;
+
+        const normVal = val.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[آأإ]/g, 'ا').replace(/[\u200B-\u200D\uFEFF\u200C]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        const exactContact = savedContacts.find(c => {
+            const normC = (c.name || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[آأإ]/g, 'ا').replace(/[\u200B-\u200D\uFEFF\u200C]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+            return normC && normC === normVal;
+        });
+
+        if (exactContact) {
+            d[0].phone = exactContact.mobile || '';
+            if (exactContact.sayanPersonCode) (d[0] as any).sayanPersonCode = exactContact.sayanPersonCode;
+            if (exactContact.sayanTafsiliCode) (d[0] as any).sayanTafsiliCode = exactContact.sayanTafsiliCode;
+            if (exactContact.sayanPersonName) (d[0] as any).sayanPersonName = exactContact.sayanPersonName;
+            (d[0] as any)._autoSelectedName = exactContact.name;
+        } else if (prevAutoContact && prevAutoContact !== val) {
+            // Clear previous contact's phone and Sayan codes so they never stay attached to a different buyer
+            d[0].phone = '';
+            delete (d[0] as any).sayanPersonCode;
+            delete (d[0] as any).sayanTafsiliCode;
+            delete (d[0] as any).sayanPersonName;
+            delete (d[0] as any)._autoSelectedName;
+        }
+
         setDestinations(d);
 
         if (val.trim().length > 1) {
@@ -175,17 +198,22 @@ const CreateExitPermit: React.FC<{ onSuccess: () => void, currentUser: User }> =
     const selectContact = (contact: any) => {
         const d = [...destinations];
         d[0].recipientName = contact.name;
-        if (contact.mobile) d[0].phone = contact.mobile;
+        d[0].phone = contact.mobile || '';
         if (contact.address) d[0].address = contact.address;
         if (contact.sayanPersonCode || contact.personCode) {
             (d[0] as any).sayanPersonCode = contact.sayanPersonCode || contact.personCode;
+        } else {
+            delete (d[0] as any).sayanPersonCode;
         }
         if (contact.sayanTafsiliCode || contact.tafsiliCode || contact.accountCode) {
             (d[0] as any).sayanTafsiliCode = contact.sayanTafsiliCode || contact.tafsiliCode || contact.accountCode;
+        } else {
+            delete (d[0] as any).sayanTafsiliCode;
         }
-        if (contact.sayanPersonName) {
-            (d[0] as any).sayanPersonName = contact.sayanPersonName;
+        if (contact.sayanPersonName || contact.name) {
+            (d[0] as any).sayanPersonName = contact.sayanPersonName || contact.name;
         }
+        (d[0] as any)._autoSelectedName = contact.name;
         setDestinations(d);
         setContactSuggestions([]);
     };

@@ -420,6 +420,47 @@ export const initWhatsApp = (authDir) => {
                                         }
                                     };
                                 }
+
+                                // Fix PDF / document media upload crash in modern WhatsApp Web (OpaqueData.formData removal & undefined linkify)
+                                try {
+                                    const MediaDataUtils = window.require('WAWebMediaDataUtils');
+                                    if (MediaDataUtils && typeof MediaDataUtils.shouldUseMediaCache === 'function' && !MediaDataUtils.__patchedPdfCache) {
+                                        const origShouldUse = MediaDataUtils.shouldUseMediaCache.bind(MediaDataUtils);
+                                        MediaDataUtils.shouldUseMediaCache = function (...args) {
+                                            try {
+                                                const OpaqueData = window.require('WAWebMediaOpaqueData');
+                                                if (!OpaqueData?.prototype || typeof OpaqueData.prototype.formData !== 'function') {
+                                                    return false;
+                                                }
+                                                return origShouldUse(...args);
+                                            } catch (e) {
+                                                return false;
+                                            }
+                                        };
+                                        MediaDataUtils.__patchedPdfCache = true;
+                                    }
+                                } catch (e) {}
+
+                                try {
+                                    const WALinkify = window.require('WALinkify');
+                                    if (WALinkify && !WALinkify.__patchedSafeLinkify) {
+                                        if (typeof WALinkify.findLink === 'function') {
+                                            const origFindLink = WALinkify.findLink.bind(WALinkify);
+                                            WALinkify.findLink = function (str, ...rest) {
+                                                if (typeof str !== 'string' || !str) return null;
+                                                try { return origFindLink(str, ...rest); } catch (e) { return null; }
+                                            };
+                                        }
+                                        if (typeof WALinkify.findLinks === 'function') {
+                                            const origFindLinks = WALinkify.findLinks.bind(WALinkify);
+                                            WALinkify.findLinks = function (str, ...rest) {
+                                                if (typeof str !== 'string' || !str) return [];
+                                                try { return origFindLinks(str, ...rest); } catch (e) { return []; }
+                                            };
+                                        }
+                                        WALinkify.__patchedSafeLinkify = true;
+                                    }
+                                } catch (e) {}
                             }
                         }
 
@@ -887,6 +928,45 @@ export const sendMessage = async (number, text, mediaData) => {
                         return false;
                     };
                 }
+                // Live-patch WAWebMediaDataUtils & WALinkify so PDF documents never fail on OpaqueData.formData() or undefined content
+                try {
+                    const MediaDataUtils = window.require('WAWebMediaDataUtils');
+                    if (MediaDataUtils && typeof MediaDataUtils.shouldUseMediaCache === 'function' && !MediaDataUtils.__patchedPdfCache) {
+                        const origShouldUse = MediaDataUtils.shouldUseMediaCache.bind(MediaDataUtils);
+                        MediaDataUtils.shouldUseMediaCache = function (...args) {
+                            try {
+                                const OpaqueData = window.require('WAWebMediaOpaqueData');
+                                if (!OpaqueData?.prototype || typeof OpaqueData.prototype.formData !== 'function') {
+                                    return false;
+                                }
+                                return origShouldUse(...args);
+                            } catch (e) {
+                                return false;
+                            }
+                        };
+                        MediaDataUtils.__patchedPdfCache = true;
+                    }
+                } catch (e) {}
+                try {
+                    const WALinkify = window.require('WALinkify');
+                    if (WALinkify && !WALinkify.__patchedSafeLinkify) {
+                        if (typeof WALinkify.findLink === 'function') {
+                            const origFindLink = WALinkify.findLink.bind(WALinkify);
+                            WALinkify.findLink = function (str, ...rest) {
+                                if (typeof str !== 'string' || !str) return null;
+                                try { return origFindLink(str, ...rest); } catch (e) { return null; }
+                            };
+                        }
+                        if (typeof WALinkify.findLinks === 'function') {
+                            const origFindLinks = WALinkify.findLinks.bind(WALinkify);
+                            WALinkify.findLinks = function (str, ...rest) {
+                                if (typeof str !== 'string' || !str) return [];
+                                try { return origFindLinks(str, ...rest); } catch (e) { return []; }
+                            };
+                        }
+                        WALinkify.__patchedSafeLinkify = true;
+                    }
+                } catch (e) {}
             }).catch(() => {});
 
             if (!isReady) {
@@ -987,17 +1067,18 @@ export const sendMessage = async (number, text, mediaData) => {
         }
     }
 
-    // 5. Tier 1 Send Attempt (Direct Photo with Caption or Direct Text, with sendSeen: false to avoid sendSeen crash)
+    // 5. Tier 1 Send Attempt (Direct Media/PDF Document with Caption or Direct Text, with sendSeen: false and linkPreview: false)
     try {
         if (media) {
             const isImageMedia = (media.mimetype || '').startsWith('image/');
             await client.sendMessage(targetJid, media, {
                 caption: text || '',
                 sendMediaAsDocument: !isImageMedia,
+                linkPreview: false,
                 sendSeen: false
             });
         } else if (text) {
-            await client.sendMessage(targetJid, text, { sendSeen: false });
+            await client.sendMessage(targetJid, text, { linkPreview: false, sendSeen: false });
         }
         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} ارسال شد.`);
         return { success: true, chatId: targetJid };
@@ -1008,7 +1089,7 @@ export const sendMessage = async (number, text, mediaData) => {
         try {
             page = await recoverActivePage();
             if (page && !page.isClosed()) {
-                // 2a. Try chat instance with sendSeen: false
+                // 2a. Try chat instance with sendSeen: false and linkPreview: false
                 try {
                     const chat = await client.getChatById(targetJid);
                     if (chat) {
@@ -1017,10 +1098,11 @@ export const sendMessage = async (number, text, mediaData) => {
                             await chat.sendMessage(media, {
                                 caption: text || '',
                                 sendMediaAsDocument: !isImageMedia,
+                                linkPreview: false,
                                 sendSeen: false
                             });
                         } else if (text) {
-                            await chat.sendMessage(text, { sendSeen: false });
+                            await chat.sendMessage(text, { linkPreview: false, sendSeen: false });
                         }
                         addDiagnosticLog('success', 'MESSAGE', `پیام با موفقیت به ${targetJid} (روش Chat Object) ارسال شد.`);
                         return { success: true, chatId: targetJid };
@@ -1029,12 +1111,12 @@ export const sendMessage = async (number, text, mediaData) => {
                     console.warn(`[WhatsApp] Chat object fallback failed: ${chatErr.message}`);
                 }
 
-                // 2b. Try direct in-page WWebJS.sendMessage injection (supports both media and text!)
+                // 2b. Try direct in-page WWebJS.sendMessage injection (supports both PDF/image media and text!)
                 try {
                     const mediaPayload = media ? {
                         mimetype: media.mimetype,
                         data: media.data,
-                        filename: media.filename || 'file'
+                        filename: media.filename || 'report.pdf'
                     } : null;
 
                     const evalSent = await page.evaluate(async (jid, msgText, mediaObj) => {
@@ -1055,13 +1137,13 @@ export const sendMessage = async (number, text, mediaData) => {
                             try { await window.require('WAWebCollections').GroupMetadata.update(chatWid); } catch (e) {}
                         }
 
-                        const opts = {};
+                        const opts = { linkPreview: false };
                         if (mediaObj && mediaObj.data) {
-                            opts.attachment = mediaObj;
+                            opts.media = mediaObj;
                             opts.caption = msgText || '';
                             opts.sendMediaAsDocument = !(mediaObj.mimetype || '').startsWith('image/');
                         }
-                        await window.WWebJS.sendMessage(chat, mediaObj && mediaObj.data ? (msgText || '') : msgText, opts);
+                        await window.WWebJS.sendMessage(chat, mediaObj && mediaObj.data ? '' : (msgText || ''), opts);
                         return true;
                     }, targetJid, text || '', mediaPayload);
 

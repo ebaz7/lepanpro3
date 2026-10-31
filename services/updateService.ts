@@ -27,8 +27,8 @@ export interface AppVersionInfo {
 
 // Current client build embedded in the bundle
 export const CURRENT_CLIENT_BUILD: AppVersionInfo = {
-  version: '1.0.28',
-  buildNumber: '10028',
+  version: '1.0.29',
+  buildNumber: '10029',
   title: 'نسخه جاری',
   releaseNotes: 'نسخه پایدار سامانه مالی و بازرگانی'
 };
@@ -393,9 +393,60 @@ async function fetchBinaryWithProgress(
   return new Blob(chunks as BlobPart[]);
 }
 
+// Trigger a single direct external browser download (when the user clicks "لینک مستقیم" or when running an older desktop shell without in-app file saving)
+export async function openDirectUpdateLink(rawUrl: string): Promise<void> {
+  if (!rawUrl || typeof window === 'undefined') return;
+  const win = window as any;
+  const isAndroid = isCapacitorAndroid();
+  const isDesktop = isTauriDesktop();
+
+  let fullUrl = rawUrl;
+  if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+    fullUrl = getEffectiveApiUrl(fullUrl);
+  }
+  const cacheBustedUrl = fullUrl.includes('?') ? `${fullUrl}&t=${Date.now()}` : `${fullUrl}?t=${Date.now()}`;
+
+  if (isAndroid) {
+    try {
+      if (win.DlkamAndroid && typeof win.DlkamAndroid.openExternalUrl === 'function') {
+        win.DlkamAndroid.openExternalUrl(cacheBustedUrl);
+        return;
+      }
+    } catch (_) {}
+    const intentUrl = buildAndroidBrowserIntentUrl(cacheBustedUrl);
+    try {
+      window.location.href = intentUrl;
+      return;
+    } catch (_) {}
+  }
+
+  if (isDesktop) {
+    try {
+      if (win.__TAURI__?.shell?.open) {
+        await win.__TAURI__.shell.open(cacheBustedUrl);
+        return;
+      }
+      const { open } = await import('@tauri-apps/api/shell');
+      await open(cacheBustedUrl);
+      return;
+    } catch (_) {}
+  }
+
+  // Fallback: single anchor click without duplicate window.open
+  const a = document.createElement('a');
+  a.href = cacheBustedUrl;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    try { document.body.removeChild(a); } catch (_) {}
+  }, 300);
+}
+
 // Apply update:
-// - Android: Downloads the newest .apk with live progress, saves it to phone storage & Downloads/Dlkam, and launches the Android Package Installer (or opens Chrome via intent:// if direct install permission is restricted).
-// - Desktop (Tauri): Downloads the newest .exe installer with live progress, saves it via Tauri's native save_and_open_local_file command, and immediately executes the Windows Setup wizard.
+// - Android: Downloads the newest .apk ONCE inside the app with live progress, saves it to phone storage & Downloads/Dlkam, and launches the Android Package Installer.
+// - Desktop (Tauri): Downloads the newest .exe installer ONCE inside the app with live progress, saves it via Tauri's native save_and_open_local_file command, and immediately executes the Windows Setup wizard.
 // - Web: Purges caches and reloads.
 export async function applyApplicationUpdate(
   serverInfo?: AppVersionInfo | null,
@@ -421,7 +472,7 @@ export async function applyApplicationUpdate(
     }).catch(() => {}).finally(() => clearTimeout(timeoutId));
   } catch (_) {}
 
-  // 2. ANDROID PLATFORM: Real download + launch Android Package Installer
+  // 2. ANDROID PLATFORM: Single in-app download + launch Android Package Installer
   if (isAndroid) {
     const targetVer = serverInfo?.androidLatestVersion || serverInfo?.version || 'latest';
     const apkFileName = serverInfo?.androidFileName || `dlkam-android-v${targetVer}.apk`;
@@ -433,22 +484,14 @@ export async function applyApplicationUpdate(
     const APK_MIME = 'application/vnd.android.package-archive';
 
     try {
-      // 2a. If the new native DownloadManager bridge method exists in MainActivity.java, invoke it alongside in-app download
-      if (win.DlkamAndroid && typeof win.DlkamAndroid.downloadAndInstallApk === 'function') {
-        const startedNative = win.DlkamAndroid.downloadAndInstallApk(apkUrl, apkFileName);
-        if (startedNative) {
-          onProgress?.(20, 'در حال دانلود در نوار اعلان اندروید...');
-        }
-      }
-
-      // 2b. Download APK bytes inside the app with real-time percentage progress
+      // Download APK bytes ONCE inside the app with real-time percentage progress
       onProgress?.(2, 'در حال اتصال به سرور و شروع دانلود APK...');
       const apkBlob = await fetchBinaryWithProgress(apkUrl, serverInfo?.androidFileSize || 19000000, onProgress);
       const base64Data = await blobToRawBase64(apkBlob);
 
       let installerOpened = false;
 
-      // 2c. Save via Native DlkamAndroid bridge (saves to DlkamFiles AND public Downloads/Dlkam folder)
+      // Save via Native DlkamAndroid bridge (saves to DlkamFiles AND public Downloads/Dlkam folder)
       if (win.DlkamAndroid && typeof win.DlkamAndroid.saveFileToAppFolder === 'function') {
         const saved = win.DlkamAndroid.saveFileToAppFolder(base64Data, apkFileName, APK_MIME);
         if (saved) {
@@ -477,7 +520,7 @@ export async function applyApplicationUpdate(
         }
       }
 
-      // 2d. Also try Capacitor Filesystem + FileOpener
+      // Also try Capacitor Filesystem + FileOpener if native bridge did not open it
       if (!installerOpened) {
         const writeDirs = [Directory.External, Directory.Cache, Directory.Data];
         for (const dir of writeDirs) {
@@ -502,37 +545,17 @@ export async function applyApplicationUpdate(
         }
       }
 
-      // 2e. If direct in-app PackageInstaller launch was blocked by Android OS (e.g. on an older APK without REQUEST_INSTALL_PACKAGES),
-      // trigger Chrome / System Browser via intent:// scheme so Android's system downloader opens the installer immediately!
-      if (!installerOpened) {
-        const intentUrl = buildAndroidBrowserIntentUrl(apkUrl);
-        try {
-          window.location.href = intentUrl;
-        } catch (_) {}
-      }
-
-      onProgress?.(100, 'دانلود کامل شد — آماده نصب ✓');
+      onProgress?.(100, 'دانلود کامل شد — پنجره نصب باز شد ✓');
       return;
     } catch (downloadErr) {
-      console.warn('In-app APK fetch failed, opening external system browser via intent://:', downloadErr);
-      onProgress?.(50, 'در حال انتقال به دانلودر سیستم اندروید...');
-      const intentUrl = buildAndroidBrowserIntentUrl(apkUrl);
-      try {
-        if (win.DlkamAndroid && typeof win.DlkamAndroid.openExternalUrl === 'function') {
-          win.DlkamAndroid.openExternalUrl(apkUrl);
-          return;
-        }
-      } catch (_) {}
-      try {
-        window.location.href = intentUrl;
-      } catch (_) {
-        window.open(apkUrl, '_system');
-      }
+      console.warn('In-app APK fetch failed, falling back to single external link:', downloadErr);
+      onProgress?.(100, 'انتقال به لینک مستقیم دانلود...');
+      await openDirectUpdateLink(apkUrl);
       return;
     }
   }
 
-  // 3. WINDOWS DESKTOP (TAURI) PLATFORM: Real download of newest .exe + automatic execution
+  // 3. WINDOWS DESKTOP (TAURI) PLATFORM: Single in-app download of newest .exe + automatic execution
   if (isDesktop) {
     const targetVer = serverInfo?.desktopLatestVersion || serverInfo?.version || 'latest';
     const exeFileName = serverInfo?.desktopFileName || `dlkam-desktop-v${targetVer}.exe`;
@@ -543,14 +566,30 @@ export async function applyApplicationUpdate(
     const downloadUrl = rawDesktop.includes('?') ? `${rawDesktop}&t=${Date.now()}` : `${rawDesktop}?t=${Date.now()}`;
 
     try {
+      const { invoke } = await import('@tauri-apps/api/tauri');
+      // Check first if this Tauri desktop shell supports native local file saving (added in v1.0.27+)
+      let supportsInAppSave = true;
+      try {
+        await invoke<boolean>('check_local_file_exists', { fileName: '__probe__.tmp' });
+      } catch (probeErr: any) {
+        const msg = String(probeErr?.message || probeErr || '');
+        if (msg.includes('not found') || msg.includes('unknown command')) {
+          supportsInAppSave = false;
+        }
+      }
+
+      if (!supportsInAppSave) {
+        // Older desktop shell: do NOT download in-app and then download again in browser; open direct link ONCE!
+        onProgress?.(100, 'در حال دانلود مستقیم فایل نصبی...');
+        await openDirectUpdateLink(downloadUrl);
+        return;
+      }
+
       onProgress?.(2, `در حال دانلود نسخه جدید ویندوز (v${targetVer})...`);
       const exeBlob = await fetchBinaryWithProgress(downloadUrl, serverInfo?.desktopFileSize || 15000000, onProgress);
       const arrayBuffer = await exeBlob.arrayBuffer();
       const bytes = Array.from(new Uint8Array(arrayBuffer));
 
-      // Invoke Tauri's native Rust command save_and_open_local_file (built into src-tauri/src/main.rs)
-      // This saves dlkam-desktop-vX.Y.Z.exe to disk and immediately launches the Windows installer!
-      const { invoke } = await import('@tauri-apps/api/tauri');
       const savedPath = await invoke<string>('save_and_open_local_file', {
         fileName: exeFileName,
         bytes,
@@ -561,16 +600,9 @@ export async function applyApplicationUpdate(
       toast.success(`فایل نصبی نسخه v${targetVer} دانلود و اجرا شد (${savedPath}) ✓`, { duration: 7000 });
       return;
     } catch (tauriSaveErr) {
-      console.warn('Tauri in-app download/exec fallback to shell.open:', tauriSaveErr);
-      onProgress?.(80, 'در حال باز کردن لینک مستقیم فایل نصبی...');
-      try {
-        if (win.__TAURI__?.shell?.open) {
-          await win.__TAURI__.shell.open(downloadUrl);
-          return;
-        }
-      } catch (_) {}
-      window.open(downloadUrl, '_blank');
-      return;
+      console.warn('Tauri in-app download/exec failed:', tauriSaveErr);
+      toast.error('خطا در دانلود درون‌برنامه‌ای — از دکمه «لینک مستقیم» استفاده کنید.');
+      throw tauriSaveErr;
     }
   }
 

@@ -569,8 +569,8 @@ export default function ProductionReturnTab({
                     topItems: (analyzedData.itemsList || []).slice(0, 15).map(it => ({
                         code: it.code,
                         name: it.name,
-                        totalQty: it.totalQty,
-                        docsCount: it.docsCount
+                        totalQty: it.totalWeight,
+                        docsCount: it.docs ? it.docs.size : it.count
                     })),
                     selectedPlatforms: ['telegram', 'bale', 'whatsapp']
                 })

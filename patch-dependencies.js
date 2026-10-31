@@ -99,6 +99,35 @@ try {
       modified = true;
     }
 
+    // Fix PDF document sending in sendMessage & processMediaData (filename preservation, undefined preview, OpaqueData.formData guard, findLinks guard)
+    const oldMediaPrep = `            content = options.sendMediaAsSticker ? undefined : mediaOptions.preview;\n            options.isViewOnce = options.isViewOnce ? true : undefined;\n\n            delete options.media;\n            delete options.sendMediaAsSticker;`;
+    const newMediaPrep = `            const inputFilename = options.media.filename;\n            content = options.sendMediaAsSticker ? undefined : (mediaOptions.preview ?? '');\n            if (inputFilename && !mediaOptions.filename) {\n                mediaOptions.filename = inputFilename;\n            }\n            options.isViewOnce = options.isViewOnce ? true : undefined;\n\n            delete options.media;\n            delete options.sendMediaAsSticker;`;
+    if (utilsContent.includes(oldMediaPrep)) {
+      utilsContent = utilsContent.replace(oldMediaPrep, newMediaPrep);
+      modified = true;
+    }
+
+    const oldLinkPreview = `        if (options.linkPreview) {\n            delete options.linkPreview;\n            const link = window.require('WALinkify').findLink(content);`;
+    const newLinkPreview = `        if (options.linkPreview) {\n            delete options.linkPreview;\n            const link = typeof content === 'string' && content ? window.require('WALinkify').findLink(content) : null;`;
+    if (utilsContent.includes(oldLinkPreview)) {
+      utilsContent = utilsContent.replace(oldLinkPreview, newLinkPreview);
+      modified = true;
+    }
+
+    const oldMediaCache = `        if (\n            window.require('WAWebMediaDataUtils').shouldUseMediaCache(\n                window.require('WAWebMediaStorage').castToV4(\n                    mediaData.type\n                )\n            )\n        ) {\n            const formData = mediaData.mediaBlob.formData();\n            window.require('WAWebMediaInMemoryStorage').MediaBlobCache.put(\n                mediaData.filehash,\n                formData\n            );\n        }`;
+    const newMediaCache = `        try {\n            if (\n                window.require('WAWebMediaDataUtils').shouldUseMediaCache(\n                    window.require('WAWebMediaStorage').castToV4(\n                        mediaData.type\n                    )\n                ) &&\n                mediaData.mediaBlob &&\n                typeof mediaData.mediaBlob.formData === 'function'\n            ) {\n                const formData = mediaData.mediaBlob.formData();\n                window.require('WAWebMediaInMemoryStorage').MediaBlobCache.put(\n                    mediaData.filehash,\n                    formData\n                );\n            }\n        } catch (e) {}`;
+    if (utilsContent.includes(oldMediaCache)) {
+      utilsContent = utilsContent.replace(oldMediaCache, newMediaCache);
+      modified = true;
+    }
+
+    const oldFindLinks = `        msg.links = (window.require('WALinkify').findLinks(message.mediaObject ? message.caption : message.body)).map((link) => ({\n            link: link.href,\n            isSuspicious: Boolean(link.suspiciousCharacters && link.suspiciousCharacters.size)\n        }));`;
+    const newFindLinks = `        try {\n            const textForLinks = (message.mediaObject ? message.caption : message.body) || '';\n            msg.links = (typeof textForLinks === 'string' && textForLinks ? window.require('WALinkify').findLinks(textForLinks) : []).map((link) => ({\n                link: link.href,\n                isSuspicious: Boolean(link.suspiciousCharacters && link.suspiciousCharacters.size)\n            }));\n        } catch (e) {\n            msg.links = [];\n        }`;
+    if (utilsContent.includes(oldFindLinks)) {
+      utilsContent = utilsContent.replace(oldFindLinks, newFindLinks);
+      modified = true;
+    }
+
     if (modified) {
       fs.writeFileSync(wwebUtilsPath, utilsContent, 'utf8');
       console.log('Successfully patched whatsapp-web.js/src/util/Injected/Utils.js!');
@@ -109,3 +138,4 @@ try {
 }
 
 console.log('Dependencies patched successfully.');
+

@@ -299,14 +299,16 @@ const ManageExitPermits: React.FC<{ currentUser: User, settings?: SystemSettings
     };
 
     const handleNotifyCustomer = async (p: ExitPermit) => {
-        if (!confirm(`آیا مایلید مشخصات بارگیری و خروج (وزن، پلاک، مشخصات راننده و فاکتور) به واتساپ و بات‌های مشتری («${p.recipientName}») ارسال شود؟`)) return;
+        if (!confirm(`آیا مایلید مشخصات بارگیری و خروج (وزن، پلاک، مشخصات راننده و فاکتور) فقط به واتساپ و بات‌های مشتری («${p.recipientName}») ارسال شود؟`)) return;
         setProcessingId(p.id);
         try {
-            const res = await apiCall<{ success: boolean; result?: any; error?: string }>(`/exit-permits/${p.id}/notify-customer`, 'POST', {});
+            const res = await apiCall<{ success: boolean; adminNotified?: boolean; result?: any; error?: string }>(`/exit-permits/${p.id}/notify-customer`, 'POST', {});
             if (res && res.success) {
-                alert('✅ پیام خروج بار با موفقیت به واتساپ و ربات‌های مشتری ارسال گردید.');
+                alert(`✅ پیام خروج بار با موفقیت به واتساپ و ربات‌های مشتری («${p.recipientName}») ارسال گردید.`);
+            } else if (res?.adminNotified) {
+                alert(`⚠️ ${res.error || `برای خریدار «${p.recipientName}» شماره‌ای ثبت نشده است و پیام هشدار به واتساپ ادمین ارسال شد.`}`);
             } else {
-                alert(`⚠️ نتیجه ارسال: ${res?.error || 'شماره تماس یا آیدی مشتری یافت نشد. لطفاً در لیست مخاطبین بررسی فرمایید.'}`);
+                alert(`⚠️ نتیجه ارسال: ${res?.error || 'شماره تماس برای این خریدار ثبت نشده است. لطفاً در لیست مخاطبین بررسی فرمایید.'}`);
             }
         } catch (e: any) {
             console.error('Customer Notify Error:', e);

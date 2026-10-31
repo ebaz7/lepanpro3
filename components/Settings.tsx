@@ -99,7 +99,7 @@ import {
   ArrowUpCircle,
   QrCode,
 } from "lucide-react";
-import { publishApplicationUpdate, compareSemVer, getNativeClientVersion } from "../services/updateService";
+import { publishApplicationUpdate, applyApplicationUpdate, compareSemVer, getNativeClientVersion } from "../services/updateService";
 import { apiCall, getServerHost } from "../services/apiService";
 import { Capacitor } from "@capacitor/core";
 import {

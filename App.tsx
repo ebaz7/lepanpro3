@@ -1908,52 +1908,52 @@ function App() {
           />
         );
       case 'create':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} /></div>;
+        return <div className="page-transition w-full"><CreateOrder onSuccess={handleOrderCreated} currentUser={currentUser} /></div>;
       case 'manage':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} financialYear={financialYear} /></div>;
+        return <div className="page-transition w-full"><ManageOrders orders={orders} refreshData={() => loadData(true)} currentUser={currentUser} initialTab={manageOrdersInitialTab} settings={settings} statusFilter={dashboardStatusFilter} financialYear={financialYear} /></div>;
       case 'create-exit':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><CreateExitPermit onSuccess={() => (isSecondary ? setSecondaryTab('manage-exit') : setActiveTab('manage-exit'))} currentUser={currentUser} /></div>;
+        return <div className="page-transition w-full"><CreateExitPermit onSuccess={() => (isSecondary ? setSecondaryTab('manage-exit') : setActiveTab('manage-exit'))} currentUser={currentUser} /></div>;
       case 'manage-invoices':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="INVOICE" /></ErrorBoundary></div>;
+        return <div className="page-transition w-full"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="INVOICE" /></ErrorBoundary></div>;
       case 'manage-exit':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="EXIT" /></ErrorBoundary></div>;
+        return <div className="page-transition w-full"><ErrorBoundary><ManageExitPermits currentUser={currentUser} settings={settings} statusFilter={exitPermitStatusFilter} financialYear={financialYear} mode="EXIT" /></ErrorBoundary></div>;
       case 'warehouse':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} financialYear={financialYear} /></div>;
+        return <div className="page-transition w-full"><WarehouseModule currentUser={currentUser} settings={settings} initialTab={warehouseInitialTab} financialYear={financialYear} /></div>;
       case 'trade':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><TradeModule currentUser={currentUser} /></div>;
+        return <div className="page-transition w-full"><TradeModule currentUser={currentUser} /></div>;
       case 'balances':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><CustomerBalanceModule currentUser={currentUser} /></div>;
+        return <div className="page-transition w-full"><CustomerBalanceModule currentUser={currentUser} /></div>;
       case 'sales':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><SalesCRMModule /></div>;
+        return <div className="page-transition w-full"><SalesCRMModule /></div>;
       case 'products':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><ProductsModule /></div>;
+        return <div className="page-transition w-full"><ProductsModule /></div>;
       case 'tickets':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><Tickets /></div>;
+        return <div className="page-transition w-full"><Tickets /></div>;
       case 'ccti':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><CctiConverter financialYear={financialYear} currentUser={currentUser} canManageArchive={currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canManageCctiArchive === true)} /></div>;
+        return <div className="page-transition w-full"><CctiConverter financialYear={financialYear} currentUser={currentUser} canManageArchive={currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canManageCctiArchive === true)} /></div>;
       case 'sayan':
-        return <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanReports currentUser={currentUser} settings={settings} onNavigateToChat={(target) => { setDirectChatTarget(target); if (isSecondary) setSecondaryTab('chat'); else setActiveTab('chat'); }} /></div>;
+        return <div className="page-transition w-full bg-transparent"><SayanReports currentUser={currentUser} settings={settings} onNavigateToChat={(target) => { setDirectChatTarget(target); if (isSecondary) setSecondaryTab('chat'); else setActiveTab('chat'); }} /></div>;
       case 'sayan-operations':
-        return <div className="page-transition flex flex-col flex-1 min-h-0 bg-transparent"><SayanRegistrationsModule currentUser={currentUser} settings={settings} /></div>;
+        return <div className="page-transition w-full bg-transparent"><SayanRegistrationsModule currentUser={currentUser} settings={settings} /></div>;
       case 'users':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><ManageUsers /></div>;
+        return <div className="page-transition w-full"><ManageUsers /></div>;
       case 'settings':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><Settings financialYear={financialYear} settings={settings} onUpdateSettings={setSettings} /></div>;
+        return <div className="page-transition w-full"><Settings financialYear={financialYear} settings={settings} onUpdateSettings={setSettings} /></div>;
       case 'knowledge':
       case 'notes':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><KnowledgeBaseModule currentUser={currentUser} settings={settings} onUpdateSettings={setSettings} /></div>;
+        return <div className="page-transition w-full"><KnowledgeBaseModule currentUser={currentUser} settings={settings} onUpdateSettings={setSettings} /></div>;
       case 'security':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><SecurityModule currentUser={currentUser} financialYear={financialYear} /></div>;
+        return <div className="page-transition w-full"><SecurityModule currentUser={currentUser} financialYear={financialYear} /></div>;
       case 'meetings':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><MeetingModule currentUser={currentUser} /></div>;
+        return <div className="page-transition w-full"><MeetingModule currentUser={currentUser} /></div>;
       case 'purchase':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>;
+        return <div className="page-transition w-full"><PurchaseModule currentUser={currentUser} settings={settings || undefined} initialTab={purchaseInitialTab} /></div>;
       case 'secretariat':
-        return <div className="page-transition flex flex-col flex-1 min-h-0"><SecretariatModule currentUser={currentUser} /></div>;
+        return <div className="page-transition w-full"><SecretariatModule currentUser={currentUser} /></div>;
       case 'cheque-receipts':
-        return (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) ? <div className="page-transition flex flex-col flex-1 min-h-0"><ChequeReceiptModule currentUser={currentUser} /></div> : null;
+        return (currentUser.role === UserRole.ADMIN || (settings && getRolePermissions(currentUser.role, settings, currentUser).canAccessChequeReceipts === true)) ? <div className="page-transition w-full"><ChequeReceiptModule currentUser={currentUser} /></div> : null;
       case 'digital-card':
-        return (currentUser && (currentUser.role === UserRole.ADMIN || (settings && (getRolePermissions(currentUser.role, settings, currentUser).canAccessDigitalCard === true || getRolePermissions(currentUser.role, settings, currentUser).canManageDigitalCard === true)) || (currentUser as any).canAccessDigitalCard === true || (currentUser as any).canManageDigitalCard === true)) ? <div className="page-transition flex flex-col flex-1 min-h-0"><DigitalCardModule currentUser={currentUser} settings={settings} /></div> : <div className="p-8 text-center font-bold text-red-500">شما دسترسی لازم برای مشاهده این بخش را ندارید.</div>;
+        return (currentUser && (currentUser.role === UserRole.ADMIN || (settings && (getRolePermissions(currentUser.role, settings, currentUser).canAccessDigitalCard === true || getRolePermissions(currentUser.role, settings, currentUser).canManageDigitalCard === true)) || (currentUser as any).canAccessDigitalCard === true || (currentUser as any).canManageDigitalCard === true)) ? <div className="page-transition w-full"><DigitalCardModule currentUser={currentUser} settings={settings} /></div> : <div className="p-8 text-center font-bold text-red-500">شما دسترسی لازم برای مشاهده این بخش را ندارید.</div>;
       case 'chat':
         return (
           <div className="flex-1 flex flex-col w-full min-h-0 h-full page-transition">
@@ -2129,7 +2129,7 @@ function App() {
                 </div>
             )}
 
-            <div className={`flex-1 relative flex flex-col min-h-0 ${activeTab === 'chat' ? 'h-full' : ''}`}>
+            <div className={`flex-1 relative flex flex-col min-h-0 ${(activeTab === 'chat' || Boolean(secondaryTab)) ? 'h-full overflow-hidden' : ''}`}>
                 {loading && (
                     <div className="fixed top-20 right-4 z-[999] bg-white/80 dark:bg-gray-800/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-blue-200 dark:border-blue-800 shadow-lg flex items-center gap-2 animate-fade-in">
                         <Loader2 size={16} className="animate-spin text-blue-600" />
@@ -2202,7 +2202,7 @@ function App() {
                   </>
                 ) : (
                   /* Dual Split-View Container */
-                  <div className="flex-1 flex flex-col min-h-0 h-full">
+                  <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden">
                     {/* Mobile Dual Switcher Bar */}
                     <div className="md:hidden flex items-center justify-between p-2 mb-1.5 bg-gradient-to-r from-blue-50/90 to-purple-50/90 dark:from-blue-950/40 dark:to-purple-950/40 border border-blue-200/70 dark:border-blue-900/60 rounded-xl shrink-0">
                       <div className="flex items-center gap-1.5">
@@ -2240,12 +2240,19 @@ function App() {
                     </div>
 
                     {/* Mobile View: show the active pane */}
-                    <div className="flex-1 md:hidden flex flex-col min-h-0">
+                    <div
+                      data-split-pane-scroll={(mobileActiveSplitPane === 'primary' ? activeTab : secondaryTab) === 'chat' ? 'chat' : 'mobile'}
+                      className={`flex-1 md:hidden min-h-0 h-full ${
+                        (mobileActiveSplitPane === 'primary' ? activeTab : secondaryTab) === 'chat'
+                          ? 'flex flex-col overflow-hidden'
+                          : 'overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar pb-24'
+                      }`}
+                    >
                       {renderModuleContent(mobileActiveSplitPane === 'primary' ? activeTab : secondaryTab, mobileActiveSplitPane === 'secondary')}
                     </div>
 
                     {/* Desktop View: Side-by-Side Split Panes */}
-                    <div className="hidden md:flex flex-1 min-h-0 h-full gap-2.5 relative">
+                    <div className="hidden md:flex flex-1 min-h-0 h-full gap-2.5 relative overflow-hidden">
                       {/* Primary Pane (Right side in RTL) */}
                       <div className={`flex flex-col min-h-0 h-full bg-white dark:bg-zinc-900/80 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-sm overflow-hidden transition-all duration-200 ${
                         splitRatio === '50-50' ? 'w-1/2' : splitRatio === '60-40' ? 'w-[60%]' : 'w-[40%]'
@@ -2286,7 +2293,15 @@ function App() {
                             </button>
                           </div>
                         </div>
-                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
+                        <div
+                          id="split-pane-primary-scroll"
+                          data-split-pane-scroll={activeTab === 'chat' ? 'chat' : 'primary'}
+                          className={`flex-1 min-h-0 h-full ${
+                            activeTab === 'chat'
+                              ? 'flex flex-col overflow-hidden p-0'
+                              : 'overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-2 pb-24'
+                          }`}
+                        >
                           {renderModuleContent(activeTab)}
                         </div>
                       </div>
@@ -2334,7 +2349,15 @@ function App() {
                             </button>
                           </div>
                         </div>
-                        <div className="flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar p-1">
+                        <div
+                          id="split-pane-secondary-scroll"
+                          data-split-pane-scroll={secondaryTab === 'chat' ? 'chat' : 'secondary'}
+                          className={`flex-1 min-h-0 h-full ${
+                            secondaryTab === 'chat'
+                              ? 'flex flex-col overflow-hidden p-0'
+                              : 'overflow-y-auto overflow-x-hidden overscroll-contain custom-scrollbar p-2 pb-24'
+                          }`}
+                        >
                           {renderModuleContent(secondaryTab, true)}
                         </div>
                       </div>

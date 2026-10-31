@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RefreshCw, X, ArrowUpCircle, DownloadCloud, CheckCircle2 } from 'lucide-react';
-import { AppVersionInfo, applyApplicationUpdate, isCapacitorAndroid, buildAndroidBrowserIntentUrl } from '../services/updateService';
+import { AppVersionInfo, applyApplicationUpdate, isCapacitorAndroid, openDirectUpdateLink } from '../services/updateService';
 import { isTauriDesktop, isWebApp } from '../utils/platformDetection';
 import { getEffectiveApiUrl } from '../services/apiService';
 
@@ -42,9 +42,15 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
     rawDownloadUrl = getEffectiveApiUrl(rawDownloadUrl);
   }
 
-  const directHref = isAndroid ? buildAndroidBrowserIntentUrl(rawDownloadUrl) : rawDownloadUrl;
+  const handleDirectLinkClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!rawDownloadUrl) return;
+    await openDirectUpdateLink(rawDownloadUrl);
+  };
 
   const handleUpdateClick = async () => {
+    if (isUpdating) return;
     setIsUpdating(true);
     setDownloadPct(1);
     setProgressText(isWeb ? 'در حال تازه‌سازی...' : 'در حال اتصال به سرور...');
@@ -83,7 +89,7 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
     ? (isWeb ? 'در حال تازه‌سازی...' : `در حال دانلود (${downloadPct}%)`)
     : isSuccess
       ? (isWeb ? 'تازه‌سازی شد ✓' : isAndroid ? 'دانلود شد — نصب را بزنید ✓' : 'دانلود و اجرا شد ✓')
-      : (isWeb ? 'تازه‌سازی و به‌روزرسانی' : isAndroid ? 'دانلود و نصب آپدیت' : 'دانلود و نصب آپدیت');
+      : (isWeb ? 'تازه‌سازی و به‌روزرسانی' : 'دانلود و نصب در برنامه');
 
   return (
     <div 
@@ -142,31 +148,15 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
           {/* Left Section: Action Buttons & Close */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {(isAndroid || isDesktop) && rawDownloadUrl && (
-              <a
-                href={directHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const win = window as any;
-                  if (isAndroid) {
-                    if (win.DlkamAndroid && typeof win.DlkamAndroid.openExternalUrl === 'function') {
-                      e.preventDefault();
-                      win.DlkamAndroid.openExternalUrl(rawDownloadUrl);
-                    }
-                  } else if (isDesktop && win.__TAURI__?.shell?.open) {
-                    e.preventDefault();
-                    win.__TAURI__.shell.open(rawDownloadUrl);
-                  }
-                }}
+              <button
+                type="button"
+                onClick={handleDirectLinkClick}
                 className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 sm:px-3 sm:py-2 bg-blue-100/70 hover:bg-blue-200/80 dark:bg-blue-900/40 dark:hover:bg-blue-800/60 text-blue-700 dark:text-blue-300 rounded-xl transition-all border border-blue-300/40 dark:border-blue-700/40 cursor-pointer"
-                title="دانلود مستقیم از طریق مرورگر سیستم"
+                title="دانلود مستقیم از طریق مرورگر"
               >
                 <DownloadCloud size={14} />
-                <span className="hidden sm:inline">دانلود با مرورگر</span>
-                <span className="sm:hidden">مرورگر</span>
-              </a>
+                <span>لینک مستقیم</span>
+              </button>
             )}
 
             <button
