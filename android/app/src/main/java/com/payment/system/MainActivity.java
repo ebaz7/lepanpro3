@@ -210,6 +210,10 @@ public class MainActivity extends BridgeActivity {
                     return false;
                 }
                 String resolvedMime = resolveMimeType(safeName, mimeType);
+                if ("application/vnd.android.package-archive".equals(resolvedMime)) {
+                    return installApkFromAppFolder(safeName);
+                }
+
                 Uri contentUri = FileProvider.getUriForFile(
                         context,
                         context.getPackageName() + ".fileprovider",
@@ -218,10 +222,6 @@ public class MainActivity extends BridgeActivity {
                 Intent viewIntent = new Intent(Intent.ACTION_VIEW);
                 viewIntent.setDataAndType(contentUri, resolvedMime);
                 viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                if ( "application/vnd.android.package-archive".equals(resolvedMime) ) {
-                    viewIntent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
-                    viewIntent.putExtra(Intent.EXTRA_INSTALLER_PACKAGE_NAME, context.getPackageName());
-                }
                 try {
                     context.startActivity(viewIntent);
                     return true;
@@ -239,7 +239,49 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean installApkFromAppFolder(String fileName) {
-            return openFileFromAppFolder(fileName, "application/vnd.android.package-archive");
+            try {
+                String safeName = sanitizeFileName(fileName);
+                File target = new File(getDedicatedAppFolder(), safeName);
+                if (!target.exists() || target.length() == 0) {
+                    Log.w(TAG, "installApkFromAppFolder: target file not found: " + safeName);
+                    return false;
+                }
+
+                // Check unknown app install permission on Android 8+ (Oreo, API 26+)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (!context.getPackageManager().canRequestPackageInstalls()) {
+                        Log.i(TAG, "Dlkam requires ACTION_MANAGE_UNKNOWN_APP_SOURCES permission");
+                        Intent manageIntent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                        manageIntent.setData(Uri.parse("package:" + context.getPackageName()));
+                        manageIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(manageIntent);
+
+                        android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+                        mainHandler.post(() -> {
+                            android.widget.Toast.makeText(context, "لطفاً دسترسی نصب برنامه‌های ناشناخته را برای دلکام فعال فرمایید.", android.widget.Toast.LENGTH_LONG).show();
+                        });
+                        return true;
+                    }
+                }
+
+                Uri contentUri = FileProvider.getUriForFile(
+                        context,
+                        context.getPackageName() + ".fileprovider",
+                        target
+                );
+
+                Intent installIntent = new Intent(Intent.ACTION_VIEW);
+                installIntent.setDataAndType(contentUri, "application/vnd.android.package-archive");
+                installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                installIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+                context.startActivity(installIntent);
+                return true;
+            } catch (Exception e) {
+                Log.e(TAG, "installApkFromAppFolder failed", e);
+                return false;
+            }
         }
 
         @JavascriptInterface

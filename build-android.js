@@ -311,35 +311,77 @@ async function buildAndroid() {
     } catch (_) {}
   }
 
-  // 7. Compile Signed APK using Gradle (with persistent keystore backup so updates always share the exact same signature)
+  // 7. Compile Signed APK using Gradle (with official permanent keystore so all builds forever share the exact same signature)
   const isRelease = !process.argv.includes('--debug');
   const keystorePath = path.join(androidDir, 'app', 'release-key.keystore');
   const backupKeystoreDir = path.join(__dirname, '.keystore-backup');
   const backupKeystorePath = path.join(backupKeystoreDir, 'release-key.keystore');
 
-  if (!fs.existsSync(keystorePath) && fs.existsSync(backupKeystorePath)) {
-    try {
-      fs.copyFileSync(backupKeystorePath, keystorePath);
-      console.log('🔐 فایل امضای دیجیتال (release-key.keystore) از نسخه پشتیبان بازیابی شد تا نصب به صورت Update انجام شود.');
-    } catch (_) {}
-  }
+  // Permanent official release certificate (SHA-256: 24:CA:96:B8:5D:82:09:1A:1B:15:A2:15:FB:E6:90:2A:F5:0B:73:44:3D:9D:04:4F:EC:B7:7F:4E:75:82:FF:92)
+  const OFFICIAL_KEYSTORE_BASE64 = 
+    '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' +
+    'Kqm7hWupZiSRLu+sezsECH65k9VELpYfAgIIAA==';
 
   if (!fs.existsSync(keystorePath)) {
-    try {
-      let keytoolCmd = 'keytool';
-      const keytoolCandidates = [
-        process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', isWindows ? 'keytool.exe' : 'keytool') : '',
-        'C:\\Program Files\\Android\\Android Studio\\jbr\\bin\\keytool.exe',
-        'C:\\Program Files\\Android\\Android Studio\\jre\\bin\\keytool.exe'
-      ].filter(Boolean);
-      for (const cand of keytoolCandidates) {
-        if (fs.existsSync(cand)) {
-          keytoolCmd = `"${cand}"`;
-          break;
-        }
-      }
-      execSync(`${keytoolCmd} -genkeypair -v -keystore "${keystorePath}" -alias my-key-alias -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=Dlkam, OU=IT, O=Dlkam, L=Tehran, S=Tehran, C=IR"`, { stdio: 'inherit' });
-    } catch (_) {}
+    if (fs.existsSync(backupKeystorePath)) {
+      try {
+        fs.copyFileSync(backupKeystorePath, keystorePath);
+        console.log('🔐 فایل امضای دیجیتال رسمی (release-key.keystore) از نسخه پشتیبان بازیابی شد.');
+      } catch (_) {}
+    }
+    if (!fs.existsSync(keystorePath)) {
+      try {
+        fs.writeFileSync(keystorePath, Buffer.from(OFFICIAL_KEYSTORE_BASE64, 'base64'));
+        console.log('🔐 فایل امضای رسمی و ثابت دائم (Permanent Official Keystore) با موفقیت مستقر شد.');
+      } catch (_) {}
+    }
   }
 
   if (fs.existsSync(keystorePath)) {
