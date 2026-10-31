@@ -9,7 +9,7 @@ import {
     Send, User as UserIcon, MessageSquare, Users, Plus, ListTodo, Paperclip, 
     CheckSquare, Square, X, Trash2, Reply, Edit2, ArrowRight, Mic, 
     Play, Pause, Loader2, Search, MoreVertical, File, Image as ImageIcon,
-    Check, CheckCheck, DownloadCloud, Download, StopCircle, Share2, Copy, Forward, Eye, CornerUpLeft, Bell,
+    Check, CheckCheck, DownloadCloud, Download, UploadCloud, StopCircle, Share2, Copy, Forward, Eye, CornerUpLeft, Bell,
     Shield, UserMinus, UserPlus, BellOff, Camera, Clock, MessageCircle, RefreshCw, Smile,
     FileText, Package, CreditCard, BellRing, Volume2, AtSign
 } from 'lucide-react';
@@ -549,12 +549,49 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const inputAreaRef = useRef<HTMLTextAreaElement>(null);
     const taskTitleInputRef = useRef<HTMLInputElement>(null);
 
-    // --- Modals ---
+    // --- Modals & Drag State ---
     const [pendingAttachmentModalFiles, setPendingAttachmentModalFiles] = useState<File[] | null>(null);
+    const [isDragOverChat, setIsDragOverChat] = useState(false);
+    const dragCounterRef = useRef(0);
     const [showGroupModal, setShowGroupModal] = useState<string | false>(false);
     const [mutedChannels, setMutedChannels] = useState<Set<string>>(new Set());
     const [newGroupName, setNewGroupName] = useState('');
     const [selectedGroupMembers, setSelectedGroupMembers] = useState<string[]>([]);
+
+    // Native Tauri File-Drop listener for Windows desktop client
+    useEffect(() => {
+        let unlistenFn: (() => void) | undefined;
+        if (typeof window !== 'undefined' && (window as any).__TAURI__?.event) {
+            (window as any).__TAURI__.event.listen('tauri://file-drop', async (event: any) => {
+                const paths = event.payload;
+                if (Array.isArray(paths) && paths.length > 0) {
+                    try {
+                        const fs = (window as any).__TAURI__.fs;
+                        if (fs && fs.readBinaryFile) {
+                            const fileObjects: File[] = [];
+                            for (const filePath of paths) {
+                                const bytes = await fs.readBinaryFile(filePath);
+                                const name = filePath.replace(/\\/g, '/').split('/').pop() || 'file';
+                                fileObjects.push(new File([bytes], name));
+                            }
+                            if (fileObjects.length > 0) {
+                                handleOpenAttachmentModal(fileObjects);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to read dropped file in Tauri:", e);
+                    }
+                }
+            }).then((unlisten: any) => {
+                unlistenFn = unlisten;
+            }).catch((err: any) => {
+                console.warn("Tauri file drop listener setup error:", err);
+            });
+        }
+        return () => {
+            if (unlistenFn) unlistenFn();
+        };
+    }, []);
 
     // Task Custom Modals State
     const [showCreateTaskModal, setShowCreateTaskModal] = useState(false);
@@ -1928,6 +1965,11 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
     const handleSendFromAttachmentModal = async (items: { file: File; caption: string }[]) => {
         if (!currentUser || !items || items.length === 0) return;
 
+        // Immediately close the modal and reset input state
+        setPendingAttachmentModalFiles(null);
+        setReplyingTo(null);
+        setInputText('');
+
         const currentAttachmentReplyTo = replyingTo ? {
             id: replyingTo.id,
             sender: replyingTo.sender,
@@ -1937,6 +1979,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         for (const item of items) {
             const safeName = item.file.name || `unknown_${Date.now()}`;
             const newMsgId = generateUUID();
+            let localPreviewUrl: string | undefined = undefined;
+            if (item.file.type && item.file.type.startsWith('image/')) {
+                try {
+                    localPreviewUrl = URL.createObjectURL(item.file);
+                } catch (_) {}
+            }
 
             const pendingMsg: ChatMessage = {
                 id: newMsgId,
@@ -1947,7 +1995,12 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 timestamp: Date.now(),
                 recipient: activeChannel?.type === 'private' ? activeChannel.id! : undefined,
                 groupId: (activeChannel?.type === 'group' || activeChannel?.type === 'task_group') ? activeChannel.id! : undefined,
-                attachment: { fileName: safeName, url: '' }, // empty URL while pending
+                attachment: { 
+                    fileName: safeName, 
+                    url: '',
+                    localPreview: localPreviewUrl,
+                    fileSize: item.file.size
+                } as any,
                 replyTo: currentAttachmentReplyTo,
                 readBy: [],
                 isPending: true,
@@ -1962,6 +2015,10 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                     setPendingMessages(prev => prev.map(m => m.id === newMsgId ? { ...m, uploadProgress: progress } : m));
                 });
                 
+                if (localPreviewUrl) {
+                    try { URL.revokeObjectURL(localPreviewUrl); } catch (_) {}
+                }
+
                 const finalMsg: ChatMessage = {
                     ...pendingMsg,
                     message: item.caption || '',
@@ -1972,17 +2029,18 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                 };
                 
                 await sendMessage(finalMsg);
+                setPendingMessages(prev => prev.filter(m => m.id !== newMsgId));
+                setMessages(prev => [...prev.filter(m => m.id !== newMsgId), finalMsg]);
                 onRefresh();
             } catch (error: any) { 
                 console.error("Upload Error:", error);
+                if (localPreviewUrl) {
+                    try { URL.revokeObjectURL(localPreviewUrl); } catch (_) {}
+                }
                 alert(`خطا در ارسال فایل: ${error.message || 'خطای شبکه'}`); 
                 setPendingMessages(prev => prev.filter(m => m.id !== newMsgId));
             }
         }
-
-        // Reset reply and input text after sending attachments
-        setReplyingTo(null);
-        setInputText('');
     };
 
     const handlePaste = (e: React.ClipboardEvent) => {
@@ -2002,6 +2060,43 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
         if (pastedFiles.length > 0) {
             e.preventDefault();
             handleOpenAttachmentModal(pastedFiles);
+        }
+    };
+
+    const handleContainerDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current++;
+        if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            setIsDragOverChat(true);
+        }
+    };
+
+    const handleContainerDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        if (!isDragOverChat) setIsDragOverChat(true);
+    };
+
+    const handleContainerDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current--;
+        if (dragCounterRef.current <= 0) {
+            dragCounterRef.current = 0;
+            setIsDragOverChat(false);
+        }
+    };
+
+    const handleContainerDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounterRef.current = 0;
+        setIsDragOverChat(false);
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+            handleOpenAttachmentModal(files);
         }
     };
 
@@ -2476,7 +2571,53 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                     ) : msg.attachment ? (
                                         <>
                                         <div className="mb-1">
-                                            {msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                            {/* PENDING UPLOAD STATE (Immediate Feedback with Live Progress Bar & Percentage) */}
+                                            {msg.isPending ? (
+                                                <div className="border border-blue-200/90 dark:border-blue-800/60 bg-blue-50/70 dark:bg-blue-950/40 rounded-2xl p-3 min-w-[240px] sm:min-w-[280px] max-w-full shadow-xs space-y-2.5">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        {(msg.attachment as any).localPreview ? (
+                                                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-blue-300 dark:border-blue-700 shadow-xs relative">
+                                                                <img src={(msg.attachment as any).localPreview} alt="" className="w-full h-full object-cover" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className="w-11 h-11 rounded-xl bg-blue-600/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-300/40 dark:border-blue-700/50 flex items-center justify-center shrink-0">
+                                                                {msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                                    <ImageIcon size={22} />
+                                                                ) : msg.attachment.fileName.match(/\.pdf$/i) ? (
+                                                                    <FileText size={22} className="text-rose-500" />
+                                                                ) : (
+                                                                    <File size={22} />
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        <div className="flex flex-col min-w-0 flex-1">
+                                                            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate w-full" dir="ltr" title={msg.attachment.fileName}>
+                                                                {msg.attachment.fileName}
+                                                            </span>
+                                                            <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                                                                {(msg.attachment as any).fileSize ? `${((msg.attachment as any).fileSize / (1024 * 1024)).toFixed(1)} MB · ` : ''}در حال بارگذاری و ارسال
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Animated Progress Bar & Percentage */}
+                                                    <div className="space-y-1">
+                                                        <div className="w-full bg-blue-200/60 dark:bg-zinc-700/80 h-2 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className="bg-blue-600 h-full rounded-full transition-all duration-300 ease-out"
+                                                                style={{ width: `${Math.max(6, msg.uploadProgress || 0)}%` }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center justify-between text-[11px] font-bold text-blue-600 dark:text-blue-400 pt-0.5">
+                                                            <span className="flex items-center gap-1.5">
+                                                                <Loader2 size={13} className="animate-spin" />
+                                                                <span>در حال ارسال به گفتگو...</span>
+                                                            </span>
+                                                            <span className="font-mono text-xs">{msg.uploadProgress || 0}%</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : msg.attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
                                                 <div className="relative group/img overflow-hidden rounded-xl inline-block max-w-full">
                                                     <img 
                                                         src={resolveImageUrl(msg.attachment.url)} 
@@ -2876,7 +3017,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             </div>
 
             {/* --- CHAT AREA --- */}
-            <div className={`flex-1 flex flex-col min-h-0 h-full bg-white dark:bg-[#0b141a] md:bg-[#f0f2f5] z-30 md:z-10 w-full relative ${activeChannel ? 'flex' : 'hidden md:flex'}`}>
+            <div 
+                className={`flex-1 flex flex-col min-h-0 h-full bg-white dark:bg-[#0b141a] md:bg-[#f0f2f5] z-30 md:z-10 w-full relative ${activeChannel ? 'flex' : 'hidden md:flex'}`}
+                onDragEnter={handleContainerDragEnter}
+                onDragOver={handleContainerDragOver}
+                onDragLeave={handleContainerDragLeave}
+                onDrop={handleContainerDrop}
+            >
+                {/* Visual Full-Screen Drag & Drop Overlay */}
+                {isDragOverChat && (
+                    <div className="absolute inset-0 z-50 bg-blue-600/15 dark:bg-blue-900/40 backdrop-blur-sm border-4 border-dashed border-blue-500 rounded-3xl flex flex-col items-center justify-center pointer-events-none animate-fade-in p-6 text-center m-2 shadow-2xl">
+                        <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xl mb-3 animate-bounce">
+                            <UploadCloud size={32} />
+                        </div>
+                        <p className="text-base font-black text-blue-900 dark:text-blue-100">فایل را رها کنید تا به گفتگو اضافه شود</p>
+                        <p className="text-xs text-blue-700 dark:text-blue-300 mt-1 font-medium">پشتیبانی از انواع فایل‌ها بدون محدودیت فرمت (برنامه‌ها، عکس، PDF، اسناد و...)</p>
+                    </div>
+                )}
                 {activeChannel ? (
                     <>
                         {/* Chat Header - Slim & compact header */}

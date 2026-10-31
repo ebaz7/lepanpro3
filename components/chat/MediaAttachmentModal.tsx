@@ -900,11 +900,15 @@ export const MediaAttachmentModal: React.FC<MediaAttachmentModalProps> = ({
 
         try {
             const processedItems = await Promise.all(items.map(item => processItemForSending(item)));
-            await onSend(processedItems);
+            // Close modal immediately so the user returns to the chat instantly
             onClose();
+            // Start background upload & optimistic chat delivery
+            Promise.resolve(onSend(processedItems)).catch(err => {
+                console.error("Error in onSend handler:", err);
+            });
         } catch (error) {
             console.error("Error sending attachments:", error);
-            alert("خطا در پردازش و ارسال فایل‌ها");
+            alert("خطا در پردازش فایل‌ها");
         } finally {
             setIsSending(false);
         }

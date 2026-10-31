@@ -572,10 +572,6 @@ const getSafeFileName = (origName) => {
     if (!origName || typeof origName !== 'string') return `file_${Date.now()}`;
     const decodedName = decodeUtf8FileName(origName);
     const base = path.basename(decodedName).replace(/[\/\\]/g, '');
-    const ext = path.extname(base).toLowerCase();
-    if (FORBIDDEN_EXTENSIONS.has(ext)) {
-        throw new Error('فرمت فایل ارسالی به دلایل امنیتی مجاز نمی‌باشد.');
-    }
     const cleanBase = base.replace(/[^a-zA-Z0-9._\-\u0600-\u06FF\s]/g, '_').trim();
     return cleanBase || `file_${Date.now()}`;
 };
