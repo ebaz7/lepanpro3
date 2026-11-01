@@ -618,7 +618,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     useState<SecretariatLetter | null>(null);
   const [viewingWorkflowLetter, setViewingWorkflowLetter] =
     useState<SecretariatLetter | null>(null);
-  const [letterViewZoom, setLetterViewZoom] = useState<number>(100);
+  const [letterViewZoom, setLetterViewZoom] = useState<number>(() =>
+    typeof window !== "undefined" && window.innerWidth < 768
+      ? Math.min(100, Math.max(35, Math.floor(((window.innerWidth - 24) / 794) * 100)))
+      : 100
+  );
   const [letterViewFullscreen, setLetterViewFullscreen] = useState(false);
   const [letterViewMobileTab, setLetterViewMobileTab] = useState<"preview" | "actions">("preview");
   const [letterViewWideMode, setLetterViewWideMode] = useState(false);
@@ -626,7 +630,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const [isPrintMode, setIsPrintMode] = useState<SecretariatLetter | null>(
     null,
   );
-  const [printPreviewZoom, setPrintPreviewZoom] = useState<number>(100);
+  const [printPreviewZoom, setPrintPreviewZoom] = useState<number>(() =>
+    typeof window !== "undefined" && window.innerWidth < 768
+      ? Math.min(100, Math.max(35, Math.floor(((window.innerWidth - 24) / 794) * 100)))
+      : 100
+  );
   const [printPreviewFullscreen, setPrintPreviewFullscreen] = useState(false);
   const [isSharingLetter, setIsSharingLetter] = useState(false);
 
@@ -721,7 +729,24 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     setEditingLetterId(null);
   };
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
-  const [editorZoom, setEditorZoom] = useState<number>(100);
+
+  // Auto-fit zoom for mobile web, Android & small screens
+  const getAutoFitZoom = useCallback(() => {
+    if (typeof window === "undefined") return 100;
+    const screenW = window.innerWidth;
+    if (screenW < 768) {
+      // Standard A4 is 210mm (~794px). With 20px padding on mobile:
+      return Math.min(100, Math.max(35, Math.floor(((screenW - 24) / 794) * 100)));
+    }
+    return 100;
+  }, []);
+
+  const [editorZoom, setEditorZoom] = useState<number>(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      return Math.min(100, Math.max(35, Math.floor(((window.innerWidth - 24) / 794) * 100)));
+    }
+    return 100;
+  });
   const [commentText, setCommentText] = useState("");
   const [selectedReferrals, setSelectedReferrals] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1104,8 +1129,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     };
   }, [selectedImgEl, newLetterForm.content]);
 
-  // Free Drag-to-Move handler for Floating & Overlay Images (Word Style)
-  const startImageDragMove = (e: React.MouseEvent) => {
+  // Free Drag-to-Move handler for Floating & Overlay Images (Word Style) - Supports Touch & Mouse
+  const startImageDragMove = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!selectedImgEl || !paperRef.current) return;
@@ -1117,8 +1142,10 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     const imgRect = selectedImgEl.getBoundingClientRect();
     const initialLeft = (imgRect.left - containerRect.left) / scale;
     const initialTop = (imgRect.top - containerRect.top) / scale;
-    const startX = e.clientX;
-    const startY = e.clientY;
+
+    const isTouch = "touches" in e;
+    const startX = isTouch ? e.touches[0].clientX : e.clientX;
+    const startY = isTouch ? e.touches[0].clientY : e.clientY;
 
     // Convert to absolute positioning relative to .ql-editor so coordinates match 1:1 in Preview, Print & PDF
     if (selectedImgEl.style.position !== "absolute") {
@@ -1133,18 +1160,15 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       setSelectedImgWrap("in-front");
     }
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaX = (moveEvent.clientX - startX) / scale;
-      const deltaY = (moveEvent.clientY - startY) / scale;
-
+    const onPointerMove = (currX: number, currY: number) => {
+      const deltaX = (currX - startX) / scale;
+      const deltaY = (currY - startY) / scale;
       let newLeft = initialLeft + deltaX;
       let newTop = initialTop + deltaY;
-
       const maxW = containerRect.width / scale;
       const maxH = Math.max(containerRect.height / scale, 650);
       const imgW = imgRect.width / scale || 80;
       const imgH = imgRect.height / scale || 40;
-
       newLeft = Math.max(-40, Math.min(maxW - imgW + 40, newLeft));
       newTop = Math.max(-40, Math.min(maxH - imgH + 120, newTop));
 
@@ -1155,9 +1179,23 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       updateImgOverlayRect();
     };
 
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      onPointerMove(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      if (moveEvent.touches.length > 0) {
+        moveEvent.preventDefault();
+        onPointerMove(moveEvent.touches[0].clientX, moveEvent.touches[0].clientY);
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handlePointerUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handlePointerUp);
+      window.removeEventListener("touchcancel", handlePointerUp);
       if (selectedImgEl) {
         selectedImgEl.setAttribute("style", selectedImgEl.style.cssText);
       }
@@ -1165,27 +1203,30 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       syncEditorContent();
     };
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handlePointerUp);
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handlePointerUp);
+    window.addEventListener("touchcancel", handlePointerUp);
   };
 
-  // Interactive 8-Handle Drag Resizing (Word Style)
-  const startImageInteractiveResize = (e: React.MouseEvent, handle: string) => {
+  // Interactive 8-Handle Drag Resizing (Word Style) - Supports Touch & Mouse
+  const startImageInteractiveResize = (e: React.MouseEvent | React.TouchEvent, handle: string) => {
     e.preventDefault();
     e.stopPropagation();
     if (!selectedImgEl) return;
 
-    const startX = e.clientX;
-    const startY = e.clientY;
+    const isTouch = "touches" in e;
+    const startX = isTouch ? e.touches[0].clientX : e.clientX;
+    const startY = isTouch ? e.touches[0].clientY : e.clientY;
     const rect = selectedImgEl.getBoundingClientRect();
     const startWidth = rect.width;
     const startHeight = rect.height;
     const aspectRatio = startHeight / (startWidth || 1);
 
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-
+    const onPointerMove = (currX: number, currY: number) => {
+      const deltaX = currX - startX;
+      const deltaY = currY - startY;
       let newWidth = startWidth;
       let newHeight = startHeight;
 
@@ -1228,9 +1269,23 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       updateImgOverlayRect();
     };
 
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      onPointerMove(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      if (moveEvent.touches.length > 0) {
+        moveEvent.preventDefault();
+        onPointerMove(moveEvent.touches[0].clientX, moveEvent.touches[0].clientY);
+      }
+    };
+
+    const handlePointerUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handlePointerUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handlePointerUp);
+      window.removeEventListener("touchcancel", handlePointerUp);
       if (selectedImgEl) {
         selectedImgEl.setAttribute("style", selectedImgEl.style.cssText);
         selectedImgEl.setAttribute("width", `${selectedImgEl.offsetWidth || selectedImgPixelWidth}`);
@@ -1239,8 +1294,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       syncEditorContent();
     };
 
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handlePointerUp);
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handlePointerUp);
+    window.addEventListener("touchcancel", handlePointerUp);
   };
 
   // Image manipulation in editor
@@ -4628,34 +4686,34 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         className="flex-1 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 dark:text-slate-100"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="hidden md:flex items-center gap-1">
-                        <span className="text-[11px] text-slate-500 font-bold">فرستنده:</span>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">فرستنده:</span>
                         <input
                           type="text"
                           value={newLetterForm.sender}
                           onChange={(e) => setNewLetterForm({ ...newLetterForm, sender: e.target.value })}
                           placeholder="فرستنده..."
-                          className="w-28 sm:w-36 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2 py-0.5 text-xs"
+                          className="w-24 sm:w-36 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2 py-0.5 text-xs"
                         />
                       </div>
-                      <div className="hidden md:flex items-center gap-1">
-                        <span className="text-[11px] text-slate-500 font-bold">گیرنده:</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">گیرنده:</span>
                         <input
                           type="text"
                           value={newLetterForm.receiver}
                           onChange={(e) => setNewLetterForm({ ...newLetterForm, receiver: e.target.value })}
                           placeholder="گیرنده..."
-                          className="w-28 sm:w-36 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2 py-0.5 text-xs"
+                          className="w-24 sm:w-36 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-2 py-0.5 text-xs"
                         />
                       </div>
                       <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-slate-500 font-bold">تاریخ:</span>
+                        <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">تاریخ:</span>
                         <input
                           type="text"
                           value={newLetterForm.date}
                           onChange={(e) => setNewLetterForm({ ...newLetterForm, date: e.target.value })}
-                          className="w-24 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-1.5 py-0.5 text-xs text-center font-mono"
+                          className="w-20 sm:w-24 border dark:border-slate-700 dark:bg-slate-900 rounded-lg px-1.5 py-0.5 text-xs text-center font-mono"
                         />
                       </div>
                       <button
@@ -5724,22 +5782,21 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                           <FileText size={12} />
                           <span>{calculateEstimatedPages(newLetterForm.content, newLetterForm.paperSize, newLetterForm.orientation)} صفحه ({newLetterForm.paperSize || 'A4'})</span>
                         </div>
-
-                        <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border dark:border-white/10 px-2 py-0.5 rounded-lg text-xs">
+                        <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border dark:border-white/10 px-1.5 py-0.5 rounded-lg text-xs">
                           <span className="text-[10px] text-slate-400 font-bold hidden lg:inline">
                             بزرگنمایی:
                           </span>
                           <button
                             type="button"
                             onClick={() =>
-                              setEditorZoom((prev) => Math.max(80, prev - 10))
+                              setEditorZoom((prev) => Math.max(30, prev - 10))
                             }
                             className="w-5 h-5 flex items-center justify-center text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded font-black text-sm"
                             title="کوچک‌نمایی"
                           >
                             -
                           </button>
-                          <span className="font-bold font-mono text-[10px] min-w-[30px] text-center dark:text-white">
+                          <span className="font-bold font-mono text-[10px] min-w-[32px] text-center dark:text-white">
                             {editorZoom}%
                           </span>
                           <button
@@ -5751,6 +5808,22 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                             title="بزرگ‌نمایی"
                           >
                             +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditorZoom(getAutoFitZoom())}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 font-bold"
+                            title="تناسب خودکار با عرض صفحه گوشی یا نمایشگر"
+                          >
+                            صفحه
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditorZoom(100)}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-bold hidden sm:inline"
+                            title="اندازه واقعی ۱۰۰٪"
+                          >
+                            ۱۰۰٪
                           </button>
                         </div>
                       </div>
@@ -5813,7 +5886,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   {/* Docked Word-Style Formatting Ribbon Toolbar */}
                   <div
                     id="letter-custom-quill-toolbar"
-                    className="ql-toolbar ql-snow bg-slate-100 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 px-3 py-1.5 flex flex-wrap items-center gap-1.5 shrink-0 select-none z-30 shadow-xs"
+                    className="ql-toolbar ql-snow bg-slate-100 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 px-2 sm:px-3 py-1 sm:py-1.5 flex flex-nowrap sm:flex-wrap items-center gap-1 sm:gap-1.5 shrink-0 select-none z-30 shadow-xs overflow-x-auto scrollbar-none"
                   >
                     {/* Section 1: Undo / Redo & Format Painter */}
                     <div className="flex items-center gap-0.5 border-l dark:border-slate-700 pl-2">
@@ -6783,7 +6856,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     {/* MODE 2: Office Virtual Paper Workspace (A4/A5 Standard Letterhead) */}
                     {editorViewMode === "office" && (
-                      <div className="flex-1 min-h-0 p-2 sm:p-4 overflow-y-auto flex justify-center items-start w-full relative custom-scrollbar">
+                      <div className="flex-1 min-h-0 p-1 sm:p-4 overflow-y-auto overflow-x-auto flex justify-center items-start w-full relative custom-scrollbar touch-pan-x touch-pan-y">
+                        <div
+                          className="flex justify-center shrink-0"
+                          style={{
+                            width: editorZoom !== 100 ? `${Math.round((newLetterForm.paperSize === "A5" ? (newLetterForm.orientation === "landscape" ? 794 : 559) : (newLetterForm.orientation === "landscape" ? 1123 : 794)) * (editorZoom / 100))}px` : undefined,
+                            height: editorZoom !== 100 ? `${Math.round((newLetterForm.paperSize === "A5" ? (newLetterForm.orientation === "landscape" ? 559 : 794) : (newLetterForm.orientation === "landscape" ? 794 : 1123)) * (editorZoom / 100)) + 30}px` : undefined,
+                          }}
+                        >
                         <div
                           ref={paperRef}
                           className="secretariat-a4-paper bg-white text-slate-900 shadow-2xl border border-slate-300 dark:border-slate-700 rounded-sm mx-auto my-2 transition-all duration-300 google-docs-paper text-right relative flex flex-col justify-between shrink-0"
@@ -6804,7 +6884,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                 : newLetterForm.orientation === "landscape"
                                   ? "210mm"
                                   : "297mm",
-                            maxWidth: "100%",
                             paddingTop: `${companySettingsForm.marginTop ?? 40}mm`,
                             paddingBottom: `${companySettingsForm.marginBottom ?? 25}mm`,
                             paddingRight: `${companySettingsForm.marginRight ?? 20}mm`,
@@ -6921,78 +7000,104 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                   {/* Selection bounding outline & drag-to-move surface */}
                                   <div
                                     onMouseDown={startImageDragMove}
-                                    className="absolute inset-0 border-2 border-blue-500 rounded-xs shadow-sm ring-1 ring-blue-300/60 pointer-events-auto cursor-move bg-blue-500/5 hover:bg-blue-500/10 transition-colors"
-                                    title="برای جابجایی تصویر روی صفحه کلیک کرده و بکشید (Drag & Move)"
+                                    onTouchStart={startImageDragMove}
+                                    className="absolute inset-0 border-2 border-blue-500 rounded-xs shadow-sm ring-1 ring-blue-300/60 pointer-events-auto cursor-move bg-blue-500/5 hover:bg-blue-500/10 transition-colors touch-manipulation"
+                                    title="برای جابجایی تصویر روی صفحه کلیک یا لمس کرده و بکشید (Drag & Move)"
                                   />
 
                                   {/* Move & Rotation handles pill on top */}
-                                  <div className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 pointer-events-auto bg-blue-600 text-white px-2 py-0.5 rounded-full shadow-md text-[10px] font-bold">
+                                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-1.5 pointer-events-auto bg-blue-600 text-white px-2.5 py-1 rounded-full shadow-md text-[11px] font-bold touch-manipulation">
                                     <button
                                       type="button"
                                       onMouseDown={startImageDragMove}
-                                      className="flex items-center gap-1 cursor-move hover:text-cyan-200"
-                                      title="کلیک و درگ برای جابجایی آزاد روی متن"
+                                      onTouchStart={startImageDragMove}
+                                      className="flex items-center gap-1 cursor-move hover:text-cyan-200 active:scale-95"
+                                      title="کلیک و درگ یا لمس برای جابجایی آزاد روی متن"
                                     >
-                                      <Move size={12} />
+                                      <Move size={13} />
                                       <span>جابجایی</span>
                                     </button>
-                                    <div className="w-px h-3 bg-blue-400" />
+                                    <div className="w-px h-3.5 bg-blue-400" />
                                     <button
                                       type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         rotateSelectedImage(90);
                                       }}
-                                      className="flex items-center hover:text-cyan-200"
+                                      className="flex items-center hover:text-cyan-200 active:scale-95"
                                       title="چرخش ۹۰ درجه تصویر"
                                     >
-                                      <RotateCw size={12} />
+                                      <RotateCw size={13} />
                                     </button>
                                   </div>
 
-                                  {/* 4 Corner Handles (NW, NE, SW, SE) */}
+                                  {/* 4 Corner Handles (NW, NE, SW, SE) with enlarged touch hitboxes */}
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "nw")}
-                                    className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nwse-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "nw")}
+                                    className="absolute -top-3 -left-3 w-6 h-6 flex items-center justify-center cursor-nwse-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر سایز گوشه چپ بالا"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "ne")}
-                                    className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nesw-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "ne")}
+                                    className="absolute -top-3 -right-3 w-6 h-6 flex items-center justify-center cursor-nesw-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر سایز گوشه راست بالا"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "sw")}
-                                    className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nesw-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "sw")}
+                                    className="absolute -bottom-3 -left-3 w-6 h-6 flex items-center justify-center cursor-nesw-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر سایز گوشه چپ پایین"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "se")}
-                                    className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-nwse-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "se")}
+                                    className="absolute -bottom-3 -right-3 w-6 h-6 flex items-center justify-center cursor-nwse-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر سایز گوشه راست پایین"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
 
-                                  {/* 4 Edge Handles (N, S, W, E) */}
+                                  {/* 4 Edge Handles (N, S, W, E) with enlarged touch hitboxes */}
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "n")}
-                                    className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-ns-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "n")}
+                                    className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 flex items-center justify-center cursor-ns-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر ارتفاع از بالا"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "s")}
-                                    className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-ns-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "s")}
+                                    className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 flex items-center justify-center cursor-ns-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر ارتفاع از پایین"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "w")}
-                                    className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-ew-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "w")}
+                                    className="absolute top-1/2 -translate-y-1/2 -left-3 w-6 h-6 flex items-center justify-center cursor-ew-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر عرض از چپ"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
                                   <div
                                     onMouseDown={(e) => startImageInteractiveResize(e, "e")}
-                                    className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs cursor-ew-resize shadow-md pointer-events-auto hover:bg-blue-100 hover:scale-125 transition-transform z-40"
+                                    onTouchStart={(e) => startImageInteractiveResize(e, "e")}
+                                    className="absolute top-1/2 -translate-y-1/2 -right-3 w-6 h-6 flex items-center justify-center cursor-ew-resize pointer-events-auto touch-manipulation z-40 group"
                                     title="تغییر عرض از راست"
-                                  />
+                                  >
+                                    <div className="w-3.5 h-3.5 bg-white border-2 border-blue-600 rounded-xs shadow-md group-hover:bg-blue-100 group-hover:scale-125 transition-transform" />
+                                  </div>
 
                                   {/* Quick Layout Action Pill */}
                                   <div className="absolute -top-8 right-0 flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md shadow-lg px-1.5 py-0.5 pointer-events-auto z-40">
@@ -7067,6 +7172,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         })()}
                       </div>
                     </div>
+                  </div>
                   )}
 
                     {/* MODE 4: Split View Workspace (ONLYOFFICE + Letterhead side by side) */}
@@ -7196,7 +7302,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         <span>بزرگ‌نمایی:</span>
                         <button
                           type="button"
-                          onClick={() => setEditorZoom((prev) => Math.max(50, prev - 10))}
+                          onClick={() => setEditorZoom((prev) => Math.max(30, prev - 10))}
                           className="hover:bg-slate-200 dark:hover:bg-slate-800 px-1 rounded font-mono font-bold"
                           title="کوچک‌نمایی"
                         >
@@ -7213,34 +7319,42 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         >
                           +
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditorZoom(getAutoFitZoom())}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/60 text-purple-800 dark:text-purple-200 font-bold"
+                          title="تنظیم خودکار با عرض صفحه"
+                        >
+                          متناسب با صفحه
+                        </button>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Sleek Bottom Action Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t dark:border-slate-800 pt-2 shrink-0">
-                  <div className="flex items-center gap-2">
+                {/* Sleek Bottom Action Bar - Mobile and Android Touch-Optimized */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 border-t dark:border-slate-800 pt-2 shrink-0">
+                  <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 sm:pb-0 scrollbar-none">
                     <button
                       type="button"
                       onClick={handleSaveAsTemplate}
-                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40 text-xs font-bold px-3 py-1.5 rounded-lg transition-all"
+                      className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/40 text-xs font-bold px-3 py-2 rounded-lg transition-all shrink-0"
                     >
-                      ذخیره متون فعلی به عنوان قالب
+                      ذخیره به عنوان قالب
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowAdvancedOptionsModal(true)}
-                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 text-slate-700 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shrink-0"
                     >
                       <Sliders size={13} />
-                      تنظیمات کاغذ و امضاها ({newLetterForm.signers?.length || 0} امضاکننده)
+                      تنظیمات کاغذ و امضاها ({newLetterForm.signers?.length || 0})
                     </button>
                     <button
                       type="button"
                       onClick={handleQuickDocxDownload}
                       disabled={quickWordDownloading}
-                      className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                      className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shrink-0"
                       title="دانلود مستقیم سند جاری با فرمت ورد"
                     >
                       <FileDown size={14} className="text-blue-600 dark:text-blue-400" />
@@ -7252,25 +7366,24 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         setTableModalTab("custom");
                         setShowTableModal(true);
                       }}
-                      className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                      className="bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40 text-xs font-bold px-3 py-2 rounded-lg transition-all flex items-center gap-1.5 shrink-0"
                       title="طراحی و مدیریت جداول اداری"
                     >
                       <Table size={14} className="text-blue-600 dark:text-blue-400" />
                       <span>طراحی جدول</span>
                     </button>
                   </div>
-
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setShowNewLetterModal(false)}
-                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-4 py-2 rounded-xl transition-all"
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shrink-0"
                     >
                       انصراف
                     </button>
                     <button
                       type="submit"
-                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold px-5 py-2 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-1.5"
+                      className="flex-1 sm:flex-none justify-center bg-purple-600 hover:bg-purple-700 text-white text-xs sm:text-sm font-bold px-5 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 min-h-[42px]"
                     >
                       <CheckCircle size={15} />
                       ثبت نهایی و صدور شماره نامه
@@ -8518,22 +8631,20 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => setLetterViewZoom(typeof window !== "undefined" && window.innerWidth < 640 ? 45 : 68)}
+                            onClick={() => setLetterViewZoom(getAutoFitZoom())}
                             className="px-2 py-0.5 text-[11px] font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 rounded transition-colors cursor-pointer"
-                            title="مشاهده کامل و یکجای صفحه بدون اسکرول"
+                            title="مشاهده متناسب با عرض صفحه نمایش یا گوشی"
                           >
-                            مشاهده یکجا
+                            متناسب با صفحه
                           </button>
-
                           <button
                             type="button"
                             onClick={() => setLetterViewZoom(100)}
-                            className="px-2 py-0.5 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded transition-colors cursor-pointer"
+                            className="px-2 py-0.5 text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded transition-colors cursor-pointer hidden sm:inline"
                             title="اندازه واقعی ۱۰۰٪"
                           >
                             ۱۰۰٪
                           </button>
-
                           <button
                             type="button"
                             onClick={() => setLetterViewZoom(100)}
@@ -8545,14 +8656,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-y-auto overflow-x-auto flex-1 flex flex-col items-center justify-start custom-scrollbar p-2 sm:p-4">
+                      <div className="overflow-y-auto overflow-x-auto flex-1 flex flex-col items-center justify-start custom-scrollbar p-1 sm:p-4 touch-pan-x touch-pan-y">
                         <div
                           style={{
+                            width: letterViewZoom !== 100 ? `${Math.round((selectedLetterForView.paperSize === "A5" ? (selectedLetterForView.orientation === "landscape" ? 794 : 559) : (selectedLetterForView.orientation === "landscape" ? 1123 : 794)) * (letterViewZoom / 100))}px` : undefined,
+                            height: letterViewZoom !== 100 ? `${Math.round((selectedLetterForView.paperSize === "A5" ? (selectedLetterForView.orientation === "landscape" ? 559 : 794) : (selectedLetterForView.orientation === "landscape" ? 794 : 1123)) * (letterViewZoom / 100)) + 30}px` : undefined,
                             transform: `scale(${letterViewZoom / 100})`,
                             transformOrigin: "top center",
                             transition: "transform 0.15s ease-out",
                           }}
-                          className="flex justify-center"
+                          className="flex justify-center shrink-0"
                         >
                           <div
                             id="letter-view-paper-section"
@@ -9073,9 +9186,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto max-w-full pb-1 sm:pb-0 scrollbar-none">
                     {/* Zoom in/out controls */}
-                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border dark:border-slate-700">
+                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border dark:border-slate-700 shrink-0">
                       <button
                         type="button"
                         onClick={() => setPrintPreviewZoom((prev) => Math.max(30, prev - 10))}
@@ -9084,11 +9197,9 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       >
                         <ZoomOut size={14} />
                       </button>
-
                       <div className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-200 px-1 min-w-[38px] text-center">
                         {printPreviewZoom}%
                       </div>
-
                       <button
                         type="button"
                         onClick={() => setPrintPreviewZoom((prev) => Math.min(180, prev + 10))}
@@ -9097,20 +9208,18 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       >
                         <ZoomIn size={14} />
                       </button>
-
                       <button
                         type="button"
-                        onClick={() => setPrintPreviewZoom(typeof window !== "undefined" && window.innerWidth < 640 ? 50 : 80)}
-                        className="px-2 py-0.5 text-[10px] font-bold bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 rounded shadow-2xs cursor-pointer"
-                        title="مشاهده یکجا"
+                        onClick={() => setPrintPreviewZoom(getAutoFitZoom())}
+                        className="px-2 py-0.5 text-[10px] font-bold bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 rounded shadow-2xs cursor-pointer whitespace-nowrap"
+                        title="مشاهده متناسب با عرض صفحه"
                       >
-                        یکجا
+                        متناسب با صفحه
                       </button>
-
                       <button
                         type="button"
                         onClick={() => setPrintPreviewZoom(100)}
-                        className="px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 rounded cursor-pointer"
+                        className="px-1.5 py-0.5 text-[10px] font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 rounded cursor-pointer whitespace-nowrap hidden sm:inline"
                         title="اندازه ۱۰۰٪"
                       >
                         ۱۰۰٪
@@ -9121,7 +9230,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <button
                       type="button"
                       onClick={() => setPrintPreviewFullscreen(!printPreviewFullscreen)}
-                      className="p-2 text-slate-700 hover:text-slate-900 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer"
+                      className="p-2 text-slate-700 hover:text-slate-900 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl transition-colors flex items-center gap-1 text-xs font-bold cursor-pointer shrink-0"
                       title={printPreviewFullscreen ? "خروج از حالت تمام صفحه" : "تمام صفحه"}
                     >
                       {printPreviewFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -9138,7 +9247,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                           });
                         }
                       }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 min-h-[38px]"
                     >
                       <Printer size={15} /> چاپ مرورگر
                     </button>
@@ -9146,7 +9255,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <button
                       type="button"
                       onClick={() => handleQuickPdfDownload(isPrintMode, false)}
-                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 min-h-[38px]"
                       title="دانلود و چاپ مستقیم فایل PDF با سربرگ برداری با کیفیت فوق‌العاده ۳۰۰ DPI"
                     >
                       <FileText size={15} /> PDF سربرگ (۳۰۰ DPI)
@@ -9155,7 +9264,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <button
                       type="button"
                       onClick={() => handleQuickDocxDownload(isPrintMode, false)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 min-h-[38px]"
                       title="دانلود فایل رسمی Word بر اساس قالب سربرگ ورد"
                     >
                       <FileText size={15} /> Word (.docx)
@@ -9164,7 +9273,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     <button
                       onClick={() => handleShareSecretariatLetterToChat(isPrintMode)}
                       disabled={isSharingLetter}
-                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+                      className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 min-h-[38px]"
                       title="ارسال مستقیم تصویر و برگه نامه به گفتگوی سازمانی"
                     >
                       {isSharingLetter ? (
@@ -9177,7 +9286,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     <button
                       onClick={() => setIsPrintMode(null)}
-                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-3 py-2 rounded-xl transition-colors cursor-pointer"
+                      className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold px-3 py-2 rounded-xl transition-colors cursor-pointer whitespace-nowrap shrink-0 min-h-[38px]"
                     >
                       بستن
                     </button>
@@ -9185,14 +9294,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                 </div>
 
                 {/* SCROLLABLE PREVIEW VIEWPORT (PREVENTS CUTOFFS) */}
-                <div className="flex-1 overflow-auto p-2 sm:p-4 bg-slate-100 dark:bg-slate-950/80 rounded-xl flex justify-center items-start custom-scrollbar min-h-0">
+                <div className="flex-1 overflow-auto p-1 sm:p-4 bg-slate-100 dark:bg-slate-950/80 rounded-xl flex justify-center items-start custom-scrollbar min-h-0 touch-pan-x touch-pan-y">
                   <div
                     style={{
+                      width: printPreviewZoom !== 100 ? `${Math.round((isPrintMode.paperSize === "A5" ? (isPrintMode.orientation === "landscape" ? 794 : 559) : (isPrintMode.orientation === "landscape" ? 1123 : 794)) * (printPreviewZoom / 100))}px` : undefined,
+                      height: printPreviewZoom !== 100 ? `${Math.round((isPrintMode.paperSize === "A5" ? (isPrintMode.orientation === "landscape" ? 559 : 794) : (isPrintMode.orientation === "landscape" ? 794 : 1123)) * (printPreviewZoom / 100)) + 30}px` : undefined,
                       transform: `scale(${printPreviewZoom / 100})`,
                       transformOrigin: "top center",
                       transition: "transform 0.15s ease-out",
                     }}
-                    className="flex justify-center"
+                    className="flex justify-center shrink-0"
                   >
                     {/* PRINTABLE AREA (100% Unified with Editor & PDF) */}
                     <div
@@ -9201,7 +9312,6 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       style={{
                         width: paperWidth,
                         minHeight: paperHeight,
-                        maxWidth: "100%",
                         paddingTop: `${printSettings.marginTop ?? 40}mm`,
                         paddingBottom: `${printSettings.marginBottom ?? 25}mm`,
                         paddingRight: `${printSettings.marginRight ?? 20}mm`,
