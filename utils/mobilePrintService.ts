@@ -135,9 +135,26 @@ export const executeCrossPlatformPrint = async (
                     <title>${title}</title>
                     ${docStyles}
                     <style>
-                        @page { size: ${pageSize}; margin: 0; }
+                        @page { size: ${pageSize}; margin: 0mm !important; }
                         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-                        body { font-family: 'Vazirmatn', Tahoma, sans-serif; margin: 0; padding: 0; direction: rtl; background: #ffffff !important; }
+                        html, body { font-family: 'Vazirmatn', Tahoma, sans-serif; margin: 0 !important; padding: 0 !important; direction: rtl; background: #ffffff !important; }
+                        @media print {
+                            @page { size: ${pageSize}; margin: 0mm !important; }
+                            html, body, body * {
+                                visibility: visible !important;
+                                opacity: 1 !important;
+                            }
+                            #print-content-section {
+                                margin: 0 auto !important;
+                                border: none !important;
+                                box-shadow: none !important;
+                                page-break-after: avoid !important;
+                                page-break-inside: avoid !important;
+                            }
+                            .no-print, .hidden-print-export {
+                                display: none !important;
+                            }
+                        }
                     </style>
                 </head>
                 <body class="bg-white">

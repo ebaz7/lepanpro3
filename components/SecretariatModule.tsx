@@ -76,12 +76,21 @@ if (typeof window !== "undefined" && ReactQuill) {
         console.warn("Quill size attributor init skipped:", e);
       }
 
-      // 3. Register align and direction style attributors
+      // 3. Register align and direction style attributors (including 'left' for RTL editors)
       try {
+        const alignList = ["right", "center", "left", "justify"];
         const Align = Quill.import("attributors/style/align") as any;
         if (Align) {
+          Align.whitelist = alignList;
           Quill.register(Align, true);
         }
+        try {
+          const ClassAlign = Quill.import("formats/align") as any;
+          if (ClassAlign) {
+            ClassAlign.whitelist = alignList;
+            Quill.register(ClassAlign, true);
+          }
+        } catch (e2) {}
       } catch (e) {}
 
       try {
@@ -956,19 +965,34 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   };
 
   // Image manipulation in editor
+  // Helper: preserve consecutive and leading spaces inside HTML text nodes so Quill never collapses manual spacing
+  const preserveLetterHtmlSpaces = (html: string): string => {
+    if (!html || typeof html !== "string") return "";
+    return html.replace(/>([^<]+)</g, (fullMatch, textContent: string) => {
+      if (!textContent) return fullMatch;
+      const preserved = textContent
+        .replace(/^ +/gm, (m) => "\u00a0".repeat(m.length))
+        .replace(/ {2,}/g, (m) => "\u00a0".repeat(m.length));
+      return `>${preserved}<`;
+    });
+  };
+
   // Synchronize editor content with form state
-  const syncEditorContent = () => {
+  const syncEditorContent = (): string => {
     try {
       const quill = quillRef.current?.getEditor();
       if (quill && quill.root && typeof quill.root.innerHTML === "string") {
+        const rawHtml = preserveLetterHtmlSpaces(quill.root.innerHTML);
         setNewLetterForm((prev) => ({
           ...prev,
-          content: quill.root.innerHTML,
+          content: rawHtml,
         }));
+        return rawHtml;
       }
     } catch (e) {
       console.warn("syncEditorContent guard:", e);
     }
+    return preserveLetterHtmlSpaces(newLetterForm.content || "");
   };
 
   // Update bounding rect for image overlay handles
@@ -980,11 +1004,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     try {
       const paperRect = paperRef.current.getBoundingClientRect();
       const imgRect = selectedImgEl.getBoundingClientRect();
+      const scale = (editorZoom || 100) / 100;
       setImgOverlayBox({
-        top: imgRect.top - paperRect.top,
-        left: imgRect.left - paperRect.left,
-        width: imgRect.width,
-        height: imgRect.height,
+        top: (imgRect.top - paperRect.top) / scale,
+        left: (imgRect.left - paperRect.left) / scale,
+        width: imgRect.width / scale,
+        height: imgRect.height / scale,
       });
     } catch (e) {
       setImgOverlayBox(null);
@@ -1085,18 +1110,21 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     e.stopPropagation();
     if (!selectedImgEl || !paperRef.current) return;
 
-    const paperRect = paperRef.current.getBoundingClientRect();
+    const scale = (editorZoom || 100) / 100;
+    const editorContainer =
+      (selectedImgEl.closest(".ql-editor") as HTMLElement) || paperRef.current;
+    const containerRect = editorContainer.getBoundingClientRect();
     const imgRect = selectedImgEl.getBoundingClientRect();
-    const initialLeft = imgRect.left - paperRect.left;
-    const initialTop = imgRect.top - paperRect.top;
+    const initialLeft = (imgRect.left - containerRect.left) / scale;
+    const initialTop = (imgRect.top - containerRect.top) / scale;
     const startX = e.clientX;
     const startY = e.clientY;
 
-    // Convert to absolute positioning if not already
+    // Convert to absolute positioning relative to .ql-editor so coordinates match 1:1 in Preview, Print & PDF
     if (selectedImgEl.style.position !== "absolute") {
       selectedImgEl.style.position = "absolute";
-      selectedImgEl.style.left = `${initialLeft}px`;
-      selectedImgEl.style.top = `${initialTop}px`;
+      selectedImgEl.style.left = `${Math.round(initialLeft)}px`;
+      selectedImgEl.style.top = `${Math.round(initialTop)}px`;
       selectedImgEl.style.transform = "none";
       selectedImgEl.style.margin = "0";
       selectedImgEl.style.float = "none";
@@ -1106,15 +1134,19 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     }
 
     const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
+      const deltaX = (moveEvent.clientX - startX) / scale;
+      const deltaY = (moveEvent.clientY - startY) / scale;
 
       let newLeft = initialLeft + deltaX;
       let newTop = initialTop + deltaY;
 
-      // Constrain within paper boundaries
-      newLeft = Math.max(10, Math.min(paperRect.width - (imgRect.width || 80) - 10, newLeft));
-      newTop = Math.max(10, Math.min(paperRect.height - (imgRect.height || 40) - 10, newTop));
+      const maxW = containerRect.width / scale;
+      const maxH = Math.max(containerRect.height / scale, 650);
+      const imgW = imgRect.width / scale || 80;
+      const imgH = imgRect.height / scale || 40;
+
+      newLeft = Math.max(-40, Math.min(maxW - imgW + 40, newLeft));
+      newTop = Math.max(-40, Math.min(maxH - imgH + 120, newTop));
 
       selectedImgEl.style.left = `${Math.round(newLeft)}px`;
       selectedImgEl.style.top = `${Math.round(newTop)}px`;
@@ -1289,13 +1321,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     const nextVal = !selectedImgMultiply;
     selectedImgEl.style.mixBlendMode = nextVal ? "multiply" : "normal";
     
-    // When activating transparent background (e.g. stamp/signature), place it in front of text by default without pushing text
+    // When activating transparent background (e.g. stamp/signature), place it in front of text relative to .ql-editor
     if (nextVal && selectedImgWrap === "inline") {
-      if (paperRef.current) {
-        const paperRect = paperRef.current.getBoundingClientRect();
+      const scale = (editorZoom || 100) / 100;
+      const editorContainer =
+        (selectedImgEl.closest(".ql-editor") as HTMLElement) || paperRef.current;
+      if (editorContainer) {
+        const containerRect = editorContainer.getBoundingClientRect();
         const imgRect = selectedImgEl.getBoundingClientRect();
-        const curLeft = Math.max(20, imgRect.left - paperRect.left);
-        const curTop = Math.max(20, imgRect.top - paperRect.top);
+        const curLeft = Math.round(Math.max(0, (imgRect.left - containerRect.left) / scale));
+        const curTop = Math.round(Math.max(0, (imgRect.top - containerRect.top) / scale));
         selectedImgEl.style.position = "absolute";
         selectedImgEl.style.left = `${curLeft}px`;
         selectedImgEl.style.top = `${curTop}px`;
@@ -1394,11 +1429,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       selectedImgEl.style.cursor = "default";
       setSelectedImgIsWatermark(false);
     } else if (wrap === "behind") {
-      if (paperRef.current && selectedImgEl.style.position !== "absolute") {
-        const paperRect = paperRef.current.getBoundingClientRect();
+      const scale = (editorZoom || 100) / 100;
+      const editorContainer =
+        (selectedImgEl.closest(".ql-editor") as HTMLElement) || paperRef.current;
+      if (editorContainer && selectedImgEl.style.position !== "absolute") {
+        const containerRect = editorContainer.getBoundingClientRect();
         const imgRect = selectedImgEl.getBoundingClientRect();
-        const curLeft = Math.max(20, imgRect.left - paperRect.left);
-        const curTop = Math.max(20, imgRect.top - paperRect.top);
+        const curLeft = Math.round(Math.max(0, (imgRect.left - containerRect.left) / scale));
+        const curTop = Math.round(Math.max(0, (imgRect.top - containerRect.top) / scale));
         selectedImgEl.style.left = `${curLeft}px`;
         selectedImgEl.style.top = `${curTop}px`;
       } else if (!selectedImgEl.style.top) {
@@ -1416,11 +1454,14 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       setSelectedImgIsWatermark(true);
       setSelectedImgOpacity(Math.round(parseFloat(selectedImgEl.style.opacity || "0.15") * 100));
     } else if (wrap === "in-front") {
-      if (paperRef.current && selectedImgEl.style.position !== "absolute") {
-        const paperRect = paperRef.current.getBoundingClientRect();
+      const scale = (editorZoom || 100) / 100;
+      const editorContainer =
+        (selectedImgEl.closest(".ql-editor") as HTMLElement) || paperRef.current;
+      if (editorContainer && selectedImgEl.style.position !== "absolute") {
+        const containerRect = editorContainer.getBoundingClientRect();
         const imgRect = selectedImgEl.getBoundingClientRect();
-        const curLeft = Math.max(20, imgRect.left - paperRect.left);
-        const curTop = Math.max(20, imgRect.top - paperRect.top);
+        const curLeft = Math.round(Math.max(0, (imgRect.left - containerRect.left) / scale));
+        const curTop = Math.round(Math.max(0, (imgRect.top - containerRect.top) / scale));
         selectedImgEl.style.left = `${curLeft}px`;
         selectedImgEl.style.top = `${curTop}px`;
       } else if (!selectedImgEl.style.top) {
@@ -1940,33 +1981,43 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   };
 
   // Quick Microsoft Word (.docx) export on the fly with comprehensive metadata
-  const handleQuickDocxDownload = async () => {
+  const handleQuickDocxDownload = async (targetLetter?: Partial<SecretariatLetter>, noLetterhead = false) => {
     try {
       setQuickWordDownloading(true);
-      const letterNum = editingLetterId
-        ? (letters.find(l => l.id === editingLetterId)?.letterNumber || getNextLetterNumber(selectedCompany, activeSection))
-        : getNextLetterNumber(selectedCompany, activeSection);
-      const hasAttach = newLetterForm.hasAttachment ?? ((newLetterForm.attachments && newLetterForm.attachments.length > 0) || false);
-      const attachDesc = newLetterForm.attachmentDescription || "";
+      const latestEditorHtml = !targetLetter ? syncEditorContent() : undefined;
+      const source = targetLetter || newLetterForm;
+      const letterNum =
+        (targetLetter as any)?.letterNumber ||
+        (editingLetterId
+          ? letters.find((l) => l.id === editingLetterId)?.letterNumber ||
+            getNextLetterNumber(selectedCompany, activeSection)
+          : getNextLetterNumber(selectedCompany, activeSection));
+      const hasAttach =
+        source.hasAttachment ??
+        ((source.attachments && source.attachments.length > 0) || false);
+      const attachDesc = source.attachmentDescription || "";
 
       const res = await fetch("/api/secretariat/quick-docx", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subject: newLetterForm.subject || "نامه اداری",
-          content: newLetterForm.content || "",
-          receiver: newLetterForm.receiver || "",
-          sender: newLetterForm.sender || "",
-          date: newLetterForm.date || "",
+          subject: source.subject || "نامه اداری",
+          content: latestEditorHtml ?? source.content ?? "",
+          receiver: source.receiver || "",
+          sender: source.sender || "",
+          date: source.date || "",
           letterNumber: letterNum,
-          signers: newLetterForm.signers || [],
-          paperSize: newLetterForm.paperSize || "A4",
-          orientation: newLetterForm.orientation || "portrait",
-          companyId: (newLetterForm as any).companyId || selectedCompany?.id || "",
-          noLetterhead: (newLetterForm as any).noLetterhead || false,
+          signers: source.signers || [],
+          paperSize: source.paperSize || "A4",
+          orientation: source.orientation || "portrait",
+          companyId: (source as any).companyId || selectedCompany?.id || "",
+          noLetterhead: noLetterhead || Boolean((source as any).noLetterhead),
           hasAttachment: hasAttach,
           attachmentDescription: attachDesc,
-          attachments: newLetterForm.attachments || [],
+          attachments: source.attachments || [],
+          addCompanyStamp: source.addCompanyStamp || false,
+          hideSalutationInLetter: source.hideSalutationInLetter ?? true,
+          hideSubjectInLetter: source.hideSubjectInLetter ?? true,
         }),
       });
       if (!res.ok) throw new Error("خطا در ایجاد خروجی فایل Word");
@@ -1984,6 +2035,163 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       alert("خطا در ایجاد و دانلود فایل Word: " + e.message);
     } finally {
       setQuickWordDownloading(false);
+    }
+  };
+
+  // Quick Vector PDF (300 DPI) export on the fly for both Drafts ("preview_only") and Saved Letters
+  const handleQuickPdfDownload = async (targetLetter?: Partial<SecretariatLetter>, noLetterhead = false) => {
+    try {
+      const latestEditorHtml = !targetLetter ? syncEditorContent() : undefined;
+      const source = targetLetter || newLetterForm;
+      const letterNum =
+        (targetLetter as any)?.letterNumber ||
+        (editingLetterId
+          ? letters.find((l) => l.id === editingLetterId)?.letterNumber ||
+            getNextLetterNumber(selectedCompany, activeSection)
+          : "پیش‌نویس");
+      const hasAttach =
+        source.hasAttachment ??
+        ((source.attachments && source.attachments.length > 0) || false);
+
+      const res = await fetch("/api/secretariat/quick-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: source.subject || "نامه اداری",
+          content: latestEditorHtml ?? source.content ?? "",
+          receiver: source.receiver || "",
+          sender: source.sender || "",
+          date: source.date || "",
+          letterNumber: letterNum,
+          signers: source.signers || [],
+          approvedBy: (source as any).approvedBy || [],
+          signatureImageUrls: (source as any).signatureImageUrls || [],
+          signaturePosition: source.signaturePosition || "bottom_left",
+          signOffText: source.signOffText || "با تشکر",
+          paperSize: source.paperSize || "A4",
+          orientation: source.orientation || "portrait",
+          companyId: (source as any).companyId || selectedCompany?.id || "",
+          noLetterhead: noLetterhead || Boolean((source as any).noLetterhead),
+          section: (source as any).section || activeSection || "headquarters",
+          hasAttachment: hasAttach,
+          attachmentDescription: source.attachmentDescription || "",
+          attachments: source.attachments || [],
+          addCompanyStamp: source.addCompanyStamp || false,
+          hideSalutationInLetter: true,
+          hideSubjectInLetter: true,
+        }),
+      });
+      if (!res.ok) throw new Error("خطا در تولید فایل PDF");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const safeNum = String(letterNum || "Draft").replace(/[\/\\]/g, "_");
+      a.download = `Letter_${safeNum}${noLetterhead ? "_NoLetterhead" : ""}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("خطا در ایجاد و دانلود فایل PDF: " + e.message);
+    }
+  };
+
+  // Smart Paragraph Alignment & Line-Width Equalizer (راست‌چین، وسط‌چین، چپ‌چین، و تنظیم/تراز دوطرفه خطوط)
+  const handleSmartAlign = (alignMode: "right" | "center" | "left" | "justify") => {
+    try {
+      const quill = quillRef.current?.getEditor();
+      if (!quill || !quill.root) return;
+
+      const range = quill.getSelection();
+      const alignValue = alignMode === "right" ? false : alignMode;
+
+      // For right, center, left: apply to current selection or active line
+      if (alignMode !== "justify") {
+        if (range) {
+          quill.formatLine(range.index, Math.max(1, range.length), "align", alignValue, "user");
+        } else {
+          quill.format("align", alignValue, "user");
+        }
+        syncEditorContent();
+        return;
+      }
+
+      // For "justify" (تنظیم / هم‌ترازی دوطرفه خطوط):
+      // 1. If user selected a specific text range, justify those lines and join accidental single-Enter line splits
+      if (range && range.length > 0) {
+        quill.formatLine(range.index, range.length, "align", "justify", "user");
+      }
+
+      // 2. Also inspect the DOM paragraphs inside .ql-editor so if the user pressed Enter mid-sentence
+      // or clicked "تنظیم" without highlighting text first, body paragraphs are justified and joined cleanly
+      const root = quill.root as HTMLElement;
+      const paragraphs = Array.from(root.querySelectorAll("p"));
+      const isShortHeaderOrSignOff = (txt: string) => {
+        const clean = txt.replace(/\u00a0/g, " ").trim();
+        if (!clean) return true;
+        if (clean.length <= 35 && (
+          clean.startsWith("بسمه") ||
+          clean.startsWith("باسمه") ||
+          clean.startsWith("با سلام") ||
+          clean.startsWith("سلام علیکم") ||
+          clean.startsWith("با تشکر") ||
+          clean.startsWith("با احترام") ||
+          clean.startsWith("با تجدید احترام") ||
+          clean.startsWith("ارادتمند") ||
+          clean.startsWith("سپاسگزارم") ||
+          clean.startsWith("شرکت ") ||
+          clean.startsWith("مدیریت ") ||
+          clean.startsWith("ریاست ") ||
+          clean.startsWith("جناب ") ||
+          clean.startsWith("سرکار ") ||
+          clean.startsWith("موضوع:") ||
+          clean.startsWith("به:") ||
+          clean.startsWith("از:")
+        )) {
+          return true;
+        }
+        return false;
+      };
+
+      // Merge consecutive body <p> elements that were split manually by pressing Enter mid-sentence
+      for (let i = 0; i < paragraphs.length - 1; i++) {
+        const curr = paragraphs[i];
+        const next = paragraphs[i + 1];
+        if (!curr || !next) continue;
+        if (curr.querySelector("img, table, hr") || next.querySelector("img, table, hr")) continue;
+
+        const currText = (curr.textContent || "").replace(/\u00a0/g, " ").trim();
+        const nextText = (next.textContent || "").replace(/\u00a0/g, " ").trim();
+        if (!currText || !nextText) continue;
+        if (isShortHeaderOrSignOff(currText) || isShortHeaderOrSignOff(nextText)) continue;
+
+        // If current paragraph doesn't end with sentence punctuation (or is a body line) and next is also body continuation
+        const endsWithSentenceStop = /[.!؟?:؛]$/.test(currText);
+        if (!endsWithSentenceStop && currText.length >= 25) {
+          curr.innerHTML = `${curr.innerHTML.replace(/<br\s*\/?>\s*$/i, "").trim()} ${next.innerHTML.trim()}`;
+          next.remove();
+          paragraphs.splice(i + 1, 1);
+          i--;
+        }
+      }
+
+      // Apply full justification to body paragraphs
+      Array.from(root.querySelectorAll("p")).forEach((p) => {
+        if (p.querySelector("img, table")) return;
+        const txt = (p.textContent || "").replace(/\u00a0/g, " ").trim();
+        if (!txt) return;
+        if (!isShortHeaderOrSignOff(txt) && txt.length > 35) {
+          p.style.textAlign = "justify";
+          (p.style as any).textJustify = "inter-word";
+          p.classList.remove("ql-align-center", "ql-align-left", "ql-align-right");
+          p.classList.add("ql-align-justify");
+        }
+      });
+
+      syncEditorContent();
+    } catch (err) {
+      console.warn("handleSmartAlign warning:", err);
     }
   };
 
@@ -2637,10 +2845,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   };
 
   const handleEditLetterClick = (letter: SecretariatLetter) => {
+    const preservedContent = preserveLetterHtmlSpaces(letter.content || "");
     setNewLetterForm({
       date: letter.date || "",
       subject: letter.subject || "",
-      content: letter.content || "",
+      content: preservedContent,
       sender: letter.sender || "",
       receiver: letter.receiver || "",
       type: letter.type || "internal",
@@ -2657,8 +2866,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       paperSize: letter.paperSize || "A4",
       orientation: letter.orientation || "portrait",
       signaturePosition: letter.signaturePosition || "bottom_left",
-      hideSubjectInLetter: letter.hideSubjectInLetter || false,
-      hideSalutationInLetter: letter.hideSalutationInLetter || false,
+      hideSubjectInLetter: letter.hideSubjectInLetter ?? true,
+      hideSalutationInLetter: letter.hideSalutationInLetter ?? true,
     });
     setEditingLetterId(letter.id);
     setSelectedLetterForView(null);
@@ -2669,6 +2878,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const handleSaveLetter = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!selectedCompany || !activeSection) return;
+
+    const finalContent = syncEditorContent();
 
     if (!editingLetterId) {
       const hasDesignatedReceiver = 
@@ -2700,7 +2911,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         ...existingLetter,
         date: newLetterForm.date,
         subject: newLetterForm.subject,
-        content: newLetterForm.content,
+        content: finalContent,
         sender: newLetterForm.sender,
         receiver: newLetterForm.receiver,
         referredTo: mergedReferrals,
@@ -2715,8 +2926,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         paperSize: newLetterForm.paperSize,
         orientation: newLetterForm.orientation,
         signaturePosition: newLetterForm.signaturePosition,
-        hideSubjectInLetter: newLetterForm.hideSubjectInLetter,
-        hideSalutationInLetter: newLetterForm.hideSalutationInLetter,
+        hideSubjectInLetter: newLetterForm.hideSubjectInLetter ?? true,
+        hideSalutationInLetter: newLetterForm.hideSalutationInLetter ?? true,
         updatedAt: Date.now(),
       };
 
@@ -2748,7 +2959,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         letterNumber: autoNum,
         date: newLetterForm.date,
         subject: newLetterForm.subject,
-        content: newLetterForm.content,
+        content: finalContent,
         sender: newLetterForm.sender,
         receiver: newLetterForm.receiver,
         referredTo: targetReferrals,
@@ -4362,15 +4573,22 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      const latestHtml = syncEditorContent();
+                      const existingNum = editingLetterId
+                        ? letters.find((l) => l.id === editingLetterId)?.letterNumber
+                        : undefined;
                       const fakeLetter: SecretariatLetter = {
                         ...(newLetterForm as any),
-                        id: "preview_only",
+                        content: latestHtml,
+                        id: editingLetterId || "preview_only",
                         companyId: selectedCompany.id,
                         status: SecretariatLetterStatus.DRAFT,
                         createdAt: Date.now(),
                         updatedAt: Date.now(),
-                        letterNumber: "پیش‌نویس",
+                        letterNumber: existingNum || "پیش‌نویس",
                         date: newLetterForm.date || "پیش‌نویس",
+                        hideSubjectInLetter: true,
+                        hideSalutationInLetter: true,
                       };
                       setIsPrintMode(fakeLetter);
                     }}
@@ -5085,14 +5303,13 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                           <button
                             type="button"
                             onClick={() => {
-                              if (quillRef.current) {
-                                const q = quillRef.current?.getEditor?.();
-                                if (q) q.format("align", "justify");
-                              }
+                              handleSmartAlign("justify");
+                              setActiveMenu(null);
                             }}
-                            className="w-full text-right px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between"
+                            className="w-full text-right px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-between font-bold text-purple-700 dark:text-purple-300"
                           >
-                            <span>تراز دوطرفه (Justify)</span>
+                            <span>تنظیم و هم‌ترازی دوطرفه خطوط (Justify)</span>
+                            <AlignJustify size={13} />
                           </button>
                         </div>
                       )}
@@ -5819,8 +6036,41 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     {/* Section 5: Alignment & Paragraph List */}
                     <div className="flex items-center gap-0.5 border-l dark:border-slate-700 pl-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSmartAlign("right")}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        title="راست‌چین"
+                      >
+                        <AlignRight size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSmartAlign("center")}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        title="وسط‌چین"
+                      >
+                        <AlignCenter size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSmartAlign("left")}
+                        className="p-1.5 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                        title="چپ‌چین (مناسب امضا و با تشکر)"
+                      >
+                        <AlignLeft size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSmartAlign("justify")}
+                        className="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-colors flex items-center gap-1 text-[11px] font-bold"
+                        title="تنظیم و یک‌اندازه کردن طول خطوط متن نامه (Justify)"
+                      >
+                        <AlignJustify size={13} />
+                        <span>تنظیم</span>
+                      </button>
                       <span className="ql-formats">
-                        <select className="ql-align" defaultValue="" title="چینش متن" />
+                        <select className="ql-align hidden" defaultValue="" title="چینش متن" />
                         <button className="ql-direction" value="rtl" title="جهت متن راست‌به‌چپ (RTL)" />
                         <button className="ql-list" value="ordered" title="لیست شماره‌دار" />
                         <button className="ql-list" value="bullet" title="لیست نشانه‌دار" />
@@ -6533,33 +6783,100 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                     {/* MODE 2: Office Virtual Paper Workspace (A4/A5 Standard Letterhead) */}
                     {editorViewMode === "office" && (
-                      <div className="flex-1 min-h-0 p-1.5 sm:p-3 overflow-y-auto flex justify-center w-full relative custom-scrollbar">
+                      <div className="flex-1 min-h-0 p-2 sm:p-4 overflow-y-auto flex justify-center items-start w-full relative custom-scrollbar">
                         <div
                           ref={paperRef}
-                          className="bg-white dark:bg-gray-900 shadow-2xl border border-slate-300 dark:border-slate-800 rounded-sm p-[1.8cm] mx-auto transition-all duration-300 google-docs-paper text-right relative flex flex-col justify-between my-auto"
+                          className="secretariat-a4-paper bg-white text-slate-900 shadow-2xl border border-slate-300 dark:border-slate-700 rounded-sm mx-auto my-2 transition-all duration-300 google-docs-paper text-right relative flex flex-col justify-between shrink-0"
                           style={{
                             width:
                               newLetterForm.paperSize === "A5"
                                 ? newLetterForm.orientation === "landscape"
-                                ? "100%"
-                                : "148mm"
-                              : newLetterForm.orientation === "landscape"
-                                ? "100%"
-                                : "210mm",
-                          minHeight:
-                            newLetterForm.paperSize === "A5"
-                              ? newLetterForm.orientation === "landscape"
-                                ? "148mm"
-                                : "210mm"
-                              : newLetterForm.orientation === "landscape"
-                                ? "210mm"
-                                : "297mm",
-                          maxWidth: "100%",
-                          transform: editorZoom !== 100 ? `scale(${editorZoom / 100})` : undefined,
-                          transformOrigin: "top center",
-                        }}
-                        dir="rtl"
-                      >
+                                  ? "210mm"
+                                  : "148mm"
+                                : newLetterForm.orientation === "landscape"
+                                  ? "297mm"
+                                  : "210mm",
+                            minHeight:
+                              newLetterForm.paperSize === "A5"
+                                ? newLetterForm.orientation === "landscape"
+                                  ? "148mm"
+                                  : "210mm"
+                                : newLetterForm.orientation === "landscape"
+                                  ? "210mm"
+                                  : "297mm",
+                            maxWidth: "100%",
+                            paddingTop: `${companySettingsForm.marginTop ?? 40}mm`,
+                            paddingBottom: `${companySettingsForm.marginBottom ?? 25}mm`,
+                            paddingRight: `${companySettingsForm.marginRight ?? 20}mm`,
+                            paddingLeft: `${companySettingsForm.marginLeft ?? 20}mm`,
+                            fontFamily:
+                              companySettingsForm.letterheadFontFamily ||
+                              "'Vazirmatn', sans-serif",
+                            transform:
+                              editorZoom !== 100
+                                ? `scale(${editorZoom / 100})`
+                                : undefined,
+                            transformOrigin: "top center",
+                            boxSizing: "border-box",
+                          }}
+                          dir="rtl"
+                        >
+                          {/* Background Letterhead in Editor so user sees exact print placement */}
+                          {getEffectiveLetterheadDisplayUrl(companySettingsForm) && (
+                            <img
+                              src={getEffectiveLetterheadDisplayUrl(companySettingsForm)}
+                              alt="سربرگ شرکت"
+                              className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0 select-none opacity-95"
+                            />
+                          )}
+
+                          {/* Top-left metadata block (شماره / تاریخ / پیوست) matching Preview & PDF 1:1 */}
+                          <div
+                            className="pointer-events-none select-none"
+                            style={{
+                              position: "absolute",
+                              top: `${companySettingsForm.metadataTop ?? 25}mm`,
+                              left: `${companySettingsForm.metadataLeft ?? 20}mm`,
+                              fontSize: `${companySettingsForm.metadataFontSize ?? 11}px`,
+                              color: companySettingsForm.metadataColor || "#0f172a",
+                              lineHeight: "1.8",
+                              fontWeight: companySettingsForm.metadataFontWeight || "bold",
+                              opacity: (companySettingsForm.metadataOpacity ?? 100) / 100,
+                              fontFamily:
+                                companySettingsForm.letterheadFontFamily || "inherit",
+                              textAlign: "right",
+                              direction: "rtl",
+                              zIndex: 20,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <div>
+                              شماره:{" "}
+                              <span style={{ direction: "ltr", display: "inline-block" }}>
+                                {toPersianDigits(
+                                  editingLetterId
+                                    ? letters.find((l) => l.id === editingLetterId)
+                                        ?.letterNumber || "پیش‌نویس"
+                                    : "پیش‌نویس",
+                                )}
+                              </span>
+                            </div>
+                            <div>
+                              تاریخ:{" "}
+                              <span style={{ direction: "ltr", display: "inline-block" }}>
+                                {toPersianDigits(newLetterForm.date || "-")}
+                              </span>
+                            </div>
+                            <div>
+                              پیوست:{" "}
+                              {newLetterForm.hasAttachment ||
+                              (newLetterForm.attachments &&
+                                newLetterForm.attachments.length > 0)
+                                ? "دارد"
+                                : "ندارد"}
+                            </div>
+                          </div>
+
                         {(() => {
                           const cleanText = (newLetterForm.content || "")
                             .replace(/<[^>]*>/g, "")
@@ -6575,15 +6892,18 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                                 theme="snow"
                                 value={newLetterForm.content}
                                 onChange={(val) =>
-                                  setNewLetterForm({
-                                    ...newLetterForm,
+                                  setNewLetterForm((prev) => ({
+                                    ...prev,
                                     content: val,
-                                  })
+                                  }))
                                 }
                                 placeholder="متن رسمی و اداری خود را اینجا بنویسید..."
-                                className="text-sm border-none ql-editor-borderless flex-1"
+                                className="text-sm border-none ql-editor-borderless flex-1 relative z-10"
                                 modules={{
                                   toolbar: "#letter-custom-quill-toolbar",
+                                  clipboard: {
+                                    matchVisual: false,
+                                  },
                                 }}
                               />
 
@@ -8225,51 +8545,68 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         </div>
                       </div>
 
-                      <div className="overflow-y-auto overflow-x-auto flex-1 flex flex-col items-center custom-scrollbar p-1 sm:p-2">
+                      <div className="overflow-y-auto overflow-x-auto flex-1 flex flex-col items-center justify-start custom-scrollbar p-2 sm:p-4">
                         <div
                           style={{
                             transform: `scale(${letterViewZoom / 100})`,
                             transformOrigin: "top center",
                             transition: "transform 0.15s ease-out",
-                            width: "100%",
-                            maxWidth: "720px",
                           }}
                           className="flex justify-center"
                         >
                           <div
-                            className="bg-white text-slate-900 border border-slate-200 shadow-md rounded-xl w-full min-h-[550px] flex flex-col justify-between text-right font-sans relative overflow-hidden shrink-0"
+                            id="letter-view-paper-section"
+                            className="secretariat-a4-paper bg-white text-slate-900 border border-slate-200 shadow-lg rounded-sm flex flex-col justify-between text-right font-sans relative overflow-hidden shrink-0"
                             style={{
+                              width:
+                                selectedLetterForView.paperSize === "A5"
+                                  ? selectedLetterForView.orientation === "landscape"
+                                    ? "210mm"
+                                    : "148mm"
+                                  : selectedLetterForView.orientation === "landscape"
+                                    ? "297mm"
+                                  : "210mm",
+                              minHeight:
+                                selectedLetterForView.paperSize === "A5"
+                                  ? selectedLetterForView.orientation === "landscape"
+                                    ? "148mm"
+                                    : "210mm"
+                                  : selectedLetterForView.orientation === "landscape"
+                                    ? "210mm"
+                                    : "297mm",
+                              paddingTop: `${viewCompanySettings.marginTop ?? 40}mm`,
+                              paddingBottom: `${viewCompanySettings.marginBottom ?? 25}mm`,
+                              paddingRight: `${viewCompanySettings.marginRight ?? 20}mm`,
+                              paddingLeft: `${viewCompanySettings.marginLeft ?? 20}mm`,
                               fontFamily:
                                 viewCompanySettings.letterheadFontFamily ||
-                                "sans-serif",
+                                "'Vazirmatn', sans-serif",
+                              boxSizing: "border-box",
                             }}
+                            dir="rtl"
                           >
-                          {/* Background Letterhead if uploaded */}
-                          {getEffectiveLetterheadDisplayUrl(viewCompanySettings) && (
-                            <img
-                              src={getEffectiveLetterheadDisplayUrl(viewCompanySettings)}
-                              alt="سربرگ شرکت"
-                              className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0 select-none"
-                            />
-                          )}
+                            {/* Background Letterhead if uploaded */}
+                            {getEffectiveLetterheadDisplayUrl(viewCompanySettings) && (
+                              <img
+                                src={getEffectiveLetterheadDisplayUrl(viewCompanySettings)}
+                                alt="سربرگ شرکت"
+                                className="absolute inset-0 w-full h-full object-fill pointer-events-none z-0 select-none"
+                              />
+                            )}
 
-                          {/* Top-left metadata block for letterhead */}
-                          {getEffectiveLetterheadDisplayUrl(viewCompanySettings) ? (
+                            {/* Top-left metadata block (شماره / تاریخ / پیوست) matching Editor & Print 1:1 */}
                             <div
                               style={{
                                 position: "absolute",
-                                top: `${((viewCompanySettings.metadataTop ?? 25) / 297) * 100}%`,
-                                left: `${((viewCompanySettings.metadataLeft ?? 20) / 210) * 100}%`,
+                                top: `${viewCompanySettings.metadataTop ?? 25}mm`,
+                                left: `${viewCompanySettings.metadataLeft ?? 20}mm`,
                                 fontSize: `${viewCompanySettings.metadataFontSize ?? 11}px`,
-                                color:
-                                  viewCompanySettings.metadataColor || "#0f172a",
+                                color: viewCompanySettings.metadataColor || "#0f172a",
                                 lineHeight: "1.8",
                                 fontWeight:
-                                  viewCompanySettings.metadataFontWeight ||
-                                  "bold",
+                                  viewCompanySettings.metadataFontWeight || "bold",
                                 opacity:
-                                  (viewCompanySettings.metadataOpacity ?? 100) /
-                                  100,
+                                  (viewCompanySettings.metadataOpacity ?? 100) / 100,
                                 fontFamily:
                                   viewCompanySettings.letterheadFontFamily ||
                                   "inherit",
@@ -8305,164 +8642,99 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                               </div>
                               <div>
                                 پیوست:{" "}
-                                {selectedLetterForView.attachments?.length > 0
+                                {selectedLetterForView.hasAttachment ||
+                                selectedLetterForView.attachments?.length > 0
                                   ? "دارد"
                                   : "ندارد"}
                               </div>
                             </div>
-                          ) : (
-                            /* Header metadata strip on paper when no letterhead */
-                            <div className="flex justify-between items-center border-b pb-3 p-6 text-[11px] text-slate-500 font-mono relative z-10">
-                              <span className="font-bold text-slate-700 text-sm">
-                                {selectedCompany.name}
-                              </span>
-                              <div className="text-left space-y-0.5">
-                                <div>تاریخ: {selectedLetterForView.date}</div>
-                                <div>
-                                  شماره: {selectedLetterForView.letterNumber}
-                                </div>
-                                <div>
-                                  پیوست:{" "}
-                                  {selectedLetterForView.attachments?.length > 0
-                                    ? "دارد"
-                                    : "ندارد"}
-                                </div>
-                              </div>
-                            </div>
-                          )}
 
-                          {/* Letter Body Container with Calibrated Margins */}
-                          <div
-                            className="relative z-10 flex flex-col justify-between flex-1"
-                            style={{
-                              paddingTop: viewCompanySettings.letterheadUrl
-                                ? `${viewCompanySettings.marginTop ?? 40}mm`
-                                : "16px",
-                              paddingBottom: `${viewCompanySettings.marginBottom ?? 25}mm`,
-                              paddingRight: `${viewCompanySettings.marginRight ?? 20}mm`,
-                              paddingLeft: `${viewCompanySettings.marginLeft ?? 20}mm`,
-                            }}
-                          >
-                            <div>
-                              {/* Receiver & Subject line on paper */}
-                              <div className="space-y-1.5 text-xs text-slate-800 mb-4">
-                                <div>
-                                  <b className="text-slate-950">به:</b>{" "}
-                                  {selectedLetterForView.receiver}
-                                </div>
-                                <div>
-                                  <b className="text-slate-950">از:</b>{" "}
-                                  {selectedLetterForView.sender}
-                                </div>
-                                <div className="pt-1.5 border-t border-dashed border-slate-300">
-                                  <b className="text-slate-950">موضوع:</b>{" "}
-                                  {selectedLetterForView.subject}
-                                </div>
-                              </div>
-
-                              {/* Full Letter Content */}
+                            {/* Letter Body Container matching Editor 1:1 */}
+                            <div className="relative z-10 flex flex-col justify-between flex-1">
                               <div
-                                className="ql-editor py-2 text-slate-800 leading-loose font-medium text-xs sm:text-sm text-justify"
+                                className="ql-editor text-slate-900 leading-loose font-medium text-[14px]"
                                 dangerouslySetInnerHTML={{
-                                  __html: selectedLetterForView.content,
+                                  __html: preserveLetterHtmlSpaces(
+                                    selectedLetterForView.content || "",
+                                  ),
                                 }}
                               />
-                            </div>
 
-                            {/* Sign-off text and Signatures */}
-                            <div className="pt-6 border-t border-dashed border-slate-300 mt-6 space-y-3">
-                              {selectedLetterForView.signOffText &&
-                                (!selectedLetterForView.content ||
-                                  !selectedLetterForView.content.includes(
-                                    "با تشکر",
-                                  )) && (
-                                  <div className="text-xs font-bold text-slate-700">
-                                    {selectedLetterForView.signOffText}
-                                  </div>
-                                )}
-
-                              <div className="flex flex-wrap items-end justify-between gap-4">
-                                {/* Company Stamp if enabled */}
-                                {selectedLetterForView.addCompanyStamp &&
-                                  viewCompanySettings.companyStampUrl && (
-                                    <div className="flex flex-col items-center">
-                                      <img
-                                        src={
-                                          viewCompanySettings.companyStampUrl
-                                        }
-                                        alt="مهر شرکت"
-                                        className="h-16 w-auto object-contain mix-blend-multiply opacity-90"
-                                      />
-                                      <span className="text-[9px] text-red-600 font-bold mt-1">
-                                        مهر رسمی شرکت
-                                      </span>
-                                    </div>
-                                  )}
-
-                                {/* Signatures */}
-                                <div className="flex flex-wrap gap-3 justify-end ml-auto">
-                                  {selectedLetterForView.approvedBy &&
-                                  selectedLetterForView.approvedBy.length >
-                                    0 ? (
-                                    selectedLetterForView.approvedBy.map(
-                                      (userId, i) => {
-                                        const signer = users.find(
-                                          (u) => u.id === userId,
-                                        );
-                                        const sigUrl =
-                                          selectedLetterForView
-                                            .signatureImageUrls?.[i];
-                                        return (
-                                          <div
-                                            key={i}
-                                            className="text-center space-y-1 bg-slate-50 p-2 border border-slate-200 rounded-lg min-w-[110px]"
-                                          >
-                                            <span className="text-[10px] text-emerald-600 font-bold block flex items-center gap-0.5 justify-center">
-                                              <CheckCircle size={11} /> تایید و
-                                              امضا شد
-                                            </span>
-                                            {sigUrl ? (
-                                              <img
-                                                src={sigUrl}
-                                                className="h-10 mx-auto object-contain mix-blend-multiply"
-                                              />
-                                            ) : (
-                                              <div className="h-10 flex items-center justify-center text-[10px] text-slate-400">
-                                                امضای دیجیتال
-                                              </div>
-                                            )}
-                                            <span className="text-[10px] font-bold text-gray-700 block">
-                                              {signer?.fullName ||
-                                                "کاربر سیستم"}
-                                            </span>
-                                          </div>
-                                        );
-                                      },
-                                    )
-                                  ) : selectedLetterForView.signers &&
-                                    selectedLetterForView.signers.length > 0 ? (
-                                    selectedLetterForView.signers.map(
-                                      (s, i) => (
-                                        <div
-                                          key={i}
-                                          className="text-center space-y-0.5 min-w-[100px] border-t pt-1"
-                                        >
-                                          <div className="text-[11px] font-bold text-slate-800">
-                                            {s.name}
-                                          </div>
-                                          <div className="text-[10px] text-slate-500">
-                                            {s.title}
-                                          </div>
+                              {/* Optional Sign-off / Signers / Company Stamp (only if not already inside content) */}
+                              {((selectedLetterForView.signers &&
+                                selectedLetterForView.signers.length > 0) ||
+                                (selectedLetterForView.approvedBy &&
+                                  selectedLetterForView.approvedBy.length > 0) ||
+                                (selectedLetterForView.addCompanyStamp &&
+                                  viewCompanySettings.companyStampUrl)) && (
+                                <div className="pt-4 mt-4 space-y-3 break-inside-avoid">
+                                  <div className="flex flex-wrap items-end justify-between gap-4">
+                                    {selectedLetterForView.addCompanyStamp &&
+                                      viewCompanySettings.companyStampUrl && (
+                                        <div className="flex flex-col items-center">
+                                          <img
+                                            src={viewCompanySettings.companyStampUrl}
+                                            alt="مهر شرکت"
+                                            className="h-20 w-auto object-contain mix-blend-multiply opacity-90"
+                                          />
                                         </div>
-                                      ),
-                                    )
-                                  ) : null}
+                                      )}
+
+                                    <div className="flex flex-wrap gap-3 justify-end ml-auto">
+                                      {selectedLetterForView.approvedBy &&
+                                      selectedLetterForView.approvedBy.length > 0
+                                        ? selectedLetterForView.approvedBy.map(
+                                            (userId, i) => {
+                                              const signer = users.find(
+                                                (u) => u.id === userId,
+                                              );
+                                              const sigUrl =
+                                                selectedLetterForView
+                                                  .signatureImageUrls?.[i];
+                                              return (
+                                                <div
+                                                  key={i}
+                                                  className="text-center space-y-1 p-1.5 min-w-[100px]"
+                                                >
+                                                  {sigUrl && (
+                                                    <img
+                                                      src={sigUrl}
+                                                      className="h-12 mx-auto object-contain mix-blend-multiply"
+                                                    />
+                                                  )}
+                                                  <span className="text-[11px] font-bold text-gray-800 block">
+                                                    {signer?.fullName ||
+                                                      "کاربر سیستم"}
+                                                  </span>
+                                                </div>
+                                              );
+                                            },
+                                          )
+                                        : selectedLetterForView.signers &&
+                                          selectedLetterForView.signers.length > 0
+                                          ? selectedLetterForView.signers.map(
+                                              (s, i) => (
+                                                <div
+                                                  key={i}
+                                                  className="text-center space-y-0.5 min-w-[100px] pt-1"
+                                                >
+                                                  <div className="text-[12px] font-bold text-slate-800">
+                                                    {s.name}
+                                                  </div>
+                                                  <div className="text-[11px] text-slate-500">
+                                                    {s.title}
+                                                  </div>
+                                                </div>
+                                              ),
+                                            )
+                                          : null}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           </div>
                         </div>
-                      </div>
 
                         {/* Letter attachments view link */}
                     {selectedLetterForView.attachments?.length > 0 && (
@@ -8603,34 +8875,34 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     </button>
 
                     <div className="grid grid-cols-2 gap-1.5">
-                      <a
-                        href={`/api/secretariat/letters/${selectedLetterForView.id}/pdf`}
-                        className="flex items-center justify-center gap-1 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
-                        download
+                      <button
+                        type="button"
+                        onClick={() => handleQuickPdfDownload(selectedLetterForView, false)}
+                        className="flex items-center justify-center gap-1 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/30 text-red-700 dark:text-red-300 hover:bg-red-100 rounded-lg py-1.5 text-[10px] font-bold transition-all cursor-pointer"
                       >
                         <FileText size={12} /> PDF با سربرگ
-                      </a>
-                      <a
-                        href={`/api/secretariat/letters/${selectedLetterForView.id}/pdf?noLetterhead=true`}
-                        className="flex items-center justify-center gap-1 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
-                        download
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickPdfDownload(selectedLetterForView, true)}
+                        className="flex items-center justify-center gap-1 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 rounded-lg py-1.5 text-[10px] font-bold transition-all cursor-pointer"
                       >
                         <FileText size={12} /> PDF بدون سربرگ
-                      </a>
-                      <a
-                        href={`/api/secretariat/letters/${selectedLetterForView.id}/docx`}
-                        className="flex items-center justify-center gap-1 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
-                        download
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDocxDownload(selectedLetterForView, false)}
+                        className="flex items-center justify-center gap-1 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 rounded-lg py-1.5 text-[10px] font-bold transition-all cursor-pointer"
                       >
                         <FileText size={12} /> Word با سربرگ
-                      </a>
-                      <a
-                        href={`/api/secretariat/letters/${selectedLetterForView.id}/docx?noLetterhead=true`}
-                        className="flex items-center justify-center gap-1 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 rounded-lg py-1.5 text-[10px] font-bold transition-all"
-                        download
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDocxDownload(selectedLetterForView, true)}
+                        className="flex items-center justify-center gap-1 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 rounded-lg py-1.5 text-[10px] font-bold transition-all cursor-pointer"
                       >
                         <FileText size={12} /> Word بدون سربرگ
-                      </a>
+                      </button>
                     </div>
                   </div>
 
@@ -8871,23 +9143,23 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                       <Printer size={15} /> چاپ مرورگر
                     </button>
 
-                    <a
-                      href={`/api/secretariat/letters/${isPrintMode.id}/pdf`}
-                      download={`Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.pdf`}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickPdfDownload(isPrintMode, false)}
                       className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="دانلود و چاپ مستقیم فایل PDF با سربرگ برداری با کیفیت فوق‌العاده ۳۰۰ DPI"
                     >
                       <FileText size={15} /> PDF سربرگ (۳۰۰ DPI)
-                    </a>
+                    </button>
 
-                    <a
-                      href={`/api/secretariat/letters/${isPrintMode.id}/docx`}
-                      download={`Letter_${String(isPrintMode.letterNumber || isPrintMode.id).replace(/[\/\\]/g, '_')}.docx`}
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDocxDownload(isPrintMode, false)}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-2 rounded-xl shadow-sm hover:shadow transition-colors flex items-center gap-1.5 cursor-pointer"
                       title="دانلود فایل رسمی Word بر اساس قالب سربرگ ورد"
                     >
                       <FileText size={15} /> Word (.docx)
-                    </a>
+                    </button>
 
                     <button
                       onClick={() => handleShareSecretariatLetterToChat(isPrintMode)}
@@ -8922,23 +9194,36 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                     }}
                     className="flex justify-center"
                   >
-                    {/* PRINTABLE AREA */}
+                    {/* PRINTABLE AREA (100% Unified with Editor & PDF) */}
                     <div
                       id="print-content-section"
-                      className="bg-white text-black shadow-lg relative rounded-sm border border-slate-200 shrink-0"
+                      className="secretariat-a4-paper bg-white text-black shadow-lg relative rounded-sm border border-slate-200 shrink-0"
                       style={{
                         width: paperWidth,
                         minHeight: paperHeight,
                         maxWidth: "100%",
-                        fontFamily: printSettings.letterheadFontFamily || "sans-serif",
+                        paddingTop: `${printSettings.marginTop ?? 40}mm`,
+                        paddingBottom: `${printSettings.marginBottom ?? 25}mm`,
+                        paddingRight: `${printSettings.marginRight ?? 20}mm`,
+                        paddingLeft: `${printSettings.marginLeft ?? 20}mm`,
+                        fontFamily:
+                          printSettings.letterheadFontFamily ||
+                          "'Vazirmatn', sans-serif",
                         overflow: "hidden",
                         boxSizing: "border-box",
                       }}
+                      dir="rtl"
                     >
-                    {/* Absolutely positioned metadata block if custom coordinates are defined, or custom letterhead is active */}
-                    {(printSettings.letterheadUrl ||
-                      printSettings.metadataTop !== undefined ||
-                      printSettings.metadataLeft !== undefined) && (
+                      {/* Custom Image Letterhead Background */}
+                      {getEffectiveLetterheadDisplayUrl(printSettings) && (
+                        <img
+                          src={getEffectiveLetterheadDisplayUrl(printSettings)}
+                          alt="سربرگ رسمی"
+                          className="absolute inset-0 w-full h-full object-fill opacity-100 z-0 pointer-events-none select-none"
+                        />
+                      )}
+
+                      {/* Top-left metadata block (شماره / تاریخ / پیوست) at exact mm coordinates */}
                       <div
                         style={{
                           position: "absolute",
@@ -8949,7 +9234,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                           lineHeight: "1.8",
                           fontWeight: printSettings.metadataFontWeight || "bold",
                           opacity: (printSettings.metadataOpacity ?? 100) / 100,
-                          fontFamily: printSettings.letterheadFontFamily || "inherit",
+                          fontFamily:
+                            printSettings.letterheadFontFamily || "inherit",
                           textAlign: "right",
                           direction: "rtl",
                           zIndex: 50,
@@ -8974,204 +9260,107 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         </div>
                         <div>
                           پیوست:{" "}
-                          {isPrintMode.attachments?.length > 0 ? "دارد" : "ندارد"}
+                          {isPrintMode.hasAttachment ||
+                          isPrintMode.attachments?.length > 0
+                            ? "دارد"
+                            : "ندارد"}
                         </div>
                       </div>
-                    )}
 
-                    {/* Custom Image Letterhead Background or Corporate Header */}
-                    {getEffectiveLetterheadDisplayUrl(printSettings) ? (
-                      <img
-                        src={getEffectiveLetterheadDisplayUrl(printSettings)}
-                        alt="سربرگ رسمی"
-                        className="absolute inset-0 w-full h-full object-fill opacity-100 z-0 pointer-events-none select-none"
-                      />
-                    ) : (
-                      /* Elegant default corporate letterhead */
-                      <div className="border-b-2 border-double border-slate-800 pb-4 mb-8 flex justify-between items-center relative z-10 px-8 pt-8">
-                        {/* Left: Metadata */}
-                        {printSettings.metadataTop === undefined &&
-                        printSettings.metadataLeft === undefined ? (
-                          <div className="text-[11px] font-bold space-y-1.5 text-slate-800 w-1/3 text-right">
-                            <div>
-                              تاریخ:{" "}
-                              <span
-                                style={{
-                                  direction: "ltr",
-                                  display: "inline-block",
-                                }}
-                              >
-                                {toPersianDigits(isPrintMode.date)}
-                              </span>
-                            </div>
-                            <div>
-                              شماره نامه:{" "}
-                              <span
-                                style={{
-                                  direction: "ltr",
-                                  display: "inline-block",
-                                }}
-                              >
-                                {toPersianDigits(isPrintMode.letterNumber)}
-                              </span>
-                            </div>
-                            <div>
-                              پیوست:{" "}
-                              {isPrintMode.attachments?.length > 0
-                                ? "دارد"
-                                : "ندارد"}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="w-1/3"></div>
-                        )}
+                      {/* Letter Body Context (1:1 coordinate match with Editor .ql-editor) */}
+                      <div className="text-sm leading-loose text-slate-900 relative z-10">
+                        <div
+                          className="ql-editor leading-loose font-medium text-slate-900 text-[14px]"
+                          dangerouslySetInnerHTML={{
+                            __html: preserveLetterHtmlSpaces(
+                              isPrintMode.content || "",
+                            ),
+                          }}
+                        />
 
-                        {/* Center: Title */}
-                        <div className="text-center space-y-1.5 flex-1">
-                          <span className="text-[10px] text-slate-400 block font-bold">
-                            باسمه تعالی
-                          </span>
-                          <h2 className="text-lg font-black text-slate-900 leading-tight">
-                            {selectedCompany.name}
-                          </h2>
-                          <span className="text-[10px] text-slate-500 font-bold block bg-slate-100 px-3 py-0.5 rounded-full w-fit mx-auto">
-                            دبیرخانه مرکزی (
-                            {activeSection === "headquarters"
-                              ? "دفتر مرکزی"
-                              : "کارخانه"}
-                            )
-                          </span>
-                        </div>
-
-                        {/* Right: Company Logo */}
-                        <div className="w-1/3 flex justify-end">
-                          <div className="w-16 h-16 border-2 border-double rounded-xl overflow-hidden flex items-center justify-center p-1 bg-slate-50">
-                            {selectedCompany.logo ? (
-                              <img
-                                src={selectedCompany.logo}
-                                className="w-full h-full object-contain"
-                              />
-                            ) : (
-                              <span className="text-lg font-black text-slate-700">
-                                {selectedCompany.name.charAt(0)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Letter Body Context */}
-                    <div
-                      className="space-y-4 text-sm leading-loose text-slate-800 relative z-10"
-                      style={{
-                        paddingTop: printSettings.letterheadUrl
-                          ? `${printSettings.marginTop ?? 40}mm`
-                          : "12px",
-                        paddingBottom: `${printSettings.marginBottom ?? 25}mm`,
-                        paddingRight: `${printSettings.marginRight ?? 20}mm`,
-                        paddingLeft: `${printSettings.marginLeft ?? 20}mm`,
-                        minHeight: isPrintMode.paperSize === "A5" ? "250px" : "450px",
-                      }}
-                    >
-                      {/* Salutations */}
-                      {(!isPrintMode.hideSubjectInLetter ||
-                        !isPrintMode.hideSalutationInLetter) && (
-                        <div className="font-bold space-y-2 mb-4">
-                          {!isPrintMode.hideSubjectInLetter && (
-                            <div className="text-base font-medium">
-                              موضوع: {isPrintMode.subject}
-                            </div>
-                          )}
-                          {!isPrintMode.hideSalutationInLetter && (
-                            <div className="text-base font-medium">
-                              با سلام و احترام،
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Body Content from Quill */}
-                      <div
-                        className="ql-editor pt-2 text-justify leading-loose font-medium text-slate-800 text-[14px]"
-                        dangerouslySetInnerHTML={{ __html: isPrintMode.content }}
-                      ></div>
-
-                      {/* Signatures & Stamp block */}
-                      <div
-                        className={`mt-12 w-64 text-center space-y-2 break-inside-avoid ${
-                          isPrintMode.signaturePosition === "bottom_left"
-                            ? "mr-auto ml-0"
-                            : isPrintMode.signaturePosition === "bottom_center"
-                              ? "mx-auto"
-                              : "ml-auto mr-0"
-                        }`}
-                      >
-                        {(!isPrintMode.content ||
-                          !isPrintMode.content.includes("با تشکر")) && (
-                          <div className="font-bold text-sm mb-4 whitespace-pre-wrap leading-relaxed">
-                            {isPrintMode.signOffText || "با تشکر"}
-                          </div>
-                        )}
-
-                        {isPrintMode.signers && isPrintMode.signers.length > 0 && (
-                          <div className="flex gap-4 justify-center flex-wrap mt-2">
-                            {isPrintMode.signers.map((signer, idx) => (
-                              <div key={idx} className="flex flex-col items-center">
-                                <div className="font-bold text-sm">
-                                  {signer.name}
-                                </div>
-                                <div className="text-xs text-gray-600 font-bold">
-                                  {signer.title}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="relative mt-2 flex justify-center items-center">
-                          {isPrintMode.approvedBy &&
-                            isPrintMode.approvedBy.length > 0 && (
-                              <div className="flex justify-center gap-2 relative z-10 w-full flex-wrap">
-                                {isPrintMode.approvedBy.map((userId, idx) => {
-                                  const sigUrl =
-                                    isPrintMode.signatureImageUrls?.[idx];
-                                  return sigUrl ? (
-                                    <img
+                        {/* Signatures & Stamp block (only when signers/approvedBy/addCompanyStamp are used) */}
+                        {((isPrintMode.signers &&
+                          isPrintMode.signers.length > 0) ||
+                          (isPrintMode.approvedBy &&
+                            isPrintMode.approvedBy.length > 0) ||
+                          (isPrintMode.addCompanyStamp &&
+                            printSettings.companyStampUrl)) && (
+                          <div
+                            className={`mt-8 w-64 text-center space-y-2 break-inside-avoid ${
+                              isPrintMode.signaturePosition === "bottom_left"
+                                ? "mr-auto ml-0"
+                                : isPrintMode.signaturePosition ===
+                                    "bottom_center"
+                                  ? "mx-auto"
+                                  : "ml-auto mr-0"
+                            }`}
+                          >
+                            {isPrintMode.signers &&
+                              isPrintMode.signers.length > 0 && (
+                                <div className="flex gap-4 justify-center flex-wrap mt-2">
+                                  {isPrintMode.signers.map((signer, idx) => (
+                                    <div
                                       key={idx}
-                                      src={sigUrl}
-                                      className="h-16 object-contain mix-blend-multiply"
-                                    />
-                                  ) : null;
-                                })}
-                              </div>
-                            )}
-                          {isPrintMode.addCompanyStamp &&
-                            printSettings.companyStampUrl && (
-                              <img
-                                src={printSettings.companyStampUrl}
-                                alt="مهر شرکت"
-                                className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 object-contain mix-blend-multiply z-0"
-                                style={{
-                                  height: printSettings.companyStampSize
-                                    ? `${printSettings.companyStampSize}px`
-                                    : "120px",
-                                  width: printSettings.companyStampSize
-                                    ? `${printSettings.companyStampSize}px`
-                                    : "120px",
-                                  opacity: printSettings.companyStampOpacity
-                                    ? printSettings.companyStampOpacity / 100
-                                    : 0.7,
-                                }}
-                              />
-                            )}
-                        </div>
-                      </div>
-                    </div>
+                                      className="flex flex-col items-center"
+                                    >
+                                      <div className="font-bold text-sm">
+                                        {signer.name}
+                                      </div>
+                                      <div className="text-xs text-gray-600 font-bold">
+                                        {signer.title}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
-                    {/* Footer bar containing metadata of address/phone */}
-                    {(!printSettings.hideAutoFooter ||
-                      !printSettings.letterheadUrl) && (
+                            <div className="relative mt-2 flex justify-center items-center">
+                              {isPrintMode.approvedBy &&
+                                isPrintMode.approvedBy.length > 0 && (
+                                  <div className="flex justify-center gap-2 relative z-10 w-full flex-wrap">
+                                    {isPrintMode.approvedBy.map(
+                                      (userId, idx) => {
+                                        const sigUrl =
+                                          isPrintMode.signatureImageUrls?.[idx];
+                                        return sigUrl ? (
+                                          <img
+                                            key={idx}
+                                            src={sigUrl}
+                                            className="h-16 object-contain mix-blend-multiply"
+                                          />
+                                        ) : null;
+                                      },
+                                    )}
+                                  </div>
+                                )}
+                              {isPrintMode.addCompanyStamp &&
+                                printSettings.companyStampUrl && (
+                                  <img
+                                    src={printSettings.companyStampUrl}
+                                    alt="مهر شرکت"
+                                    className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 object-contain mix-blend-multiply z-0"
+                                    style={{
+                                      height: printSettings.companyStampSize
+                                        ? `${printSettings.companyStampSize}px`
+                                        : "120px",
+                                      width: printSettings.companyStampSize
+                                        ? `${printSettings.companyStampSize}px`
+                                        : "120px",
+                                      opacity: printSettings.companyStampOpacity
+                                        ? printSettings.companyStampOpacity / 100
+                                        : 0.7,
+                                    }}
+                                  />
+                                )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer bar containing metadata of address/phone */}
+                      {!printSettings.hideAutoFooter &&
+                        !printSettings.letterheadUrl &&
+                        (selectedCompany.address || selectedCompany.phone) && (
                       <div className="absolute bottom-6 left-8 right-8 text-[10px] text-slate-400 border-t pt-2 flex justify-between items-center flex-wrap gap-2 print:border-t">
                         <span>نشانی: {selectedCompany.address || "ثبت نشده"}</span>
                         <div className="flex gap-4">

@@ -1274,6 +1274,8 @@ tfoot th {
   .printable-area, .printable-area *,
   .print-render-wrapper, .print-render-wrapper *,
   .print-only-section, .print-only-section *,
+  #print-content-section, #print-content-section *,
+  #letter-view-paper-section, #letter-view-paper-section *,
   #print-purchase-request-section, #print-purchase-request-section *,
   #print-purchase-receipt-standalone, #print-purchase-receipt-standalone *,
   #print-specific-proforma, #print-specific-proforma *,
@@ -1281,6 +1283,17 @@ tfoot th {
   #a5-cheque-receipt-print-area, #a5-cheque-receipt-print-area * {
     visibility: visible !important;
     opacity: 1 !important;
+  }
+  #print-content-section,
+  #letter-view-paper-section {
+    position: relative !important;
+    margin: 0 auto !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    z-index: 99999999 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
   .printable-content,
   .printable-area,
@@ -3192,6 +3205,11 @@ html.ai-features-disabled button[title*="هوش مصنوعی"] {
   font-family: inherit !important;
 }
 
+.ql-clipboard,
+.ql-clipboard * {
+  white-space: pre-wrap !important;
+}
+
 .ql-editor {
   min-height: 480px;
   font-size: 14px;
@@ -3199,11 +3217,69 @@ html.ai-features-disabled button[title*="هوش مصنوعی"] {
   padding: 16px 20px;
   direction: rtl;
   text-align: right;
+  white-space: pre-wrap !important;
   font-family: 'Vazirmatn', 'Sahel', 'Samim', Tahoma, sans-serif;
 }
 
+.ql-editor p,
+.ql-editor div,
+.ql-editor li,
+.ql-editor span {
+  white-space: pre-wrap !important;
+}
+
 .ql-editor p {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Unified Secretariat A4/A5 Paper Canvas (Editor, Preview, View, Print) */
+.secretariat-a4-paper .ql-container.ql-snow {
+  border: none !important;
+  position: relative !important;
+  overflow: visible !important;
+}
+
+.secretariat-a4-paper .ql-editor {
+  padding: 0 !important;
+  position: relative !important;
+  min-height: 185mm;
+  overflow: visible !important;
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+/* Explicit Quill Alignment & Full Justification Rules */
+.ql-editor .ql-align-justify,
+.ql-editor p[style*="text-align: justify"],
+.ql-editor div[style*="text-align: justify"],
+.ql-editor li[style*="text-align: justify"] {
+  text-align: justify !important;
+  text-justify: inter-word !important;
+  text-align-last: right !important;
+}
+
+.ql-editor .ql-align-center,
+.ql-editor p[style*="text-align: center"],
+.ql-editor div[style*="text-align: center"],
+.ql-editor li[style*="text-align: center"] {
+  text-align: center !important;
+  text-align-last: center !important;
+}
+
+.ql-editor .ql-align-left,
+.ql-editor p[style*="text-align: left"],
+.ql-editor div[style*="text-align: left"],
+.ql-editor li[style*="text-align: left"] {
+  text-align: left !important;
+  text-align-last: left !important;
+}
+
+.ql-editor .ql-align-right,
+.ql-editor p[style*="text-align: right"],
+.ql-editor div[style*="text-align: right"],
+.ql-editor li[style*="text-align: right"] {
+  text-align: right !important;
+  text-align-last: right !important;
 }
 
 /* Persian & Word-like Font Definitions with full cascade */

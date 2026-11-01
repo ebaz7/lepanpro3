@@ -10657,6 +10657,83 @@ app.post('/api/secretariat/quick-docx', async (req, res) => {
     }
 });
 
+// Quick Vector PDF (300 DPI) export on the fly (supports drafts & saved letters)
+app.post('/api/secretariat/quick-pdf', async (req, res) => {
+    try {
+        const {
+            subject = 'نامه اداری',
+            content = '',
+            receiver = '',
+            sender = '',
+            date = '',
+            letterNumber = 'پیش‌نویس',
+            signers = [],
+            approvedBy = [],
+            signatureImageUrls = [],
+            signaturePosition = 'bottom_left',
+            signOffText = 'با تشکر',
+            paperSize = 'A4',
+            orientation = 'portrait',
+            companyId = '',
+            noLetterhead = false,
+            section = 'headquarters',
+            attachments = [],
+            hasAttachment = false,
+            attachmentDescription = '',
+            addCompanyStamp = false,
+            hideSalutationInLetter = true,
+            hideSubjectInLetter = true,
+        } = req.body;
+
+        const db = getDb();
+        const company = (db.companies || []).find(c => c.id === companyId) || (db.settings?.companies || []).find(c => c.id === companyId) || (db.companies || [])[0];
+        const companyName = company ? company.name : '';
+        const companySettings = resolveSecretariatCompanySettings(db, companyId || company?.id);
+
+        const letter = {
+            subject,
+            content,
+            receiver,
+            sender,
+            date,
+            letterNumber,
+            signers,
+            approvedBy,
+            signatureImageUrls,
+            signaturePosition,
+            signOffText,
+            paperSize,
+            orientation,
+            companyId: company?.id || companyId,
+            section,
+            attachments,
+            hasAttachment,
+            attachmentDescription,
+            addCompanyStamp,
+            hideSalutationInLetter,
+            hideSubjectInLetter,
+        };
+
+        const pdfBuffer = await Renderer.generateSecretariatLetterPDF(
+            letter,
+            companyName,
+            companySettings,
+            company,
+            Boolean(noLetterhead)
+        );
+
+        res.setHeader('Content-Type', 'application/pdf');
+        const safeNum = String(letterNumber || 'Draft').replace(/[\/\\]/g, '_');
+        const asciiFilename = `Letter_${safeNum}.pdf`;
+        const encodedFilename = encodeURIComponent(`Letter_${safeNum}.pdf`);
+        res.setHeader('Content-Disposition', `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`);
+        res.send(pdfBuffer);
+    } catch (e) {
+        console.error("POST /api/secretariat/quick-pdf error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // Import Word (.docx) file into HTML for Secretariat Editor
 app.post('/api/secretariat/import-docx', async (req, res) => {
     try {

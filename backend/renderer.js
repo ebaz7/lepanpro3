@@ -2243,22 +2243,24 @@ export const generateSecretariatLetterPDF = async (
     const format = isA5 ? "A5" : "A4";
     const landscape = isLandscape;
 
+    const pageWidthMm = isA5 ? (landscape ? 210 : 148) : (landscape ? 297 : 210);
+    const pageHeightMm = isA5 ? (landscape ? 148 : 210) : (landscape ? 210 : 297);
+    const viewportWidthPx = Math.round((pageWidthMm / 25.4) * 96);
+    const viewportHeightPx = Math.round((pageHeightMm / 25.4) * 96);
+
     await page.setViewport({
-      width: isA5 ? 600 : 800,
-      height: isA5 ? 850 : 1100,
+      width: viewportWidthPx,
+      height: viewportHeightPx,
       deviceScaleFactor: 2,
     });
 
-    const hasCustomPos =
-      companySettings?.metadataTop !== undefined ||
-      companySettings?.metadataLeft !== undefined;
-
-    const fontFamily = companySettings?.letterheadFontFamily || "Tahoma";
+    const fontFamily = companySettings?.letterheadFontFamily || "Vazirmatn";
     const metadataTop = companySettings?.metadataTop ?? 25;
     const metadataLeft = companySettings?.metadataLeft ?? 20;
     const metadataFontSize = companySettings?.metadataFontSize ?? 11;
     const metadataOpacity = (companySettings?.metadataOpacity ?? 100) / 100;
     const metadataFontWeight = companySettings?.metadataFontWeight || "bold";
+    const metadataColor = companySettings?.metadataColor || "#0f172a";
 
     const stampSize = companySettings?.companyStampSize || 120;
     const stampOpacity = (companySettings?.companyStampOpacity || 70) / 100;
@@ -2270,62 +2272,28 @@ export const generateSecretariatLetterPDF = async (
       effectivePdfLetterheadUrl &&
       effectivePdfLetterheadUrl.toLowerCase().endsWith(".pdf");
 
-    const topMargin = noLetterhead
-      ? "25mm"
-      : companySettings?.marginTop !== undefined
-        ? `${companySettings.marginTop}mm`
-        : companySettings?.letterheadUrl || isPdfLetterhead
-          ? "38mm"
-          : "30mm";
+    const topMargin = `${companySettings?.marginTop ?? 40}mm`;
+    const bottomMargin = `${companySettings?.marginBottom ?? 25}mm`;
+    const leftMargin = `${companySettings?.marginLeft ?? 20}mm`;
+    const rightMargin = `${companySettings?.marginRight ?? 20}mm`;
 
-    const bottomMargin = companySettings?.marginBottom !== undefined
-      ? `${companySettings.marginBottom}mm`
-      : companySettings?.letterheadUrl || isPdfLetterhead
-        ? "30mm"
-        : "25mm";
+    const hasAttach =
+      letter.hasAttachment ||
+      (Array.isArray(letter.attachments) && letter.attachments.length > 0);
 
-    const leftMargin = companySettings?.marginLeft !== undefined
-      ? `${companySettings.marginLeft}mm`
-      : "22mm";
+    const bgImageHtml =
+      !noLetterhead && !isPdfLetterhead && companySettings?.letterheadUrl
+        ? `<img src="${makeAbsolute(companySettings.letterheadUrl)}" class="letterhead-bg" />`
+        : "";
 
-    const rightMargin = companySettings?.marginRight !== undefined
-      ? `${companySettings.marginRight}mm`
-      : "22mm";
-
-    let letterheadHtml = "";
-    if (noLetterhead) {
-      letterheadHtml = `
-                <div class="${hasCustomPos ? "lh-left-custom" : "lh-left-default-on-img"}">
-                    <div>شماره: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.letterNumber)}</span></div>
-                    <div>تاریخ: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.date)}</span></div>
-                    <div>پیوست: ${letter.attachments?.length ? "دارد" : "ندارد"}</div>
-                </div>
-      `;
-    } else if (companySettings?.letterheadUrl || isPdfLetterhead) {
-      letterheadHtml = `
-                ${isPdfLetterhead ? "" : `<img src="${makeAbsolute(companySettings.letterheadUrl)}" class="letterhead-bg" />`}
-                <div class="${hasCustomPos ? "lh-left-custom" : "lh-left-default-on-img"}">
-                    <div>شماره: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.letterNumber)}</span></div>
-                    <div>تاریخ: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.date)}</span></div>
-                    <div>پیوست: ${letter.attachments?.length ? "دارد" : "ندارد"}</div>
-                </div>
-            `;
-    } else {
-      letterheadHtml = `
-                <div class="default-letterhead">
-                    <div class="lh-right">
-                        <div>شماره: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.letterNumber)}</span></div>
-                        <div>تاریخ: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.date)}</span></div>
-                        <div>پیوست: ${letter.attachments?.length ? "دارد" : "ندارد"}</div>
-                    </div>
-                    <div class="lh-center">
-                        <h2>دبیرخانه اداری ${companyName || "شرکت"}</h2>
-                        <p>بخش: ${letter.section === "headquarters" ? "دفتر مرکزی" : "کارخانه"}</p>
-                    </div>
-                    <div class="lh-left"></div>
-                </div>
-            `;
-    }
+    const letterheadHtml = `
+      ${bgImageHtml}
+      <div class="lh-left-custom">
+        <div>شماره: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.letterNumber || "پیش‌نویس")}</span></div>
+        <div>تاریخ: <span style="direction: ltr; display: inline-block; unicode-bidi: embed;">${toPersianDigits(letter.date || "-")}</span></div>
+        <div>پیوست: ${hasAttach ? (letter.attachmentDescription ? toPersianDigits(letter.attachmentDescription) : "دارد") : "ندارد"}</div>
+      </div>
+    `;
 
     let signaturesHtml = "";
     const sigPos = letter.signaturePosition || "bottom_left";
@@ -2344,35 +2312,33 @@ export const generateSecretariatLetterPDF = async (
     let signersHtml = "";
     if (letter.signers && letter.signers.length > 0) {
       signersHtml = `
-                <div style="display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 10px;">
-                    ${letter.signers
-                      .map((s) => {
-                        let signerSigUrl = "";
-                        if (
-                          s.userId &&
-                          letter.approvedBy &&
-                          letter.signatureImageUrls
-                        ) {
-                          const approverIdx = letter.approvedBy.indexOf(
-                            s.userId,
-                          );
-                          if (approverIdx !== -1) {
-                            signerSigUrl = makeAbsolute(
-                              letter.signatureImageUrls[approverIdx],
-                            );
-                          }
-                        }
-                        return `
-                            <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px;">
-                                <div style="font-weight: bold; font-size: 13px; color: #1e293b;">${s.name}</div>
-                                <div style="font-weight: bold; font-size: 11px; color: #64748b; margin-top: 2px; margin-bottom: 5px;">${s.title}</div>
-                                ${signerSigUrl ? `<img src="${signerSigUrl}" style="height: 55px; object-fit: contain; mix-blend-mode: multiply; margin-top: 4px;" />` : ""}
-                            </div>
-                        `;
-                      })
-                      .join("")}
+        <div style="display: flex; gap: 30px; justify-content: center; flex-wrap: wrap; margin-top: 10px;">
+          ${letter.signers
+            .map((s) => {
+              let signerSigUrl = "";
+              if (
+                s.userId &&
+                letter.approvedBy &&
+                letter.signatureImageUrls
+              ) {
+                const approverIdx = letter.approvedBy.indexOf(s.userId);
+                if (approverIdx !== -1 && letter.signatureImageUrls[approverIdx]) {
+                  signerSigUrl = makeAbsolute(
+                    letter.signatureImageUrls[approverIdx],
+                  );
+                }
+              }
+              return `
+                <div style="display: flex; flex-direction: column; align-items: center; min-width: 120px;">
+                  <div style="font-weight: bold; font-size: 13px; color: #1e293b;">${s.name || ""}</div>
+                  <div style="font-weight: bold; font-size: 11px; color: #64748b; margin-top: 2px; margin-bottom: 5px;">${s.title || ""}</div>
+                  ${signerSigUrl ? `<img src="${signerSigUrl}" style="height: 55px; object-fit: contain; mix-blend-mode: multiply; margin-top: 4px;" />` : ""}
                 </div>
-            `;
+              `;
+            })
+            .join("")}
+        </div>
+      `;
     }
 
     let extraSignaturesHtml = "";
@@ -2386,238 +2352,278 @@ export const generateSecretariatLetterPDF = async (
 
       if (extraSignatures.length > 0) {
         extraSignaturesHtml = `
-                    <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 10px;">
-                        ${extraSignatures
-                          .map(
-                            (item) => `
-                            <img src="${makeAbsolute(item.url)}" style="height: 50px; object-fit: contain; mix-blend-mode: multiply;" />
-                        `,
-                          )
-                          .join("")}
-                    </div>
-                `;
+          <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 10px;">
+            ${extraSignatures
+              .map(
+                (item) => `
+                <img src="${makeAbsolute(item.url)}" style="height: 50px; object-fit: contain; mix-blend-mode: multiply;" />
+              `,
+              )
+              .join("")}
+          </div>
+        `;
       }
     }
 
-    const hasSignOffInContent = letter.content && (
-      letter.content.includes("با تشکر") ||
-      letter.content.includes("با احترام") ||
-      letter.content.includes("سپاسگزارم") ||
-      letter.content.includes("ارادتمند")
+    // 100% National Internet / Offline safe: convert any /uploads/ image src (even with full domain) to disk base64
+    const rawContent = String(letter.content || "");
+    const normalizedContent = rawContent.replace(
+      /(<img\b[^>]*?\bsrc=["'])([^"']*\/uploads\/[^"']+)(["'])/gi,
+      (_, p1, imgUrl, p3) => `${p1}${makeAbsolute(imgUrl)}${p3}`,
     );
 
-    const showSignOff = !hasSignOffInContent;
+    const hasSignOffInContent =
+      rawContent.includes("با تشکر") ||
+      rawContent.includes("با احترام") ||
+      rawContent.includes("سپاسگزارم") ||
+      rawContent.includes("ارادتمند") ||
+      rawContent.includes("تجدید احترام");
 
-    signaturesHtml = `
-            <div class="signatures" style="${sigStyle}">
-                ${showSignOff ? `<div class="sign-off-text" style="white-space: pre-wrap;">${letter.signOffText || "با احترام"}</div>` : ""}
-                ${signersHtml}
-                <div class="stamp-container">
-                    ${stampHtml}
-                    ${extraSignaturesHtml}
-                </div>
-            </div>
-        `;
+    const hasAnySignersOrStamp =
+      Boolean(signersHtml) ||
+      Boolean(stampHtml) ||
+      Boolean(extraSignaturesHtml) ||
+      (!hasSignOffInContent && Boolean(letter.signOffText));
+
+    if (hasAnySignersOrStamp) {
+      signaturesHtml = `
+        <div class="signatures" style="${sigStyle}">
+          ${!hasSignOffInContent && letter.signOffText ? `<div class="sign-off-text" style="white-space: pre-wrap;">${letter.signOffText}</div>` : ""}
+          ${signersHtml}
+          ${
+            stampHtml || extraSignaturesHtml
+              ? `<div class="stamp-container">${stampHtml}${extraSignaturesHtml}</div>`
+              : ""
+          }
+        </div>
+      `;
+    }
 
     const html = `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8">
-            <style>
-                ${BASE_STYLE}
-                ${allPersianFontsRule}
-                
-                @page {
-                    size: ${format} ${landscape ? "landscape" : "portrait"};
-                    margin: 0;
-                }
+      <style>
+        ${BASE_STYLE}
+        ${allPersianFontsRule}
 
-                html, body {
-                    margin: 0; padding: 0;
-                    font-family: '${fontFamily}', 'Vazirmatn', 'Tahoma', 'Arial', sans-serif;
-                    direction: rtl;
-                    box-sizing: border-box;
-                    background: transparent;
-                    -webkit-font-smoothing: antialiased;
-                }
-                
-                .page-container {
-                    position: relative;
-                    width: 100%;
-                    height: 100vh;
-                    max-height: ${isA5 ? (landscape ? "148mm" : "210mm") : (landscape ? "210mm" : "297mm")};
-                    box-sizing: border-box;
-                    padding-top: ${topMargin};
-                    padding-bottom: ${bottomMargin};
-                    padding-left: ${leftMargin};
-                    padding-right: ${rightMargin};
-                    overflow: hidden;
-                    page-break-after: avoid;
-                    page-break-inside: avoid;
-                }
-                
-                .letterhead-bg {
-                    position: absolute;
-                    top: 0; left: 0; right: 0; bottom: 0;
-                    width: 100%; height: 100%;
-                    object-fit: fill;
-                    z-index: -1;
-                }
-                
-                .lh-left-default-on-img {
-                    position: absolute;
-                    top: 25mm; left: 20mm;
-                    font-size: 11px;
-                    line-height: 1.8;
-                    opacity: ${metadataOpacity};
-                    font-weight: ${metadataFontWeight} !important;
-                    text-align: right !important;
-                    direction: rtl !important;
-                    white-space: nowrap !important;
-                    z-index: 50;
-                }
-                
-                .lh-left-custom {
-                    position: absolute !important;
-                    top: ${metadataTop}mm !important;
-                    left: ${metadataLeft}mm !important;
-                    font-size: ${metadataFontSize}px !important;
-                    line-height: 1.8 !important;
-                    z-index: 100 !important;
-                    opacity: ${metadataOpacity} !important;
-                    font-weight: ${metadataFontWeight} !important;
-                    text-align: right !important;
-                    direction: rtl !important;
-                    white-space: nowrap !important;
-                }
-                
-                .default-letterhead {
-                    display: flex; justify-content: space-between; align-items: flex-start;
-                    border-bottom: 2px solid #334155; padding-bottom: 15px; margin-bottom: 30px;
-                }
-                .default-letterhead .lh-right {
-                    font-size: 11px;
-                    line-height: 1.8;
-                    width: 33%;
-                    text-align: right;
-                    opacity: ${metadataOpacity};
-                    font-weight: ${metadataFontWeight} !important;
-                }
-                .default-letterhead .lh-center { text-align: center; width: 34%; }
-                .default-letterhead .lh-center h2 { margin: 0 0 5px 0; font-size: 18px; color: #0f172a; }
-                .default-letterhead .lh-center p { margin: 0; font-size: 12px; color: #475569; }
-                .default-letterhead .lh-left { width: 33%; }
-                
-                .letter-content-wrapper {
-                    padding: 0;
-                    z-index: 10;
-                    position: relative;
-                    direction: rtl;
-                }
-                
-                .salutation { 
-                    margin-bottom: 20px; 
-                    font-weight: bold; 
-                    font-size: 14px; 
-                    line-height: 1.9; 
-                    color: #0f172a;
-                    text-align: right;
-                }
-                .letter-body { 
-                    font-size: 14px; 
-                    line-height: 1.9; 
-                    text-align: justify; 
-                    text-justify: inter-word;
-                    margin-bottom: 18px; 
-                    color: #0f172a;
-                    direction: rtl;
-                }
-                .letter-body p {
-                    margin-top: 0;
-                    margin-bottom: 8px;
-                    line-height: 1.9;
-                    text-align: justify;
-                    text-justify: inter-word;
-                }
-                
-                .signatures { 
-                    width: 260px; 
-                    page-break-inside: avoid !important;
-                    break-inside: avoid !important;
-                    margin-top: 15px;
-                }
-                .sign-off-text { 
-                    font-weight: bold; 
-                    font-size: 14px; 
-                    margin-bottom: 12px; 
-                    color: #0f172a;
-                }
-                .company-name { font-weight: bold; font-size: 14px; color: #0f172a; }
-                .sender-name { font-weight: bold; font-size: 14px; margin-bottom: 10px; color: #0f172a; }
-                
-                .stamp-container { 
-                    position: relative; 
-                    min-height: ${stampSize ? Math.min(stampSize, 100) : 80}px; 
-                    display: flex; 
-                    align-items: center; 
-                    justify-content: center; 
-                    margin-top: 8px; 
-                }
-                .company-stamp { 
-                    position: absolute; 
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    margin: 0;
-                    max-width: ${stampSize}px; 
-                    max-height: ${stampSize}px; 
-                    opacity: ${stampOpacity}; 
-                    mix-blend-mode: multiply; 
-                    z-index: 0; 
-                    pointer-events: none;
-                }
-                
-                .footer {
-                    margin-top: 30px;
-                    border-top: 1px solid #cbd5e1; 
-                    padding-top: 8px;
-                    display: flex; 
-                    justify-content: space-between;
-                    font-size: 10px; 
-                    color: #64748b;
-                    page-break-inside: avoid;
-                    break-inside: avoid;
-                }
-            </style>
-        </head><body>
-            <div class="page-container">
-                ${letterheadHtml}
-                
-                <div class="letter-content-wrapper">
-                    <div class="salutation">
-                        ${letter.hideSubjectInLetter ? "" : `<div style="margin-bottom: 8px;"><b>موضوع:</b> ${letter.subject}</div>`}
-                        ${letter.hideSalutationInLetter ? "" : `<div>با سلام و احترام،</div>`}
-                    </div>
-                    
-                    <div class="letter-body">
-                        ${letter.content || ""}
-                    </div>
-                    
-                    ${signaturesHtml}
-                </div>
-                
-                ${
-                  !companySettings?.letterheadUrl && !isPdfLetterhead && !companySettings?.hideAutoFooter
-                    ? `
-                <div class="footer">
-                    <span>نشانی: ${companySettings?.address || "ثبت نشده"}</span>
-                    <span>تلفن: ${companySettings?.phone || "ثبت نشده"}</span>
-                    <span>کدپستی: ${companySettings?.postalCode || "-"}</span>
-                </div>
-                `
-                    : ""
-                }
-            </div>
-        </body></html>`;
+        @page {
+          size: ${format} ${landscape ? "landscape" : "portrait"};
+          margin: 0;
+        }
 
-    await page.setContent(html, { waitUntil: "networkidle0" });
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: ${pageWidthMm}mm;
+          min-height: ${pageHeightMm}mm;
+          font-family: '${fontFamily}', 'Vazirmatn', 'Tahoma', 'Arial', sans-serif;
+          direction: rtl;
+          box-sizing: border-box;
+          background: transparent;
+          -webkit-font-smoothing: antialiased;
+        }
+
+        .page-container {
+          position: relative;
+          width: ${pageWidthMm}mm;
+          min-height: ${pageHeightMm}mm;
+          max-height: ${pageHeightMm}mm;
+          box-sizing: border-box;
+          padding-top: ${topMargin};
+          padding-bottom: ${bottomMargin};
+          padding-left: ${leftMargin};
+          padding-right: ${rightMargin};
+          overflow: hidden;
+          page-break-after: avoid;
+          page-break-inside: avoid;
+        }
+
+        .letterhead-bg {
+          position: absolute;
+          top: 0; left: 0; right: 0; bottom: 0;
+          width: 100%; height: 100%;
+          object-fit: fill;
+          z-index: -1;
+        }
+
+        .lh-left-custom {
+          position: absolute !important;
+          top: ${metadataTop}mm !important;
+          left: ${metadataLeft}mm !important;
+          font-size: ${metadataFontSize}px !important;
+          color: ${metadataColor} !important;
+          line-height: 1.8 !important;
+          z-index: 100 !important;
+          opacity: ${metadataOpacity} !important;
+          font-weight: ${metadataFontWeight} !important;
+          text-align: right !important;
+          direction: rtl !important;
+          white-space: nowrap !important;
+        }
+
+        .letter-content-wrapper {
+          padding: 0;
+          z-index: 10;
+          position: relative;
+          direction: rtl;
+        }
+
+        .letter-body {
+          position: relative !important;
+          padding: 0 !important;
+          min-height: 185mm;
+          font-size: 14px;
+          line-height: 1.9;
+          text-align: right;
+          white-space: pre-wrap !important;
+          color: #0f172a;
+          direction: rtl;
+          overflow: visible !important;
+        }
+
+        .letter-body p,
+        .letter-body div,
+        .letter-body li,
+        .letter-body span {
+          white-space: pre-wrap !important;
+        }
+
+        .letter-body p {
+          margin-top: 0;
+          margin-bottom: 0.5rem;
+          line-height: 1.9;
+        }
+
+        .letter-body .ql-align-justify,
+        .letter-body p[style*="text-align: justify"],
+        .letter-body div[style*="text-align: justify"] {
+          text-align: justify !important;
+          text-justify: inter-word !important;
+          text-align-last: right !important;
+        }
+
+        .letter-body .ql-align-center,
+        .letter-body p[style*="text-align: center"],
+        .letter-body div[style*="text-align: center"] {
+          text-align: center !important;
+          text-align-last: center !important;
+        }
+
+        .letter-body .ql-align-left,
+        .letter-body p[style*="text-align: left"],
+        .letter-body div[style*="text-align: left"] {
+          text-align: left !important;
+          text-align-last: left !important;
+        }
+
+        .letter-body .ql-align-right,
+        .letter-body p[style*="text-align: right"],
+        .letter-body div[style*="text-align: right"] {
+          text-align: right !important;
+          text-align-last: right !important;
+        }
+
+        .letter-body table {
+          width: 100% !important;
+          border-collapse: collapse !important;
+          margin: 14px 0 !important;
+          direction: rtl !important;
+        }
+
+        .letter-body table td,
+        .letter-body table th {
+          border: 1px solid #cbd5e1 !important;
+          padding: 8px 12px !important;
+          text-align: right !important;
+          vertical-align: top !important;
+        }
+
+        .signatures {
+          width: 260px;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+          margin-top: 15px;
+        }
+        .sign-off-text {
+          font-weight: bold;
+          font-size: 14px;
+          margin-bottom: 12px;
+          color: #0f172a;
+        }
+        .stamp-container {
+          position: relative;
+          min-height: ${stampSize ? Math.min(stampSize, 100) : 80}px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: 8px;
+        }
+        .company-stamp {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          margin: 0;
+          max-width: ${stampSize}px;
+          max-height: ${stampSize}px;
+          opacity: ${stampOpacity};
+          mix-blend-mode: multiply;
+          z-index: 0;
+          pointer-events: none;
+        }
+
+        .footer {
+          position: absolute;
+          bottom: 6mm;
+          left: 20mm;
+          right: 20mm;
+          border-top: 1px solid #cbd5e1;
+          padding-top: 6px;
+          display: flex;
+          justify-content: space-between;
+          font-size: 10px;
+          color: #64748b;
+          page-break-inside: avoid;
+          break-inside: avoid;
+        }
+      </style>
+    </head><body>
+      <div class="page-container">
+        ${letterheadHtml}
+        <div class="letter-content-wrapper">
+          <div class="letter-body ql-editor">${normalizedContent}</div>
+          ${signaturesHtml}
+        </div>
+        ${
+          !noLetterhead && !companySettings?.letterheadUrl && !isPdfLetterhead && !companySettings?.hideAutoFooter && (companySettings?.address || companySettings?.phone)
+            ? `
+        <div class="footer">
+          <span>نشانی: ${companySettings?.address || "ثبت نشده"}</span>
+          <span>تلفن: ${companySettings?.phone || "ثبت نشده"}</span>
+          <span>کدپستی: ${companySettings?.postalCode || "-"}</span>
+        </div>
+        `
+            : ""
+        }
+      </div>
+    </body></html>`;
+
+    // Use domcontentloaded + local image decode check so it never hangs on National Internet (نت ملی)
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 15000 });
+    await page.evaluate(async () => {
+      const imgs = Array.from(document.querySelectorAll("img"));
+      await Promise.race([
+        Promise.all(
+          imgs.map((img) =>
+            img.complete
+              ? Promise.resolve()
+              : new Promise((res) => {
+                  img.onload = res;
+                  img.onerror = res;
+                }),
+          ),
+        ),
+        new Promise((res) => setTimeout(res, 1500)),
+      ]);
+    });
     let pdf = await page.pdf({
       format: format,
       landscape: landscape,
