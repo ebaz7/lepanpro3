@@ -151,7 +151,8 @@ export const executeCrossPlatformPrint = async (
         frameDoc.write(contentHtml);
         frameDoc.close();
 
-        setTimeout(() => {
+        // Wait for all images inside the iframe to finish loading
+        const triggerPrint = () => {
             try {
                 if (printFrame.contentWindow) {
                     printFrame.contentWindow.focus();
@@ -167,7 +168,26 @@ export const executeCrossPlatformPrint = async (
                     }
                 }, 3000);
             }
-        }, 500);
+        };
+
+        const frameImages = Array.from(frameDoc.querySelectorAll('img'));
+        if (frameImages.length > 0) {
+            const imagePromises = frameImages.map((img) => {
+                if (img.complete) return Promise.resolve();
+                return new Promise((res) => {
+                    img.onload = res;
+                    img.onerror = res;
+                });
+            });
+            Promise.race([
+                Promise.all(imagePromises),
+                new Promise((res) => setTimeout(res, 1500))
+            ]).then(() => {
+                setTimeout(triggerPrint, 300);
+            });
+        } else {
+            setTimeout(triggerPrint, 400);
+        }
 
         return true;
     } catch (webErr) {

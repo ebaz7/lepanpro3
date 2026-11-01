@@ -325,6 +325,22 @@ import { getUsers } from "../services/authService";
 import { generateUUID, getCurrentShamsiDate } from "../constants";
 import { shareElementToChat, openSendToChat } from "../services/chatShareService";
 
+const getRoleTitleInPersian = (role?: string): string => {
+  if (!role) return "کاربر سیستم";
+  switch (role.toUpperCase()) {
+    case "ADMIN": return "مدیر سیستم";
+    case "CEO": return "مدیر عامل";
+    case "MANAGER": return "مدیر ارشد";
+    case "COMMERCIAL": return "مدیر بازرگانی و فروش";
+    case "WAREHOUSE": return "مدیریت انبار";
+    case "FACTORY": return "مدیر کارخانه";
+    case "SECURITY": return "مدیریت حراست";
+    case "ACCOUNTING": return "مدیریت حسابداری";
+    case "USER": return "پرسنل اداری";
+    default: return role;
+  }
+};
+
 
 class SafeEditorErrorBoundary extends React.Component<
   { children: React.ReactNode; fallback?: React.ReactNode; onReset?: () => void },
@@ -2658,10 +2674,12 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       const hasDesignatedReceiver = 
         (newLetterForm.referredTo && newLetterForm.referredTo.length > 0) ||
         (selectedReferrals && selectedReferrals.length > 0) ||
-        (newLetterForm.signers && newLetterForm.signers.length > 0 && newLetterForm.signers.some((s) => s.userId || s.name));
+        (newLetterForm.signers && newLetterForm.signers.length > 0 && newLetterForm.signers.some((s) => s.userId || s.name)) ||
+        (newLetterForm.receiver && newLetterForm.receiver.trim().length > 0) ||
+        (newLetterForm.sender && newLetterForm.sender.trim().length > 0);
       
       if (!hasDesignatedReceiver) {
-        alert("⚠️ هشدار: امکان صدور و ثبت نامه بدون تعیین شخص دریافت‌کننده در کارتابل جهت اقدام یا امضای نهایی وجود ندارد.\nلطفاً در بخش «امضا و ضمائم» یا ارجاع به کارتابل، شخص مورد نظر را تعیین فرمایید.");
+        alert("⚠️ هشدار: امکان صدور و ثبت نامه بدون تعیین گیرنده، فرستنده، ارجاع یا امضاکننده وجود ندارد.\nلطفاً گیرنده نامه یا امضاکنندگان را مشخص فرمایید.");
         setShowAdvancedOptionsModal(true);
         return;
       }
@@ -2702,13 +2720,18 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         updatedAt: Date.now(),
       };
 
+      // Optimistic update for instant feedback on Windows (Tauri), Android & Web
+      setLetters((prev) => [updatedLetter, ...prev.filter((l) => l.id !== updatedLetter.id)]);
+      setShowNewLetterModal(false);
+      resetForm();
+
       try {
         const updatedList = await updateSecretariatLetter(updatedLetter);
-        setLetters(updatedList);
-        setShowNewLetterModal(false);
-        resetForm();
+        if (Array.isArray(updatedList) && updatedList.length > 0) {
+          setLetters(updatedList);
+        }
       } catch (err) {
-        alert("خطا در بروزرسانی نامه");
+        console.warn("Background letter update warning:", err);
       }
     } else {
       const autoNum = getNextLetterNumber(selectedCompany, activeSection);
@@ -2749,13 +2772,18 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
         createdBy: currentUser.fullName,
       };
 
+      // Optimistic update for instant feedback on Windows (Tauri), Android & Web
+      setLetters((prev) => [newLetter, ...prev.filter((l) => l.id !== newLetter.id)]);
+      setShowNewLetterModal(false);
+      resetForm();
+
       try {
         const updatedList = await saveSecretariatLetter(newLetter);
-        setLetters(updatedList);
-        setShowNewLetterModal(false);
-        resetForm();
+        if (Array.isArray(updatedList) && updatedList.length > 0) {
+          setLetters(updatedList);
+        }
       } catch (err) {
-        alert("خطا در ذخیره‌سازی نامه");
+        console.warn("Background letter save warning:", err);
       }
     }
   };
@@ -7145,80 +7173,132 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[11px] text-slate-500 dark:text-slate-400 font-bold">
-                      امضاکنندگان نامه
+                <div className="space-y-3 bg-purple-50/40 dark:bg-purple-950/20 p-3 rounded-xl border border-purple-100 dark:border-purple-900/40">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="text-xs text-purple-900 dark:text-purple-200 font-extrabold flex items-center gap-1.5">
+                      <UserCheck size={15} className="text-purple-600 dark:text-purple-400" />
+                      امضاکنندگان نامه ({newLetterForm.signers?.length || 0} نفر)
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const s = newLetterForm.signers || [];
-                        setNewLetterForm({
-                          ...newLetterForm,
-                          signers: [...s, { name: "", title: "" }],
-                        });
-                      }}
-                      className="text-[11px] text-purple-600 font-bold hover:underline"
-                    >
-                      + افزودن امضاکننده جدید
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* System Users Dropdown Selector */}
+                      {users && users.length > 0 && (
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const uid = e.target.value;
+                            if (!uid) return;
+                            const u = users.find((x) => x.id === uid || x.username === uid);
+                            if (u) {
+                              const roleTitle = getRoleTitleInPersian(u.role);
+                              const s = newLetterForm.signers || [];
+                              setNewLetterForm({
+                                ...newLetterForm,
+                                signers: [
+                                  ...s,
+                                  { name: u.fullName || u.username, title: roleTitle, userId: u.id || u.username },
+                                ],
+                              });
+                            }
+                            e.target.value = "";
+                          }}
+                          className="border border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 text-purple-800 dark:text-purple-200 rounded-lg px-2.5 py-1 text-xs font-bold shadow-2xs"
+                        >
+                          <option value="">+ انتخاب امضاکننده از لیست مدیران و کاربران سیستم...</option>
+                          {users.map((u) => (
+                            <option key={u.id || u.username} value={u.id || u.username}>
+                              👤 {u.fullName || u.username} ({getRoleTitleInPersian(u.role)})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const s = newLetterForm.signers || [];
+                          setNewLetterForm({
+                            ...newLetterForm,
+                            signers: [...s, { name: "", title: "", userId: "" }],
+                          });
+                        }}
+                        className="text-xs text-purple-700 dark:text-purple-300 font-bold bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/60 px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 shrink-0"
+                      >
+                        + افزودن امضاکننده دستی
+                      </button>
+                    </div>
                   </div>
-                  {(!newLetterForm.signers ||
-                    newLetterForm.signers.length === 0) && (
-                    <div className="text-[11px] text-slate-400 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border dark:border-slate-800">
-                      بدون امضاکننده متنی (فقط امضای دیجیتال درج می‌شود)
+
+                  {(!newLetterForm.signers || newLetterForm.signers.length === 0) && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 p-2.5 rounded-lg border dark:border-slate-800 text-center font-medium">
+                      هیچ امضاکننده‌ای انتخاب نشده است. از منوی بالا امضاکنندگان را از میان مدیران و کاربران سیستم انتخاب کنید یا دستی وارد کنید.
                     </div>
                   )}
+
                   {newLetterForm.signers?.map((signer, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
+                    <div key={idx} className="p-2 bg-white dark:bg-slate-900 rounded-lg border dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row items-center gap-2">
+                      {users && users.length > 0 && (
+                        <select
+                          value={signer.userId || ""}
+                          onChange={(e) => {
+                            const uid = e.target.value;
+                            const u = users.find((x) => x.id === uid || x.username === uid);
+                            const newSigners = [...(newLetterForm.signers || [])];
+                            if (u) {
+                              newSigners[idx] = {
+                                name: u.fullName || u.username,
+                                title: getRoleTitleInPersian(u.role),
+                                userId: u.id || u.username,
+                              };
+                            } else {
+                              newSigners[idx].userId = "";
+                            }
+                            setNewLetterForm({ ...newLetterForm, signers: newSigners });
+                          }}
+                          className="w-full sm:w-44 border dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-200"
+                        >
+                          <option value="">-- اتصال به کاربر --</option>
+                          {users.map((u) => (
+                            <option key={u.id || u.username} value={u.id || u.username}>
+                              {u.fullName || u.username} ({getRoleTitleInPersian(u.role)})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
                       <input
                         type="text"
                         placeholder="نام امضاکننده (مثال: محمد احمدی)"
                         value={signer.name}
                         onChange={(e) => {
-                          const newSigners = [
-                            ...(newLetterForm.signers || []),
-                          ];
+                          const newSigners = [...(newLetterForm.signers || [])];
                           newSigners[idx].name = e.target.value;
-                          setNewLetterForm({
-                            ...newLetterForm,
-                            signers: newSigners,
-                          });
+                          setNewLetterForm({ ...newLetterForm, signers: newSigners });
                         }}
-                        className="flex-1 border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 text-xs"
+                        className="flex-1 w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 dark:text-slate-100"
                       />
+
                       <input
                         type="text"
                         placeholder="سمت (مثال: مدیر عامل)"
                         value={signer.title}
                         onChange={(e) => {
-                          const newSigners = [
-                            ...(newLetterForm.signers || []),
-                          ];
+                          const newSigners = [...(newLetterForm.signers || [])];
                           newSigners[idx].title = e.target.value;
-                          setNewLetterForm({
-                            ...newLetterForm,
-                            signers: newSigners,
-                          });
+                          setNewLetterForm({ ...newLetterForm, signers: newSigners });
                         }}
-                        className="flex-1 border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2.5 py-1.5 text-xs"
+                        className="flex-1 w-full border dark:border-slate-700 dark:bg-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-900 dark:text-slate-100"
                       />
+
                       <button
                         type="button"
                         onClick={() => {
-                          const newSigners = [
-                            ...(newLetterForm.signers || []),
-                          ];
+                          const newSigners = [...(newLetterForm.signers || [])];
                           newSigners.splice(idx, 1);
-                          setNewLetterForm({
-                            ...newLetterForm,
-                            signers: newSigners,
-                          });
+                          setNewLetterForm({ ...newLetterForm, signers: newSigners });
                         }}
-                        className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-1.5 rounded-lg"
+                        className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 p-1.5 rounded-lg shrink-0 transition-colors"
+                        title="حذف امضاکننده"
                       >
-                        <X size={14} />
+                        <X size={15} />
                       </button>
                     </div>
                   ))}
@@ -8282,7 +8362,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                               {/* Full Letter Content */}
                               <div
-                                className="ql-editor py-2 text-slate-800 leading-loose whitespace-pre-wrap font-medium text-xs sm:text-sm text-justify"
+                                className="ql-editor py-2 text-slate-800 leading-loose font-medium text-xs sm:text-sm text-justify"
                                 dangerouslySetInnerHTML={{
                                   __html: selectedLetterForView.content,
                                 }}
@@ -9013,7 +9093,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
 
                       {/* Body Content from Quill */}
                       <div
-                        className="ql-editor pt-2 text-justify whitespace-pre-wrap leading-loose font-medium text-slate-800 text-[14px]"
+                        className="ql-editor pt-2 text-justify leading-loose font-medium text-slate-800 text-[14px]"
                         dangerouslySetInnerHTML={{ __html: isPrintMode.content }}
                       ></div>
 

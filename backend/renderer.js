@@ -2562,11 +2562,16 @@ export const generateSecretariatLetterPDF = async (
                 }
                 .company-stamp { 
                     position: absolute; 
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    margin: 0;
                     max-width: ${stampSize}px; 
                     max-height: ${stampSize}px; 
                     opacity: ${stampOpacity}; 
                     mix-blend-mode: multiply; 
                     z-index: 0; 
+                    pointer-events: none;
                 }
                 
                 .footer {
@@ -2964,42 +2969,45 @@ export const generateSecretariatLetterDoc = async (
                 ${letter.content}
             </div>
             
-            ${
-              letter.signers && letter.signers.length > 0
-                ? `
-            <table class="signatures" style="width: 100%; margin-top: 40px;">
-                <tr>
-                ${letter.signers
-                  .map((s) => {
-                    let sigImg = "";
-                    if (
-                      s.userId &&
-                      letter.approvedBy &&
-                      letter.signatureImageUrls
-                    ) {
-                      const idx = letter.approvedBy.indexOf(s.userId);
-                      if (idx !== -1) {
-                        sigImg = `<br/><img src="${makeAbsolute(letter.signatureImageUrls[idx])}" class="signature-image" style="height: 60px; object-fit: contain; margin-top: 5px;" />`;
-                      }
-                    }
-                    return `<td class="signature-box" style="width: ${100 / letter.signers.length}%; text-align: center;"><b>${s.name}</b><br/><span style="color: #666; font-size: 9pt;">${s.title}</span>${sigImg}</td>`;
-                  })
-                  .join("")}
-                </tr>
-            </table>
-            `
-                : ""
-            }
-            
-            ${
-              letter.addCompanyStamp && companySettings?.companyStampUrl
-                ? `
-                <div style="text-align: center; margin-top: 30px;">
-                    <img src="${makeAbsolute(companySettings.companyStampUrl)}" style="max-height: 120px; object-fit: contain;" />
-                </div>
-            `
-                : ""
-            }
+            <div style="margin-top: 40px; text-align: left; width: 100%; direction: rtl;">
+                <div style="font-weight: bold; font-size: 11pt; margin-bottom: 8px;">${letter.signOffText || "با تشکر"}</div>
+                ${
+                  letter.signers && letter.signers.length > 0
+                    ? `
+                <table class="signatures" style="width: 100%; margin-top: 15px;">
+                    <tr>
+                    ${letter.signers
+                      .map((s) => {
+                        let sigImg = "";
+                        if (
+                          s.userId &&
+                          letter.approvedBy &&
+                          letter.signatureImageUrls
+                        ) {
+                          const idx = letter.approvedBy.indexOf(s.userId);
+                          if (idx !== -1) {
+                            sigImg = `<br/><img src="${makeAbsolute(letter.signatureImageUrls[idx])}" class="signature-image" style="height: 60px; object-fit: contain; margin-top: 5px;" />`;
+                          }
+                        }
+                        return `<td class="signature-box" style="width: ${100 / letter.signers.length}%; text-align: center;"><b>${s.name}</b><br/><span style="color: #666; font-size: 9pt;">${s.title}</span>${sigImg}</td>`;
+                      })
+                      .join("")}
+                    </tr>
+                </table>
+                `
+                    : `<div style="font-weight: bold; font-size: 11pt; color: #0f172a;">${companyName || companySettings?.companyName || "شرکت تولیدی لپان بافت"}</div>`
+                }
+                
+                ${
+                  letter.addCompanyStamp && companySettings?.companyStampUrl
+                    ? `
+                    <div style="text-align: center; margin-top: 15px;">
+                        <img src="${makeAbsolute(companySettings.companyStampUrl)}" style="max-height: 110px; object-fit: contain;" />
+                    </div>
+                `
+                    : ""
+                }
+            </div>
             
             ${
               !companySettings?.hideAutoFooter ||
