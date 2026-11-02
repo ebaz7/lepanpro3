@@ -37,9 +37,26 @@ interface LoginProps {
   onLogin: (user: User) => void;
 }
 
+const encodeSavedPass = (str: string): string => {
+  try {
+    return btoa(encodeURIComponent(str));
+  } catch (e) {
+    return str;
+  }
+};
+
+const decodeSavedPass = (str: string): string => {
+  try {
+    return decodeURIComponent(atob(str));
+  } catch (e) {
+    return str;
+  }
+};
+
 export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberPassword, setRememberPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,6 +83,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     try {
       const savedUsername = localStorage.getItem('saved_username');
       if (savedUsername) setUsername(savedUsername);
+
+      // Save password logic for Web & Windows Desktop (Not Mobile/Android)
+      if (!isMobileApp()) {
+        const savedCredsRaw = localStorage.getItem('dlkam_saved_credentials');
+        if (savedCredsRaw) {
+          try {
+            const parsed = JSON.parse(savedCredsRaw);
+            if (parsed && parsed.username) {
+              setUsername(parsed.username);
+              if (parsed.password) {
+                setPassword(decodeSavedPass(parsed.password));
+                setRememberPassword(true);
+              }
+            }
+          } catch (e) {}
+        }
+      }
       
       const native = Capacitor.isNativePlatform();
       setIsNative(native);
@@ -126,6 +160,19 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       const user = await login(username, password);
       if (user) {
         localStorage.setItem('saved_username', username);
+
+        // Save password handling for Web & Windows Desktop (Not Mobile/Android)
+        if (!isMobileApp()) {
+          if (rememberPassword) {
+            localStorage.setItem('dlkam_saved_credentials', JSON.stringify({
+              username,
+              password: encodeSavedPass(password)
+            }));
+          } else {
+            localStorage.removeItem('dlkam_saved_credentials');
+          }
+        }
+
         onLogin(user);
       }
     } catch (e: any) {
@@ -604,6 +651,24 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       </button>
                     </div>
                   </div>
+
+                  {/* Save Password Checkbox - Web & Windows Desktop Only (Hidden on Mobile/Android) */}
+                  {!isMobileApp() && (
+                    <div className="flex items-center justify-between pt-1 pb-1 px-1">
+                      <label className="flex items-center gap-2.5 text-xs font-bold text-slate-300 cursor-pointer select-none group">
+                        <input 
+                          type="checkbox"
+                          checked={rememberPassword}
+                          onChange={(e) => setRememberPassword(e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-700/80 bg-slate-950 text-amber-500 focus:ring-2 focus:ring-amber-400/20 transition-all cursor-pointer accent-amber-500"
+                        />
+                        <span className="group-hover:text-amber-300 transition-colors">
+                          ذخیره رمز عبور در این سیستم
+                        </span>
+                      </label>
+                      <span className="text-[10px] text-slate-500">ذخیره‌سازی ایمن محلی</span>
+                    </div>
+                  )}
 
                   {/* Submit Button */}
                   <button 
