@@ -1951,6 +1951,18 @@ export const syncMissingReceiptAccountingDocs = async (fiscalYear = '4') => {
             const rows = await executeSayanQuery(rowsQuery);
             if (rows.length === 0) continue;
 
+            // Pre-check: Ensure no accounting document already exists for this archiveCode in Year 4
+            const existingActCheck = await executeSayanQuery(`
+                SELECT TOP 1 Field_004 as ExistingActDoc 
+                FROM ACT_TBL_009 WITH (NOLOCK) 
+                WHERE Field_003 = '${fy}' AND Field_008 = '${archCode}' AND Field_007 = '101'
+            `).catch(() => []);
+
+            if (existingActCheck.length > 0) {
+                console.log(`[Sayan Sync] Accounting document already exists for ArchiveCode ${archCode} (Doc: ${existingActCheck[0].ExistingActDoc}). Skipping duplicate creation.`);
+                continue;
+            }
+
             // Get next ActDocNo
             const maxActRes = await executeSayanQuery(`SELECT MAX(CAST(Field_005 as bigint)) as MaxActNo FROM ACT_TBL_008 WHERE Field_004 = '${fy}'`);
             const actDocNo = (Number(maxActRes[0]?.MaxActNo) || 0) + 1;
@@ -1961,6 +1973,8 @@ export const syncMissingReceiptAccountingDocs = async (fiscalYear = '4') => {
                 "EXEC(",
                 "N'SET XACT_ABORT ON; ' + ",
                 "N'BE' + N'GIN TRAN; ' + ",
+                `N'IF NOT EXISTS (SELECT 1 FROM ACT_TBL_009 WHERE Field_003 = ''${fy}'' AND Field_008 = ''${archCode}'' AND Field_007 = ''101'') ' + `,
+                "N'BE' + N'GIN ' + ",
                 "N'IN' + N'SERT INTO ACT_TBL_008 (Field_004, Field_005, Field_006, Field_007, Field_008, Field_009, Field_010, Field_011, Field_012, Field_013, Field_014, Field_015, Field_017) ' + ",
                 `N'VALUES (''${fy}'', ''${actDocNo}'', ''${actDocNo}'', '''', ''${rawDate} 15:00:00'', 0, 0, '''', 5, ''${userGuid}'', ${totalAmount}, ${totalAmount}, GETDATE()); ' + `
             ];
@@ -2002,6 +2016,7 @@ export const syncMissingReceiptAccountingDocs = async (fiscalYear = '4') => {
             }
 
             sqlChunks.push(
+                "N'END; ' + ",
                 `N'SELECT ${actDocNo} as ActDocNo; ' + `,
                 "N'COM' + N'MIT TRAN;'",
                 ");"
