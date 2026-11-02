@@ -1390,6 +1390,12 @@ function App() {
                 }
             });
 
+            // Cross-Device Auto-Clear: If all notifications for this user are read (e.g. marked read on Windows),
+            // automatically clear any active delivered notifications from the Android notification bar & Windows taskbar!
+            if (mappedNotifs.length > 0 && mappedNotifs.every(n => n.read)) {
+                clearAllActiveNotifications().catch(console.error);
+            }
+
             // If a notification was read on another device while toast was open, auto-close toast
             if (toast && mappedNotifs.some(n => n.read && (n.title === toast.title || n.message === toast.message))) {
                 setToast(null);
@@ -1448,13 +1454,51 @@ function App() {
         }
 
         if (safeMessages && safeMessages.length > 0) {
-            // Cross-device read sync: mark all messages read by currentUser as shown so they never alert
             const currentU = currentUser.username.toLowerCase();
+            // 1. Cross-device read sync: mark all messages read by currentUser as shown so they never alert
             safeMessages.forEach(m => {
                 if (m.readBy?.some((u: string) => u.toLowerCase() === currentU)) {
                     markNotificationAsShown(m.id);
                 }
             });
+
+            // 2. Alert for incoming chat messages across ALL tabs (Dashboard, Warehouse, Secretariat, etc.)
+            if (!isFirstLoad.current && lastChatMsgIdRef.current) {
+                const newUnreadChatMessages = safeMessages.filter(m => {
+                    if (m.senderUsername?.toLowerCase() === currentU) return false;
+                    if (m.readBy?.some((u: string) => u.toLowerCase() === currentU)) return false;
+                    if (hasNotificationBeenShown(m.id)) return false;
+                    
+                    // Validate intended audience
+                    const isDirectPV = m.recipient && m.recipient.toLowerCase() === currentU;
+                    const isGroupForMe = m.groupId && Array.isArray(groupsData) && groupsData.some((g: any) => g.id === m.groupId);
+                    const isPublic = !m.recipient && !m.groupId;
+                    if (!isDirectPV && !isGroupForMe && !isPublic) return false;
+
+                    // If user is actively inside this exact conversation right now, do not fire external notification
+                    const isLookingAtThisChat = activeTabRef.current === 'chat' && 
+                        document.visibilityState === 'visible' && 
+                        directChatTarget && 
+                        (directChatTarget.id === m.senderUsername || directChatTarget.id === m.groupId);
+
+                    return !isLookingAtThisChat;
+                });
+
+                if (newUnreadChatMessages.length > 0) {
+                    const latestChat = newUnreadChatMessages[newUnreadChatMessages.length - 1];
+                    markNotificationAsShown(latestChat.id);
+                    const title = latestChat.sender ? `پیام از ${latestChat.sender}` : 'پیام جدید در گفتگو';
+                    const body = latestChat.message || (latestChat.audioUrl ? '🎤 پیام صوتی' : '📎 فایل ضمیمه');
+                    const targetUrl = latestChat.groupId ? `/chat?group=${latestChat.groupId}` : `/chat?pv=${latestChat.senderUsername}`;
+                    
+                    playNotificationSound();
+                    setToast({ show: true, title, message: body });
+                    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+                    sendNotification(title, body, { id: latestChat.id, url: targetUrl, tab: 'chat' });
+                }
+            }
+
             const lastMsg = safeMessages[safeMessages.length - 1];
             lastChatMsgIdRef.current = lastMsg.id;
         }
@@ -1673,8 +1717,9 @@ function App() {
   useEffect(() => { 
       if (currentUser && !isPublicBioView) { 
           loadData(false); 
-          // Stable background polling interval (15s native / 30s web)
-          const intervalDuration = isNative ? 15000 : 30000;
+          // Fast dynamic polling: 3.5s when active in foreground, 12s in background
+          const isAppActive = typeof document !== 'undefined' && !document.hidden;
+          const intervalDuration = isAppActive ? (isNative ? 4000 : 3500) : 12000;
           const intervalId = setInterval(() => {
             if (!isPublicBioView) loadData(true);
           }, intervalDuration); 
@@ -1684,9 +1729,20 @@ function App() {
             if (!isPublicBioView) apiCall('/heartbeat', 'POST', { username: currentUser.username }).catch(console.error);
           }, 60000);
 
+          // Immediate instant synchronization on window focus / tab visibility
+          const handleVisibilitySync = () => {
+            if (typeof document !== 'undefined' && !document.hidden && !isPublicBioView) {
+              loadData(true);
+            }
+          };
+          window.addEventListener('focus', handleVisibilitySync);
+          document.addEventListener('visibilitychange', handleVisibilitySync);
+
           return () => { 
               clearInterval(intervalId); 
               clearInterval(heartbeatId);
+              window.removeEventListener('focus', handleVisibilitySync);
+              document.removeEventListener('visibilitychange', handleVisibilitySync);
           }; 
       } 
   }, [currentUser, isPublicBioView]);
@@ -1721,7 +1777,7 @@ function App() {
               }
           };
           
-          fastChatInterval = setInterval(fetchChatMessages, 3000);
+          fastChatInterval = setInterval(fetchChatMessages, 2500);
       }
       
       return () => {
@@ -1740,8 +1796,14 @@ function App() {
       if (!currentUser || notifications.length === 0) return;
       
       let targetUrls: string[] = [];
-      if (activeTab === 'chat') {
-          targetUrls = ['chat', '/chat'];
+      if (activeTab === 'chat' && directChatTarget?.id) {
+          // Only auto-dismiss notifications for this specific conversation, NOT all unread chats!
+          targetUrls = [
+              `/chat?pv=${directChatTarget.id}`, 
+              `/chat?group=${directChatTarget.id}`, 
+              `chat?pv=${directChatTarget.id}`, 
+              `chat?group=${directChatTarget.id}`
+          ];
       } else if (activeTab === 'manage' || activeTab === 'manage-orders') {
           targetUrls = ['/payment-approvals', '/payment-orders', 'payment-approvals', 'payment-orders'];
       } else if (activeTab === 'manage-exit' || activeTab === 'manage-invoices') {
@@ -1761,7 +1823,7 @@ function App() {
               });
           }
       }
-  }, [activeTab, notifications, currentUser]);
+  }, [activeTab, notifications, currentUser, directChatTarget]);
 
   const handleOrderCreated = () => { loadData(); setManageOrdersInitialTab('current'); setDashboardStatusFilter(null); setActiveTab('manage'); };
   const handleLogin = (user: User) => { 

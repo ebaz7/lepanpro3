@@ -731,7 +731,8 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
 
   // Auto-fit zoom for mobile web, Android & small screens
-  const getAutoFitZoom = useCallback(() => {
+  // Auto-fit zoom for mobile web, Android & small screens (Safe standalone function)
+  const getAutoFitZoom = () => {
     if (typeof window === "undefined") return 100;
     const screenW = window.innerWidth;
     if (screenW < 768) {
@@ -739,7 +740,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       return Math.min(100, Math.max(35, Math.floor(((screenW - 24) / 794) * 100)));
     }
     return 100;
-  }, []);
+  };
 
   const [editorZoom, setEditorZoom] = useState<number>(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {

@@ -142,6 +142,7 @@ export const syncServiceWorkerAuth = async (user: any | null) => {
 };
 
 export const clearAllActiveNotifications = async () => {
+    // 1. Android Native (Capacitor)
     if (Capacitor.isNativePlatform()) {
         try {
             await PushNotifications.removeAllDeliveredNotifications();
@@ -153,16 +154,25 @@ export const clearAllActiveNotifications = async () => {
         } catch (e) {
             console.error('Error removing delivered local notifications', e);
         }
-    } else {
-        if (typeof navigator !== 'undefined' && "serviceWorker" in navigator) {
-            try {
-                const reg = await navigator.serviceWorker.ready;
-                if (reg && reg.getNotifications) {
-                    const activeNotifs = await reg.getNotifications();
-                    activeNotifs.forEach(n => n.close());
-                }
-            } catch (e) {}
-        }
+    }
+    // 2. Windows Desktop (Tauri)
+    if (isTauriDesktop()) {
+        try {
+            if ((window as any).__TAURI__?.window?.appWindow) {
+                // Cancel flashing/attention on Windows taskbar
+                (window as any).__TAURI__.window.appWindow.requestUserAttention(null);
+            }
+        } catch (e) {}
+    }
+    // 3. Web & PWA (Service Worker)
+    if (typeof navigator !== 'undefined' && "serviceWorker" in navigator) {
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            if (reg && reg.getNotifications) {
+                const activeNotifs = await reg.getNotifications();
+                activeNotifs.forEach(n => n.close());
+            }
+        } catch (e) {}
     }
 };
 

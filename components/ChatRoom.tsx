@@ -934,12 +934,27 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
             // Follow up with smooth scroll to catch any layout shifts
             setTimeout(scrollToBottom, 150); 
             
-            // Auto-mark as read when inside the active conversation
-            if (activeChannel.id) {
+            // Auto-mark as read ONLY when user is actively inside the open conversation in foreground
+            if (activeChannel.id && typeof document !== 'undefined' && !document.hidden) {
                 markAsRead(activeChannel.id, activeChannel.type);
             }
         }
     }, [activeChannel, messages.length]);
+
+    // Re-verify read status when user switches back to this tab/window while chat is open
+    useEffect(() => {
+        const handleVisibility = () => {
+            if (typeof document !== 'undefined' && !document.hidden && activeChannel && activeChannel.id) {
+                markAsRead(activeChannel.id, activeChannel.type);
+            }
+        };
+        window.addEventListener('focus', handleVisibility);
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+            window.removeEventListener('focus', handleVisibility);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [activeChannel]);
 
     // Handle Mobile Back Button Logic (Browser History)
     useEffect(() => {
@@ -2878,11 +2893,22 @@ const ChatRoom: React.FC<ChatRoomProps> = ({ currentUser, preloadedMessages, onR
                                         )}
                                         {msg.isEdited && <span className="text-[9px] font-bold">ویرایش شده</span>}
                                         <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300">{formatTimeFa(msg.timestamp)}</span>
-                                        {isMe && (
-                                            msg.isPending ? <Clock size={12} className="text-slate-500 dark:text-slate-400"/> :
-                                            (msg.readBy && msg.readBy.length > 0) ? <CheckCheck size={14} className="text-emerald-600 dark:text-emerald-400" /> :
-                                            <Check size={14} className="text-slate-600 dark:text-slate-400" />
-                                        )}
+                                        {isMe && (() => {
+                                            if (msg.isPending) {
+                                                return <Clock size={12} className="text-slate-500 dark:text-slate-400" title="در حال ارسال..." />;
+                                            }
+                                            // Genuine seen validation:
+                                            // In Private Chat (PV): Must be read by the designated recipient
+                                            // In Group / Public Chat: Must be read by at least one member other than the sender
+                                            const isSeen = msg.recipient
+                                                ? (Array.isArray(msg.readBy) && msg.readBy.some(u => u.toLowerCase() === msg.recipient!.toLowerCase()))
+                                                : (Array.isArray(msg.readBy) && msg.readBy.some(u => u.toLowerCase() !== (msg.senderUsername || '').toLowerCase()));
+
+                                            if (isSeen) {
+                                                return <CheckCheck size={14} className="text-emerald-600 dark:text-emerald-400" title="مشاهده شده (سین خورده)" />;
+                                            }
+                                            return <Check size={14} className="text-slate-500 dark:text-slate-400" title="ارسال و تحویل شده (هنوز باز نشده)" />;
+                                        })()}
                                     </div>
                                 </div>
 
