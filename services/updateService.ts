@@ -98,10 +98,22 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
   let detectedVersion = CURRENT_CLIENT_BUILD.version;
   let detectedBuild = CURRENT_CLIENT_BUILD.buildNumber;
 
-  // 1. Check Tauri app.getVersion() — authoritative version of the installed Windows .exe binary
+  // 1. Check Electron or Tauri app.getVersion() — authoritative version of the installed Windows .exe binary
   try {
     if (isTauriDesktop()) {
-      if (win.__TAURI__?.app?.getVersion) {
+      if (win.electronAPI?.getVersion) {
+        const ver = await win.electronAPI.getVersion();
+        if (ver) {
+          detectedVersion = String(ver).trim();
+          detectedBuild = detectedVersion;
+        }
+      } else if (win.electron?.getVersion) {
+        const ver = await win.electron.getVersion();
+        if (ver) {
+          detectedVersion = String(ver).trim();
+          detectedBuild = detectedVersion;
+        }
+      } else if (win.__TAURI__?.app?.getVersion) {
         const ver = await win.__TAURI__.app.getVersion();
         if (ver) {
           detectedVersion = String(ver).trim();
@@ -555,7 +567,7 @@ export async function applyApplicationUpdate(
     }
   }
 
-  // 3. WINDOWS DESKTOP (TAURI) PLATFORM: Single in-app download of newest .exe + automatic execution
+  // 3. WINDOWS DESKTOP (TAURI & ELECTRON) PLATFORM: Single in-app download of newest .exe + automatic execution
   if (isDesktop) {
     const targetVer = serverInfo?.desktopLatestVersion || serverInfo?.version || 'latest';
     const exeFileName = serverInfo?.desktopFileName || `dlkam-desktop-v${targetVer}.exe`;
@@ -565,6 +577,49 @@ export async function applyApplicationUpdate(
     }
     const downloadUrl = rawDesktop.includes('?') ? `${rawDesktop}&t=${Date.now()}` : `${rawDesktop}?t=${Date.now()}`;
 
+    const win = window as any;
+    const electronBridge = win.electronAPI || win.electron;
+
+    // A. ELECTRON DESKTOP BRIDGE (Identical flow to Tauri)
+    if (electronBridge?.saveAndOpenLocalFile || electronBridge?.openLocalFile) {
+      try {
+        let fileExists = false;
+        try {
+          if (electronBridge.checkLocalFileExists) {
+            fileExists = await electronBridge.checkLocalFileExists(exeFileName);
+          }
+        } catch (_) {}
+
+        if (fileExists) {
+          onProgress?.(80, 'فایل نصبی موجود است — در حال اجرای نصاب...');
+          if (electronBridge.openLocalFile) {
+            await electronBridge.openLocalFile(exeFileName);
+          }
+        } else {
+          onProgress?.(2, `در حال دانلود نسخه جدید ویندوز (v${targetVer})...`);
+          const exeBlob = await fetchBinaryWithProgress(downloadUrl, serverInfo?.desktopFileSize || 15000000, onProgress);
+          const arrayBuffer = await exeBlob.arrayBuffer();
+          const bytes = Array.from(new Uint8Array(arrayBuffer));
+
+          onProgress?.(95, 'ذخیره فایل و اجرای نصاب ویندوز...');
+          if (electronBridge.saveAndOpenLocalFile) {
+            await electronBridge.saveAndOpenLocalFile(exeFileName, bytes);
+          } else if (electronBridge.openLocalFile) {
+            await electronBridge.openLocalFile(exeFileName);
+          }
+        }
+
+        onProgress?.(100, 'پنجره نصاب ویندوز باز شد ✓');
+        toast.success(`فایل نصبی نسخه v${targetVer} اجرا شد ✓ مراحل نصب را در پنجره باز شده تکمیل فرمایید.`, { duration: 9000 });
+        return;
+      } catch (electronErr) {
+        console.warn('Electron in-app update download/exec failed:', electronErr);
+        toast.error('خطا در دانلود درون‌برنامه‌ای — از دکمه «لینک مستقیم» استفاده کنید.');
+        throw electronErr;
+      }
+    }
+
+    // B. TAURI DESKTOP BRIDGE
     try {
       const { invoke } = await import('@tauri-apps/api/tauri');
       // Check first if this Tauri desktop shell supports native local file saving (added in v1.0.27+)
@@ -697,6 +752,15 @@ export async function applyApplicationUpdate(
  */
 export async function isDesktopUpdateFileReady(fileName: string): Promise<boolean> {
   if (!isTauriDesktop()) return false;
+  const win = window as any;
+  const electronBridge = win.electronAPI || win.electron;
+  if (electronBridge?.checkLocalFileExists) {
+    try {
+      return await electronBridge.checkLocalFileExists(fileName);
+    } catch {
+      return false;
+    }
+  }
   try {
     const { invoke } = await import('@tauri-apps/api/tauri');
     return await invoke<boolean>('check_local_file_exists', { fileName });
@@ -709,7 +773,12 @@ export async function isDesktopUpdateFileReady(fileName: string): Promise<boolea
  * Directly execute and launch the downloaded desktop update installer
  */
 export async function openDesktopUpdateFile(fileName: string): Promise<string> {
-  if (!isTauriDesktop()) throw new Error('Not running in Tauri desktop');
+  if (!isTauriDesktop()) throw new Error('Not running in desktop app');
+  const win = window as any;
+  const electronBridge = win.electronAPI || win.electron;
+  if (electronBridge?.openLocalFile) {
+    return await electronBridge.openLocalFile(fileName);
+  }
   const { invoke } = await import('@tauri-apps/api/tauri');
   let savedPath = '';
   try {
@@ -734,7 +803,12 @@ export async function openDesktopUpdateFile(fileName: string): Promise<string> {
  * Open Windows File Explorer / Folder containing the downloaded file with the file highlighted
  */
 export async function openDesktopUpdateFolder(fileName: string): Promise<string> {
-  if (!isTauriDesktop()) throw new Error('Not running in Tauri desktop');
+  if (!isTauriDesktop()) throw new Error('Not running in desktop app');
+  const win = window as any;
+  const electronBridge = win.electronAPI || win.electron;
+  if (electronBridge?.openLocalFileDir) {
+    return await electronBridge.openLocalFileDir(fileName);
+  }
   const { invoke } = await import('@tauri-apps/api/tauri');
   try {
     return await invoke<string>('open_local_file_dir', { fileName });

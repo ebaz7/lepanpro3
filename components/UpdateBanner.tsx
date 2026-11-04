@@ -111,7 +111,7 @@ export const UpdateBanner: React.FC<UpdateBannerProps> = ({
         console.warn('Execution error, opening folder fallback:', err);
         try {
           await openDesktopUpdateFolder(exeFileName);
-          toast.info('پوشه فایل نصبی باز شد — لطفاً روی فایل نصبی کلیک نمایید.');
+          toast('پوشه فایل نصبی باز شد — لطفاً روی فایل نصبی کلیک نمایید.');
         } catch {}
         setIsUpdating(false);
         return;

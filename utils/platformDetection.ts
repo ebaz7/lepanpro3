@@ -3,7 +3,19 @@ import { Capacitor } from '@capacitor/core';
 export type AppPlatform = 'desktop' | 'android' | 'web';
 
 /**
- * Checks if the current app environment is running inside Tauri (Windows / Mac / Linux desktop).
+ * Checks if the current app environment is running inside Electron desktop.
+ */
+export const isElectronDesktop = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    (window as any).electronAPI ||
+    (window as any).electron ||
+    navigator.userAgent.toLowerCase().includes('electron')
+  );
+};
+
+/**
+ * Checks if the current app environment is running inside Tauri or Electron (Windows / Mac / Linux desktop).
  */
 export const isTauriDesktop = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -11,7 +23,8 @@ export const isTauriDesktop = (): boolean => {
     (window as any).__TAURI__ ||
     (window as any).__TAURI_IPC__ ||
     (window as any).__TAURI_METADATA__ ||
-    navigator.userAgent.toLowerCase().includes('tauri')
+    navigator.userAgent.toLowerCase().includes('tauri') ||
+    isElectronDesktop()
   );
 };
 
