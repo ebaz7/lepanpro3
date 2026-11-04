@@ -164,8 +164,14 @@ if (!PORT || isNaN(PORT) || PORT <= 0) {
     PORT = 3000;
 }
 
+app.set('trust proxy', true);
 app.disable('x-powered-by');
-app.use(cors()); 
+app.use(cors({
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Client-Runtime', 'Accept', 'Cache-Control', 'Pragma']
+}));
 
 // --- URL NORMALIZATION FOR REVERSE PROXIES & ACCIDENTAL DOUBLE PREFIXES ---
 app.use((req, res, next) => {
@@ -175,14 +181,14 @@ app.use((req, res, next) => {
     next();
 });
 
-// --- ENTERPRISE SECURITY HEADERS ---
+// --- ENTERPRISE SECURITY HEADERS & REVERSE PROXY SUPPORT ---
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_IFRAME) {
-        // Only enforce rigid sameorigin in standalone production
-    }
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
     next();
 });
 
@@ -205,8 +211,16 @@ const cleanExpiredLimits = () => {
 };
 setInterval(cleanExpiredLimits, 60000);
 
-const isIpRateLimited = (req, maxRequests = 400, windowMs = 10000) => {
-    const ip = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+const getClientRealIp = (req) => {
+    const rawFwd = req.headers['arvan-real-ip'] || req.headers['x-real-ip'] || req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip || req.connection?.remoteAddress || '';
+    if (typeof rawFwd === 'string' && rawFwd.includes(',')) {
+        return rawFwd.split(',')[0].trim();
+    }
+    return String(rawFwd).trim() || '127.0.0.1';
+};
+
+const isIpRateLimited = (req, maxRequests = 2500, windowMs = 10000) => {
+    const ip = getClientRealIp(req);
     const now = Date.now();
     let record = apiRequestLimits.get(ip);
     if (!record || record.resetTime < now) {
@@ -222,7 +236,7 @@ const isIpRateLimited = (req, maxRequests = 400, windowMs = 10000) => {
 
 // Global API rate limit check
 app.use('/api', (req, res, next) => {
-    if (isIpRateLimited(req, 500, 10000)) {
+    if (isIpRateLimited(req, 3000, 10000)) {
         return res.status(429).json({ error: 'Too Many Requests', message: 'تعداد درخواست‌ها بیش از حد مجاز است. لطفاً چند لحظه صبر کنید.' });
     }
     next();
