@@ -399,6 +399,16 @@ fn get_or_create_config(handle: &tauri::AppHandle) -> ClientConfig {
 fn main() {
     #[cfg(target_os = "windows")]
     {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        extern "system" {
+            fn SetCurrentProcessExplicitAppUserModelID(app_id: *const u16) -> i32;
+        }
+        let app_id: Vec<u16> = OsStr::new("ir.dlkam.desktop.app\0").encode_wide().collect();
+        unsafe {
+            let _ = SetCurrentProcessExplicitAppUserModelID(app_id.as_ptr());
+        }
+
         std::env::set_var(
             "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
             "--disable-features=msSmartScreenProtection --enable-gpu-rasterization --enable-zero-copy",

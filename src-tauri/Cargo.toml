@@ -1,8 +1,8 @@
 [package]
-name = "sayan-warehouse"
+name = "dlkam"
 version = "1.0.29"
-description = "Sayan warehouse system desktop application with embedded server and client-server dual role support"
-authors = ["Sayan AI Core Team"]
+description = "Dlkam Enterprise Desktop Application"
+authors = ["Dlkam Core Team"]
 license = "MIT"
 repository = ""
 edition = "2021"
@@ -36,6 +36,6 @@ incremental = false
 debug = false
 strip = true
 
-[profile.release.package.sayan-warehouse]
+[profile.release.package.dlkam]
 opt-level = 2
 codegen-units = 16

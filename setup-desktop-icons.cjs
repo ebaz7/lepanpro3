@@ -87,7 +87,7 @@ async function buildAndPublishTauri() {
   if (fs.existsSync(releaseBuildDir)) {
     try {
       for (const entry of fs.readdirSync(releaseBuildDir)) {
-        if (entry.startsWith('sayan-warehouse-')) {
+        if (entry.startsWith('sayan-warehouse-') || entry.startsWith('dlkam-')) {
           fs.rmSync(path.join(releaseBuildDir, entry), { recursive: true, force: true });
         }
       }

@@ -13910,7 +13910,7 @@
   {
     "personCode": "3121",
     "tafsiliCode": "113121",
-    "fullName": "مرتضی افشاری",
+    "fullName": "مرتضی افشاری پرسنل",
     "levelCode": "11"
   },
   {
@@ -17007,6 +17007,12 @@
     "personCode": "1024",
     "tafsiliCode": "11024",
     "fullName": "علیرضا صادقی",
+    "levelCode": "11"
+  },
+  {
+    "personCode": "3121",
+    "tafsiliCode": "113121",
+    "fullName": "مرتضی افشاری",
     "levelCode": "11"
   },
   {
