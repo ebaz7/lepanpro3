@@ -2436,11 +2436,6 @@ function App() {
                 isDarkMode={isDarkMode}
                 onToggleDarkMode={handleToggleDarkMode}
             />
-            <NetworkRoleSettingsModal
-                isOpen={showNetworkRoleModal}
-                onClose={() => setShowNetworkRoleModal(false)}
-            />
-
             </Layout>
 
             {/* Workstation Desktop Dock (Windows-style Taskbar) */}
@@ -2560,14 +2555,16 @@ function App() {
                         title={globalSendToChat.title}
                         onGoToChat={(target) => {
                             setGlobalSendToChat(prev => ({ ...prev, isOpen: false }));
-                            setDirectChatTarget(target);
-                            setActiveTab('chat');
                         }}
                     />
                 </>
             )}
-            </>
-        )}
+            <NetworkRoleSettingsModal
+                isOpen={showNetworkRoleModal}
+                onClose={() => setShowNetworkRoleModal(false)}
+            />
+        </>
+      )}
     </>
   );
 }

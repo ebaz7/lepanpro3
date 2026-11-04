@@ -689,40 +689,30 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     )}
                   </button>
 
-                  {/* Footer Action Badges - Strictly Desktop/Mobile Only, Never in Web */}
-                  {!isWebApp() ? (
-                    <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          window.dispatchEvent(new CustomEvent('open-network-role-settings'));
-                        }}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-bold border border-blue-500/20 transition-all cursor-pointer"
-                        title="تعیین اینکه این سیستم سرور میزبان است یا کلاینت متصل"
-                      >
-                        <Server size={13} className="text-blue-400" />
-                        <span>نقش شبکه (سرور/کلاینت)</span>
-                      </button>
-                      
-                      <button 
-                        type="button"
-                        onClick={() => setShowRestoreModal(true)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold border border-amber-500/20 transition-all cursor-pointer"
-                        title="بازگردانی فایل پشتیبان ZIP یا JSON قبل از ورود"
-                      >
-                        <Database size={13} className="text-amber-400" />
-                        <span>بازیابی دیتابیس / بکاپ</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                      <span className="flex items-center gap-1.5 text-slate-400 font-medium">
-                        <ShieldCheck size={14} className="text-emerald-400" />
-                        <span>سامانه ابری متصل به سرور مرکزی</span>
-                      </span>
-                      <span className="text-[10px] text-slate-500 dir-ltr font-mono">Dlkam Cloud</span>
-                    </div>
-                  )}
+                  {/* Footer Action Badges - Always available on Login screen across all environments */}
+                  <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 gap-2 flex-wrap">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('open-network-role-settings'));
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 font-bold border border-blue-500/20 transition-all cursor-pointer"
+                      title="تعیین اینکه این سیستم سرور اصلی است یا کلاینت متصل به سرور مرکزی شبکه"
+                    >
+                      <Server size={13} className="text-blue-400" />
+                      <span>نقش شبکه (سرور/کلاینت)</span>
+                    </button>
+                    
+                    <button 
+                      type="button"
+                      onClick={() => setShowRestoreModal(true)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold border border-amber-500/20 transition-all cursor-pointer"
+                      title="بازگردانی فایل پشتیبان ZIP یا JSON قبل از ورود"
+                    >
+                      <Database size={13} className="text-amber-400" />
+                      <span>بازیابی دیتابیس / بکاپ</span>
+                    </button>
+                  </div>
 
                 </form>
               </div>

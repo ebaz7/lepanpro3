@@ -409,11 +409,11 @@ function findNewestInstallerFile(platformType, preferredExt = null, runtime = nu
                     if (!isExe && !isMsi) continue;
 
                     // Distinguish Electron installers from Tauri installers:
-                    const isElectronFile = isElectronDir || f.includes('سامانه دلکام') || (lower.includes('setup') && !lower.startsWith('dlkam-desktop-') && !lower.startsWith('sayan-desktop-'));
-                    const isTauriFile = isTauriDir || lower.startsWith('dlkam-desktop-') || lower.startsWith('sayan-desktop-') || isMsi;
+                    const isElectronFile = isElectronDir || f.includes('سامانه دلکام') || lower.includes('electron') || (lower.includes('setup') && !lower.startsWith('dlkam-desktop-') && !lower.startsWith('sayan-desktop-'));
+                    const isTauriFile = isTauriDir || ((lower.startsWith('dlkam-desktop-') || lower.startsWith('sayan-desktop-') || isMsi) && !isElectronDir && !f.includes('سامانه دلکام'));
 
-                    if (isElectronReq && !isElectronFile) continue;
-                    if (isTauriReq && !isTauriFile) continue;
+                    if (isElectronReq && (isTauriFile || !isElectronFile)) continue;
+                    if (isTauriReq && (isElectronFile || !isTauriFile)) continue;
 
                     const hasDesktopKeyword = lower.includes('dlkam') || lower.includes('sayan') || lower.includes('setup') || lower.includes('delkam') || f.includes('سامانه دلکام') || f.includes('دلکام');
                     if (!hasDesktopKeyword) continue;

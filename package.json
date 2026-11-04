@@ -1,5 +1,7 @@
 {
   "name": "payment-order-system",
+  "description": "سامانه یکپارچه مالی، بازرگانی و کارتابل دستور پرداخت دلکام",
+  "author": "Delcom Systems",
   "private": true,
   "version": "1.0.29",
   "type": "module",

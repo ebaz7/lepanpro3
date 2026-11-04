@@ -252,7 +252,7 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
         return { hasUpdate: false, serverInfo: data };
       }
 
-      const defaultDesktopUrl = getEffectiveApiUrl(`/api/downloads/latest-desktop?v=${encodeURIComponent(actualDesktopVer)}&ext=exe`);
+      const defaultDesktopUrl = getEffectiveApiUrl(`/api/downloads/latest-desktop?v=${encodeURIComponent(actualDesktopVer)}&ext=exe&runtime=${runtime}`);
       data.version = actualDesktopVer;
       const rawUrl = desktopDownloadUrl || data.downloadUrl || '';
       data.downloadUrl = rawUrl

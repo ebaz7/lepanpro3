@@ -98,33 +98,45 @@ const refreshAccessToken = async (): Promise<string | null> => {
     return null;
 };
 
-export const getServerHost = () => {
-    const inTauri = isTauriDesktop();
+export const getServerHost = (): string => {
+    const inDesktop = isTauriDesktop();
     const isNativeCapacitor = Capacitor.isNativePlatform();
 
-    // Check if we are running strictly in the Cloud Run/AI Studio preview environment in the browser
-    const isDevEnvironment = !isNativeCapacitor && !inTauri && (
-        window.location.hostname.includes('run.app') || 
-        window.location.hostname.includes('google.com')
+    // Check if we are running strictly in the AI Studio preview sandbox environment
+    const isDevEnvironment = !isNativeCapacitor && !inDesktop && (
+        typeof window !== 'undefined' && (
+          window.location.hostname.includes('run.app') || 
+          window.location.hostname.includes('google.com')
+        )
     );
 
     if (isDevEnvironment) {
-        // If a stored server host is found in sandbox, we clear it because it causes loading/CORS errors
         if (localStorage.getItem('app_server_host')) {
             try { localStorage.removeItem('app_server_host'); } catch (e) {}
         }
         return '';
     }
 
-    // On Native client containers (Tauri Windows Desktop OR Capacitor Android/iOS App):
-    // Prioritize explicitly stored host or fallback to DEFAULT_SERVER_URL
-    if (inTauri || isNativeCapacitor) {
-        const stored = localStorage.getItem('app_server_host');
+    // Top Priority: Explicitly configured central server host in localStorage (Network Role / Settings)
+    try {
+        const stored = localStorage.getItem('app_server_host') || 
+                       localStorage.getItem('sayan_remote_server_url') || 
+                       localStorage.getItem('sayan_active_api_url');
         if (stored && stored.trim()) {
             let cleanStored = stored.trim().replace(/\/+$/, '');
             cleanStored = cleanStored.replace(/\/api\/?$/i, '');
-            return cleanStored;
+            if (cleanStored) {
+                // If stored host matches current origin on web, return empty string for clean relative requests
+                if (typeof window !== 'undefined' && cleanStored === window.location.origin) {
+                    return '';
+                }
+                return cleanStored;
+            }
         }
+    } catch (_) {}
+
+    // On Native containers (Electron / Tauri / Capacitor) without explicit stored host:
+    if (inDesktop || isNativeCapacitor) {
         if (DEFAULT_SERVER_URL) {
             let cleanDef = DEFAULT_SERVER_URL.trim().replace(/\/+$/, '');
             cleanDef = cleanDef.replace(/\/api\/?$/i, '');
@@ -133,27 +145,7 @@ export const getServerHost = () => {
         return '';
     }
 
-    // On standard Web browser:
-    // If accessed via Local LAN IP or localhost, always use relative origin
-    // so offline LAN mode works seamlessly even if a public domain was previously cached in localStorage.
-    if (typeof window !== 'undefined') {
-        const hn = window.location.hostname;
-        const isLocalLan = hn === 'localhost' || hn === '127.0.0.1' || hn.startsWith('192.168.') || hn.startsWith('10.') || /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hn);
-        if (isLocalLan) {
-            return '';
-        }
-    }
-
-    const stored = localStorage.getItem('app_server_host');
-    if (stored) {
-        let cleanStored = stored.trim().replace(/\/+$/, '');
-        cleanStored = cleanStored.replace(/\/api\/?$/i, '');
-        // On Web, if stored host matches current origin, return empty string to use clean relative paths
-        if (typeof window !== 'undefined' && cleanStored === window.location.origin) {
-            return '';
-        }
-        return cleanStored;
-    }
+    // Default Web Browser
     return '';
 };
 
