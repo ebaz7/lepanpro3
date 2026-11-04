@@ -23,8 +23,13 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
 
-  const startUrl = process.env.ELECTRON_START_URL || 'http://localhost:3000';
-  mainWindow.loadURL(startUrl);
+  if (app.isPackaged) {
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    mainWindow.loadFile(indexPath);
+  } else {
+    const startUrl = process.env.ELECTRON_START_URL || 'http://localhost:3000';
+    mainWindow.loadURL(startUrl);
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
