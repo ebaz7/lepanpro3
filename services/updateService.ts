@@ -1,5 +1,5 @@
 import { getEffectiveApiUrl } from './apiService';
-import { isTauriDesktop, isMobileApp, isWebApp } from '../utils/platformDetection';
+import { isTauriDesktop, isMobileApp, isWebApp, isElectronDesktop, getDesktopRuntime } from '../utils/platformDetection';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { FileOpener } from '@capacitor-community/file-opener';
 import toast from 'react-hot-toast';
@@ -147,14 +147,15 @@ export async function getNativeClientVersion(): Promise<{ version: string; build
 // - On Android (Capacitor): ONLY announces an update when an actual .apk file on disk has a higher version than the installed Android APK binary.
 export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverInfo: AppVersionInfo | null }> {
   try {
-    const versionApiUrl = getEffectiveApiUrl(`/api/version?t=${Date.now()}`);
+    const runtime = getDesktopRuntime();
+    const versionApiUrl = getEffectiveApiUrl(`/api/version?runtime=${runtime}&t=${Date.now()}`);
     let data: AppVersionInfo | null = null;
     let desktopDownloadUrl = '';
     let androidDownloadUrl = '';
 
     try {
       const res = await fetch(versionApiUrl, {
-        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'X-Client-Runtime': runtime }
       });
       if (res.ok) {
         data = await res.json();
@@ -169,12 +170,12 @@ export async function checkServerUpdate(): Promise<{ hasUpdate: boolean; serverI
     const isDesktop = isTauriDesktop();
     const isAndroid = isCapacitorAndroid();
 
-    // If on Desktop, also query desktop specific endpoint
+    // If on Desktop, also query desktop specific endpoint with explicit runtime
     if (isDesktop) {
       try {
-        const desktopApiUrl = getEffectiveApiUrl(`/api/desktop/check-update?t=${Date.now()}`);
+        const desktopApiUrl = getEffectiveApiUrl(`/api/desktop/check-update?runtime=${runtime}&t=${Date.now()}`);
         const desktopRes = await fetch(desktopApiUrl, {
-          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache', 'X-Client-Runtime': runtime }
         });
         if (desktopRes.ok) {
           const desktopData = await desktopRes.json();

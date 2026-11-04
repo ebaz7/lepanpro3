@@ -29,6 +29,30 @@ export const isTauriDesktop = (): boolean => {
 };
 
 /**
+ * Checks if running strictly inside Tauri (and NOT Electron).
+ */
+export const isTauriDesktopOnly = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (isElectronDesktop()) return false;
+  return Boolean(
+    (window as any).__TAURI__ ||
+    (window as any).__TAURI_IPC__ ||
+    (window as any).__TAURI_METADATA__ ||
+    navigator.userAgent.toLowerCase().includes('tauri')
+  );
+};
+
+/**
+ * Returns exact client runtime flavor: 'electron' | 'tauri' | 'android' | 'web'
+ */
+export const getDesktopRuntime = (): 'electron' | 'tauri' | 'android' | 'web' => {
+  if (isElectronDesktop()) return 'electron';
+  if (isTauriDesktopOnly()) return 'tauri';
+  if (isMobileApp()) return 'android';
+  return 'web';
+};
+
+/**
  * Checks if the current app environment is running on mobile (Android / iOS Capacitor).
  */
 export const isMobileApp = (): boolean => {

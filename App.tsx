@@ -1717,17 +1717,18 @@ function App() {
   useEffect(() => { 
       if (currentUser && !isPublicBioView) { 
           loadData(false); 
-          // Fast dynamic polling: 3.5s when active in foreground, 12s in background
+          // Ultra-efficient enterprise polling: 25s in foreground, 60s in background
+          // (Zero lag: instant sync happens immediately on window focus, visibility change, or order dispatch)
           const isAppActive = typeof document !== 'undefined' && !document.hidden;
-          const intervalDuration = isAppActive ? (isNative ? 4000 : 3500) : 12000;
+          const intervalDuration = isAppActive ? 25000 : 60000;
           const intervalId = setInterval(() => {
             if (!isPublicBioView) loadData(true);
           }, intervalDuration); 
           
-          // Heartbeat for Last Seen (Every 1 minute)
+          // Heartbeat for Last Seen (Every 1.5 minutes)
           const heartbeatId = setInterval(() => {
             if (!isPublicBioView) apiCall('/heartbeat', 'POST', { username: currentUser.username }).catch(console.error);
-          }, 60000);
+          }, 90000);
 
           // Immediate instant synchronization on window focus / tab visibility
           const handleVisibilitySync = () => {
@@ -1777,7 +1778,7 @@ function App() {
               }
           };
           
-          fastChatInterval = setInterval(fetchChatMessages, 2500);
+          fastChatInterval = setInterval(fetchChatMessages, 4500);
       }
       
       return () => {

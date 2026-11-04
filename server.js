@@ -321,7 +321,7 @@ function compareInstallerSemVer(v1, v2) {
 }
 
 function extractVersionFromFileName(fileName) {
-    const match = String(fileName || '').match(/(?:v|_|-)(\d+\.\d+\.\d+)/i);
+    const match = String(fileName || '').match(/(?:v|_|-|\s)(\d+\.\d+\.\d+)/i) || String(fileName || '').match(/(\d+\.\d+\.\d+)/i);
     return match ? match[1] : null;
 }
 
@@ -335,6 +335,11 @@ function readBuildConfigVersion(platformType) {
                 if (m && m[1]) return m[1];
             }
         } else {
+            const pkgPath = path.join(ROOT_DIR, 'package.json');
+            if (fs.existsSync(pkgPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                if (pkg?.version) return String(pkg.version).trim();
+            }
             const tauriConfPath = path.join(ROOT_DIR, 'src-tauri', 'tauri.conf.json');
             if (fs.existsSync(tauriConfPath)) {
                 const conf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
@@ -345,8 +350,11 @@ function readBuildConfigVersion(platformType) {
     return null;
 }
 
-function findNewestInstallerFile(platformType, preferredExt = null) {
+function findNewestInstallerFile(platformType, preferredExt = null, runtime = null) {
     const isAndroid = platformType === 'android';
+    const isElectronReq = String(runtime || '').toLowerCase() === 'electron';
+    const isTauriReq = String(runtime || '').toLowerCase() === 'tauri';
+
     const searchDirs = isAndroid
         ? [
             DOWNLOADS_DIR,
@@ -355,27 +363,62 @@ function findNewestInstallerFile(platformType, preferredExt = null) {
             ROOT_DIR,
             path.join(ROOT_DIR, 'android', 'app', 'build', 'outputs', 'apk', 'debug')
         ]
-        : [
-            DOWNLOADS_DIR,
-            PUBLIC_DOWNLOADS_DIR,
-            path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
-            path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
-            ROOT_DIR
-        ];
+        : (isElectronReq
+            ? [
+                path.join(ROOT_DIR, 'release-electron'),
+                DOWNLOADS_DIR,
+                PUBLIC_DOWNLOADS_DIR,
+                ROOT_DIR
+            ]
+            : (isTauriReq
+                ? [
+                    path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
+                    path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
+                    DOWNLOADS_DIR,
+                    PUBLIC_DOWNLOADS_DIR,
+                    ROOT_DIR
+                ]
+                : [
+                    DOWNLOADS_DIR,
+                    PUBLIC_DOWNLOADS_DIR,
+                    path.join(ROOT_DIR, 'release-electron'),
+                    path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'nsis'),
+                    path.join(ROOT_DIR, 'src-tauri', 'target', 'release', 'bundle', 'msi'),
+                    ROOT_DIR
+                ]
+            )
+        );
 
     const candidates = [];
     const seenPaths = new Set();
 
     for (const dir of searchDirs) {
         if (!fs.existsSync(dir)) continue;
+        const isElectronDir = dir.includes('release-electron');
+        const isTauriDir = dir.includes('src-tauri');
+
         try {
             const entries = fs.readdirSync(dir);
             for (const f of entries) {
                 const lower = f.toLowerCase();
-                const isMatch = isAndroid
-                    ? lower.endsWith('.apk')
-                    : (lower.endsWith('.msi') || (lower.endsWith('.exe') && (lower.includes('dlkam') || lower.includes('sayan') || lower.includes('setup') || lower.includes('delkam'))));
-                if (!isMatch) continue;
+                if (isAndroid) {
+                    if (!lower.endsWith('.apk')) continue;
+                } else {
+                    const isExe = lower.endsWith('.exe');
+                    const isMsi = lower.endsWith('.msi');
+                    if (!isExe && !isMsi) continue;
+
+                    // Distinguish Electron installers from Tauri installers:
+                    const isElectronFile = isElectronDir || f.includes('سامانه دلکام') || (lower.includes('setup') && !lower.startsWith('dlkam-desktop-') && !lower.startsWith('sayan-desktop-'));
+                    const isTauriFile = isTauriDir || lower.startsWith('dlkam-desktop-') || lower.startsWith('sayan-desktop-') || isMsi;
+
+                    if (isElectronReq && !isElectronFile) continue;
+                    if (isTauriReq && !isTauriFile) continue;
+
+                    const hasDesktopKeyword = lower.includes('dlkam') || lower.includes('sayan') || lower.includes('setup') || lower.includes('delkam') || f.includes('سامانه دلکام') || f.includes('دلکام');
+                    if (!hasDesktopKeyword) continue;
+                }
+
                 const fullPath = path.resolve(dir, f);
                 if (seenPaths.has(fullPath)) continue;
                 seenPaths.add(fullPath);
@@ -470,17 +513,18 @@ function sendAndroidInstallerResponse(req, res) {
 
 function sendDesktopInstallerResponse(req, res) {
     const reqExt = String(req.query?.ext || req.query?.format || '').toLowerCase();
+    const runtime = String(req.query?.runtime || req.headers['x-client-runtime'] || '').toLowerCase();
     const preferredExt = (reqExt === 'msi') ? 'msi' : 'exe';
-    const bestDesktop = findNewestInstallerFile('desktop', preferredExt);
+    const bestDesktop = findNewestInstallerFile('desktop', preferredExt, runtime);
     if (bestDesktop && fs.existsSync(bestDesktop.filePath)) {
         const isExe = bestDesktop.fileName.toLowerCase().endsWith('.exe');
         const ext = isExe ? 'exe' : 'msi';
-        const dlName = bestDesktop.version ? `dlkam-desktop-v${bestDesktop.version}.${ext}` : `dlkam-desktop-setup.${ext}`;
+        const dlName = bestDesktop.fileName || (bestDesktop.version ? `dlkam-desktop-v${bestDesktop.version}.${ext}` : `dlkam-desktop-setup.${ext}`);
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
         res.setHeader('Content-Type', isExe ? 'application/x-msdownload' : 'application/x-msi');
-        res.setHeader('Content-Disposition', `attachment; filename="${dlName}"`);
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(dlName)}"; filename*=UTF-8''${encodeURIComponent(dlName)}`);
         if (bestDesktop.size) {
             res.setHeader('Content-Length', String(bestDesktop.size));
         }
@@ -8489,11 +8533,14 @@ app.get('/api/desktop/updater.json', (req, res) => {
 app.get('/api/desktop/check-update', (req, res) => {
     const db = getDb();
     const settings = getSyncedVersionSettings(db);
-    const bestDesktop = findNewestInstallerFile('desktop', 'exe');
+    const runtime = String(req.query?.runtime || req.headers['x-client-runtime'] || '').toLowerCase();
+    const bestDesktop = findNewestInstallerFile('desktop', 'exe', runtime);
     const bestAndroid = findNewestInstallerFile('android');
-    const desktopVersion = bestDesktop?.version || settings.desktopLatestVersion || '1.0.0';
+    const desktopVersion = bestDesktop?.version || (runtime === 'electron' ? (readBuildConfigVersion('electron') || '1.0.0') : (settings.desktopLatestVersion || '1.0.0'));
     const androidVersion = bestAndroid?.version || settings.androidLatestVersion || '1.0.0';
     const desktopExt = bestDesktop?.ext || 'exe';
+    const desktopFileName = bestDesktop?.fileName || (bestDesktop ? `dlkam-desktop-v${desktopVersion}.${desktopExt}` : null);
+    const runtimeParam = runtime ? `&runtime=${runtime}` : '';
 
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json({
@@ -8502,13 +8549,13 @@ app.get('/api/desktop/check-update', (req, res) => {
         androidLatestVersion: androidVersion,
         hasDesktopInstaller: Boolean(bestDesktop),
         hasAndroidInstaller: Boolean(bestAndroid),
-        desktopFileName: bestDesktop ? `dlkam-desktop-v${desktopVersion}.${desktopExt}` : null,
+        desktopFileName: desktopFileName,
         desktopFileSize: bestDesktop?.size || 0,
         androidFileName: bestAndroid ? `dlkam-android-v${androidVersion}.apk` : null,
         androidFileSize: bestAndroid?.size || 0,
         releaseNotes: settings.desktopReleaseNotes || 'پایدار و به‌روز',
-        updateUrl: `/api/desktop/updater.json`,
-        directDownloadUrl: `/api/downloads/latest-desktop?v=${encodeURIComponent(desktopVersion)}&ext=${desktopExt}`,
+        updateUrl: `/api/desktop/updater.json?runtime=${runtime}`,
+        directDownloadUrl: `/api/downloads/latest-desktop?v=${encodeURIComponent(desktopVersion)}&ext=${desktopExt}${runtimeParam}`,
         androidDownloadUrl: `/api/downloads/latest-android?v=${encodeURIComponent(androidVersion)}`,
         autoCheck: settings.desktopAutoCheckUpdates !== false,
         updateIntervalMinutes: Number(settings.desktopUpdateIntervalMinutes) || 60,
@@ -10671,7 +10718,7 @@ app.post('/api/secretariat/quick-pdf', async (req, res) => {
             approvedBy = [],
             signatureImageUrls = [],
             signaturePosition = 'bottom_left',
-            signOffText = 'با تشکر',
+            signOffText = '',
             paperSize = 'A4',
             orientation = 'portrait',
             companyId = '',
@@ -10701,7 +10748,7 @@ app.post('/api/secretariat/quick-pdf', async (req, res) => {
             approvedBy,
             signatureImageUrls,
             signaturePosition,
-            signOffText,
+            signOffText: typeof signOffText === 'string' ? signOffText.trim() : '',
             paperSize,
             orientation,
             companyId: company?.id || companyId,
@@ -12302,14 +12349,17 @@ app.get('/api/version', (req, res) => {
     try {
         const db = typeof getDb === 'function' ? getDb() : {};
         const settings = getSyncedVersionSettings(db);
-        const bestDesktop = findNewestInstallerFile('desktop', 'exe');
+        const runtime = String(req.query?.runtime || req.headers['x-client-runtime'] || '').toLowerCase();
+        const bestDesktop = findNewestInstallerFile('desktop', 'exe', runtime);
         const bestAndroid = findNewestInstallerFile('android');
 
         const version = settings.systemVersion || bestDesktop?.version || bestAndroid?.version || '1.0.0';
         // Strictly use actual installer file versions on disk for Desktop and Android
-        const desktopLatestVersion = bestDesktop?.version || null;
+        const desktopLatestVersion = bestDesktop?.version || (runtime === 'electron' ? (readBuildConfigVersion('electron') || null) : null);
         const androidLatestVersion = bestAndroid?.version || null;
         const desktopExt = bestDesktop?.ext || 'exe';
+        const desktopFileName = bestDesktop?.fileName || (bestDesktop ? `dlkam-desktop-v${desktopLatestVersion}.${desktopExt}` : null);
+        const runtimeParam = runtime ? `&runtime=${runtime}` : '';
 
         const buildNumber = settings.systemBuildNumber || (settings.systemUpdatePublishedAt ? `b_${settings.systemUpdatePublishedAt}` : '100');
         const title = settings.releaseTitle || 'نسخه جدید سامانه';
@@ -12317,7 +12367,7 @@ app.get('/api/version', (req, res) => {
         const publishedAt = settings.systemUpdatePublishedAt || 0;
 
         const androidDownloadUrl = `/api/downloads/latest-android?v=${encodeURIComponent(androidLatestVersion || version)}`;
-        const downloadUrl = `/api/downloads/latest-desktop?v=${encodeURIComponent(desktopLatestVersion || version)}&ext=${desktopExt}`;
+        const downloadUrl = `/api/downloads/latest-desktop?v=${encodeURIComponent(desktopLatestVersion || version)}&ext=${desktopExt}${runtimeParam}`;
         
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         res.json({ 
@@ -12326,7 +12376,7 @@ app.get('/api/version', (req, res) => {
             androidLatestVersion,
             hasDesktopInstaller: Boolean(bestDesktop),
             hasAndroidInstaller: Boolean(bestAndroid),
-            desktopFileName: bestDesktop ? `dlkam-desktop-v${desktopLatestVersion}.${desktopExt}` : null,
+            desktopFileName: desktopFileName,
             desktopFileSize: bestDesktop?.size || 0,
             androidFileName: bestAndroid ? `dlkam-android-v${androidLatestVersion}.apk` : null,
             androidFileSize: bestAndroid?.size || 0,
@@ -12452,8 +12502,11 @@ async function handleQuoteRequest(req, res, type = 'poem') {
         }
     };
 
+function handleQuoteRequest(req, res) {
+    const type = req.query.type || 'poem';
+
     if (type === 'motivational') {
-        const motivationalFallbacks = [
+        const motivationalQuotes = [
             { text: "موفقیت مجموعه‌ای از تلاش‌های کوچک روزانه است که بارها و بارها تکرار می‌شوند.", author: "رابرت کالیر", title: "تلاش مستمر" },
             { text: "بزرگترین افتخار ما در این نیست که هرگز زمین نخوریم، بلکه در این است که پس از هر بار افتادن دوباره برخیزیم.", author: "کنفوسیوس", title: "تاب‌آوری و استقامت" },
             { text: "فرصت‌ها خودبه‌خود اتفاق نمی‌افتند، شما هستید که با اراده و عمل آن‌ها را خلق می‌کنید.", author: "کریس گروسر", title: "فرصت‌سازی" },
@@ -12473,168 +12526,58 @@ async function handleQuoteRequest(req, res, type = 'poem') {
             { text: "آینده در دستان کسانی است که به زیبایی آرمان‌ها و رویاهای شغلی و فردی خود ایمان راسخ دارند.", author: "النور روزولت", title: "آینده‌نگری" },
             { text: "همیشه به یاد داشته باشید: تمرکز، نظم و پیگیری مداوم از نبوغِ بدون تلاش بسیار قدرتمندتر است.", author: "آنتونی رابینز", title: "تمرکز و انگیزه" }
         ];
-
-        const motivationalSources = [
-            async () => {
-                // Online ZenQuotes / Inspiring API
-                const res = await fetchWithTimeout('https://zenquotes.io/api/random', 1500);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (Array.isArray(data) && data[0] && data[0].q) {
-                        return {
-                            text: data[0].q,
-                            author: data[0].a || 'بزرگان جهان',
-                            source: 'ZenQuotes Online',
-                            title: 'انگیزه و اندیشه جهانی'
-                        };
-                    }
-                }
-                throw new Error("ZenQuotes failed");
-            }
-        ];
-
-        for (const fetchSrc of motivationalSources) {
-            try {
-                const quote = await fetchSrc();
-                if (quote && quote.text) {
-                    return res.json(quote);
-                }
-            } catch (e) {
-                // Fallback to rich curated list
-            }
-        }
-
-        const randIdx = Math.floor(Math.random() * motivationalFallbacks.length);
-        const sel = motivationalFallbacks[randIdx];
+        const randIdx = Math.floor(Math.random() * motivationalQuotes.length);
+        const sel = motivationalQuotes[randIdx];
         return res.json({
             ...sel,
-            source: 'بانک انگیزه و انرژی مثبت',
+            source: 'بانک انگیزه و اندیشه سازمانی',
             title: sel.title || 'انرژی و موفقیت'
         });
     }
 
-    // Default: Poem
-    const poemFallbacks = [
-        { text: "سعدیا مرد نکونام نمیرد هرگز\nمرده آن است که نامش به نکویی نبرند", author: "سعدی" },
-        { text: "بنی آدم اعضای یک پیکرند\nکه در آفرینش ز یک گوهرند", author: "سعدی" },
-        { text: "در نومیدی بسی امید است\nپایان شب سیه سپید است", author: "نظامی" },
-        { text: "هر که در او جوهر دانایی است\nبر همه چیزش توانایی است", author: "نظامی" },
-        { text: "جهان یادگار است و ما رفتنی\nبه گیتی نماند به جز مردمی", author: "فردوسی" },
-        { text: "تو نیکی می‌کن و در دجله انداز\nکه ایزد در بیابانت دهد باز", author: "سعدی" },
-        { text: "آسایش دو گیتی تفسیر این دو حرف است\nبا دوستان مروت با دشمنان مدارا", author: "حافظ" },
-        { text: "عیب رندان مکن ای زاهد پاکیزه سرشت\nکه گناه دگران بر تو نخواهند نوشت", author: "حافظ" },
-        { text: "صبر و ظفر هر دو دوستان قدیمند\nبر اثر صبر نوبت ظفر آید", author: "حافظ" },
-        { text: "خدا کشتی آنجا که خواهد برد\nوگر ناخدا جامه بر تن درد", author: "سعدی" },
-        { text: "هرگز نمیرد آن که دلش زنده شد به عشق\nثبت است بر جریده عالم دوام ما", author: "حافظ" },
-        { text: "بشنو از نی چون حکایت می‌کند\nاز جدایی‌ها شکایت می‌کند", author: "مولانا" },
-        { text: "ای هیچ برای هیچ بر هیچ مپیچ\nدانی که پس از عمر چه ماند باقی؟\nمهر است و محبت است و باقی همه هیچ", author: "مولانا" },
-        { text: "کار ما نیست شناسایی راز گل سرخ\nکار ما شاید این است\nکه در افسون گل سرخ شناور باشیم", author: "سهراب سپهری" },
-        { text: "زندگی خالی نیست\nمهربانی هست، سیب هست، ایمان هست\nآری تا شقایق هست زندگی باید کرد", author: "سهراب سپهری" },
-        { text: "چشم‌ها را باید شست، جور دیگر باید دید\nواژه‌ها را باید شست", author: "سهراب سپهری" },
-        { text: "تو مگو همه به جنگند و ز صلح من چه آید\nتو یکی نه‌ای هزاری تو چراغ خود برافروز", author: "مولانا" },
-        { text: "توانا بود هر که دانا بود\nز دانش دل پیر برنا بود", author: "فردوسی" },
-        { text: "چون عهده نمی‌شود کسی فردا را\nحالی خوش کن تو این دل شیدا را", author: "خیام" },
-        { text: "از حادثه لرزند به خود قصرنشینان\nما خانه به دوشان غم طوفان نداریم", author: "صائب تبریزی" },
-        { text: "به راه بادیه رفتن به از نشستن باطل\nکه گر مراد نیابم به قدر وسع بکوشم", author: "سعدی" },
-        { text: "روزگار است این که گه عزت دهد گه خار دارد\nچرخ بازیگر از این بازیچه‌ها بسیار دارد", author: "قائم مقام فراهانی" },
-        { text: "عمر برف است و آفتاب تموز\nاندکی ماند و خواجه غره هنوز", author: "سعدی" },
-        { text: "مکن ز غصه شکایت که در طریق طلب\nبه راحتی نرسید آن که زحمتی نکشید", author: "حافظ" },
-        { text: "درخت دوستی بنشان که کام دل به بار آرد\nنهال دشمنی برکن که رنج بی‌شمار آرد", author: "حافظ" },
-        { text: "همت بلند دار که مردان روزگار\nاز همت بلند به جایی رسیده‌اند", author: "سعدی" },
-        { text: "گوهر پاک بباید که دگرگون نشود\nورنه هر سنگ و گلی گوهر نایاب شد", author: "پروین اعتصامی" },
-        { text: "اندیشه کردن به کار نکو\nسودمندتر از خود کار نکوست", author: "امیرخسرو دهلوی" },
-        { text: "گرت پایداری است در کار خویش\nشوی کامران سر فراز از پس خویش", author: "فردوسی" },
-        { text: "هیچ گنجی به از هنر نبود\nپیش دانا نکوتر از زر نبود", author: "فردوسی" },
-        { text: "مردی آن نیست که بر تن بکشی جامهٔ زر\nمردی آن است که بر خلق خدا سود رسد", author: "سعدی" },
-        { text: "به رنج اندر است ای خردمند گنج\nنیابد کسی گنج نابرده رنج", author: "فردوسی" },
-        { text: "اگر هنر داری و فضل و کمال\nبه کوش و دگرگون مکن این جمال", author: "سعدی" }
+    // Default: Poem (100% Offline Persian Heritage Anthology)
+    const poemList = [
+        { text: "سعدیا مرد نکونام نمیرد هرگز\nمرده آن است که نامش به نکویی نبرند", author: "سعدی", title: "نام نیک" },
+        { text: "بنی آدم اعضای یک پیکرند\nکه در آفرینش ز یک گوهرند", author: "سعدی", title: "همدلی و انسانیت" },
+        { text: "در نومیدی بسی امید است\nپایان شب سیه سپید است", author: "نظامی", title: "امید و روشنایی" },
+        { text: "هر که در او جوهر دانایی است\nبر همه چیزش توانایی است", author: "نظامی", title: "دانش و توانمندی" },
+        { text: "جهان یادگار است و ما رفتنی\nبه گیتی نماند به جز مردمی", author: "فردوسی", title: "نیک‌نامی و اخلاق" },
+        { text: "تو نیکی می‌کن و در دجله انداز\nکه ایزد در بیابانت دهد باز", author: "سعدی", title: "نیکوکاری" },
+        { text: "آسایش دو گیتی تفسیر این دو حرف است\nبا دوستان مروت با دشمنان مدارا", author: "حافظ", title: "مدارا و مروت" },
+        { text: "عیب رندان مکن ای زاهد پاکیزه سرشت\nکه گناه دگران بر تو نخواهند نوشت", author: "حافظ", title: "انصاف و همدلی" },
+        { text: "صبر و ظفر هر دو دوستان قدیمند\nبر اثر صبر نوبت ظفر آید", author: "حافظ", title: "صبر و پیروزی" },
+        { text: "خدا کشتی آنجا که خواهد برد\nوگر ناخدا جامه بر تن درد", author: "سعدی", title: "توکل و آرامش" },
+        { text: "هرگز نمیرد آن که دلش زنده شد به عشق\nثبت است بر جریده عالم دوام ما", author: "حافظ", title: "ماندگاری" },
+        { text: "بشنو از نی چون حکایت می‌کند\nاز جدایی‌ها شکایت می‌کند", author: "مولانا", title: "نوای نی" },
+        { text: "ای هیچ برای هیچ بر هیچ مپیچ\nدانی که پس از عمر چه ماند باقی؟\nمهر است و محبت است و باقی همه هیچ", author: "مولانا", title: "حکمت و محبت" },
+        { text: "کار ما نیست شناسایی راز گل سرخ\nکار ما شاید این است\nکه در افسون گل سرخ شناور باشیم", author: "سهراب سپهری", title: "نگاه نو" },
+        { text: "زندگی خالی نیست\nمهربانی هست، سیب هست، ایمان هست\nآری تا شقایق هست زندگی باید کرد", author: "سهراب سپهری", title: "شوق زندگی" },
+        { text: "چشم‌ها را باید شست، جور دیگر باید دید\nواژه‌ها را باید شست", author: "سهراب سپهری", title: "دیدگاه تازه" },
+        { text: "تو مگو همه به جنگند و ز صلح من چه آید\nتو یکی نه‌ای هزاری تو چراغ خود برافروز", author: "مولانا", title: "روشن‌گری و امید" },
+        { text: "توانا بود هر که دانا بود\nز دانش دل پیر برنا بود", author: "فردوسی", title: "دانایی" },
+        { text: "چون عهده نمی‌شود کسی فردا را\nحالی خوش کن تو این دل شیدا را", author: "خیام", title: "فرصت اکنون" },
+        { text: "از حادثه لرزند به خود قصرنشینان\nما خانه به دوشان غم طوفان نداریم", author: "صائب تبریزی", title: "قناعت و استواری" },
+        { text: "به راه بادیه رفتن به از نشستن باطل\nکه گر مراد نیابم به قدر وسع بکوشم", author: "سعدی", title: "پشتکار و تلاش" },
+        { text: "روزگار است این که گه عزت دهد گه خار دارد\nچرخ بازیگر از این بازیچه‌ها بسیار دارد", author: "قائم مقام فراهانی", title: "فراز و نشیب روزگار" },
+        { text: "عمر برف است و آفتاب تموز\nاندکی ماند و خواجه غره هنوز", author: "سعدی", title: "غنیمت وقت" },
+        { text: "مکن ز غصه شکایت که در طریق طلب\nبه راحتی نرسید آن که زحمتی نکشید", author: "حافظ", title: "رنج و آسایش" },
+        { text: "درخت دوستی بنشان که کام دل به بار آرد\nنهال دشمنی برکن که رنج بی‌شمار آرد", author: "حافظ", title: "دوستی و مهر" },
+        { text: "همت بلند دار که مردان روزگار\nاز همت بلند به جایی رسیده‌اند", author: "سعدی", title: "بلندهمتی" },
+        { text: "گوهر پاک بباید که دگرگون نشود\nورنه هر سنگ و گلی گوهر نایاب شد", author: "پروین اعتصامی", title: "اصالت و گوهر وجود" },
+        { text: "اندیشه کردن به کار نکو\nسودمندتر از خود کار نکوست", author: "امیرخسرو دهلوی", title: "اندیشه نیک" },
+        { text: "گرت پایداری است در کار خویش\nشوی کامران سر فراز از پس خویش", author: "فردوسی", title: "استواری در کار" },
+        { text: "هیچ گنجی به از هنر نبود\nپیش دانا نکوتر از زر نبود", author: "فردوسی", title: "ارزش هنر و مهارت" },
+        { text: "مردی آن نیست که بر تن بکشی جامهٔ زر\nمردی آن است که بر خلق خدا سود رسد", author: "سعدی", title: "خدمت و فایده‌رسانی" },
+        { text: "به رنج اندر است ای خردمند گنج\nنیابد کسی گنج نابرده رنج", author: "فردوسی", title: "گنج و رنج" },
+        { text: "اگر هنر داری و فضل و کمال\nبه کوش و دگرگون مکن این جمال", author: "سعدی", title: "کمال و هنر" }
     ];
 
-    const poemSources = [
-        async () => {
-            // Source 1: Ganjoor Random Single Verse (c.ganjoor.net/beyt-json.php)
-            const res = await fetchWithTimeout('https://c.ganjoor.net/beyt-json.php', 3000);
-            if (res.ok) {
-                const data = await res.json();
-                if (data && data.m1 && data.m2) {
-                    return {
-                        text: `${data.m1}\n${data.m2}`,
-                        author: data.poet || 'شاعر پارسی‌گو',
-                        source: 'تک‌بیت تصادفی (c.ganjoor.net)',
-                        title: 'گنجور آنلاین'
-                    };
-                }
-            }
-            throw new Error("Invalid response from beyt-json.php");
-        },
-        async () => {
-            // Source 2: Ganjoor Poem API
-            const res = await fetchWithTimeout('https://api.ganjoor.net/api/ganjoor/poem/random', 3000);
-            if (res.ok) {
-                const data = await res.json();
-                let poet = 'شاعر پارسی‌گو';
-                if (data.fullTitle) {
-                    poet = data.fullTitle.split(' » ')[0].trim();
-                }
-                let lines = (data.plainText || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-                if (lines.length > 4) {
-                    const maxStart = Math.max(0, lines.length - 4);
-                    const startIdx = Math.floor(Math.random() * (maxStart + 1));
-                    lines = lines.slice(startIdx, startIdx + 4);
-                }
-                if (lines.length >= 2) {
-                    return {
-                        text: lines.join('\n'),
-                        author: poet,
-                        source: 'شعر تصادفی (api.ganjoor.net)',
-                        title: data.title || data.fullTitle
-                    };
-                }
-            }
-            throw new Error("Invalid response from poem/random");
-        },
-        async () => {
-            // Source 3: Ganjoor Hafez Fal API
-            const res = await fetchWithTimeout('https://api.ganjoor.net/api/ganjoor/hafez/faal', 3000);
-            if (res.ok) {
-                const data = await res.json();
-                let lines = (data.plainText || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-                if (lines.length > 4) {
-                    const maxStart = Math.max(0, lines.length - 4);
-                    const startIdx = Math.floor(Math.random() * (maxStart + 1));
-                    lines = lines.slice(startIdx, startIdx + 4);
-                }
-                if (lines.length >= 2) {
-                    return {
-                        text: lines.join('\n'),
-                        author: 'حافظ شیرازی',
-                        source: 'فال حافظ (api.ganjoor.net)',
-                        title: data.title || data.fullTitle
-                    };
-                }
-            }
-            throw new Error("Invalid response from hafez/faal");
-        }
-    ];
-
-    const shuffled = [...poemSources].sort(() => Math.random() - 0.5);
-    for (const fetchSource of shuffled) {
-        try {
-            const quote = await fetchSource();
-            if (quote && quote.text) {
-                return res.json(quote);
-            }
-        } catch (e) {
-            // continue next source
-        }
-    }
-
-    const randomIdx = Math.floor(Math.random() * poemFallbacks.length);
-    const selected = poemFallbacks[randomIdx];
+    const randPoemIdx = Math.floor(Math.random() * poemList.length);
+    const selPoem = poemList[randPoemIdx];
     return res.json({
-        ...selected,
-        source: 'دیوان اشعار پارسی',
-        title: 'شعر پارسی'
+        ...selPoem,
+        source: 'گنجینه شعر و ادب پارسی',
+        title: selPoem.title || 'شعر و حکمت پارسی'
     });
 }
 

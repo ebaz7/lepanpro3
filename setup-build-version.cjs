@@ -20,7 +20,11 @@ const gradlePath = path.join(ROOT_DIR, 'android', 'app', 'build.gradle');
 const updateServicePath = path.join(ROOT_DIR, 'services', 'updateService.ts');
 const releaseJsonPath = path.join(ROOT_DIR, 'release-version.json');
 const dbPaths = [path.join(ROOT_DIR, 'database.json'), path.join(ROOT_DIR, 'db.json')];
-const downloadDirs = [path.join(ROOT_DIR, 'downloads'), path.join(ROOT_DIR, 'public', 'downloads')];
+const downloadDirs = [
+  path.join(ROOT_DIR, 'downloads'),
+  path.join(ROOT_DIR, 'public', 'downloads'),
+  path.join(ROOT_DIR, 'release-electron')
+];
 
 function compareSemVer(v1, v2) {
   if (!v1 && !v2) return 0;
@@ -39,7 +43,7 @@ function compareSemVer(v1, v2) {
 }
 
 function extractVersionFromFileName(fileName) {
-  const match = String(fileName || '').match(/(?:v|_|-)(\d+\.\d+\.\d+)/i);
+  const match = String(fileName || '').match(/(?:v|_|-|\s)(\d+\.\d+\.\d+)/i) || String(fileName || '').match(/(\d+\.\d+\.\d+)/i);
   return match ? match[1] : null;
 }
 

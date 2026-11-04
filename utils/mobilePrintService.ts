@@ -4,6 +4,7 @@ import { Share } from '@capacitor/share';
 import { FileOpener } from '@capacitor-community/file-opener';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { getServerHost } from '../services/apiService';
 
 export interface MobilePrintOptions {
     title?: string;
@@ -121,6 +122,30 @@ export const executeCrossPlatformPrint = async (
         } else {
             // Clone element and copy all document styles for 100% visual fidelity
             const clone = elementOrHtml.cloneNode(true) as HTMLElement;
+            const activeHost = (typeof window !== 'undefined' ? (getServerHost() || window.location.origin) : '').replace(/\/+$/, '');
+
+            // Ensure all images in clone have absolute URLs and exact print color adjustment
+            const liveImages = Array.from(elementOrHtml.querySelectorAll('img'));
+            const cloneImages = Array.from(clone.querySelectorAll('img'));
+            cloneImages.forEach((img, idx) => {
+                const liveImg = liveImages[idx];
+                const currentSrc = liveImg?.currentSrc || liveImg?.src || img.getAttribute('src');
+                if (currentSrc) {
+                    if (currentSrc.startsWith('data:') || currentSrc.startsWith('blob:')) {
+                        img.src = currentSrc;
+                    } else if (currentSrc.startsWith('http://') || currentSrc.startsWith('https://')) {
+                        img.src = currentSrc;
+                    } else if (currentSrc.startsWith('/')) {
+                        img.src = activeHost ? `${activeHost}${currentSrc}` : currentSrc;
+                    } else if (!currentSrc.includes('://')) {
+                        img.src = activeHost ? `${activeHost}/${currentSrc}` : currentSrc;
+                    }
+                }
+                img.setAttribute('crossorigin', 'anonymous');
+                img.style.setProperty('-webkit-print-color-adjust', 'exact');
+                img.style.setProperty('print-color-adjust', 'exact');
+            });
+
             const docStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
                 .map(node => node.outerHTML)
                 .join('\n');
@@ -133,11 +158,13 @@ export const executeCrossPlatformPrint = async (
                 <head>
                     <meta charset="utf-8">
                     <title>${title}</title>
+                    <base href="${activeHost ? `${activeHost}/` : (typeof window !== 'undefined' ? `${window.location.origin}/` : '')}">
                     ${docStyles}
                     <style>
                         @page { size: ${pageSize}; margin: 0mm !important; }
                         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
                         html, body { font-family: 'Vazirmatn', Tahoma, sans-serif; margin: 0 !important; padding: 0 !important; direction: rtl; background: #ffffff !important; }
+                        img { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
                         @media print {
                             @page { size: ${pageSize}; margin: 0mm !important; }
                             html, body, body * {

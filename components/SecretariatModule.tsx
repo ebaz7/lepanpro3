@@ -333,6 +333,7 @@ import {
 import { getUsers } from "../services/authService";
 import { generateUUID, getCurrentShamsiDate } from "../constants";
 import { shareElementToChat, openSendToChat } from "../services/chatShareService";
+import { getServerHost, resolveImageUrl } from "../services/apiService";
 
 const getRoleTitleInPersian = (role?: string): string => {
   if (!role) return "کاربر سیستم";
@@ -561,14 +562,17 @@ const getAttachmentDisplay = (letter?: { hasAttachment?: boolean; attachmentDesc
 
 const getEffectiveLetterheadDisplayUrl = (settings?: SecretariatCompanySettings | null) => {
   if (!settings) return "";
+  let url = "";
   if (settings.letterheadUrl && !settings.letterheadUrl.toLowerCase().endsWith(".pdf")) {
-    return settings.letterheadUrl;
+    url = settings.letterheadUrl;
+  } else {
+    const pdfUrl = settings.pdfLetterheadUrl || (settings.letterheadUrl?.toLowerCase().endsWith(".pdf") ? settings.letterheadUrl : "");
+    if (pdfUrl) {
+      url = `/api/secretariat/pdf-preview?url=${encodeURIComponent(pdfUrl)}`;
+    }
   }
-  const pdfUrl = settings.pdfLetterheadUrl || (settings.letterheadUrl?.toLowerCase().endsWith(".pdf") ? settings.letterheadUrl : "");
-  if (pdfUrl) {
-    return `/api/secretariat/pdf-preview?url=${encodeURIComponent(pdfUrl)}`;
-  }
-  return "";
+  if (!url) return "";
+  return resolveImageUrl(url);
 };
 
 interface SecretariatModuleProps {
@@ -682,7 +686,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     selectedStampIds: [] as string[],
     selectedStampId: "" as string,
     isPrivate: false,
-    signOffText: "با احترام",
+    signOffText: "",
     signers: [] as { name: string; title: string; userId?: string }[],
     paperSize: "A4" as "A4" | "A5",
     orientation: "portrait" as "portrait" | "landscape",
@@ -721,7 +725,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
     const activeSettings = secSettings.find(
       (s) => s.companyId === selectedCompany?.id,
     );
-    const defaultSignOff = activeSettings?.defaultSignOffText || "با احترام";
+    const defaultSignOff = activeSettings?.defaultSignOffText || "";
     setNewLetterForm({
       ...initialFormState,
       signOffText: defaultSignOff,
@@ -2126,7 +2130,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
           approvedBy: (source as any).approvedBy || [],
           signatureImageUrls: (source as any).signatureImageUrls || [],
           signaturePosition: source.signaturePosition || "bottom_left",
-          signOffText: source.signOffText || "با تشکر",
+          signOffText: typeof source.signOffText === "string" ? source.signOffText.trim() : "",
           paperSize: source.paperSize || "A4",
           orientation: source.orientation || "portrait",
           companyId: (source as any).companyId || selectedCompany?.id || "",
@@ -2616,7 +2620,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       if (!editingLetterId) {
         setNewLetterForm((prev) => ({
           ...prev,
-          signOffText: activeSettings.defaultSignOffText || prev.signOffText || "با احترام",
+          signOffText: activeSettings.defaultSignOffText !== undefined ? activeSettings.defaultSignOffText : (prev.signOffText ?? ""),
         }));
       }
     }
@@ -2651,7 +2655,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       wordLetterheadUrl: "",
       letterheadFontFamily: "Vazirmatn",
       meetingMinutesTemplate: "",
-      defaultSignOffText: "با احترام",
+      defaultSignOffText: "",
       companyStampUrl: "",
       companyStampSize: 120,
       companyStampOpacity: 75,
@@ -2891,14 +2895,17 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   const handleOpenNewLetterModal = () => {
     resetForm();
     const currentDate = getCurrentShamsiDate();
+    const activeSettings = secSettings.find(
+      (s) => s.companyId === selectedCompany?.id,
+    );
     const defaultBody =
       companySettingsForm.meetingMinutesTemplate ||
-      "<p>با سلام و احترام،</p><p><br></p><p><br></p><p>با تشکر</p>";
+      "<p>با سلام و احترام،</p><p><br></p><p><br></p>";
     setNewLetterForm((p) => ({
       ...p,
       date: `${currentDate.year}/${String(currentDate.month).padStart(2, "0")}/${String(currentDate.day).padStart(2, "0")}`,
       content: defaultBody,
-      signOffText: "با تشکر",
+      signOffText: activeSettings?.defaultSignOffText || "",
     }));
     setShowNewLetterModal(true);
   };
@@ -2920,7 +2927,7 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
       selectedStampIds: letter.selectedStampIds || [],
       selectedStampId: (letter.selectedStampIds && letter.selectedStampIds[0]) || "",
       isPrivate: letter.isPrivate || false,
-      signOffText: letter.signOffText || "با تشکر",
+      signOffText: letter.signOffText !== undefined && letter.signOffText !== null ? letter.signOffText : "",
       signers: letter.signers || [],
       paperSize: letter.paperSize || "A4",
       orientation: letter.orientation || "portrait",
@@ -9330,6 +9337,11 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
                         <img
                           src={getEffectiveLetterheadDisplayUrl(printSettings)}
                           alt="سربرگ رسمی"
+                          crossOrigin="anonymous"
+                          style={{
+                            printColorAdjust: "exact",
+                            WebkitPrintColorAdjust: "exact",
+                          }}
                           className="absolute inset-0 w-full h-full object-fill opacity-100 z-0 pointer-events-none select-none"
                         />
                       )}

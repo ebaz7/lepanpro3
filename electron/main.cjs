@@ -1,8 +1,94 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Tray, Menu, Notification, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-let mainWindow;
+let mainWindow = null;
+let tray = null;
+let isQuitting = false;
+
+// Optimize Chromium startup, hardware rendering flags, and cap V8 heap to prevent memory bloat
+try {
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('disable-background-timer-throttling');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  app.commandLine.appendSwitch('js-flags', '--max-old-space-size=512');
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.delkam.erp');
+  }
+} catch (_) {}
+
+function createTray() {
+  if (tray) return;
+
+  const iconPath = path.join(__dirname, '../app-icon.png');
+  let trayIcon;
+  try {
+    if (fs.existsSync(iconPath)) {
+      trayIcon = nativeImage.createFromPath(iconPath);
+      if (process.platform === 'win32') {
+        trayIcon = trayIcon.resize({ width: 16, height: 16 });
+      }
+    }
+  } catch (err) {
+    console.warn('Tray icon error:', err);
+  }
+
+  tray = new Tray(trayIcon || iconPath);
+  tray.setToolTip('سامانه هوشمند دلکام (فعال در پس‌زمینه)');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'باز کردن سامانه دلکام',
+      click: () => {
+        if (mainWindow) {
+          if (!mainWindow.isVisible()) mainWindow.show();
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+        }
+      }
+    },
+    {
+      label: 'بررسی پیام‌ها و اعلان‌ها',
+      click: () => {
+        if (mainWindow) {
+          if (!mainWindow.isVisible()) mainWindow.show();
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+          mainWindow.webContents.send('open-tab', 'chat');
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'خروج کامل از برنامه',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on('double-click', () => {
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
+  tray.on('click', () => {
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -10,6 +96,8 @@ function createWindow() {
     height: 800,
     minWidth: 1024,
     minHeight: 600,
+    show: false,
+    backgroundColor: '#0f172a',
     title: 'دلکام - سامانه مالی و بازرگانی',
     icon: path.join(__dirname, '../app-icon.png'),
     webPreferences: {
@@ -17,11 +105,26 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      webSecurity: false
+      webSecurity: false,
+      spellcheck: false,
+      backgroundThrottling: false
     }
   });
 
   mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Background Persistence: Close button hides to System Tray instead of terminating
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+      return false;
+    }
+  });
 
   if (app.isPackaged) {
     const indexPath = path.join(__dirname, '../dist/index.html');
@@ -113,10 +216,54 @@ ipcMain.handle('open-local-file-dir', async (event, fileName) => {
   }
 });
 
-app.whenReady().then(createWindow);
+// 6. Show Native Windows Toast Notification (Action Center)
+ipcMain.handle('show-native-notification', (event, { title, body, silent }) => {
+  try {
+    if (Notification.isSupported()) {
+      const iconPath = path.join(__dirname, '../app-icon.png');
+      const notif = new Notification({
+        title: title || 'سامانه دلکام',
+        body: body || '',
+        icon: fs.existsSync(iconPath) ? iconPath : undefined,
+        silent: !!silent
+      });
+      notif.on('click', () => {
+        if (mainWindow) {
+          if (!mainWindow.isVisible()) mainWindow.show();
+          if (mainWindow.isMinimized()) mainWindow.restore();
+          mainWindow.focus();
+        }
+      });
+      notif.show();
+      return true;
+    }
+  } catch (err) {
+    console.error('Failed to show native notification:', err);
+  }
+  return false;
+});
+
+// 7. Focus or restore window
+ipcMain.handle('focus-window', () => {
+  if (mainWindow) {
+    if (!mainWindow.isVisible()) mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+app.whenReady().then(() => {
+  createWindow();
+  createTray();
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+});
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // If quitting or on macOS without tray, allow quit
+  if (isQuitting || process.platform === 'darwin') {
     app.quit();
   }
 });
@@ -124,5 +271,8 @@ app.on('window-all-closed', () => {
 app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
+  } else {
+    mainWindow.show();
   }
 });
+

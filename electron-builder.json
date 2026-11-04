@@ -19,12 +19,17 @@
         "arch": ["x64"]
       }
     ],
-    "icon": "app-icon.png"
+    "icon": "app-icon.png",
+    "requestedExecutionLevel": "asInvoker"
   },
   "nsis": {
     "oneClick": false,
+    "perMachine": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
-    "createStartMenuShortcut": true
-  }
+    "createStartMenuShortcut": true,
+    "differentialPackage": false,
+    "packElevateHelper": false
+  },
+  "compression": "normal"
 }

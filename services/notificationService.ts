@@ -3,8 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Preferences } from '@capacitor/preferences';
-import { apiCall } from './apiService';
-import { isTauriDesktop } from '../utils/platformDetection';
+import { isTauriDesktop, isElectronDesktop } from '../utils/platformDetection';
 
 const PREF_KEY = 'app_notification_pref';
 
@@ -70,6 +69,11 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
           console.error("Push Registration Error:", e);
           return false;
       }
+  }
+
+  // Electron Desktop Windows/Linux/Mac Logic
+  if (isElectronDesktop()) {
+      return true;
   }
 
   // Tauri Desktop Windows/Mac/Linux Logic
@@ -557,6 +561,19 @@ export const sendNotification = async (title: string, body: string, data?: any) 
           });
       } catch (e) { console.error('LocalNotifications error', e); }
       return;
+  }
+
+  // Electron Desktop Native Windows Notification (Toast / Action Center)
+  if (isElectronDesktop()) {
+      try {
+          const electronAPI = (window as any).electronAPI;
+          if (electronAPI && typeof electronAPI.showNativeNotification === 'function') {
+              electronAPI.showNativeNotification(title, body, { id: idValue });
+              return;
+          }
+      } catch (e) {
+          console.warn('Electron native notification dispatch error:', e);
+      }
   }
 
   if (isTauriDesktop()) {

@@ -2379,16 +2379,19 @@ export const generateSecretariatLetterPDF = async (
       rawContent.includes("ارادتمند") ||
       rawContent.includes("تجدید احترام");
 
+    const effectiveSignOff =
+      typeof letter.signOffText === "string" ? letter.signOffText.trim() : "";
+
     const hasAnySignersOrStamp =
       Boolean(signersHtml) ||
       Boolean(stampHtml) ||
       Boolean(extraSignaturesHtml) ||
-      (!hasSignOffInContent && Boolean(letter.signOffText));
+      (!hasSignOffInContent && Boolean(effectiveSignOff));
 
     if (hasAnySignersOrStamp) {
       signaturesHtml = `
         <div class="signatures" style="${sigStyle}">
-          ${!hasSignOffInContent && letter.signOffText ? `<div class="sign-off-text" style="white-space: pre-wrap;">${letter.signOffText}</div>` : ""}
+          ${!hasSignOffInContent && effectiveSignOff ? `<div class="sign-off-text" style="white-space: pre-wrap;">${effectiveSignOff}</div>` : ""}
           ${signersHtml}
           ${
             stampHtml || extraSignaturesHtml
@@ -2822,7 +2825,9 @@ export const generateSecretariatLetterDoc = async (
 
           // Signers block
           if (letter.signers && letter.signers.length > 0) {
-            pList.push(createRtlP("با تشکر و تجدید احترام", true, 24, "left", 120));
+            if (letter.signOffText && String(letter.signOffText).trim()) {
+              pList.push(createRtlP(String(letter.signOffText).trim(), true, 24, "left", 120));
+            }
             for (const s of letter.signers) {
               pList.push(createRtlP(`${s.name || ""}${s.title ? ` (${s.title})` : ""}`, true, 24, "left", 80));
             }
@@ -2976,7 +2981,7 @@ export const generateSecretariatLetterDoc = async (
             </div>
             
             <div style="margin-top: 40px; text-align: left; width: 100%; direction: rtl;">
-                <div style="font-weight: bold; font-size: 11pt; margin-bottom: 8px;">${letter.signOffText || "با تشکر"}</div>
+                ${letter.signOffText && String(letter.signOffText).trim() ? `<div style="font-weight: bold; font-size: 11pt; margin-bottom: 8px;">${letter.signOffText}</div>` : ""}
                 ${
                   letter.signers && letter.signers.length > 0
                     ? `
