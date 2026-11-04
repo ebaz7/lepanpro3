@@ -164,13 +164,35 @@ ipcMain.handle('save-and-open-local-file', async (event, { fileName, bytes }) =>
   try {
     const downloadsDir = app.getPath('downloads');
     const filePath = path.join(downloadsDir, fileName);
-    const buffer = Buffer.from(bytes);
+    let buffer;
+    if (Buffer.isBuffer(bytes)) {
+      buffer = bytes;
+    } else if (bytes instanceof Uint8Array || bytes instanceof ArrayBuffer) {
+      buffer = Buffer.from(bytes);
+    } else if (bytes?.buffer) {
+      buffer = Buffer.from(bytes.buffer);
+    } else {
+      buffer = Buffer.from(bytes);
+    }
     fs.writeFileSync(filePath, buffer);
     await shell.openPath(filePath);
     return filePath;
   } catch (err) {
     console.error('Failed to save and open local update file:', err);
     throw err;
+  }
+});
+
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      await shell.openExternal(url);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error('Failed to open external URL in browser:', err);
+    return false;
   }
 });
 

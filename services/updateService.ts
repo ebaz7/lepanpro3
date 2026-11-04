@@ -435,6 +435,11 @@ export async function openDirectUpdateLink(rawUrl: string): Promise<void> {
 
   if (isDesktop) {
     try {
+      const electronBridge = win.electronAPI || win.electron;
+      if (electronBridge?.openExternal) {
+        await electronBridge.openExternal(cacheBustedUrl);
+        return;
+      }
       if (win.__TAURI__?.shell?.open) {
         await win.__TAURI__.shell.open(cacheBustedUrl);
         return;
@@ -600,7 +605,7 @@ export async function applyApplicationUpdate(
           onProgress?.(2, `در حال دانلود نسخه جدید ویندوز (v${targetVer})...`);
           const exeBlob = await fetchBinaryWithProgress(downloadUrl, serverInfo?.desktopFileSize || 15000000, onProgress);
           const arrayBuffer = await exeBlob.arrayBuffer();
-          const bytes = Array.from(new Uint8Array(arrayBuffer));
+          const bytes = new Uint8Array(arrayBuffer);
 
           onProgress?.(95, 'ذخیره فایل و اجرای نصاب ویندوز...');
           if (electronBridge.saveAndOpenLocalFile) {
