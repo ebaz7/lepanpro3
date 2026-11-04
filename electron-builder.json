@@ -26,10 +26,13 @@
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
+    "uninstallPreviousApp": true,
+    "deleteAppDataOnUninstall": false,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "differentialPackage": false,
-    "packElevateHelper": false
+    "packElevateHelper": false,
+    "guid": "2c45c88c-b358-4255-a539-07eba6414df0"
   },
   "compression": "normal"
 }
