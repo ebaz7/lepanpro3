@@ -2373,11 +2373,13 @@ export const generateSecretariatLetterPDF = async (
     );
 
     const hasSignOffInContent =
-      rawContent.includes("با تشکر") ||
-      rawContent.includes("با احترام") ||
-      rawContent.includes("سپاسگزارم") ||
-      rawContent.includes("ارادتمند") ||
-      rawContent.includes("تجدید احترام");
+      rawContent.includes("تشکر") ||
+      rawContent.includes("احترام") ||
+      rawContent.includes("سپاس") ||
+      rawContent.includes("ارادت") ||
+      rawContent.includes("توفیق") ||
+      rawContent.includes("کمال") ||
+      rawContent.includes("همکاری");
 
     const effectiveSignOff =
       typeof letter.signOffText === "string" ? letter.signOffText.trim() : "";

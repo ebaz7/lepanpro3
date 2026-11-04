@@ -562,14 +562,14 @@ const getAttachmentDisplay = (letter?: { hasAttachment?: boolean; attachmentDesc
 
 const getEffectiveLetterheadDisplayUrl = (settings?: SecretariatCompanySettings | null) => {
   if (!settings) return "";
+  const rawImg = settings.letterheadUrl || "";
+  const pdfUrl = settings.pdfLetterheadUrl || (rawImg.toLowerCase().endsWith(".pdf") ? rawImg : "");
+
   let url = "";
-  if (settings.letterheadUrl && !settings.letterheadUrl.toLowerCase().endsWith(".pdf")) {
-    url = settings.letterheadUrl;
-  } else {
-    const pdfUrl = settings.pdfLetterheadUrl || (settings.letterheadUrl?.toLowerCase().endsWith(".pdf") ? settings.letterheadUrl : "");
-    if (pdfUrl) {
-      url = `/api/secretariat/pdf-preview?url=${encodeURIComponent(pdfUrl)}`;
-    }
+  if (rawImg && !rawImg.toLowerCase().endsWith(".pdf")) {
+    url = rawImg;
+  } else if (pdfUrl) {
+    url = `/api/secretariat/pdf-preview?url=${encodeURIComponent(pdfUrl)}`;
   }
   if (!url) return "";
   return resolveImageUrl(url);
@@ -2643,8 +2643,16 @@ const SecretariatModule: React.FC<SecretariatModuleProps> = ({
   ): SecretariatCompanySettings => {
     const compId =
       letter?.companyId || targetCompanyId || selectedCompany?.id || "";
-    const fromSecSettings = secSettings.find((s) => s.companyId === compId);
-    
+    let fromSecSettings = secSettings.find((s) => s.companyId === compId);
+    if (!fromSecSettings || (!fromSecSettings.letterheadUrl && !fromSecSettings.pdfLetterheadUrl)) {
+      const fallbackWithLetterhead = secSettings.find((s) => s.letterheadUrl || s.pdfLetterheadUrl || s.wordLetterheadUrl);
+      if (fallbackWithLetterhead) {
+        fromSecSettings = fallbackWithLetterhead;
+      } else if (secSettings.length > 0 && !fromSecSettings) {
+        fromSecSettings = secSettings[0];
+      }
+    }
+
     const baseSettings: SecretariatCompanySettings = fromSecSettings || {
       companyId: compId,
       headquartersAccessTokens: [],

@@ -12488,24 +12488,11 @@ app.get('/api/quote/motivational', async (req, res) => {
     return handleQuoteRequest(req, res, 'motivational');
 });
 
-async function handleQuoteRequest(req, res, type = 'poem') {
-    const fetchWithTimeout = async (url, ms = 3000) => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), ms);
-        try {
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timer);
-            return response;
-        } catch (e) {
-            clearTimeout(timer);
-            throw e;
-        }
-    };
+function handleQuoteRequest(req, res, type = 'poem') {
+    const selectedType = type || req.query.type || 'poem';
 
-function handleQuoteRequest(req, res) {
-    const type = req.query.type || 'poem';
 
-    if (type === 'motivational') {
+    if (selectedType === 'motivational') {
         const motivationalQuotes = [
             { text: "موفقیت مجموعه‌ای از تلاش‌های کوچک روزانه است که بارها و بارها تکرار می‌شوند.", author: "رابرت کالیر", title: "تلاش مستمر" },
             { text: "بزرگترین افتخار ما در این نیست که هرگز زمین نخوریم، بلکه در این است که پس از هر بار افتادن دوباره برخیزیم.", author: "کنفوسیوس", title: "تاب‌آوری و استقامت" },
